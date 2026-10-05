@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 7 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-3c8e594b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Tokenization of &quot;noreferrer&quot; should skip window features separators before feature</span></div><a class="self" href="#s-3c8e594b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a462a502"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Feature &quot;noreferrer&quot; should be converted to ASCII lowercase</span></div><a class="self" href="#s-a462a502" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5ff0e55b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">After &quot;noreferrer&quot;, tokenization should skip window features separators that are not &quot;=&quot; or &quot;,&quot;</span></div><a class="self" href="#s-5ff0e55b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6c9ab072"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Tokenizing &quot;noreferrer&quot; should ignore window feature separators except &quot;,&quot; after initial &quot;=&quot; and before value</span></div><a class="self" href="#s-6c9ab072" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8642853f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Tokenizing &quot;noreferrer&quot; should read characters until first window feature separator as `value`</span></div><a class="self" href="#s-8642853f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-60d73920"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Integer values other than 0 should activate the feature</span></div><a class="self" href="#s-60d73920" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-40a5d77f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Integer value of 0 should not activate &quot;noreferrer&quot;</span></div><a class="self" href="#s-40a5d77f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9e7d2086"><details><summary><span class="mark">FAIL</span><span class="sub-name">Invalid feature names should not tokenize as &quot;noreferrer&quot;</span></summary><pre class="msg">assert_not_equals: &quot;␋noreferrer&quot; should NOT activate feature &quot;noreferrer&quot; got disallowed value null</pre></details><a class="self" href="#s-9e7d2086" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

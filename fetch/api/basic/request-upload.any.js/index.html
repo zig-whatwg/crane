@@ -32,7 +32,53 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 34 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/basic/request-upload.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>17</b> / 18</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-53d1a3b9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with PUT with body</span></div><a class="self" href="#s-53d1a3b9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9ee27c37"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with text body</span></div><a class="self" href="#s-9ee27c37" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-920448fd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with URLSearchParams body</span></div><a class="self" href="#s-920448fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0e28c4ea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Blob body</span></div><a class="self" href="#s-0e28c4ea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fa1c212f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ArrayBuffer body</span></div><a class="self" href="#s-fa1c212f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b8bd1fa4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Uint8Array body</span></div><a class="self" href="#s-b8bd1fa4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f8189613"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Int8Array body</span></div><a class="self" href="#s-f8189613" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fe37865c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fetch with POST with Float16Array body</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-fe37865c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cad2941f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Float32Array body</span></div><a class="self" href="#s-cad2941f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-371633a2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Float64Array body</span></div><a class="self" href="#s-371633a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bfa95de6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with DataView body</span></div><a class="self" href="#s-bfa95de6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-829154f2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Blob body with mime type</span></div><a class="self" href="#s-829154f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c1a9b3f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream containing String</span></div><a class="self" href="#s-c1a9b3f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-341f9643"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream containing null</span></div><a class="self" href="#s-341f9643" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc0d6265"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream containing number</span></div><a class="self" href="#s-cc0d6265" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-887c3f33"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream containing ArrayBuffer</span></div><a class="self" href="#s-887c3f33" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0bf67189"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream containing Blob</span></div><a class="self" href="#s-0bf67189" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5b5ff920"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Streaming upload shouldn&#39;t work on Http/1.1.</span></div><a class="self" href="#s-5b5ff920" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/basic/request-upload.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>17</b> / 18</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-b78e7220"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with PUT with body</span></div><a class="self" href="#s-b78e7220" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5d70720a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with text body</span></div><a class="self" href="#s-5d70720a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e1ae04fd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with URLSearchParams body</span></div><a class="self" href="#s-e1ae04fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9c17e172"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Blob body</span></div><a class="self" href="#s-9c17e172" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6ba69190"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ArrayBuffer body</span></div><a class="self" href="#s-6ba69190" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-108c2353"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Uint8Array body</span></div><a class="self" href="#s-108c2353" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-afe0084c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Int8Array body</span></div><a class="self" href="#s-afe0084c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2db043db"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fetch with POST with Float16Array body</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-2db043db" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5954b7a5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Float32Array body</span></div><a class="self" href="#s-5954b7a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fba5f22d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Float64Array body</span></div><a class="self" href="#s-fba5f22d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bc0c3fe0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with DataView body</span></div><a class="self" href="#s-bc0c3fe0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-73054195"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Blob body with mime type</span></div><a class="self" href="#s-73054195" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0eacc5d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream containing String</span></div><a class="self" href="#s-0eacc5d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a7c59825"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream containing null</span></div><a class="self" href="#s-a7c59825" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3524cb23"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream containing number</span></div><a class="self" href="#s-3524cb23" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-68e3827c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream containing ArrayBuffer</span></div><a class="self" href="#s-68e3827c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ba094216"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream containing Blob</span></div><a class="self" href="#s-ba094216" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-512a4a17"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Streaming upload shouldn&#39;t work on Http/1.1.</span></div><a class="self" href="#s-512a4a17" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

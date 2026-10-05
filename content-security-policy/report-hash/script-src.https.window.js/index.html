@@ -33,7 +33,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/content-security-policy/report-hash/script-src.https.window.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>3</b> / 8</span></h3>
+<pre class="msg harness-msg">Unhandled rejection: This feature is not yet implemented</pre>
+<ol class="subtests">
+<li class="sub s-fail" id="s-16cda992"><details><summary><span class="mark">FAIL</span><span class="sub-name">Reporting endpoints received hash for same-origin CORS script.</span></summary><pre class="msg">assert_unreached: A report of csp-hash from https://web-platform.test:8443/content-security-policy/report-hash/script-src.https.window.html is not found. Reached unreachable code</pre></details><a class="self" href="#s-16cda992" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8bd12fc5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Reporting endpoints received hash for same-origin no-CORS script.</span></summary><pre class="msg">assert_unreached: A report of csp-hash from https://web-platform.test:8443/content-security-policy/report-hash/script-src.https.window.html is not found. Reached unreachable code</pre></details><a class="self" href="#s-8bd12fc5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-689aff62"><details><summary><span class="mark">FAIL</span><span class="sub-name">Reporting endpoints received hash for cross-origin CORS script.</span></summary><pre class="msg">assert_unreached: A report of csp-hash from https://web-platform.test:8443/content-security-policy/report-hash/script-src.https.window.html is not found. Reached unreachable code</pre></details><a class="self" href="#s-689aff62" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-41be2948"><details><summary><span class="mark">FAIL</span><span class="sub-name">Reporting endpoints received no hash for cross-origin no-CORS script.</span></summary><pre class="msg">assert_unreached: A report of csp-hash from https://web-platform.test:8443/content-security-policy/report-hash/script-src.https.window.html is not found. Reached unreachable code</pre></details><a class="self" href="#s-41be2948" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d562b052"><details><summary><span class="mark">FAIL</span><span class="sub-name">Reporting endpoints received the right hash for same-origin CORS script with integrity.</span></summary><pre class="msg">assert_unreached: A report of csp-hash from https://web-platform.test:8443/content-security-policy/report-hash/script-src.https.window.html is not found. Reached unreachable code</pre></details><a class="self" href="#s-d562b052" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a2d0a9c3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Reporting endpoints received no report for failed integrity check with sha256.</span></div><a class="self" href="#s-a2d0a9c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc0dbfaa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Reporting endpoints received no report for failed integrity check with sha512.</span></div><a class="self" href="#s-cc0dbfaa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2671f6e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Reporting endpoints received no report for CORS stylesheet.</span></div><a class="self" href="#s-2671f6e2" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

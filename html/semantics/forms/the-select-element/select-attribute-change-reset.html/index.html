@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 7 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-09412920"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Reducing a select&#39;s size to 1 selects the first enabled option.</span></div><a class="self" href="#s-09412920" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-806f616a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing a select&#39;s multiple attribute selects the first enabled option.</span></div><a class="self" href="#s-806f616a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-47ad49c7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing an option&#39;s disabled attribute selects it.</span></div><a class="self" href="#s-47ad49c7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-05215658"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing an optgroup&#39;s disabled attribute selects the option inside it.</span></div><a class="self" href="#s-05215658" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-69ac9cd0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding an option&#39;s selected attribute deselects the other options.</span></div><a class="self" href="#s-69ac9cd0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8036ec1c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing an option&#39;s selected attribute falls back to the first enabled option.</span></div><a class="self" href="#s-8036ec1c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-51cd640b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing the selected attribute from a dirty option does not change selectedness.</span></div><a class="self" href="#s-51cd640b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-50d555e2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Removing a select&#39;s multiple attribute keeps the first selected option.</span></summary><pre class="msg">assert_true: The first selected option should stay selected. expected true got false</pre></details><a class="self" href="#s-50d555e2" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

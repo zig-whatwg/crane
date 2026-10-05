@@ -32,7 +32,563 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 513 passed, 139 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-58acecc5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-58acecc5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-01ded3b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#182 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-01ded3b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-78baa3aa"><details><summary><span class="mark">FAIL</span><span class="sub-name">#183 Test that WebAssembly compilation succeeds (imports.wast:3)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-78baa3aa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1ebb30c5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#184 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-1ebb30c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4ee3f5e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#194 Test that WebAssembly instantiation succeeds (imports.wast:35)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:52:10)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-4ee3f5e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c643081c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#195 Test that a WebAssembly code returns a specific result (imports.wast:97)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;print32&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:55:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-c643081c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c22adba6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#196 Test that a WebAssembly code returns a specific result (imports.wast:98)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;print64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:58:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-c22adba6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-360b0448"><details><summary><span class="mark">FAIL</span><span class="sub-name">#199 Test that WebAssembly instantiation succeeds (imports.wast:109)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:67:10)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-360b0448" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0d7a5498"><details><summary><span class="mark">FAIL</span><span class="sub-name">#200 Test that a WebAssembly code returns a specific result (imports.wast:116)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;print_i32&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:70:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-0d7a5498" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-964a4b8e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#202 Test that WebAssembly instantiation succeeds (imports.wast:119)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:76:10)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-964a4b8e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-eb2e5ff6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#203 Test that a WebAssembly code returns a specific result (imports.wast:126)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;print_i32&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:79:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-eb2e5ff6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c997c238"><details><summary><span class="mark">FAIL</span><span class="sub-name">#205 Test that WebAssembly instantiation succeeds (imports.wast:128)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:85:10)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-c997c238" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4c2303d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#207 Test that WebAssembly instantiation succeeds (imports.wast:129)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:91:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-4c2303d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-936fecdb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#209 Test that WebAssembly instantiation succeeds (imports.wast:130)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:97:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-936fecdb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-65f97e31"><details><summary><span class="mark">FAIL</span><span class="sub-name">#211 Test that WebAssembly instantiation succeeds (imports.wast:131)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:103:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-65f97e31" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-81a90e8d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#213 Test that WebAssembly instantiation succeeds (imports.wast:132)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:109:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-81a90e8d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1525ff4b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#215 Test that WebAssembly instantiation succeeds (imports.wast:133)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:115:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-1525ff4b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-64d9fb24"><details><summary><span class="mark">FAIL</span><span class="sub-name">#217 Test that WebAssembly instantiation succeeds (imports.wast:134)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:121:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-64d9fb24" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fe8e628d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#220 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:127:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-fe8e628d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-47093351"><details><summary><span class="mark">FAIL</span><span class="sub-name">#223 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:133:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-47093351" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2a8ae59b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#226 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:139:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-2a8ae59b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3665c5d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#229 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:145:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-3665c5d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9268a155"><details><summary><span class="mark">FAIL</span><span class="sub-name">#232 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:151:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-9268a155" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ff8b0c1b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#235 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:157:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-ff8b0c1b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-14f9dd8f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#238 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:163:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-14f9dd8f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fb301572"><details><summary><span class="mark">FAIL</span><span class="sub-name">#241 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:169:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-fb301572" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fc0e54e2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#244 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:175:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-fc0e54e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2e789dc4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#247 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:181:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-2e789dc4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-41f06e84"><details><summary><span class="mark">FAIL</span><span class="sub-name">#250 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:187:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-41f06e84" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5626b879"><details><summary><span class="mark">FAIL</span><span class="sub-name">#253 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:193:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-5626b879" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b518cff6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#256 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:199:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-b518cff6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-790fca08"><details><summary><span class="mark">FAIL</span><span class="sub-name">#259 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:205:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-790fca08" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-068d773a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#262 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:211:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-068d773a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b8bdd65f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#265 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:217:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-b8bdd65f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-227e1824"><details><summary><span class="mark">FAIL</span><span class="sub-name">#268 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:223:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-227e1824" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bb8d5f26"><details><summary><span class="mark">FAIL</span><span class="sub-name">#271 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:229:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-bb8d5f26" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a09239ed"><details><summary><span class="mark">FAIL</span><span class="sub-name">#274 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:235:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-a09239ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-eba7e70a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#283 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:253:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-eba7e70a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-422e3c97"><details><summary><span class="mark">FAIL</span><span class="sub-name">#286 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:259:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-422e3c97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-520424d0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#289 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:265:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-520424d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a775273b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#292 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:271:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-a775273b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fe58506a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#295 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:277:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-fe58506a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b34bd660"><details><summary><span class="mark">FAIL</span><span class="sub-name">#298 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:283:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-b34bd660" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2f0872ff"><details><summary><span class="mark">FAIL</span><span class="sub-name">#301 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:289:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-2f0872ff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5f9a9072"><details><summary><span class="mark">FAIL</span><span class="sub-name">#304 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:295:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-5f9a9072" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ab64abd4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#307 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:301:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-ab64abd4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7db8f1b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#309 Test that WebAssembly instantiation succeeds (imports.wast:263)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:307:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-7db8f1b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8a92e086"><details><summary><span class="mark">FAIL</span><span class="sub-name">#310 Test that a WebAssembly code returns a specific result (imports.wast:283)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-0&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:310:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-8a92e086" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-47234563"><details><summary><span class="mark">FAIL</span><span class="sub-name">#311 Test that a WebAssembly code returns a specific result (imports.wast:284)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-1&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:313:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-47234563" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-45ad50fe"><details><summary><span class="mark">FAIL</span><span class="sub-name">#312 Test that a WebAssembly code returns a specific result (imports.wast:285)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-x&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:316:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-45ad50fe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-697c0ec4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#313 Test that a WebAssembly code returns a specific result (imports.wast:286)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-y&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:319:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-697c0ec4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-127afaa3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#314 Test that a WebAssembly code returns a specific result (imports.wast:287)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-4&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:322:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-127afaa3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-51f486e3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#316 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;module&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:325:16
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:325:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-51f486e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be91d2d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#317 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:325:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-be91d2d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-622e7660"><details><summary><span class="mark">FAIL</span><span class="sub-name">#319 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;module&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:328:16
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:328:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-622e7660" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-70431465"><details><summary><span class="mark">FAIL</span><span class="sub-name">#320 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:328:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-70431465" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4bcb722c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#322 Test that WebAssembly instantiation succeeds (imports.wast:291)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:334:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-4bcb722c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-69fa878d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#324 Test that WebAssembly instantiation succeeds (imports.wast:292)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:340:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-69fa878d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dea8ce07"><details><summary><span class="mark">FAIL</span><span class="sub-name">#326 Test that WebAssembly instantiation succeeds (imports.wast:293)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:346:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-dea8ce07" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-99da8351"><details><summary><span class="mark">FAIL</span><span class="sub-name">#329 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:352:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-99da8351" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9859a4d3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#332 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:358:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-9859a4d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8427150a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#335 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:364:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-8427150a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4ae4e0e3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#338 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:370:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-4ae4e0e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-05214e7a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#341 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:376:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-05214e7a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ecf68c21"><details><summary><span class="mark">FAIL</span><span class="sub-name">#344 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:382:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-ecf68c21" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7d7eab44"><details><summary><span class="mark">FAIL</span><span class="sub-name">#347 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:388:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-7d7eab44" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c857ce17"><details><summary><span class="mark">FAIL</span><span class="sub-name">#350 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:394:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-c857ce17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1f84eb45"><details><summary><span class="mark">FAIL</span><span class="sub-name">#353 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:400:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-1f84eb45" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0caafb76"><details><summary><span class="mark">FAIL</span><span class="sub-name">#356 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:406:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-0caafb76" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f5614eff"><details><summary><span class="mark">FAIL</span><span class="sub-name">#359 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:412:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-f5614eff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f3a30ccb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#362 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:418:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-f3a30ccb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-73fef64a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#365 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:424:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-73fef64a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-088aa681"><details><summary><span class="mark">FAIL</span><span class="sub-name">#368 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:430:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-088aa681" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d9c6b4eb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#371 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:436:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-d9c6b4eb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a763e9f8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#380 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:454:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-a763e9f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c36d851d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#383 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:460:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-c36d851d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-290ad342"><details><summary><span class="mark">FAIL</span><span class="sub-name">#386 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:466:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-290ad342" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9a043ba1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#388 Test that WebAssembly instantiation succeeds (imports.wast:381)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:472:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-9a043ba1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c8731bae"><details><summary><span class="mark">FAIL</span><span class="sub-name">#389 Test that a WebAssembly code traps (imports.wast:393)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:475:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-c8731bae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-efa12fd0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#390 Test that a WebAssembly code returns a specific result (imports.wast:394)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:478:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-efa12fd0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a03a1ab2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#391 Test that a WebAssembly code returns a specific result (imports.wast:395)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:481:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-a03a1ab2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7f30271c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#392 Test that a WebAssembly code traps (imports.wast:396)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:484:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-7f30271c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-746e48dc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#393 Test that a WebAssembly code traps (imports.wast:397)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:487:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-746e48dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6b7fb6db"><details><summary><span class="mark">FAIL</span><span class="sub-name">#395 Test that WebAssembly instantiation succeeds (imports.wast:398)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:493:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-6b7fb6db" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-35da50ec"><details><summary><span class="mark">FAIL</span><span class="sub-name">#396 Test that a WebAssembly code traps (imports.wast:410)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:496:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-35da50ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5cf48bb2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#397 Test that a WebAssembly code returns a specific result (imports.wast:411)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:499:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-5cf48bb2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6f449f79"><details><summary><span class="mark">FAIL</span><span class="sub-name">#398 Test that a WebAssembly code returns a specific result (imports.wast:412)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:502:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-6f449f79" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cea0457c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#399 Test that a WebAssembly code traps (imports.wast:413)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:505:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-cea0457c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3882e4c2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#400 Test that a WebAssembly code traps (imports.wast:414)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:508:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-3882e4c2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-838b509c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#402 Test that WebAssembly instantiation succeeds (imports.wast:415)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:514:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-838b509c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6ad8e9bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#404 Test that WebAssembly instantiation succeeds (imports.wast:416)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:520:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-6ad8e9bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7100053d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#434 Test that WebAssembly instantiation succeeds (imports.wast:431)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:610:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-7100053d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-86c053d6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#436 Test that WebAssembly instantiation succeeds (imports.wast:432)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:616:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-86c053d6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ef946541"><details><summary><span class="mark">FAIL</span><span class="sub-name">#438 Test that WebAssembly instantiation succeeds (imports.wast:433)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:622:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-ef946541" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6378d348"><details><summary><span class="mark">FAIL</span><span class="sub-name">#440 Test that WebAssembly instantiation succeeds (imports.wast:434)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:628:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-6378d348" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f5d5e330"><details><summary><span class="mark">FAIL</span><span class="sub-name">#442 Test that WebAssembly instantiation succeeds (imports.wast:435)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:634:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-f5d5e330" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4830aca8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#444 Test that WebAssembly instantiation succeeds (imports.wast:436)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:640:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-4830aca8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0bed87d9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#446 Test that WebAssembly instantiation succeeds (imports.wast:437)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:646:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-0bed87d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fce340fc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#448 Test that WebAssembly instantiation succeeds (imports.wast:438)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:652:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-fce340fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-259ef40d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#451 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:658:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-259ef40d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ea68e7cb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#454 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:664:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-ea68e7cb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-90192ae5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#469 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:694:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-90192ae5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d4d47ea3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#472 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:700:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-d4d47ea3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6d578cae"><details><summary><span class="mark">FAIL</span><span class="sub-name">#475 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:706:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-6d578cae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-85702b42"><details><summary><span class="mark">FAIL</span><span class="sub-name">#478 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:712:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-85702b42" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ee7f1585"><details><summary><span class="mark">FAIL</span><span class="sub-name">#484 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:724:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-ee7f1585" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4b6ebed3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#486 Test that WebAssembly instantiation succeeds (imports.wast:494)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:730:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-4b6ebed3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8426fbee"><details><summary><span class="mark">FAIL</span><span class="sub-name">#487 Test that a WebAssembly code returns a specific result (imports.wast:501)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;load&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:733:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-8426fbee" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0ec4647c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#488 Test that a WebAssembly code returns a specific result (imports.wast:502)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;load&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:736:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-0ec4647c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3151aa90"><details><summary><span class="mark">FAIL</span><span class="sub-name">#489 Test that a WebAssembly code returns a specific result (imports.wast:503)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;load&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:739:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-3151aa90" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-608ef155"><details><summary><span class="mark">FAIL</span><span class="sub-name">#490 Test that a WebAssembly code traps (imports.wast:504)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;load&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:742:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-608ef155" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a6bf912a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#494 Test that WebAssembly instantiation succeeds (imports.wast:507)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:754:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-a6bf912a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-498f814a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#495 Test that a WebAssembly code returns a specific result (imports.wast:513)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;load&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:757:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-498f814a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3ecb42ba"><details><summary><span class="mark">FAIL</span><span class="sub-name">#496 Test that a WebAssembly code returns a specific result (imports.wast:514)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;load&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:760:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-3ecb42ba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e99de05a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#497 Test that a WebAssembly code returns a specific result (imports.wast:515)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;load&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:763:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-e99de05a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-df7b37a9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#498 Test that a WebAssembly code traps (imports.wast:516)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;load&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:766:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-df7b37a9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-177b35d7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#524 Test that WebAssembly instantiation succeeds (imports.wast:531)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:844:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-177b35d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f18fc6b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#526 Test that WebAssembly instantiation succeeds (imports.wast:532)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:850:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-f18fc6b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b2ed0b90"><details><summary><span class="mark">FAIL</span><span class="sub-name">#528 Test that WebAssembly instantiation succeeds (imports.wast:533)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:856:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-b2ed0b90" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5c0af525"><details><summary><span class="mark">FAIL</span><span class="sub-name">#530 Test that WebAssembly instantiation succeeds (imports.wast:534)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:862:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-5c0af525" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3985566c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#532 Test that WebAssembly instantiation succeeds (imports.wast:535)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:868:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-3985566c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-021e4055"><details><summary><span class="mark">FAIL</span><span class="sub-name">#534 Test that WebAssembly instantiation succeeds (imports.wast:536)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:874:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-021e4055" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-421b1b65"><details><summary><span class="mark">FAIL</span><span class="sub-name">#537 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:880:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-421b1b65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7ce95c9e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#540 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:886:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-7ce95c9e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-851acae7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#597 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1000:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-851acae7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-922fc942"><details><summary><span class="mark">FAIL</span><span class="sub-name">#600 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1006:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-922fc942" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3757ec29"><details><summary><span class="mark">FAIL</span><span class="sub-name">#603 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1012:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-3757ec29" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cca222b0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#606 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;test&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1018:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-cca222b0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8f4b403f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#612 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1030:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-8f4b403f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-311a3eaa"><details><summary><span class="mark">FAIL</span><span class="sub-name">#615 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1036:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-311a3eaa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a3d94635"><details><summary><span class="mark">FAIL</span><span class="sub-name">#618 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1042:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-a3d94635" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6e057409"><details><summary><span class="mark">FAIL</span><span class="sub-name">#621 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1048:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-6e057409" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d886e855"><details><summary><span class="mark">FAIL</span><span class="sub-name">#624 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1054:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-d886e855" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f62707d9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#626 Test that WebAssembly instantiation succeeds (imports.wast:662)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;spectest&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1060:11)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-f62707d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8cda7120"><details><summary><span class="mark">FAIL</span><span class="sub-name">#627 Test that a WebAssembly code returns a specific result (imports.wast:666)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1063:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-8cda7120" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7c50263e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#628 Test that a WebAssembly code returns a specific result (imports.wast:667)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1066:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-7c50263e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-059dc554"><details><summary><span class="mark">FAIL</span><span class="sub-name">#629 Test that a WebAssembly code returns a specific result (imports.wast:668)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1069:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-059dc554" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a99572a5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#630 Test that a WebAssembly code returns a specific result (imports.wast:669)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1072:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-a99572a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6db2e0b3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#631 Test that a WebAssembly code returns a specific result (imports.wast:670)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at imports_wast_js (http://web-platform.test:8000/wasm/core/js/imports.wast.js:1075:1)
+    at http://web-platform.test:8000/wasm/core/js/imports.wast.js:1140:3 expected true got false</pre></details><a class="self" href="#s-6db2e0b3" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<p class="omitted">513 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

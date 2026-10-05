@@ -32,7 +32,25 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 6 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/console/console-is-a-namespace.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-f4ab14be"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">console exists on the global object</span></div><a class="self" href="#s-f4ab14be" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6b8d1b1a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">console has the right property descriptors</span></div><a class="self" href="#s-6b8d1b1a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6f75690e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Console (uppercase, as if it were an interface) must not exist</span></div><a class="self" href="#s-6f75690e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-713a4d0f"><details><summary><span class="mark">FAIL</span><span class="sub-name">The prototype chain must be correct</span></summary><pre class="msg">assert_equals: The [[Prototype]] must have no properties expected 0 but got 12</pre></details><a class="self" href="#s-713a4d0f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/console/console-is-a-namespace.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-c2698a0e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">console exists on the global object</span></div><a class="self" href="#s-c2698a0e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc06b423"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">console has the right property descriptors</span></div><a class="self" href="#s-cc06b423" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fab77812"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Console (uppercase, as if it were an interface) must not exist</span></div><a class="self" href="#s-fab77812" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4cec7c16"><details><summary><span class="mark">FAIL</span><span class="sub-name">The prototype chain must be correct</span></summary><pre class="msg">assert_equals: The [[Prototype]] must have no properties expected 0 but got 12</pre></details><a class="self" href="#s-4cec7c16" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

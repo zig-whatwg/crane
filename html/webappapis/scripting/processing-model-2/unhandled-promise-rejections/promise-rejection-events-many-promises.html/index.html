@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 6 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-21c6fd73"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">unhandledrejection: fires once for each of many rejections in one turn</span></div><a class="self" href="#s-21c6fd73" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4ed79081"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">unhandledrejection: does not fire when many rejections are all handled in the same turn</span></div><a class="self" href="#s-4ed79081" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ed5521de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">unhandledrejection: fires only for the rejections left unhandled</span></div><a class="self" href="#s-ed5521de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f89dab9a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">unhandledrejection: does not fire when many rejections are handled in reverse order</span></div><a class="self" href="#s-f89dab9a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f0fa017b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">rejectionhandled: fires once for each of many rejections handled after they were reported</span></div><a class="self" href="#s-f0fa017b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-47219d57"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">unhandledrejection: handling a reported batch does not suppress a batch rejected after it</span></div><a class="self" href="#s-47219d57" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

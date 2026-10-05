@@ -32,7 +32,27 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 4 failed, 1 timed out and 2 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/performance-timeline/droppedentriescount.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-c6eac70c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries count is 0 when there are no dropped entries of relevant type.</span></div><a class="self" href="#s-c6eac70c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a8dbccda"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries correctly counted with multiple types.</span></div><a class="self" href="#s-a8dbccda" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fbf99596"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dropped entries counted even if observer was not registered at the time.</span></div><a class="self" href="#s-fbf99596" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9f6e0537"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dropped entries only surfaced on the first callback.</span></summary><pre class="msg">assert_equals: There should be two dropped entries right now. expected 2 but got 1</pre></details><a class="self" href="#s-9f6e0537" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b551130e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dropped entries surfaced after an observe() call!</span></summary><pre class="msg">assert_equals: There should be droppedEntriesCount due to the new observe(). expected 2 but got 3</pre></details><a class="self" href="#s-b551130e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/performance-timeline/droppedentriescount.any.worker.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-d3dea71e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dropped entries count is 0 when there are no dropped entries of relevant type.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: performance.setResourceTimingBufferSize is not a function&quot;</pre></details><a class="self" href="#s-d3dea71e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e834211d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dropped entries correctly counted with multiple types.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: performance.mark is not a function&quot;</pre></details><a class="self" href="#s-e834211d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-timeout" id="s-e5aaeef6"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Dropped entries counted even if observer was not registered at the time.</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-e5aaeef6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-d9c23173"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Dropped entries only surfaced on the first callback.</span></div><a class="self" href="#s-d9c23173" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-c618f820"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Dropped entries surfaced after an observe() call!</span></div><a class="self" href="#s-c618f820" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,22 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 10 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-193a3375"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Event Path without ShadowRoots.</span></div><a class="self" href="#s-193a3375" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0a1e1c4c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event Path with an open ShadowRoot.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-0a1e1c4c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5f511729"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event Path with a closed ShadowRoot.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-5f511729" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4e1231b4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event Path with nested ShadowRoots: open &gt; open.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-4e1231b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aa5e2878"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event Path with nested ShadowRoots: open &gt; closed.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-aa5e2878" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-46028f95"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event Path with nested ShadowRoots: closed &gt; open.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-46028f95" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f5b3c816"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event Path with nested ShadowRoots: closed &gt; closed.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-f5b3c816" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-eca3ed25"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event Path with a slot in an open Shadow Root.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-eca3ed25" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-13772f93"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event Path with a slot in a closed Shadow Root.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-13772f93" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-db624797"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event Path with slots in nested ShadowRoots: open &gt; open.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-db624797" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f976ef60"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event Path with slots in nested ShadowRoots: closed &gt; closed.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-f976ef60" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

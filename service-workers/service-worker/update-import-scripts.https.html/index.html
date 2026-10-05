@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-9754768b"><details><summary><span class="mark">FAIL</span><span class="sub-name">update() should fail when a new worker imports an unavailable script.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;getRegistration&#39;)&quot;</pre></details><a class="self" href="#s-9754768b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-98fba2f8"><details><summary><span class="mark">FAIL</span><span class="sub-name">update() should succeed when the old imported script no longer exist but the new worker doesn&#39;t import it.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;getRegistration&#39;)&quot;</pre></details><a class="self" href="#s-98fba2f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-147a00b7"><details><summary><span class="mark">FAIL</span><span class="sub-name">update() should treat 404 on imported scripts as no change.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;getRegistration&#39;)&quot;</pre></details><a class="self" href="#s-147a00b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ecaf797b"><details><summary><span class="mark">FAIL</span><span class="sub-name">update() should find an update in an imported script but update() should result in failure due to missing the other imported script.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;getRegistration&#39;)&quot;</pre></details><a class="self" href="#s-ecaf797b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-52f734f7"><details><summary><span class="mark">FAIL</span><span class="sub-name">update() should work with cross-origin importScripts.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;getRegistration&#39;)&quot;</pre></details><a class="self" href="#s-52f734f7" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

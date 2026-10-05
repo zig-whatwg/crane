@@ -32,7 +32,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-2d0600bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">customElementRegistry on a document should return window.customElements by default</span></summary><pre class="msg">assert_equals: expected object &quot;[object CustomElementRegistry]&quot; but got null</pre></details><a class="self" href="#s-2d0600bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-37aba273"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">customElementRegistry on a document without a browsing context should return null</span></div><a class="self" href="#s-37aba273" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b0885b44"><details><summary><span class="mark">FAIL</span><span class="sub-name">customElementRegistry on a document of a connected iframe should return contentWindow.customElements</span></summary><pre class="msg">assert_equals: expected object &quot;[object CustomElementRegistry]&quot; but got null</pre></details><a class="self" href="#s-b0885b44" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-584831b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">customElementRegistry on a document of a disconnected iframe should return contentWindow.customElements</span></summary><pre class="msg">assert_equals: expected object &quot;[object CustomElementRegistry]&quot; but got null</pre></details><a class="self" href="#s-584831b6" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

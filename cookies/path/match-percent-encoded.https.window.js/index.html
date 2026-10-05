@@ -33,7 +33,23 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 0 failed, 0 timed out and 10 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/cookies/path/match-percent-encoded.https.window.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 10</span></h3>
+<pre class="msg harness-msg">TypeError: Cannot read properties of undefined (reading &#39;register&#39;)</pre>
+<ol class="subtests">
+<li class="sub s-notrun" id="s-81f292fc"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">CONTROL a cookie for the probed path is visible in it</span></div><a class="self" href="#s-81f292fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-1a65ac26"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">CONTROL a cookie for a prefix of the probed path is visible in it</span></div><a class="self" href="#s-1a65ac26" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-675749f8"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">A Path attribute where a literal space does not match a percent-encoded space</span></div><a class="self" href="#s-675749f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-a77dc7fe"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">A Path attribute where a percent-encoded space matches a percent-encoded space</span></div><a class="self" href="#s-a77dc7fe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-a7ec9d63"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">A Path attribute where a non-ASCII byte is not reachable at the percent-encoding of that byte</span></div><a class="self" href="#s-a7ec9d63" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-6da4f9ba"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">A Path attribute where a non-ASCII byte is not reachable at the percent-encoding of its isomorphic decoding</span></div><a class="self" href="#s-6da4f9ba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-215f3306"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">A Path attribute where a multi-byte non-ASCII sequence is not reachable at the percent-encoding of those bytes</span></div><a class="self" href="#s-215f3306" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-629be6b0"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">A Path attribute where a multi-byte non-ASCII sequence is not reachable at the percent-encoding of its isomorphic decoding</span></div><a class="self" href="#s-629be6b0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-33c800a7"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">A Path attribute where an already percent-encoded non-ASCII byte matches, being ASCII itself</span></div><a class="self" href="#s-33c800a7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-d74a3f87"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">cleanup: unregister the service worker</span></div><a class="self" href="#s-d74a3f87" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

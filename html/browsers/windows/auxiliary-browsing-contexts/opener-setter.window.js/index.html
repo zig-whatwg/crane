@@ -32,7 +32,18 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 7 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-e6499344"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting window.opener to undefined</span></summary><pre class="msg">assert_equals: expected (undefined) undefined but got (object) null</pre></details><a class="self" href="#s-e6499344" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2e04687c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting window.opener to 42</span></summary><pre class="msg">assert_equals: expected (number) 42 but got (object) null</pre></details><a class="self" href="#s-2e04687c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b3ebf8ca"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting window.opener to function() { return &quot;hi&quot; }</span></summary><pre class="msg">assert_equals: expected (function) function &quot;function() { return &quot;hi&quot; }&quot; but got (object) null</pre></details><a class="self" href="#s-b3ebf8ca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f43dc755"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting window.opener to hi</span></summary><pre class="msg">assert_equals: expected (string) &quot;hi&quot; but got (object) null</pre></details><a class="self" href="#s-f43dc755" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-67e142d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting window.opener to [object Object]</span></summary><pre class="msg">assert_equals: expected object &quot;[object Object]&quot; but got null</pre></details><a class="self" href="#s-67e142d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3210b602"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting window.opener to </span></summary><pre class="msg">assert_equals: expected [] but got null</pre></details><a class="self" href="#s-3210b602" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f7a848fb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting window.opener to Symbol()</span></summary><pre class="msg">assert_equals: expected (symbol) symbol &quot;Symbol()&quot; but got (object) null</pre></details><a class="self" href="#s-f7a848fb" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

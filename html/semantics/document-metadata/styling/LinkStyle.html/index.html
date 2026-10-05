@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-8fe68f34"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The LinkStyle interface&#39;s sheet attribute must return null; the disabled attribute must be false</span></div><a class="self" href="#s-8fe68f34" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e0775834"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The LinkStyle interface&#39;s sheet attribute must return null if the corresponding element is not in a Document</span></div><a class="self" href="#s-e0775834" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6a9ec0ac"><details><summary><span class="mark">FAIL</span><span class="sub-name">The LinkStyle interface&#39;s sheet attribute must return StyleSheet object; the disabled attribute must be same as the StyleSheet&#39;s disabled attribute</span></summary><pre class="msg">assert_true: The sheet attribute of style5 should be a StyleSheet object. expected true got false</pre></details><a class="self" href="#s-6a9ec0ac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a7bdfd80"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The title must be the same as the value of the element&#39;s title content attribute</span></div><a class="self" href="#s-a7bdfd80" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fcc7af36"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The media must be the same as the value of the element&#39;s media content attribute, or the empty string if it is omitted</span></div><a class="self" href="#s-fcc7af36" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

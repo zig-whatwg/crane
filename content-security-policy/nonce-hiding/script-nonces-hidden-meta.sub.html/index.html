@@ -32,7 +32,22 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 8 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-4d472efd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Reading &#39;nonce&#39; content attribute and IDL attribute.</span></div><a class="self" href="#s-4d472efd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e0e1b8d1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cloned node retains nonce.</span></div><a class="self" href="#s-e0e1b8d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5827e00b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cloned node retains nonce when inserted.</span></div><a class="self" href="#s-5827e00b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b44a4fa9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Writing &#39;nonce&#39; content attribute.</span></div><a class="self" href="#s-b44a4fa9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fb524a86"><details><summary><span class="mark">FAIL</span><span class="sub-name">Writing &#39;nonce&#39; IDL attribute.</span></summary><pre class="msg">assert_equals: expected &quot;foo&quot; but got &quot;bar&quot;</pre></details><a class="self" href="#s-fb524a86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-24ce7972"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Document-written script executes.</span></div><a class="self" href="#s-24ce7972" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-30005c51"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Document-written script&#39;s nonce value.</span></div><a class="self" href="#s-30005c51" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b1de5037"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElement.nonce.</span></summary><pre class="msg">assert_equals: expected (object) null but got (string) &quot;abc&quot;</pre></details><a class="self" href="#s-b1de5037" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1500df89"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setAttribute(&#39;nonce&#39;) overwrites &#39;.nonce&#39; upon insertion.</span></div><a class="self" href="#s-1500df89" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-800fbb74"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createElement.setAttribute.</span></div><a class="self" href="#s-800fbb74" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e925f3ca"><details><summary><span class="mark">FAIL</span><span class="sub-name">Nonces leak via CSS side-channels.</span></summary><pre class="msg">assert_equals: expected &quot;block&quot; but got &quot;none&quot;</pre></details><a class="self" href="#s-e925f3ca" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

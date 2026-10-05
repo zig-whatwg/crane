@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-ab369a68"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Node created in an iframe&#39;s realm and adopted into this document, iframe removed</span></div><a class="self" href="#s-ab369a68" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cdfe4487"><details><summary><span class="mark">FAIL</span><span class="sub-name">Node created in this realm and adopted into an iframe&#39;s document, iframe removed</span></summary><pre class="msg">assert_equals: listeners do not run once the iframe is removed expected 2 but got 4</pre></details><a class="self" href="#s-cdfe4487" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fbfc9689"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adopting the target into a fully active iframe&#39;s document during dispatch</span></div><a class="self" href="#s-fbfc9689" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3e0f66f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Adopting the target into a removed iframe&#39;s document during dispatch</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;first&quot;] length 1, got [&quot;first&quot;, &quot;second&quot;] length 2</pre></details><a class="self" href="#s-3e0f66f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-19a564ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Event from a node created in a removed iframe&#39;s realm still reaches listeners in this document</span></div><a class="self" href="#s-19a564ee" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

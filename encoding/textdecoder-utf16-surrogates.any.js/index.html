@@ -32,7 +32,57 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 8 passed, 12 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/encoding/textdecoder-utf16-surrogates.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 10</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-328cfaf5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">utf-16le - lone surrogate lead</span></div><a class="self" href="#s-328cfaf5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8d485981"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - lone surrogate lead (fatal flag set)</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+            new TextDecoder(t.encoding, {fatal: true}).decode(new Uint8Array(t.input))
+        }&quot; did not throw</pre></details><a class="self" href="#s-8d485981" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f7e57c8d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">utf-16le - lone surrogate trail</span></div><a class="self" href="#s-f7e57c8d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-318702da"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - lone surrogate trail (fatal flag set)</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+            new TextDecoder(t.encoding, {fatal: true}).decode(new Uint8Array(t.input))
+        }&quot; did not throw</pre></details><a class="self" href="#s-318702da" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e1285214"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - unmatched surrogate lead</span></summary><pre class="msg">assert_equals: expected &quot;\ufffd\0&quot; but got &quot;\ufffd&quot;</pre></details><a class="self" href="#s-e1285214" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0fac6859"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - unmatched surrogate lead (fatal flag set)</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+            new TextDecoder(t.encoding, {fatal: true}).decode(new Uint8Array(t.input))
+        }&quot; did not throw</pre></details><a class="self" href="#s-0fac6859" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9fbe37d7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">utf-16le - unmatched surrogate trail</span></div><a class="self" href="#s-9fbe37d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-64f2fd1b"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - unmatched surrogate trail (fatal flag set)</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+            new TextDecoder(t.encoding, {fatal: true}).decode(new Uint8Array(t.input))
+        }&quot; did not throw</pre></details><a class="self" href="#s-64f2fd1b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a290118d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">utf-16le - swapped surrogate pair</span></div><a class="self" href="#s-a290118d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dac6bd82"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - swapped surrogate pair (fatal flag set)</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+            new TextDecoder(t.encoding, {fatal: true}).decode(new Uint8Array(t.input))
+        }&quot; did not throw</pre></details><a class="self" href="#s-dac6bd82" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/encoding/textdecoder-utf16-surrogates.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 10</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-8753e727"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">utf-16le - lone surrogate lead</span></div><a class="self" href="#s-8753e727" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bc7cf402"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - lone surrogate lead (fatal flag set)</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+            new TextDecoder(t.encoding, {fatal: true}).decode(new Uint8Array(t.input))
+        }&quot; did not throw</pre></details><a class="self" href="#s-bc7cf402" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1b86581e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">utf-16le - lone surrogate trail</span></div><a class="self" href="#s-1b86581e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3d5d8929"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - lone surrogate trail (fatal flag set)</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+            new TextDecoder(t.encoding, {fatal: true}).decode(new Uint8Array(t.input))
+        }&quot; did not throw</pre></details><a class="self" href="#s-3d5d8929" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7bff99ee"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - unmatched surrogate lead</span></summary><pre class="msg">assert_equals: expected &quot;\ufffd\0&quot; but got &quot;\ufffd&quot;</pre></details><a class="self" href="#s-7bff99ee" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c3d71625"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - unmatched surrogate lead (fatal flag set)</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+            new TextDecoder(t.encoding, {fatal: true}).decode(new Uint8Array(t.input))
+        }&quot; did not throw</pre></details><a class="self" href="#s-c3d71625" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3631f8ea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">utf-16le - unmatched surrogate trail</span></div><a class="self" href="#s-3631f8ea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-60062ed5"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - unmatched surrogate trail (fatal flag set)</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+            new TextDecoder(t.encoding, {fatal: true}).decode(new Uint8Array(t.input))
+        }&quot; did not throw</pre></details><a class="self" href="#s-60062ed5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4fbdbed8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">utf-16le - swapped surrogate pair</span></div><a class="self" href="#s-4fbdbed8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-680f0420"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-16le - swapped surrogate pair (fatal flag set)</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+            new TextDecoder(t.encoding, {fatal: true}).decode(new Uint8Array(t.input))
+        }&quot; did not throw</pre></details><a class="self" href="#s-680f0420" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

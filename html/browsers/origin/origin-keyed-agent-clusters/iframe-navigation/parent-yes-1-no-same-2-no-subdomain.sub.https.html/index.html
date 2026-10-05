@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-148c7898"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Before: parent to child: setting document.domain must give sync access</span></div><a class="self" href="#s-148c7898" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-109f9c74"><details><summary><span class="mark">FAIL</span><span class="sub-name">before parent: originAgentCluster must equal true</span></summary><pre class="msg">assert_equals: expected true but got false</pre></details><a class="self" href="#s-109f9c74" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f168b348"><details><summary><span class="mark">FAIL</span><span class="sub-name">before child: originAgentCluster must equal true</span></summary><pre class="msg">assert_equals: expected true but got false</pre></details><a class="self" href="#s-f168b348" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a1bae446"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Navigation</span></div><a class="self" href="#s-a1bae446" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-da3aa4e9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">After: parent to child: messageerror event must occur</span></div><a class="self" href="#s-da3aa4e9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e2ddaebb"><details><summary><span class="mark">FAIL</span><span class="sub-name">After: parent to child: setting document.domain must not give sync access</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        frameWindow.document;
+      }&quot; did not throw</pre></details><a class="self" href="#s-e2ddaebb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-28cec1b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">after parent: originAgentCluster must equal true</span></summary><pre class="msg">assert_equals: expected true but got false</pre></details><a class="self" href="#s-28cec1b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b5e934bd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">after child: originAgentCluster must equal false</span></div><a class="self" href="#s-b5e934bd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

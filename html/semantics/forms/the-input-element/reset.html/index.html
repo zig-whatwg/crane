@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-cc7b846d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">reset button only resets the form owner</span></div><a class="self" href="#s-cc7b846d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f6edc421"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the element is barred from constraint validation</span></div><a class="self" href="#s-f6edc421" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-49c71aef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">clicking on a disabled reset does nothing</span></div><a class="self" href="#s-49c71aef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f804cbb7"><details><summary><span class="mark">FAIL</span><span class="sub-name">reset button resets controls associated with their form using the form element pointer</span></summary><pre class="msg">assert_equals: expected &quot;foobar&quot; but got &quot;barfoo&quot;</pre></details><a class="self" href="#s-f804cbb7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-25776cd5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">reset button resets controls associated with a form using the form attribute</span></div><a class="self" href="#s-25776cd5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5a0bd577"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">reset button associated with a form using the form attribute resets all the form&#39;s controls</span></div><a class="self" href="#s-5a0bd577" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

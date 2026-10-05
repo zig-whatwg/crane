@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-bd62db85"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cross-realm global object&#39;s getter throws when called on incompatible object</span></div><a class="self" href="#s-bd62db85" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7bd97637"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cross-realm global object&#39;s setter throws when called on incompatible object</span></div><a class="self" href="#s-7bd97637" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d79a31ac"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-realm global object&#39;s operation throws when called on incompatible object</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { other.clearInterval.call(notWindow, 0); }&quot; did not throw</pre></details><a class="self" href="#s-d79a31ac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e64b3b0d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cross-realm global object&#39;s getter called on null / undefined</span></div><a class="self" href="#s-e64b3b0d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b1732939"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-realm global object&#39;s setter called on null / undefined</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-b1732939" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-16fded1d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-realm global object&#39;s operation called on null / undefined</span></summary><pre class="msg">assert_equals: expected (object) object &quot;[object Window]&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-16fded1d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

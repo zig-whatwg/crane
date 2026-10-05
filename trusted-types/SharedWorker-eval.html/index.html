@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-72a1b438"><details><summary><span class="mark">FAIL</span><span class="sub-name">eval(string) in shared worker</span></summary><pre class="msg">assert_throws_js: function &quot;_ =&gt; eval(&quot;2&quot;)&quot; did not throw</pre></details><a class="self" href="#s-72a1b438" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9cc9330b"><details><summary><span class="mark">FAIL</span><span class="sub-name">indirect eval(string) in shared worker</span></summary><pre class="msg">assert_throws_js: function &quot;_ =&gt; eval?.(&quot;2&quot;)&quot; did not throw</pre></details><a class="self" href="#s-9cc9330b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a6186d8f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">eval(TrustedScript) in shared worker</span></div><a class="self" href="#s-a6186d8f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9d5baaff"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">indirect eval(TrustedScript) in shared worker</span></div><a class="self" href="#s-9d5baaff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f7911649"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">eval(string) with default policy in shared worker</span></div><a class="self" href="#s-f7911649" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-73e9f9ad"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">indirect eval(string) with default policy in shared worker</span></div><a class="self" href="#s-73e9f9ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e43f6af8"><details><summary><span class="mark">FAIL</span><span class="sub-name">eval(string) with default policy mutation in shared worker</span></summary><pre class="msg">assert_throws_js: function &quot;_ =&gt; eval(&quot;2&quot;)&quot; did not throw</pre></details><a class="self" href="#s-e43f6af8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d89f53fe"><details><summary><span class="mark">FAIL</span><span class="sub-name">indirect eval(string) with default policy mutation in shared worker</span></summary><pre class="msg">assert_throws_js: function &quot;_ =&gt; eval?.(&quot;2&quot;)&quot; did not throw</pre></details><a class="self" href="#s-d89f53fe" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

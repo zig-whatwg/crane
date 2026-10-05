@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 8 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-78810c27"><details><summary><span class="mark">FAIL</span><span class="sub-name">Reading &#39;nonce&#39; content attribute and IDL attribute.</span></summary><pre class="msg">assert_equals: expected Element node &lt;script nonce=&quot;abc&quot; id=&quot;testScript&quot; executed=&quot;yay&quot;&gt;
+    d... but got null</pre></details><a class="self" href="#s-78810c27" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-affca519"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cloned node retains nonce.</span></summary><pre class="msg">assert_equals: IDL attribute expected (string) &quot;abc&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-affca519" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6580e373"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cloned node retains nonce when inserted.</span></summary><pre class="msg">assert_equals: expected (string) &quot;abc&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-6580e373" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0ae6c3a0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Writing &#39;nonce&#39; content attribute.</span></summary><pre class="msg">assert_equals: expected (string) &quot;foo&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-0ae6c3a0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6cd58fe8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Writing &#39;nonce&#39; IDL attribute.</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-6cd58fe8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-34c3801b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Document-written script executes.</span></div><a class="self" href="#s-34c3801b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d52d2663"><details><summary><span class="mark">FAIL</span><span class="sub-name">Document-written script&#39;s nonce value.</span></summary><pre class="msg">assert_equals: expected &quot;&quot; but got &quot;abc&quot;</pre></details><a class="self" href="#s-d52d2663" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-05e8e0bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElement.nonce.</span></summary><pre class="msg">assert_equals: expected (object) null but got (string) &quot;abc&quot;</pre></details><a class="self" href="#s-05e8e0bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3aed4b08"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElement.setAttribute.</span></summary><pre class="msg">assert_equals: Post-insertion content expected &quot;&quot; but got &quot;abc&quot;</pre></details><a class="self" href="#s-3aed4b08" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,31 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 14 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/reentrant-strategy.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>7</b> / 7</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-3680ab67"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writes should be written in the standard order</span></div><a class="self" href="#s-3680ab67" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e0b766dd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writer.write() promises should resolve in the standard order</span></div><a class="self" href="#s-e0b766dd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ea509f2d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() should work when called from within strategy.size()</span></div><a class="self" href="#s-ea509f2d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cfd48037"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close() should work when called from within strategy.size()</span></div><a class="self" href="#s-cfd48037" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-948a241f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">abort() should work when called from within strategy.size()</span></div><a class="self" href="#s-948a241f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eefcb307"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">releaseLock() should abort the write() when called within strategy.size()</span></div><a class="self" href="#s-eefcb307" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e86b06b6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">original reader should error when new reader is created within strategy.size()</span></div><a class="self" href="#s-e86b06b6" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/reentrant-strategy.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>7</b> / 7</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-a1e788be"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writes should be written in the standard order</span></div><a class="self" href="#s-a1e788be" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f18889fa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writer.write() promises should resolve in the standard order</span></div><a class="self" href="#s-f18889fa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d0462b7e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() should work when called from within strategy.size()</span></div><a class="self" href="#s-d0462b7e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2513091c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close() should work when called from within strategy.size()</span></div><a class="self" href="#s-2513091c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3e78c86a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">abort() should work when called from within strategy.size()</span></div><a class="self" href="#s-3e78c86a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-85abfb5f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">releaseLock() should abort the write() when called within strategy.size()</span></div><a class="self" href="#s-85abfb5f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f83868bd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">original reader should error when new reader is created within strategy.size()</span></div><a class="self" href="#s-f83868bd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 8 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-6b6d262b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting non-array index while named property exists (loose)</span></summary><pre class="msg">assert_equals: expected (object) Element node &lt;a id=&quot;named&quot;&gt;&lt;/a&gt; but got (undefined) undefined</pre></details><a class="self" href="#s-6b6d262b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-322c000d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting non-array index while named property exists (strict)</span></summary><pre class="msg">assert_equals: expected (object) Element node &lt;b id=&quot;named&quot;&gt;&lt;/b&gt; but got (undefined) undefined</pre></details><a class="self" href="#s-322c000d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-70595753"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting non-array index while named property doesn&#39;t exist (loose)</span></summary><pre class="msg">assert_equals: expected Element node &lt;i id=&quot;named&quot;&gt;&lt;/i&gt; but got null</pre></details><a class="self" href="#s-70595753" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-24fd9507"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting non-array index while named property doesn&#39;t exist (strict)</span></summary><pre class="msg">assert_equals: expected Element node &lt;p id=&quot;named&quot;&gt;&lt;/p&gt; but got null</pre></details><a class="self" href="#s-24fd9507" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-381e21bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting array index while indexed property exists (loose)</span></summary><pre class="msg">assert_equals: expected (object) Element node &lt;q&gt;&lt;/q&gt; but got (undefined) undefined</pre></details><a class="self" href="#s-381e21bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-56fca431"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting array index while indexed property exists (strict)</span></summary><pre class="msg">assert_equals: expected (object) Element node &lt;s&gt;&lt;/s&gt; but got (undefined) undefined</pre></details><a class="self" href="#s-56fca431" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0e885a90"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting array index while indexed property doesn&#39;t exist (loose)</span></summary><pre class="msg">Cannot define property on read-only indexed collection</pre></details><a class="self" href="#s-0e885a90" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a2a65063"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting array index while indexed property doesn&#39;t exist (strict)</span></summary><pre class="msg">assert_equals: expected (object) Element node &lt;u&gt;&lt;/u&gt; but got (undefined) undefined</pre></details><a class="self" href="#s-a2a65063" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

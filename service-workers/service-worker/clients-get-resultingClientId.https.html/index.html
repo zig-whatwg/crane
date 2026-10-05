@@ -33,7 +33,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/service-worker/clients-get-resultingClientId.https.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 6</span></h3>
+<pre class="msg harness-msg">Unhandled rejection: Cannot set properties of undefined (setting &#39;onmessage&#39;)</pre>
+<ol class="subtests">
+<li class="sub s-fail" id="s-e62df160"><details><summary><span class="mark">FAIL</span><span class="sub-name">global setup</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;getRegistration&#39;)&quot;</pre></details><a class="self" href="#s-e62df160" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5ce7c0dc"><details><summary><span class="mark">FAIL</span><span class="sub-name">get(resultingClientId) for same-origin document</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;postMessage&#39;)&quot;</pre></details><a class="self" href="#s-5ce7c0dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3685b797"><details><summary><span class="mark">FAIL</span><span class="sub-name">get(resultingClientId) on cross-origin redirect</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;postMessage&#39;)&quot;</pre></details><a class="self" href="#s-3685b797" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-048dfe55"><details><summary><span class="mark">FAIL</span><span class="sub-name">get(resultingClientId) for document sandboxed by CSP header</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;postMessage&#39;)&quot;</pre></details><a class="self" href="#s-048dfe55" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-04c70c0d"><details><summary><span class="mark">FAIL</span><span class="sub-name">get(resultingClientId) for document sandboxed by CSP header with allow-same-origin</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;postMessage&#39;)&quot;</pre></details><a class="self" href="#s-04c70c0d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-47b6e641"><details><summary><span class="mark">FAIL</span><span class="sub-name">global cleanup</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;getRegistration&#39;)&quot;</pre></details><a class="self" href="#s-47b6e641" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

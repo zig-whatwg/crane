@@ -32,7 +32,18 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-33c34679"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Same-origin &#39;fetch()&#39;.</span></div><a class="self" href="#s-33c34679" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-383a2c2c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Same-origin XHR.</span></div><a class="self" href="#s-383a2c2c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6af1ded0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cross-origin &#39;fetch()&#39;.</span></div><a class="self" href="#s-6af1ded0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d0770140"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cross-origin XHR.</span></div><a class="self" href="#s-d0770140" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-90f68891"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Same-origin =&gt; cross-origin &#39;fetch()&#39;.</span></div><a class="self" href="#s-90f68891" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1e430246"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;timeout while waiting for report for https://web-platform.test:57360/echo&quot;</pre></details><a class="self" href="#s-1e430246" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2e543eb2"><details><summary><span class="mark">FAIL</span><span class="sub-name">connect-src-self-report-only</span></summary><pre class="msg">assert_array_equals: Reports do not match lengths differ, expected array [&quot;http://web-platform.test:8000/common/redirect-opt-in.py?status=307&amp;location=https://www.web-platform.test:8444/content-security-policy/support/resource.py?cross-origin-fetch&quot;, &quot;https://web-platform.test:57360/echo&quot;, &quot;https://www.web-platform.test:8444/content-security-policy/support/resource.py?cross-origin-fetch&quot;, &quot;https://www.web-platform.test:8444/content-security-policy/support/resource.py?cross-origin-xhr&quot;] length 4, got [] length 0</pre></details><a class="self" href="#s-2e543eb2" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,20 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 9 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-685606b9"><details><summary><span class="mark">FAIL</span><span class="sub-name">div.innerHTML</span></summary><pre class="msg">assert_equals: Serialization should NOT re-escape &lt;noscript&gt; contents expected &quot;&amp; &lt;&gt;&quot; but got &quot;&amp;amp; &amp;lt;&amp;gt;&quot;</pre></details><a class="self" href="#s-685606b9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8127d655"><details><summary><span class="mark">FAIL</span><span class="sub-name">div.insertAdjacentHTML</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-8127d655" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ffa17189"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.write on main document</span></summary><pre class="msg">assert_equals: Serialization should NOT re-escape &lt;noscript&gt; contents expected &quot;&amp; &lt;&gt;&quot; but got &quot;&amp;amp; &amp;lt;&amp;gt;&quot;</pre></details><a class="self" href="#s-ffa17189" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e00d0d0a"><details><summary><span class="mark">FAIL</span><span class="sub-name">DOMParser.parseFromString</span></summary><pre class="msg">assert_equals: Serialization should re-escape &lt;noscript&gt; contents expected &quot;&amp;amp;&amp;nbsp;&amp;lt;&amp;gt;&quot; but got &quot;&amp;amp; &amp;lt;&amp;gt;&quot;</pre></details><a class="self" href="#s-e00d0d0a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-80dafba2"><details><summary><span class="mark">FAIL</span><span class="sub-name">template.innerHTML</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;firstChild&#39;)</pre></details><a class="self" href="#s-80dafba2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9d637bf2"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.implementation.createHTMLDocument and innerHTML</span></summary><pre class="msg">assert_equals: Serialization should re-escape &lt;noscript&gt; contents expected &quot;&amp;amp;&amp;nbsp;&amp;lt;&amp;gt;&quot; but got &quot;&amp;amp; &amp;lt;&amp;gt;&quot;</pre></details><a class="self" href="#s-9d637bf2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a4284557"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.implementation.createHTMLDocument and createContextualFragment</span></summary><pre class="msg">Cannot read properties of null (reading &#39;textContent&#39;)</pre></details><a class="self" href="#s-a4284557" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-33f610e0"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.implementation.createHTMLDocument and document.write</span></summary><pre class="msg">Cannot read properties of null (reading &#39;firstChild&#39;)</pre></details><a class="self" href="#s-33f610e0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-956334ae"><details><summary><span class="mark">FAIL</span><span class="sub-name">XMLHttpRequest</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-956334ae" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

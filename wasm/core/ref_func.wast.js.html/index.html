@@ -32,7 +32,74 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 12 passed, 15 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-0ed654e7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-0ed654e7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-085f911b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (ref_func.wast:1)</span></div><a class="self" href="#s-085f911b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-46f35a6d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation succeeds (ref_func.wast:6)</span></div><a class="self" href="#s-46f35a6d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-07a145a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#4 Test that WebAssembly compilation fails (ref_func.wast:68)</span></div><a class="self" href="#s-07a145a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-67a0bcf1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#5 Test that WebAssembly compilation succeeds (ref_func.wast:80)</span></div><a class="self" href="#s-67a0bcf1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-793e28f4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#6 Test that WebAssembly compilation fails (ref_func.wast:108)</span></div><a class="self" href="#s-793e28f4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-30c5df07"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#7 Test that WebAssembly compilation fails (ref_func.wast:112)</span></div><a class="self" href="#s-30c5df07" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e2609f11"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-e2609f11" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fa410d48"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that WebAssembly compilation succeeds (ref_func.wast:1)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-fa410d48" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fc36f7b9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-fc36f7b9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2a786dd2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#11 Test that WebAssembly compilation succeeds (ref_func.wast:6)</span></div><a class="self" href="#s-2a786dd2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-832f7cf6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that WebAssembly instantiation succeeds (ref_func.wast:6)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;M&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:16:10)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-832f7cf6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-200563d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (ref_func.wast:56)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;is_null-f&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-200563d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-35bfbc42"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly code returns a specific result (ref_func.wast:57)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;is_null-g&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-35bfbc42" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-37dace68"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that a WebAssembly code returns a specific result (ref_func.wast:58)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;is_null-v&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:25:1)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-37dace68" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1d9f3a03"><details><summary><span class="mark">FAIL</span><span class="sub-name">#16 Test that a WebAssembly code returns a specific result (ref_func.wast:60)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call-f&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:28:1)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-1d9f3a03" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5f1b4b7e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#17 Test that a WebAssembly code returns a specific result (ref_func.wast:61)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call-g&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:31:1)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-5f1b4b7e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cf1d1bc0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#18 Test that a WebAssembly code returns a specific result (ref_func.wast:62)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call-v&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:34:1)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-cf1d1bc0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f1aebf76"><details><summary><span class="mark">FAIL</span><span class="sub-name">#19 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-g&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:37:1)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-f1aebf76" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-99392605"><details><summary><span class="mark">FAIL</span><span class="sub-name">#20 Test that a WebAssembly code returns a specific result (ref_func.wast:64)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call-v&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:40:1)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-99392605" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fd08aa1e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#21 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-f&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:43:1)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-fd08aa1e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d1cba26c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#22 Test that a WebAssembly code returns a specific result (ref_func.wast:66)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call-v&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at ref_func_wast_js (http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:46:1)
+    at http://web-platform.test:8000/wasm/core/js/ref_func.wast.js:63:3 expected true got false</pre></details><a class="self" href="#s-d1cba26c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6537bb79"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#23 Test that WebAssembly compilation fails (ref_func.wast:68)</span></div><a class="self" href="#s-6537bb79" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1726aca4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#24 Test that WebAssembly compilation succeeds (ref_func.wast:80)</span></div><a class="self" href="#s-1726aca4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5cfb5a1f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#25 Test that WebAssembly instantiation succeeds (ref_func.wast:80)</span></div><a class="self" href="#s-5cfb5a1f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-605506c4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#26 Test that WebAssembly compilation fails (ref_func.wast:108)</span></div><a class="self" href="#s-605506c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dd5e28fa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#27 Test that WebAssembly compilation fails (ref_func.wast:112)</span></div><a class="self" href="#s-dd5e28fa" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

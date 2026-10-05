@@ -32,7 +32,79 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 11 passed, 14 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-3bee9244"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-3bee9244" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0dd4d295"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (i8x16_relaxed_swizzle.wast:3)</span></div><a class="self" href="#s-0dd4d295" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-996ba47f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-996ba47f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4bbaa2cd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-4bbaa2cd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5dfba702"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#5 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-5dfba702" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6875771b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#6 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-6875771b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-59b2bb56"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#7 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-59b2bb56" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5ac76a93"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-5ac76a93" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-349723f1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that WebAssembly compilation succeeds (i8x16_relaxed_swizzle.wast:3)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-349723f1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-233cf60c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-233cf60c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fd34d058"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#11 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-fd34d058" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3e55f792"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;module&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:10:16
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:10:1)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-3e55f792" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c960e391"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:10:1)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-c960e391" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-de67e326"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#14 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-de67e326" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-77cdb831"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;module&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:13:16
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:13:1)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-77cdb831" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c1762474"><details><summary><span class="mark">FAIL</span><span class="sub-name">#16 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:13:1)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-c1762474" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-682c289c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#17 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-682c289c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9abd04b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#18 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;module&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:16:16
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:16:1)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-9abd04b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a072f305"><details><summary><span class="mark">FAIL</span><span class="sub-name">#19 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:16:1)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-a072f305" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-868b5716"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#20 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-868b5716" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c177f48b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#21 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;module&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:19:16
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-c177f48b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e756bac4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#22 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-e756bac4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6e2bf64d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#23 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-6e2bf64d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fe18bb72"><details><summary><span class="mark">FAIL</span><span class="sub-name">#24 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;module&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:22:16
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-fe18bb72" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8d4e1a22"><details><summary><span class="mark">FAIL</span><span class="sub-name">#25 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at i8x16_relaxed_swizzle_wast_js (http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/relaxed-simd/i8x16_relaxed_swizzle.wast.js:24:3 expected true got false</pre></details><a class="self" href="#s-8d4e1a22" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

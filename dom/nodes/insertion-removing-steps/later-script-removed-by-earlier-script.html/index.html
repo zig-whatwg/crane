@@ -33,7 +33,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/dom/nodes/insertion-removing-steps/later-script-removed-by-earlier-script.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 2</span></h3>
+<pre class="msg harness-msg">Error: assert_true: script2 is connected when script2 runs expected true got false</pre>
+<ol class="subtests">
+<li class="sub s-fail" id="s-fdf15a9b"><details><summary><span class="mark">FAIL</span><span class="sub-name">A later-inserted script removed by an earlier-inserted script in the same document fragment should not run</span></summary><pre class="msg">assert_false: script2 did not run expected false got true</pre></details><a class="self" href="#s-fdf15a9b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-436956cd"><details><summary><span class="mark">FAIL</span><span class="sub-name">A later-inserted script removed by an earlier-inserted script in the same append() call should not run</span></summary><pre class="msg">assert_false: script2 did not run expected false got true</pre></details><a class="self" href="#s-436956cd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

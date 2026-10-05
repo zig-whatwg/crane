@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 7 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-23f7dd78"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">.selectedOptions with no selected option</span></div><a class="self" href="#s-23f7dd78" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-690abcc6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">.selectedOptions with one selected option</span></div><a class="self" href="#s-690abcc6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fb15c213"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">.selectedOptions using the &#39;multiple&#39; attribute with no selected options</span></div><a class="self" href="#s-fb15c213" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4a509b54"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">.selectedOptions using the &#39;multiple&#39; attribute with two selected options</span></div><a class="self" href="#s-4a509b54" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-71ff5b3b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">.selectedOptions without the &#39;multiple&#39; attribute but more than one selected option should return the last one</span></div><a class="self" href="#s-71ff5b3b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b71d669a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">.selectedOptions should return `HTMLCollection` instance</span></div><a class="self" href="#s-b71d669a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5c8c60c4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">.selectedOptions should always return the same value - [SameObject]</span></div><a class="self" href="#s-5c8c60c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-138f7259"><details><summary><span class="mark">FAIL</span><span class="sub-name">.selectedOptions should return the same object after selection changes - [SameObject]</span></summary><pre class="msg">assert_equals: expected 2 but got 3</pre></details><a class="self" href="#s-138f7259" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d6051a6d"><details><summary><span class="mark">FAIL</span><span class="sub-name">.selectedOptions should not go stale when a form reset runs the selectedness setting algorithm on a script-created select</span></summary><pre class="msg">assert_array_equals: nothing selected lengths differ, expected array [] length 0, got [Element node &lt;option&gt;a&lt;/option&gt;] length 1</pre></details><a class="self" href="#s-d6051a6d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-46679abc"><details><summary><span class="mark">FAIL</span><span class="sub-name">.selectedOptions should not go stale when the selectedness setting algorithm runs on a script-created select</span></summary><pre class="msg">assert_array_equals: nothing selected lengths differ, expected array [] length 0, got [Element node &lt;option value=&quot;a&quot; selected=&quot;&quot;&gt;a&lt;/option&gt;] length 1</pre></details><a class="self" href="#s-46679abc" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

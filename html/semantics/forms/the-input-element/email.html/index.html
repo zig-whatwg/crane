@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-b9b1c38b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">single_email doesn&#39;t have the multiple attribute</span></div><a class="self" href="#s-b9b1c38b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-61cf153e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">value should be sanitized: strip line breaks</span></div><a class="self" href="#s-61cf153e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2a51b173"><details><summary><span class="mark">FAIL</span><span class="sub-name">Email address validity</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;valid&#39;)</pre></details><a class="self" href="#s-2a51b173" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f3e927bf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">When the multiple attribute is removed, the user agent must run the value sanitization algorithm</span></div><a class="self" href="#s-f3e927bf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4e62459d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">multiple_email has the multiple attribute</span></div><a class="self" href="#s-4e62459d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-458e10c1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">run the value sanitization algorithm after setting a new value</span></div><a class="self" href="#s-458e10c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e385f107"><details><summary><span class="mark">FAIL</span><span class="sub-name">valid value is a set of valid email addresses separated by a single &#39;,&#39;</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;valid&#39;)</pre></details><a class="self" href="#s-e385f107" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-40eddee0"><details><summary><span class="mark">FAIL</span><span class="sub-name">When the multiple attribute is set, the user agent must run the value sanitization algorithm</span></summary><pre class="msg">assert_equals: expected &quot;user1@example.com,user2@example.com&quot; but got &quot;user1@example.com , user2@example.com&quot;</pre></details><a class="self" href="#s-40eddee0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

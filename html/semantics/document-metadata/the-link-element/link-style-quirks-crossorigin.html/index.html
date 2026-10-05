@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-4ffa6a54"><details><summary><span class="mark">FAIL</span><span class="sub-name">Same-origin stylesheet with wrong MIME type, no CORS</span></summary><pre class="msg">assert_true: styles should apply expected true got false</pre></details><a class="self" href="#s-4ffa6a54" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-37272f36"><details><summary><span class="mark">FAIL</span><span class="sub-name">Same-origin stylesheet with wrong MIME type, with CORS</span></summary><pre class="msg">assert_true: styles should apply expected true got false</pre></details><a class="self" href="#s-37272f36" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-72b53b84"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-origin stylesheet with text/css, with CORS</span></summary><pre class="msg">assert_true: styles should apply expected true got false</pre></details><a class="self" href="#s-72b53b84" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-79df8d2f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-origin stylesheet with wrong MIME type, with CORS</span></summary><pre class="msg">assert_equals: cross-origin with wrong MIME type should fire error expected &quot;error&quot; but got &quot;load&quot;</pre></details><a class="self" href="#s-79df8d2f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-51c633b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-origin redirect to same-origin stylesheet with wrong MIME type, with CORS</span></summary><pre class="msg">assert_true: styles should apply expected true got false</pre></details><a class="self" href="#s-51c633b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d6afca33"><details><summary><span class="mark">FAIL</span><span class="sub-name">Same-origin redirect to cross-origin stylesheet with wrong MIME type, with CORS</span></summary><pre class="msg">assert_equals: redirect to cross-origin with wrong MIME type should fire error expected &quot;error&quot; but got &quot;load&quot;</pre></details><a class="self" href="#s-d6afca33" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

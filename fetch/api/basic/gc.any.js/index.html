@@ -32,7 +32,29 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 2 passed, 10 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/basic/gc.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-824765e7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">GC/CC should not abruptly close the stream while being consumed by Response</span></div><a class="self" href="#s-824765e7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d90e983b"><details><summary><span class="mark">FAIL</span><span class="sub-name">GC/CC should not discard a Response&#39;s FormData body Blob before it is read</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: formData.get(...).text is not a function&quot;</pre></details><a class="self" href="#s-d90e983b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c11b3bf0"><details><summary><span class="mark">FAIL</span><span class="sub-name">GC/CC should not discard a Request&#39;s FormData body Blob before it is read</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: formData.get(...).text is not a function&quot;</pre></details><a class="self" href="#s-c11b3bf0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ee37f5cb"><details><summary><span class="mark">FAIL</span><span class="sub-name">GC/CC should not discard a cloned FormData body&#39;s Blob before it is read</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: formData.get(...).text is not a function&quot;</pre></details><a class="self" href="#s-ee37f5cb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3ab5bbf7"><details><summary><span class="mark">FAIL</span><span class="sub-name">GC/CC should not discard a moved FormData body&#39;s Blob before it is read</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: formData.get(...).text is not a function&quot;</pre></details><a class="self" href="#s-3ab5bbf7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-962dd598"><details><summary><span class="mark">FAIL</span><span class="sub-name">GC/CC should not discard a FormData body&#39;s Blob before its stream is read</span></summary><pre class="msg">assert_true: the part&#39;s contents should survive expected true got false</pre></details><a class="self" href="#s-962dd598" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/basic/gc.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-7b5d45bd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">GC/CC should not abruptly close the stream while being consumed by Response</span></div><a class="self" href="#s-7b5d45bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-68e9760b"><details><summary><span class="mark">FAIL</span><span class="sub-name">GC/CC should not discard a Response&#39;s FormData body Blob before it is read</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: formData.get(...).text is not a function&quot;</pre></details><a class="self" href="#s-68e9760b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9ced6d73"><details><summary><span class="mark">FAIL</span><span class="sub-name">GC/CC should not discard a Request&#39;s FormData body Blob before it is read</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: formData.get(...).text is not a function&quot;</pre></details><a class="self" href="#s-9ced6d73" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d4259683"><details><summary><span class="mark">FAIL</span><span class="sub-name">GC/CC should not discard a cloned FormData body&#39;s Blob before it is read</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: formData.get(...).text is not a function&quot;</pre></details><a class="self" href="#s-d4259683" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-877ee3bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">GC/CC should not discard a moved FormData body&#39;s Blob before it is read</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: formData.get(...).text is not a function&quot;</pre></details><a class="self" href="#s-877ee3bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-96578e76"><details><summary><span class="mark">FAIL</span><span class="sub-name">GC/CC should not discard a FormData body&#39;s Blob before its stream is read</span></summary><pre class="msg">assert_true: the part&#39;s contents should survive expected true got false</pre></details><a class="self" href="#s-96578e76" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

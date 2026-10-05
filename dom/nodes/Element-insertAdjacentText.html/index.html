@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-d5f76b37"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inserting to an invalid location should cause a Syntax Error exception</span></div><a class="self" href="#s-d5f76b37" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-41a369a4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inserted text node should be target element&#39;s previous sibling for &#39;beforebegin&#39; case</span></div><a class="self" href="#s-41a369a4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4a3cd82"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inserted text node should be target element&#39;s first child for &#39;afterbegin&#39; case</span></div><a class="self" href="#s-c4a3cd82" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-51639b58"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inserted text node should be target element&#39;s last child for &#39;beforeend&#39; case</span></div><a class="self" href="#s-51639b58" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ba9c73bd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inserted text node should be target element&#39;s next sibling for &#39;afterend&#39; case</span></div><a class="self" href="#s-ba9c73bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-42df5dcb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Adding more than one child to document should cause a HierarchyRequestError exception</span></summary><pre class="msg">assert_throws_dom: function &quot;function() {
+    docElement.insertAdjacentText(&quot;beforebegin&quot;, &quot;text1&quot;)
+  }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HierarchyRequestError: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-42df5dcb" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

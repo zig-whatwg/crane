@@ -32,7 +32,25 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 8 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/constructor/toStringTag.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-bcbd02d6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@@toStringTag exists on the namespace object with the appropriate descriptor</span></div><a class="self" href="#s-bcbd02d6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0712e3f8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Object.prototype.toString applied to the namespace object</span></div><a class="self" href="#s-0712e3f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fb6d0f25"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Object.prototype.toString applied after modifying the namespace object&#39;s @@toStringTag</span></div><a class="self" href="#s-fb6d0f25" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b413f5c0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Object.prototype.toString applied after deleting @@toStringTag</span></div><a class="self" href="#s-b413f5c0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/constructor/toStringTag.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-4b1a05b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@@toStringTag exists on the namespace object with the appropriate descriptor</span></div><a class="self" href="#s-4b1a05b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8a033516"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Object.prototype.toString applied to the namespace object</span></div><a class="self" href="#s-8a033516" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-63182304"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Object.prototype.toString applied after modifying the namespace object&#39;s @@toStringTag</span></div><a class="self" href="#s-63182304" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-61279a60"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Object.prototype.toString applied after deleting @@toStringTag</span></div><a class="self" href="#s-61279a60" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,25 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 2 failed, 0 timed out and 2 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/eventsource/request-cache-control.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-bfcd5004"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">resources/cache-control.event_stream?pipe=sub1</span></div><a class="self" href="#s-bfcd5004" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0a0c96b5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">resources/cache-control.event_stream?pipe=sub2</span></div><a class="self" href="#s-0a0c96b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ec9859fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">http://www2.web-platform.test:8000/eventsource/resources/cors.py?run=cache-control1</span></div><a class="self" href="#s-ec9859fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f33fc63f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">http://www2.web-platform.test:8000/eventsource/resources/cors.py?run=cache-control2</span></div><a class="self" href="#s-f33fc63f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/eventsource/request-cache-control.any.worker.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-a28f2a01"><details><summary><span class="mark">FAIL</span><span class="sub-name">resources/cache-control.event_stream?pipe=sub1</span></summary><pre class="msg">EventSource needs the realm&#39;s event loop</pre></details><a class="self" href="#s-a28f2a01" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-de3cc9e4"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">resources/cache-control.event_stream?pipe=sub2</span></div><a class="self" href="#s-de3cc9e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0b4f0e5d"><details><summary><span class="mark">FAIL</span><span class="sub-name">http://www2.web-platform.test:8000/eventsource/resources/cors.py?run=cache-control1</span></summary><pre class="msg">EventSource needs the realm&#39;s event loop</pre></details><a class="self" href="#s-0b4f0e5d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-43badea2"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">http://www2.web-platform.test:8000/eventsource/resources/cors.py?run=cache-control2</span></div><a class="self" href="#s-43badea2" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

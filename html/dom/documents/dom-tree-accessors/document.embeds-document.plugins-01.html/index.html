@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-529ae86c"><details><summary><span class="mark">FAIL</span><span class="sub-name">No plugins</span></summary><pre class="msg">assert_equals: embeds should be the same as plugins expected object &quot;[object HTMLCollection]&quot; but got object &quot;[object HTMLCollection]&quot;</pre></details><a class="self" href="#s-529ae86c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a1c3ccd1"><details><summary><span class="mark">FAIL</span><span class="sub-name">One plugin</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [Element node &lt;embed&gt;&lt;/embed&gt;] length 1, got object &quot;[object HTMLCollection]&quot; length 0</pre></details><a class="self" href="#s-a1c3ccd1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b44653d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Two plugins</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [Element node &lt;embed&gt;&lt;/embed&gt;, Element node &lt;embed&gt;&lt;/embed&gt;] length 2, got object &quot;[object HTMLCollection]&quot; length 0</pre></details><a class="self" href="#s-b44653d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b5d01a37"><details><summary><span class="mark">FAIL</span><span class="sub-name">Document.embeds should be a live collection</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-b5d01a37" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a55f944d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Document.plugins should be a live collection</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-a55f944d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

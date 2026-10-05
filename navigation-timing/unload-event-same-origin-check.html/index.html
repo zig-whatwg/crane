@@ -32,7 +32,23 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 8 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-a562b020"><details><summary><span class="mark">FAIL</span><span class="sub-name">Redirect chain with a partial TAO opt-in</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 9.1</pre></details><a class="self" href="#s-a562b020" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-61b3a843"><details><summary><span class="mark">FAIL</span><span class="sub-name">Redirect chain with full TAO opt-in</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 6.9</pre></details><a class="self" href="#s-61b3a843" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-648470a6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Same-cross-same redirect chain with no TAO opt-in</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 7.7</pre></details><a class="self" href="#s-648470a6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a650f7f6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cross-cross-same Redirect chain with no TAO opt-in</span></div><a class="self" href="#s-a650f7f6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2b1eeae9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Previous document cross origin</span></div><a class="self" href="#s-2b1eeae9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7457e158"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Previous document same origin</span></div><a class="self" href="#s-7457e158" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e473fbc0"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 1.1</pre></details><a class="self" href="#s-e473fbc0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8e0fec89"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Same origin previous document with same origin redirect</span></div><a class="self" href="#s-8e0fec89" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-38446d37"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with same origin redirect</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 5.1</pre></details><a class="self" href="#s-38446d37" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-393344d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with cross origin redirect</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 4.7</pre></details><a class="self" href="#s-393344d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-541f9f68"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with cross origin redirect with partial TAO</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 5</pre></details><a class="self" href="#s-541f9f68" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-46aa94b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with cross origin redirect with TAO</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 9</pre></details><a class="self" href="#s-46aa94b5" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

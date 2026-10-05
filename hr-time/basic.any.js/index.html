@@ -32,7 +32,27 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 9 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/hr-time/basic.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-282dbbe8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">self.performance.now() is a function that returns a number</span></div><a class="self" href="#s-282dbbe8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f537da04"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">self.performance.now() returns a positive number</span></div><a class="self" href="#s-f537da04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bc2dbb86"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">self.performance.now() difference is not negative</span></div><a class="self" href="#s-bc2dbb86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5bca8ea7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">High resolution time has approximately the right relative magnitude</span></div><a class="self" href="#s-5bca8ea7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1932fb7d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Performance interface extends EventTarget.</span></div><a class="self" href="#s-1932fb7d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/hr-time/basic.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-b86b58d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">self.performance.now() is a function that returns a number</span></div><a class="self" href="#s-b86b58d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-94d7c1ed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">self.performance.now() returns a positive number</span></div><a class="self" href="#s-94d7c1ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f4031fb1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">self.performance.now() difference is not negative</span></div><a class="self" href="#s-f4031fb1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f34d5bad"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">High resolution time has approximately the right relative magnitude</span></div><a class="self" href="#s-f34d5bad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8cc5a169"><details><summary><span class="mark">FAIL</span><span class="sub-name">Performance interface extends EventTarget.</span></summary><pre class="msg">self.performance.addEventListener is not a function</pre></details><a class="self" href="#s-8cc5a169" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

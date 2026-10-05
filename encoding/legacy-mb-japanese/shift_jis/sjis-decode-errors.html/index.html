@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 6 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-5680c6e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">lead not 0x00 and no more bytes: FA</span></summary><pre class="msg">assert_equals: expected &quot;\ufffd&quot; but got &quot;\ufffd/span&gt; 佖\ufffd/span&gt; 洄\ufffd/span&gt; \ufffd \ufffd \ufffd/span&gt; 洄\ufffd \ufffd \ufffd \ufffd \n\n&quot;</pre></details><a class="self" href="#s-5680c6e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-eef81217"><details><summary><span class="mark">FAIL</span><span class="sub-name">lead not 0x00 and no more bytes: FA 6E FA</span></summary><pre class="msg">assert_equals: expected &quot;佖\ufffd&quot; but got &quot;佖\ufffd/span&gt; 洄\ufffd/span&gt; \ufffd \ufffd \ufffd/span&gt; 洄\ufffd \ufffd \ufffd \ufffd \n\n&quot;</pre></details><a class="self" href="#s-eef81217" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f7194c24"><details><summary><span class="mark">FAIL</span><span class="sub-name">lead not 0x00 and no more bytes: FA FA FA</span></summary><pre class="msg">assert_equals: expected &quot;洄\ufffd&quot; but got &quot;洄\ufffd/span&gt; \ufffd \ufffd \ufffd/span&gt; 洄\ufffd \ufffd \ufffd \ufffd \n\n&quot;</pre></details><a class="self" href="#s-f7194c24" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-20a4b3af"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">lead byte outside 0x81-0x9F,0xA1-0xDF,0xE0,0xFC: FF</span></div><a class="self" href="#s-20a4b3af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c741d8d7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">lead byte outside 0x81-0x9F,0xA1-0xDF,0xE0,0xFC: A0</span></div><a class="self" href="#s-c741d8d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-48984b80"><details><summary><span class="mark">FAIL</span><span class="sub-name">lead byte outside 0x81-0x9F,0xA1-0xDF,0xE0,0xFC: E1</span></summary><pre class="msg">assert_equals: expected &quot;\ufffd&quot; but got &quot;\ufffd/span&gt; 洄\ufffd \ufffd \ufffd \ufffd \n\n&quot;</pre></details><a class="self" href="#s-48984b80" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-24d64829"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">lead byte outside 0x81-0x9F,0xA1-0xDF,0xE0,0xFC: FA FA FF</span></div><a class="self" href="#s-24d64829" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ac472828"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">trail byte outside 0x41-0xFE: FA FD</span></div><a class="self" href="#s-ac472828" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6e81de11"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">trail byte outside 0x41-0xFE: FA FE</span></div><a class="self" href="#s-6e81de11" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-00a1b347"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pointer is null: 81 B5</span></div><a class="self" href="#s-00a1b347" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

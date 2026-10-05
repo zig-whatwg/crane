@@ -32,7 +32,45 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 28 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/streams/transform-streams/backpressure.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-4209ef58"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">backpressure allows no transforms with a default identity transform and no reader</span></div><a class="self" href="#s-4209ef58" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7d7e54ea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">backpressure only allows one transform() with a identity transform with a readable HWM of 1 and no reader</span></div><a class="self" href="#s-7d7e54ea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-42e9485c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">transform() should keep being called as long as there is no backpressure</span></div><a class="self" href="#s-42e9485c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-884d3815"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writes should resolve as soon as transform completes</span></div><a class="self" href="#s-884d3815" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-12432084"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">calling pull() before the first write() with backpressure should work</span></div><a class="self" href="#s-12432084" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-56cc8b61"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">transform() should be able to read the chunk it just enqueued</span></div><a class="self" href="#s-56cc8b61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b9163ba8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">blocking transform() should cause backpressure</span></div><a class="self" href="#s-b9163ba8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ca607b28"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writer.closed should resolve after readable is canceled during start</span></div><a class="self" href="#s-ca607b28" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-70e1596f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writer.closed should resolve after readable is canceled with backpressure</span></div><a class="self" href="#s-70e1596f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ee1515d3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writer.closed should resolve after readable is canceled with no backpressure</span></div><a class="self" href="#s-ee1515d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c75b0dd6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable should cause a pending write to resolve</span></div><a class="self" href="#s-c75b0dd6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6d753890"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable side of a TransformStream should abort an empty pipe</span></div><a class="self" href="#s-6d753890" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a2f6dd0a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable side of a TransformStream should abort an empty pipe after startup</span></div><a class="self" href="#s-a2f6dd0a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c901ef72"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable side of a TransformStream should abort a full pipe</span></div><a class="self" href="#s-c901ef72" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/transform-streams/backpressure.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-820d9fba"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">backpressure allows no transforms with a default identity transform and no reader</span></div><a class="self" href="#s-820d9fba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ec97da28"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">backpressure only allows one transform() with a identity transform with a readable HWM of 1 and no reader</span></div><a class="self" href="#s-ec97da28" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c328ae68"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">transform() should keep being called as long as there is no backpressure</span></div><a class="self" href="#s-c328ae68" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-41f98229"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writes should resolve as soon as transform completes</span></div><a class="self" href="#s-41f98229" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a505e646"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">calling pull() before the first write() with backpressure should work</span></div><a class="self" href="#s-a505e646" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1537436a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">transform() should be able to read the chunk it just enqueued</span></div><a class="self" href="#s-1537436a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-abb9e2f3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">blocking transform() should cause backpressure</span></div><a class="self" href="#s-abb9e2f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-205ffc85"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writer.closed should resolve after readable is canceled during start</span></div><a class="self" href="#s-205ffc85" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b524d639"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writer.closed should resolve after readable is canceled with backpressure</span></div><a class="self" href="#s-b524d639" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d461f880"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writer.closed should resolve after readable is canceled with no backpressure</span></div><a class="self" href="#s-d461f880" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-255ec6b5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable should cause a pending write to resolve</span></div><a class="self" href="#s-255ec6b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-35a1f69b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable side of a TransformStream should abort an empty pipe</span></div><a class="self" href="#s-35a1f69b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6233a475"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable side of a TransformStream should abort an empty pipe after startup</span></div><a class="self" href="#s-6233a475" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-49d32509"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable side of a TransformStream should abort a full pipe</span></div><a class="self" href="#s-49d32509" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

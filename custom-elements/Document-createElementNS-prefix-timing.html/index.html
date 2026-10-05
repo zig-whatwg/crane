@@ -32,7 +32,14 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-19f48f10"><details><summary><span class="mark">FAIL</span><span class="sub-name">Autonomous custom element prefix is set after constructor returns</span></summary><pre class="msg">assert_equals: prefix should be null during constructor (set after construction per step 5.1.3.9) expected (object) null but got (undefined) undefined</pre></details><a class="self" href="#s-19f48f10" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f3f41538"><details><summary><span class="mark">FAIL</span><span class="sub-name">Reentrant construction does not leak prefix between instances</span></summary><pre class="msg">assert_equals: outer prefix should be null during constructor expected (object) null but got (undefined) undefined</pre></details><a class="self" href="#s-f3f41538" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-278b6dad"><details><summary><span class="mark">FAIL</span><span class="sub-name">Nested createElementNS calls do not corrupt prefix state</span></summary><pre class="msg">assert_equals: outerElement reference should match returned element expected (object) Element node &lt;reentrant-ns-el&gt;&lt;/reentrant-ns-el&gt; but got (undefined) undefined</pre></details><a class="self" href="#s-278b6dad" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,24 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 13 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-8dfb24dd"><details><summary><span class="mark">FAIL</span><span class="sub-name">slotchange event must not fire synchronously.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-8dfb24dd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-51f77482"><details><summary><span class="mark">FAIL</span><span class="sub-name">slotchange event should not fire when assignments do not change assignedNodes.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-51f77482" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7ac873e3"><details><summary><span class="mark">FAIL</span><span class="sub-name">slotchange event should not fire when same node is assigned.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-7ac873e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-481dea62"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fire slotchange event when slot&#39;s assigned nodes changes.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-481dea62" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cab7529b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fire slotchange event on previous slot and new slot when node is reassigned.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-cab7529b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-80712dc5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fire slotchange event on node assignment and when assigned node is removed.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-80712dc5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-43471f48"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fire slotchange event when order of assigned nodes changes.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-43471f48" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6ff8e1d1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fire slotchange event when assigned node is removed.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-6ff8e1d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2e56ed4b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fire slotchange event when removing a slot from Shadows Root that changes its assigned nodes.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-2e56ed4b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-47310029"><details><summary><span class="mark">FAIL</span><span class="sub-name">No slotchange event when adding or removing an empty slot.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-47310029" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6b7fc88f"><details><summary><span class="mark">FAIL</span><span class="sub-name">No slotchange event when adding another slotable.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-6b7fc88f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8e2892ec"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fire slotchange event when assign node to nested slot, ensure event bubbles ups.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-8e2892ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-454dd8d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Signal a slot change should be done in tree order.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-454dd8d5" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

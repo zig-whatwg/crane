@@ -32,7 +32,14 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-b19429a1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">When both documents enforce Trusted Types, navigating another same-origin frame to a javascript: URL should use the default policy of the document that initiated the navigation.</span></div><a class="self" href="#s-b19429a1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dec3093f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Navigating another same-origin frame to a javascript: URL should run the pre-navigation check when the initiating document enforces Trusted Types, even though the navigated document does not.</span></div><a class="self" href="#s-dec3093f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dff56ee5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Navigating another same-origin frame to a javascript: URL should not run the pre-navigation check when the initiating document does not enforce Trusted Types, even though the navigated document does.</span></div><a class="self" href="#s-dff56ee5" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-883f1f6b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">For Element nodes, nodeName should return the same as tagName.</span></div><a class="self" href="#s-883f1f6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6c4d8fed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">For Text nodes, nodeName should return &quot;#text&quot;.</span></div><a class="self" href="#s-6c4d8fed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d1a0e743"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">For Comment nodes, nodeName should return &quot;#comment&quot;.</span></div><a class="self" href="#s-d1a0e743" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7be0bee5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">For Document nodes, nodeName should return &quot;#document&quot;.</span></div><a class="self" href="#s-7be0bee5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a2a8cf21"><details><summary><span class="mark">FAIL</span><span class="sub-name">For DocumentType nodes, nodeName should return the name.</span></summary><pre class="msg">assert_equals: expected &quot;html&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-a2a8cf21" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-418a7d68"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">For DocumentFragment nodes, nodeName should return &quot;#document-fragment&quot;.</span></div><a class="self" href="#s-418a7d68" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

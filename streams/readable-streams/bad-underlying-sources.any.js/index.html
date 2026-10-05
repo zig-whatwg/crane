@@ -32,7 +32,73 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 42 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/streams/readable-streams/bad-underlying-sources.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>21</b> / 22</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-8e3087e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source start: throwing getter</span></div><a class="self" href="#s-8e3087e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-40adafa1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Underlying source start: throwing method</span></summary><pre class="msg">assert_throws_exactly: constructing the stream should re-throw the error function &quot;() =&gt; {
+    new ReadableStream({
+      start() {
+        throw theError;
+      }
+    });
+  }&quot; did not throw</pre></details><a class="self" href="#s-40adafa1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-489649ea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: throwing pull getter (initial pull)</span></div><a class="self" href="#s-489649ea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-66e71ce5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: throwing pull method (initial pull)</span></div><a class="self" href="#s-66e71ce5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6ae12deb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source pull: throwing getter (second pull does not result in a second get)</span></div><a class="self" href="#s-6ae12deb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-19113252"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source pull: throwing method (second pull)</span></div><a class="self" href="#s-19113252" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aca183e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source cancel: throwing getter</span></div><a class="self" href="#s-aca183e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc0a5769"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source cancel: throwing method</span></div><a class="self" href="#s-cc0a5769" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-94558d1e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling enqueue on an empty canceled stream should throw</span></div><a class="self" href="#s-94558d1e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8d94a010"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling enqueue on a non-empty canceled stream should throw</span></div><a class="self" href="#s-8d94a010" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6a5dec7b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling enqueue on a closed stream should throw</span></div><a class="self" href="#s-6a5dec7b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-474727b3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling enqueue on an errored stream should throw</span></div><a class="self" href="#s-474727b3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8aa7575a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling close twice on an empty stream should throw the second time</span></div><a class="self" href="#s-8aa7575a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-19d8c147"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling close twice on a non-empty stream should throw the second time</span></div><a class="self" href="#s-19d8c147" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7e7dce9f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling close on an empty canceled stream should throw</span></div><a class="self" href="#s-7e7dce9f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d8c089ad"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling close on a non-empty canceled stream should throw</span></div><a class="self" href="#s-d8c089ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e70bfcfc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling close after error should throw</span></div><a class="self" href="#s-e70bfcfc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a72bc499"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling error twice should not throw</span></div><a class="self" href="#s-a72bc499" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-51ab672a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling error after close should not throw</span></div><a class="self" href="#s-51ab672a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-813e0249"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling error and returning a rejected promise from start should cause the stream to error with the first error</span></div><a class="self" href="#s-813e0249" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4745f24f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling error and returning a rejected promise from pull should cause the stream to error with the first error</span></div><a class="self" href="#s-4745f24f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6574c4ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">read should not error if it dequeues and pull() throws</span></div><a class="self" href="#s-6574c4ee" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/readable-streams/bad-underlying-sources.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>21</b> / 22</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-5313d1cb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source start: throwing getter</span></div><a class="self" href="#s-5313d1cb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bd1039f7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Underlying source start: throwing method</span></summary><pre class="msg">assert_throws_exactly: constructing the stream should re-throw the error function &quot;() =&gt; {
+    new ReadableStream({
+      start() {
+        throw theError;
+      }
+    });
+  }&quot; did not throw</pre></details><a class="self" href="#s-bd1039f7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-068d9d24"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: throwing pull getter (initial pull)</span></div><a class="self" href="#s-068d9d24" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-858bf1a2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: throwing pull method (initial pull)</span></div><a class="self" href="#s-858bf1a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-baa57eec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source pull: throwing getter (second pull does not result in a second get)</span></div><a class="self" href="#s-baa57eec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-976310fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source pull: throwing method (second pull)</span></div><a class="self" href="#s-976310fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8c4f6c00"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source cancel: throwing getter</span></div><a class="self" href="#s-8c4f6c00" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d90d8ab1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source cancel: throwing method</span></div><a class="self" href="#s-d90d8ab1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4b326ff"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling enqueue on an empty canceled stream should throw</span></div><a class="self" href="#s-c4b326ff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2877ae0f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling enqueue on a non-empty canceled stream should throw</span></div><a class="self" href="#s-2877ae0f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a5eb202e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling enqueue on a closed stream should throw</span></div><a class="self" href="#s-a5eb202e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7ee48159"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling enqueue on an errored stream should throw</span></div><a class="self" href="#s-7ee48159" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d571b86a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling close twice on an empty stream should throw the second time</span></div><a class="self" href="#s-d571b86a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-51e6985d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling close twice on a non-empty stream should throw the second time</span></div><a class="self" href="#s-51e6985d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-59e82f86"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling close on an empty canceled stream should throw</span></div><a class="self" href="#s-59e82f86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c25dc470"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling close on a non-empty canceled stream should throw</span></div><a class="self" href="#s-c25dc470" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6a509044"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling close after error should throw</span></div><a class="self" href="#s-6a509044" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-247acc7c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling error twice should not throw</span></div><a class="self" href="#s-247acc7c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3a50b8b2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling error after close should not throw</span></div><a class="self" href="#s-3a50b8b2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4798b3e8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling error and returning a rejected promise from start should cause the stream to error with the first error</span></div><a class="self" href="#s-4798b3e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2979b52c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Underlying source: calling error and returning a rejected promise from pull should cause the stream to error with the first error</span></div><a class="self" href="#s-2979b52c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a36617d9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">read should not error if it dequeues and pull() throws</span></div><a class="self" href="#s-a36617d9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

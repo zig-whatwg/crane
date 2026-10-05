@@ -32,7 +32,27 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 10 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/jspi/rejects.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-4cfc4ac0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throw after the first suspension</span></summary><pre class="msg">WebAssembly.Suspending is not a constructor</pre></details><a class="self" href="#s-4cfc4ac0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5c4ebb3b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throw before suspending</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: WebAssembly.promising is not a function&quot;</pre></details><a class="self" href="#s-5c4ebb3b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d4029606"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throw and propagate via Promise</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: WebAssembly.Suspending is not a constructor&quot;</pre></details><a class="self" href="#s-d4029606" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7c65a1a3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Stack overflow</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: WebAssembly.promising is not a function&quot;</pre></details><a class="self" href="#s-7c65a1a3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b0f7d49c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Try to suspend JS</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: WebAssembly.Suspending is not a constructor&quot;</pre></details><a class="self" href="#s-b0f7d49c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/jspi/rejects.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-c1b6bd69"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throw after the first suspension</span></summary><pre class="msg">WebAssembly.Suspending is not a constructor</pre></details><a class="self" href="#s-c1b6bd69" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-39d62e75"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throw before suspending</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: WebAssembly.promising is not a function&quot;</pre></details><a class="self" href="#s-39d62e75" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0aa18f1e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throw and propagate via Promise</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: WebAssembly.Suspending is not a constructor&quot;</pre></details><a class="self" href="#s-0aa18f1e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-da4dca21"><details><summary><span class="mark">FAIL</span><span class="sub-name">Stack overflow</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: WebAssembly.promising is not a function&quot;</pre></details><a class="self" href="#s-da4dca21" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-71ce0693"><details><summary><span class="mark">FAIL</span><span class="sub-name">Try to suspend JS</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: WebAssembly.Suspending is not a constructor&quot;</pre></details><a class="self" href="#s-71ce0693" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

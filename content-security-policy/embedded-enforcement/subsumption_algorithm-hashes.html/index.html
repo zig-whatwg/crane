@@ -32,7 +32,24 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 7 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-7643e76d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;sha256-abc123&#39; is properly subsumed.</span></div><a class="self" href="#s-7643e76d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-778169ce"><details><summary><span class="mark">FAIL</span><span class="sub-name">Returned should not include hashes not present in required csp.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-778169ce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ee7bf40d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;sha256-abc123&#39; is properly subsumed with other sources.</span></div><a class="self" href="#s-ee7bf40d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5a75f700"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Hashes do not have to be present in returned csp.</span></div><a class="self" href="#s-5a75f700" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b3381cb9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Hashes do not have to be present in returned csp but must not allow all inline behavior.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-b3381cb9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-54eb18f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Other expressions have to be subsumed.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-54eb18f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bab413c2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Other expressions have to be subsumed but &#39;unsafe-inline&#39; gets ignored.</span></div><a class="self" href="#s-bab413c2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e939cfd7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Effective policy is properly found.</span></div><a class="self" href="#s-e939cfd7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9c94fb06"><details><summary><span class="mark">FAIL</span><span class="sub-name">Required csp must allow &#39;sha256-abc123&#39;.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-9c94fb06" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7604a4b3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Effective policy is properly found where &#39;sha256-abc123&#39; is not subsumed.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-7604a4b3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e2d411b0"><details><summary><span class="mark">FAIL</span><span class="sub-name">&#39;sha256-abc123&#39; is not subsumed by &#39;sha256-abc456&#39;.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-e2d411b0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-691b3804"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Effective policy now does not allow &#39;sha256-abc123&#39;.</span></div><a class="self" href="#s-691b3804" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fb02462f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Effective policy is properly found where &#39;sha256-abc123&#39; is not part of it.</span></div><a class="self" href="#s-fb02462f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 8 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-87748daf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A cookie set without HttpOnly is not http-only</span></div><a class="self" href="#s-87748daf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bc21ce7f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A cookie set with HttpOnly is http-only</span></div><a class="self" href="#s-bc21ce7f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fb3cae16"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding HttpOnly to a cookie with an unchanged value makes it http-only</span></div><a class="self" href="#s-fb3cae16" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b3485278"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing HttpOnly from a cookie with an unchanged value makes it not http-only</span></div><a class="self" href="#s-b3485278" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bdab6ca9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding HttpOnly through a second Set-Cookie in the same response</span></div><a class="self" href="#s-bdab6ca9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6c69ea61"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing HttpOnly through a second Set-Cookie in the same response</span></div><a class="self" href="#s-6c69ea61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7b811667"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding HttpOnly to a cookie with an unchanged value hides it from document.cookie</span></div><a class="self" href="#s-7b811667" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-685f7a3a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Removing HttpOnly from a cookie with an unchanged value exposes it to document.cookie</span></div><a class="self" href="#s-685f7a3a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

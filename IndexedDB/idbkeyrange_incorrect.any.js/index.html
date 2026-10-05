@@ -32,7 +32,31 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 14 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbkeyrange_incorrect.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>7</b> / 7</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-9f7f1e58"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound() - bound requires more than 0 arguments.</span></div><a class="self" href="#s-9f7f1e58" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b56da9ab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(null, null) - null parameters are incorrect.</span></div><a class="self" href="#s-b56da9ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3b4874a2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(1, null / null, 1) - null parameter is incorrect.</span></div><a class="self" href="#s-3b4874a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fa05b462"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(lower, upper / lower &gt; upper) - lower&#39; is greater than &#39;upper&#39;.</span></div><a class="self" href="#s-fa05b462" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-107ff0e3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(DOMString/Date/Array, 1) - A DOMString, Date and Array are greater than a float.</span></div><a class="self" href="#s-107ff0e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a9de1238"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(noExistingVariable, 1 / goodVariable, noExistingVariable) -    noExistingVariable is not defined.</span></div><a class="self" href="#s-a9de1238" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-414436f3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(true, 1) - boolean is not a valid key type.</span></div><a class="self" href="#s-414436f3" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbkeyrange_incorrect.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>7</b> / 7</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-1b31090d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound() - bound requires more than 0 arguments.</span></div><a class="self" href="#s-1b31090d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2b41e564"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(null, null) - null parameters are incorrect.</span></div><a class="self" href="#s-2b41e564" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-075188c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(1, null / null, 1) - null parameter is incorrect.</span></div><a class="self" href="#s-075188c9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1f062408"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(lower, upper / lower &gt; upper) - lower&#39; is greater than &#39;upper&#39;.</span></div><a class="self" href="#s-1f062408" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2028f4fe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(DOMString/Date/Array, 1) - A DOMString, Date and Array are greater than a float.</span></div><a class="self" href="#s-2028f4fe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dbbd9d25"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(noExistingVariable, 1 / goodVariable, noExistingVariable) -    noExistingVariable is not defined.</span></div><a class="self" href="#s-dbbd9d25" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d6df3dd1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange.bound(true, 1) - boolean is not a valid key type.</span></div><a class="self" href="#s-d6df3dd1" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

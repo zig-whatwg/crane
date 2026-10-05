@@ -32,7 +32,39 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 22 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/streams/transform-streams/cancel.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-c9c95509"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable side should call transformer.cancel()</span></div><a class="self" href="#s-c9c95509" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d2c8cb6e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable side should reject if transformer.cancel() throws</span></div><a class="self" href="#s-d2c8cb6e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-74c9ec7f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">aborting the writable side should call transformer.abort()</span></div><a class="self" href="#s-74c9ec7f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-79c4c242"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">aborting the writable side should reject if transformer.cancel() throws</span></div><a class="self" href="#s-79c4c242" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-64ae78f3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">closing the writable side should reject if a parallel transformer.cancel() throws</span></div><a class="self" href="#s-64ae78f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1c7795b8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">readable.cancel() and a parallel writable.close() should reject if a transformer.cancel() calls controller.error()</span></div><a class="self" href="#s-1c7795b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4e6ef220"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writable.abort() and readable.cancel() should reject if a transformer.cancel() calls controller.error()</span></div><a class="self" href="#s-4e6ef220" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-432f2ed5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">readable.cancel() should not call cancel() when flush() is already called from writable.close()</span></div><a class="self" href="#s-432f2ed5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dfa21fec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">readable.cancel() should not call cancel() again when already called from writable.abort()</span></div><a class="self" href="#s-dfa21fec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f823cac8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writable.close() should not call flush() when cancel() is already called from readable.cancel()</span></div><a class="self" href="#s-f823cac8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-57f0076e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writable.abort() should not call cancel() again when already called from readable.cancel()</span></div><a class="self" href="#s-57f0076e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/transform-streams/cancel.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-50e539eb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable side should call transformer.cancel()</span></div><a class="self" href="#s-50e539eb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bf0680fe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cancelling the readable side should reject if transformer.cancel() throws</span></div><a class="self" href="#s-bf0680fe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-969d5ef7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">aborting the writable side should call transformer.abort()</span></div><a class="self" href="#s-969d5ef7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-63e9f9e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">aborting the writable side should reject if transformer.cancel() throws</span></div><a class="self" href="#s-63e9f9e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b2fa6b6e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">closing the writable side should reject if a parallel transformer.cancel() throws</span></div><a class="self" href="#s-b2fa6b6e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4156fa87"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">readable.cancel() and a parallel writable.close() should reject if a transformer.cancel() calls controller.error()</span></div><a class="self" href="#s-4156fa87" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4bc231b4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writable.abort() and readable.cancel() should reject if a transformer.cancel() calls controller.error()</span></div><a class="self" href="#s-4bc231b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6bf4f071"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">readable.cancel() should not call cancel() when flush() is already called from writable.close()</span></div><a class="self" href="#s-6bf4f071" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7ec316ce"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">readable.cancel() should not call cancel() again when already called from writable.abort()</span></div><a class="self" href="#s-7ec316ce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4f44cb94"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writable.close() should not call flush() when cancel() is already called from readable.cancel()</span></div><a class="self" href="#s-4f44cb94" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5dce61a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writable.abort() should not call cancel() again when already called from readable.cancel()</span></div><a class="self" href="#s-5dce61a8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

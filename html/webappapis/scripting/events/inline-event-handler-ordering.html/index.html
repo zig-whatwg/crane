@@ -32,7 +32,14 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-4f1d1449"><details><summary><span class="mark">FAIL</span><span class="sub-name">Inline event handlers retain their ordering when invalid and force-compiled</span></summary><pre class="msg">assert_array_equals: expected property 1 to be &quot;TWO&quot; but got &quot;THREE&quot; (expected array [&quot;ONE&quot;, &quot;TWO&quot;, &quot;THREE&quot;] got [&quot;ONE&quot;, &quot;THREE&quot;, &quot;TWO&quot;])</pre></details><a class="self" href="#s-4f1d1449" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-53e18983"><details><summary><span class="mark">FAIL</span><span class="sub-name">Inline event handlers retain their ordering when invalid and force-compiled via dispatch</span></summary><pre class="msg">assert_array_equals: expected property 3 to be &quot;TWO&quot; but got &quot;THREE&quot; (expected array [&quot;ONE&quot;, &quot;THREE&quot;, &quot;ONE&quot;, &quot;TWO&quot;, &quot;THREE&quot;] got [&quot;ONE&quot;, &quot;THREE&quot;, &quot;ONE&quot;, &quot;THREE&quot;, &quot;TWO&quot;])</pre></details><a class="self" href="#s-53e18983" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cbfbb7ed"><details><summary><span class="mark">FAIL</span><span class="sub-name">Inline event handlers retain their ordering when invalid and lazy-compiled</span></summary><pre class="msg">assert_array_equals: expected property 1 to be &quot;TWO&quot; but got &quot;THREE&quot; (expected array [&quot;ONE&quot;, &quot;TWO&quot;, &quot;THREE&quot;] got [&quot;ONE&quot;, &quot;THREE&quot;, &quot;TWO&quot;])</pre></details><a class="self" href="#s-cbfbb7ed" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

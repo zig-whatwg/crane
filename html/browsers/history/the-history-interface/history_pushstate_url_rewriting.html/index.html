@@ -32,7 +32,80 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 18 passed, 17 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-149b7271"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">http://web-platform.test:8000/common/blank.html to http://web-platform.test:8000/common/blank.html#newhash should  work</span></div><a class="self" href="#s-149b7271" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0eae27fa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">http://web-platform.test:8000/common/blank.html to http://web-platform.test:8000/common/blank.html?newsearch should  work</span></div><a class="self" href="#s-0eae27fa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8c0fdd59"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">http://web-platform.test:8000/common/blank.html to http://web-platform.test:8000/newpath should  work</span></div><a class="self" href="#s-8c0fdd59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3d1c6277"><details><summary><span class="mark">FAIL</span><span class="sub-name">http://web-platform.test:8000/common/blank.html to http://username:password@web-platform.test:8000/common/blank.html should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-3d1c6277" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0d8047cd"><details><summary><span class="mark">FAIL</span><span class="sub-name">http://web-platform.test:8000/common/blank.html to blob:(a blob URL for this origin) should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-0d8047cd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bba5ec74"><details><summary><span class="mark">FAIL</span><span class="sub-name">http://web-platform.test:8000/common/blank.html to about:blank should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-bba5ec74" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-34bd873d"><details><summary><span class="mark">FAIL</span><span class="sub-name">http://web-platform.test:8000/common/blank.html to about:srcdoc should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-34bd873d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b8fd267e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">blob:(a blob URL for this origin) to blob:(a blob URL for this origin) should  work</span></div><a class="self" href="#s-b8fd267e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ee9aaaa5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">blob:(a blob URL for this origin) to blob:(a blob URL for this origin)#newhash should  work</span></div><a class="self" href="#s-ee9aaaa5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-89dc22fd"><details><summary><span class="mark">FAIL</span><span class="sub-name">blob:(a blob URL for this origin) to blob:(a blob URL for this origin)?newsearch should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-89dc22fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9ef55fb3"><details><summary><span class="mark">FAIL</span><span class="sub-name">blob:(a blob URL for this origin) to blob:newpath should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-9ef55fb3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1d474461"><details><summary><span class="mark">FAIL</span><span class="sub-name">blob:(a blob URL for this origin) to blob:http://web-platform.test:8000/syntheticblob should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-1d474461" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e060d25f"><details><summary><span class="mark">FAIL</span><span class="sub-name">blob:(a blob URL for this origin) to blob:(another blob URL for this origin) should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-e060d25f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-02f992ab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">about:blank to about:blank should  work</span></div><a class="self" href="#s-02f992ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7e148e81"><details><summary><span class="mark">FAIL</span><span class="sub-name">about:blank to about:srcdoc should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-7e148e81" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f978e077"><details><summary><span class="mark">FAIL</span><span class="sub-name">about:blank to about:blank?newsearch should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-f978e077" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b47c8690"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">about:blank to about:blank#newhash should  work</span></div><a class="self" href="#s-b47c8690" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-54c85a12"><details><summary><span class="mark">FAIL</span><span class="sub-name">about:blank to http://web-platform.test:8000/blank should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-54c85a12" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-60ae3248"><details><summary><span class="mark">FAIL</span><span class="sub-name">http://web-platform.test:8000/common/blank.html to javascript:&#39;foo&#39; should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-60ae3248" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-75588016"><details><summary><span class="mark">FAIL</span><span class="sub-name">javascript:&#39;foo&#39; to javascript:&#39;foo&#39; should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-75588016" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ed0aa87f"><details><summary><span class="mark">FAIL</span><span class="sub-name">javascript:&#39;foo&#39; to javascript:&#39;foo&#39;?newsearch should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-ed0aa87f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cae280c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">javascript:&#39;foo&#39; to javascript:&#39;foo&#39;#newhash should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-cae280c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d802edb9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">about:srcdoc to about:srcdoc should  work</span></div><a class="self" href="#s-d802edb9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-50d5b955"><details><summary><span class="mark">FAIL</span><span class="sub-name">about:srcdoc to about:srcdoc?newsearch should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-50d5b955" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-01dd2860"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">about:srcdoc to about:srcdoc#newhash should  work</span></div><a class="self" href="#s-01dd2860" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3d2eaa24"><details><summary><span class="mark">FAIL</span><span class="sub-name">about:srcdoc to http://web-platform.test:8000/srcdoc should not work</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        iframe.contentWindow.history.pushState(null, &quot;&quot;, to);
+      }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-3d2eaa24" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4d48b1bd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sandboxed http://web-platform.test:8000/html/browsers/history/the-history-interface/resources/url-rewriting-helper.html to http://web-platform.test:8000/html/browsers/history/the-history-interface/resources/url-rewriting-helper.html should  work</span></div><a class="self" href="#s-4d48b1bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0a7d2b09"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sandboxed http://web-platform.test:8000/html/browsers/history/the-history-interface/resources/url-rewriting-helper.html to http://web-platform.test:8000/html/browsers/history/the-history-interface/resources/url-rewriting-helper.html#newhash should  work</span></div><a class="self" href="#s-0a7d2b09" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b6484dfc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sandboxed http://web-platform.test:8000/html/browsers/history/the-history-interface/resources/url-rewriting-helper.html to http://web-platform.test:8000/html/browsers/history/the-history-interface/resources/url-rewriting-helper.html?newsearch should  work</span></div><a class="self" href="#s-b6484dfc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c3b5d90c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sandboxed http://web-platform.test:8000/html/browsers/history/the-history-interface/resources/url-rewriting-helper.html to http://web-platform.test:8000/newpath should  work</span></div><a class="self" href="#s-c3b5d90c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-70cfc5a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sandboxed http://web-platform.test:8000/html/browsers/history/the-history-interface/resources/url-rewriting-helper.html to http://username:password@web-platform.test:8000/html/browsers/history/the-history-interface/resources/url-rewriting-helper.html should not work</span></div><a class="self" href="#s-70cfc5a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-da6bfd89"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">data:(script to run this test) to data:(script to run this test) should  work</span></div><a class="self" href="#s-da6bfd89" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3523670f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">data:(script to run this test) to data:(script to run this test)#newhash should  work</span></div><a class="self" href="#s-3523670f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b2d366e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">data:(script to run this test) to data:(script to run this test)?newsearch should not work</span></div><a class="self" href="#s-b2d366e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c9569ac8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">data:(script to run this test) to data:newpath should not work</span></div><a class="self" href="#s-c9569ac8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,27 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 10 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/error.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-322ee376"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() should error the stream</span></div><a class="self" href="#s-322ee376" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-302fd1f9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() on erroring stream should not throw</span></div><a class="self" href="#s-302fd1f9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-062d9c65"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">surplus calls to controller.error() should be a no-op</span></div><a class="self" href="#s-062d9c65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-59b1b275"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() on errored stream should not throw</span></div><a class="self" href="#s-59b1b275" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6253928d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() on closed stream should not throw</span></div><a class="self" href="#s-6253928d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/error.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-96977092"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() should error the stream</span></div><a class="self" href="#s-96977092" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-079aa561"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() on erroring stream should not throw</span></div><a class="self" href="#s-079aa561" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c8424d1b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">surplus calls to controller.error() should be a no-op</span></div><a class="self" href="#s-c8424d1b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f78d71c6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() on errored stream should not throw</span></div><a class="self" href="#s-f78d71c6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7750ae49"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() on closed stream should not throw</span></div><a class="self" href="#s-7750ae49" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,32 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 6 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-695521c9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-695521c9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-98d434a1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (memory-multi.wast:5)</span></div><a class="self" href="#s-98d434a1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f26d9bda"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation succeeds (memory-multi.wast:26)</span></div><a class="self" href="#s-f26d9bda" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b558caaf"><details><summary><span class="mark">FAIL</span><span class="sub-name">#4 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-b558caaf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0c27614d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#5 Test that WebAssembly compilation succeeds (memory-multi.wast:5)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-0c27614d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-44afbc6d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at memory_multi_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/memory-multi.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/memory-multi.wast.js:27:3 expected true got false</pre></details><a class="self" href="#s-44afbc6d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-056a8bf9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#7 Test that a WebAssembly code returns a specific result (memory-multi.wast:22)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;init1&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at memory_multi_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/memory-multi.wast.js:10:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/memory-multi.wast.js:27:3 expected true got false</pre></details><a class="self" href="#s-056a8bf9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8c303af6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 Test that a WebAssembly code returns a specific result (memory-multi.wast:23)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;init2&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at memory_multi_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/memory-multi.wast.js:13:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/memory-multi.wast.js:27:3 expected true got false</pre></details><a class="self" href="#s-8c303af6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a66eff15"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#9 Test that WebAssembly compilation succeeds (memory-multi.wast:26)</span></div><a class="self" href="#s-a66eff15" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-362efb4a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#10 Test that WebAssembly instantiation succeeds (memory-multi.wast:26)</span></div><a class="self" href="#s-362efb4a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8309bccc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#11 Test that a WebAssembly code returns a specific result (memory-multi.wast:41)</span></div><a class="self" href="#s-8309bccc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f6a96908"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#12 Test that a WebAssembly code returns a specific result (memory-multi.wast:42)</span></div><a class="self" href="#s-f6a96908" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,35 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/user-timing/measure_syntax_err.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-b09b920e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Create a mark &quot;existing_mark&quot;</span></div><a class="self" href="#s-b09b920e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-311dab3e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">self.performance.measure(&quot;measure&quot;, &quot;mark&quot;), where &quot;mark&quot; is a non-existent mark, throws a SyntaxError exception.</span></div><a class="self" href="#s-311dab3e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b85e2e11"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">self.performance.measure(&quot;measure&quot;, &quot;mark&quot;, &quot;existing_mark&quot;), where &quot;mark&quot; is a non-existent mark, throws a SyntaxError exception.</span></div><a class="self" href="#s-b85e2e11" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-59172033"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">self.performance.measure(&quot;measure&quot;, &quot;existing_mark&quot;, &quot;mark&quot;), where &quot;mark&quot; is a non-existent mark, throws a SyntaxError exception.</span></div><a class="self" href="#s-59172033" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b9e07cd7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">self.performance.measure(&quot;measure&quot;, &quot;mark&quot;, &quot;mark&quot;), where &quot;mark&quot; is a non-existent mark, throws a SyntaxError exception.</span></div><a class="self" href="#s-b9e07cd7" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/user-timing/measure_syntax_err.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-5e5b8154"><details><summary><span class="mark">FAIL</span><span class="sub-name">Create a mark &quot;existing_mark&quot;</span></summary><pre class="msg">self.performance.mark is not a function</pre></details><a class="self" href="#s-5e5b8154" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b68c17ea"><details><summary><span class="mark">FAIL</span><span class="sub-name">self.performance.measure(&quot;measure&quot;, &quot;mark&quot;), where &quot;mark&quot; is a non-existent mark, throws a SyntaxError exception.</span></summary><pre class="msg">assert_throws_dom: function &quot;function () {
+       self.performance.measure(&quot;measure&quot;, &quot;mark&quot;);
+   }&quot; threw object &quot;TypeError: self.performance.measure is not a function&quot; that is not a DOMException SyntaxError: property &quot;code&quot; is equal to undefined, expected 12</pre></details><a class="self" href="#s-b68c17ea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-132f9dc3"><details><summary><span class="mark">FAIL</span><span class="sub-name">self.performance.measure(&quot;measure&quot;, &quot;mark&quot;, &quot;existing_mark&quot;), where &quot;mark&quot; is a non-existent mark, throws a SyntaxError exception.</span></summary><pre class="msg">assert_throws_dom: function &quot;function () {
+       self.performance.measure(&quot;measure&quot;, &quot;mark&quot;, &quot;existing_mark&quot;);
+   }&quot; threw object &quot;TypeError: self.performance.measure is not a function&quot; that is not a DOMException SyntaxError: property &quot;code&quot; is equal to undefined, expected 12</pre></details><a class="self" href="#s-132f9dc3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a1583743"><details><summary><span class="mark">FAIL</span><span class="sub-name">self.performance.measure(&quot;measure&quot;, &quot;existing_mark&quot;, &quot;mark&quot;), where &quot;mark&quot; is a non-existent mark, throws a SyntaxError exception.</span></summary><pre class="msg">assert_throws_dom: function &quot;function () {
+       self.performance.measure(&quot;measure&quot;, &quot;existing_mark&quot;, &quot;mark&quot;);
+   }&quot; threw object &quot;TypeError: self.performance.measure is not a function&quot; that is not a DOMException SyntaxError: property &quot;code&quot; is equal to undefined, expected 12</pre></details><a class="self" href="#s-a1583743" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c370a620"><details><summary><span class="mark">FAIL</span><span class="sub-name">self.performance.measure(&quot;measure&quot;, &quot;mark&quot;, &quot;mark&quot;), where &quot;mark&quot; is a non-existent mark, throws a SyntaxError exception.</span></summary><pre class="msg">assert_throws_dom: function &quot;function () {
+       self.performance.measure(&quot;measure&quot;, &quot;mark&quot;, &quot;mark&quot;);
+   }&quot; threw object &quot;TypeError: self.performance.measure is not a function&quot; that is not a DOMException SyntaxError: property &quot;code&quot; is equal to undefined, expected 12</pre></details><a class="self" href="#s-c370a620" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

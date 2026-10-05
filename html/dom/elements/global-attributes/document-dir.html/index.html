@@ -32,7 +32,14 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-962d3cfa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Markup attribute</span></summary><pre class="msg">assert_equals: expected &quot;ltr&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-962d3cfa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-65306598"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting the idl attribute to a garbage value</span></summary><pre class="msg">assert_equals: expected &quot;&quot; but got &quot;x-garbage&quot;</pre></details><a class="self" href="#s-65306598" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c7bc814b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting the idl attribute to the empty string</span></summary><pre class="msg">assert_equals: expected &quot;&quot; but got &quot;LTR&quot;</pre></details><a class="self" href="#s-c7bc814b" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

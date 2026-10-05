@@ -32,7 +32,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-75087efe"><details><summary><span class="mark">FAIL</span><span class="sub-name">same-origin, same-window location cycle</span></summary><pre class="msg">Immutable prototype object &#39;[object Location]&#39; cannot have their prototype set</pre></details><a class="self" href="#s-75087efe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-af62a68b"><details><summary><span class="mark">FAIL</span><span class="sub-name">cross-origin location has null prototype</span></summary><pre class="msg">assert_equals: cross-origin unjoined location&#39;s [[Prototype] expected null but got [stringifying object threw TypeError: Illegal invocation with type object]</pre></details><a class="self" href="#s-af62a68b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f93896bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">same-origin, different-window location cycle</span></summary><pre class="msg">Immutable prototype object &#39;[object Location]&#39; cannot have their prototype set</pre></details><a class="self" href="#s-f93896bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2e82e8e9"><details><summary><span class="mark">FAIL</span><span class="sub-name">cross-origin, but joined via document.domain, location cycle</span></summary><pre class="msg">assert_equals: accessing win.Location before joining win&#39;s origin expected true but got false</pre></details><a class="self" href="#s-2e82e8e9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

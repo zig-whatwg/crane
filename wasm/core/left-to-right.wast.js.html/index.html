@@ -32,7 +32,399 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 99 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-f4919666"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-f4919666" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-94944e7a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (left-to-right.wast:1)</span></div><a class="self" href="#s-94944e7a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ddd4eb1a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#3 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-ddd4eb1a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8778e6fc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (left-to-right.wast:1)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-8778e6fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-85fb2d3f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#5 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-85fb2d3f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d609a2f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 Test that a WebAssembly code returns a specific result (left-to-right.wast:181)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_add&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:10:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-d609a2f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-79944a97"><details><summary><span class="mark">FAIL</span><span class="sub-name">#7 Test that a WebAssembly code returns a specific result (left-to-right.wast:181)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_add&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:13:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-79944a97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2e826543"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 Test that a WebAssembly code returns a specific result (left-to-right.wast:182)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_sub&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:16:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-2e826543" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-71c99bf8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that a WebAssembly code returns a specific result (left-to-right.wast:182)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_sub&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-71c99bf8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cf696ba8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that a WebAssembly code returns a specific result (left-to-right.wast:183)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_mul&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-cf696ba8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7af0b31c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#11 Test that a WebAssembly code returns a specific result (left-to-right.wast:183)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_mul&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:25:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-7af0b31c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-83dc1f10"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that a WebAssembly code returns a specific result (left-to-right.wast:184)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_div_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:28:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-83dc1f10" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-92b122e2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (left-to-right.wast:184)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_div_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:31:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-92b122e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7a5d23d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly code returns a specific result (left-to-right.wast:185)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_div_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:34:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-7a5d23d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-35dc1abc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that a WebAssembly code returns a specific result (left-to-right.wast:185)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_div_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:37:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-35dc1abc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-914ad558"><details><summary><span class="mark">FAIL</span><span class="sub-name">#16 Test that a WebAssembly code returns a specific result (left-to-right.wast:186)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_rem_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:40:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-914ad558" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5ad07e93"><details><summary><span class="mark">FAIL</span><span class="sub-name">#17 Test that a WebAssembly code returns a specific result (left-to-right.wast:186)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_rem_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:43:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-5ad07e93" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f43ad071"><details><summary><span class="mark">FAIL</span><span class="sub-name">#18 Test that a WebAssembly code returns a specific result (left-to-right.wast:187)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_rem_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:46:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-f43ad071" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-39dc8dcc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#19 Test that a WebAssembly code returns a specific result (left-to-right.wast:187)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_rem_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:49:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-39dc8dcc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be20452c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#20 Test that a WebAssembly code returns a specific result (left-to-right.wast:188)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_and&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:52:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-be20452c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-87558f3d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#21 Test that a WebAssembly code returns a specific result (left-to-right.wast:188)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_and&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:55:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-87558f3d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-01481187"><details><summary><span class="mark">FAIL</span><span class="sub-name">#22 Test that a WebAssembly code returns a specific result (left-to-right.wast:189)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_or&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:58:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-01481187" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-14825149"><details><summary><span class="mark">FAIL</span><span class="sub-name">#23 Test that a WebAssembly code returns a specific result (left-to-right.wast:189)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_or&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:61:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-14825149" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0658932b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#24 Test that a WebAssembly code returns a specific result (left-to-right.wast:190)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_xor&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:64:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-0658932b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-82213821"><details><summary><span class="mark">FAIL</span><span class="sub-name">#25 Test that a WebAssembly code returns a specific result (left-to-right.wast:190)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_xor&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:67:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-82213821" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d7471f02"><details><summary><span class="mark">FAIL</span><span class="sub-name">#26 Test that a WebAssembly code returns a specific result (left-to-right.wast:191)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_shl&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:70:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-d7471f02" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cbd9097c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#27 Test that a WebAssembly code returns a specific result (left-to-right.wast:191)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_shl&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:73:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-cbd9097c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d1c3cba6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#28 Test that a WebAssembly code returns a specific result (left-to-right.wast:192)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_shr_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:76:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-d1c3cba6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9a64efa1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#29 Test that a WebAssembly code returns a specific result (left-to-right.wast:192)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_shr_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:79:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-9a64efa1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f3fab307"><details><summary><span class="mark">FAIL</span><span class="sub-name">#30 Test that a WebAssembly code returns a specific result (left-to-right.wast:193)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_shr_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:82:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-f3fab307" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-422aaabb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#31 Test that a WebAssembly code returns a specific result (left-to-right.wast:193)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_shr_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:85:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-422aaabb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-348b628e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#32 Test that a WebAssembly code returns a specific result (left-to-right.wast:194)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_eq&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:88:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-348b628e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bc41f745"><details><summary><span class="mark">FAIL</span><span class="sub-name">#33 Test that a WebAssembly code returns a specific result (left-to-right.wast:194)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_eq&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:91:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-bc41f745" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-55266290"><details><summary><span class="mark">FAIL</span><span class="sub-name">#34 Test that a WebAssembly code returns a specific result (left-to-right.wast:195)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_ne&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:94:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-55266290" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0e681c5a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#35 Test that a WebAssembly code returns a specific result (left-to-right.wast:195)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_ne&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:97:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-0e681c5a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b43e017f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#36 Test that a WebAssembly code returns a specific result (left-to-right.wast:196)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_lt_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:100:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-b43e017f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6c36278c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#37 Test that a WebAssembly code returns a specific result (left-to-right.wast:196)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_lt_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:103:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-6c36278c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-42de7b92"><details><summary><span class="mark">FAIL</span><span class="sub-name">#38 Test that a WebAssembly code returns a specific result (left-to-right.wast:197)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_le_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:106:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-42de7b92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-55110610"><details><summary><span class="mark">FAIL</span><span class="sub-name">#39 Test that a WebAssembly code returns a specific result (left-to-right.wast:197)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_le_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:109:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-55110610" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-97e106a2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#40 Test that a WebAssembly code returns a specific result (left-to-right.wast:198)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_lt_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:112:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-97e106a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-867effdb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#41 Test that a WebAssembly code returns a specific result (left-to-right.wast:198)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_lt_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:115:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-867effdb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-45f9f430"><details><summary><span class="mark">FAIL</span><span class="sub-name">#42 Test that a WebAssembly code returns a specific result (left-to-right.wast:199)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_le_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:118:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-45f9f430" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3340b43d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#43 Test that a WebAssembly code returns a specific result (left-to-right.wast:199)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_le_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:121:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-3340b43d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-415ddbfa"><details><summary><span class="mark">FAIL</span><span class="sub-name">#44 Test that a WebAssembly code returns a specific result (left-to-right.wast:200)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_gt_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:124:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-415ddbfa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cf60692c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#45 Test that a WebAssembly code returns a specific result (left-to-right.wast:200)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_gt_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:127:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-cf60692c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a2343df3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#46 Test that a WebAssembly code returns a specific result (left-to-right.wast:201)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_ge_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:130:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-a2343df3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b003d7cd"><details><summary><span class="mark">FAIL</span><span class="sub-name">#47 Test that a WebAssembly code returns a specific result (left-to-right.wast:201)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_ge_s&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:133:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-b003d7cd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5b5942cc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#48 Test that a WebAssembly code returns a specific result (left-to-right.wast:202)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_gt_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:136:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-5b5942cc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f13c4c9a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#49 Test that a WebAssembly code returns a specific result (left-to-right.wast:202)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_gt_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:139:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-f13c4c9a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b80a2db8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#50 Test that a WebAssembly code returns a specific result (left-to-right.wast:203)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_ge_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:142:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-b80a2db8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7d74e80b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#51 Test that a WebAssembly code returns a specific result (left-to-right.wast:203)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_ge_u&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:145:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-7d74e80b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fed893d9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#52 Test that a WebAssembly code returns a specific result (left-to-right.wast:204)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_store&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:148:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-fed893d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7dcc2d4a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#53 Test that a WebAssembly code returns a specific result (left-to-right.wast:204)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_store&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:151:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-7dcc2d4a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-28aeaf35"><details><summary><span class="mark">FAIL</span><span class="sub-name">#54 Test that a WebAssembly code returns a specific result (left-to-right.wast:205)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_store8&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:154:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-28aeaf35" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-21a3b8df"><details><summary><span class="mark">FAIL</span><span class="sub-name">#55 Test that a WebAssembly code returns a specific result (left-to-right.wast:205)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_store8&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:157:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-21a3b8df" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ae32c10e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#56 Test that a WebAssembly code returns a specific result (left-to-right.wast:206)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_store16&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:160:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-ae32c10e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d8e11a4d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#57 Test that a WebAssembly code returns a specific result (left-to-right.wast:206)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_store16&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:163:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-d8e11a4d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-df58ced0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#58 Test that a WebAssembly code returns a specific result (left-to-right.wast:207)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_store32&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:166:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-df58ced0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d8e39664"><details><summary><span class="mark">FAIL</span><span class="sub-name">#59 Test that a WebAssembly code returns a specific result (left-to-right.wast:208)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_call&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:169:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-d8e39664" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fa5d1c11"><details><summary><span class="mark">FAIL</span><span class="sub-name">#60 Test that a WebAssembly code returns a specific result (left-to-right.wast:208)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_call&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:172:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-fa5d1c11" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-063eedd7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#61 Test that a WebAssembly code returns a specific result (left-to-right.wast:209)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_call_indirect&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:175:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-063eedd7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-59e9fc08"><details><summary><span class="mark">FAIL</span><span class="sub-name">#62 Test that a WebAssembly code returns a specific result (left-to-right.wast:210)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_call_indirect&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:178:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-59e9fc08" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bf5e2e78"><details><summary><span class="mark">FAIL</span><span class="sub-name">#63 Test that a WebAssembly code returns a specific result (left-to-right.wast:211)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32_select&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:181:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-bf5e2e78" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2d8854b9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#64 Test that a WebAssembly code returns a specific result (left-to-right.wast:211)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64_select&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:184:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-2d8854b9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-481f0e7c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#65 Test that a WebAssembly code returns a specific result (left-to-right.wast:213)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_add&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:187:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-481f0e7c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e06f5416"><details><summary><span class="mark">FAIL</span><span class="sub-name">#66 Test that a WebAssembly code returns a specific result (left-to-right.wast:213)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_add&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:190:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-e06f5416" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-03eacdd5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#67 Test that a WebAssembly code returns a specific result (left-to-right.wast:214)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_sub&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:193:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-03eacdd5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c7f5471e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#68 Test that a WebAssembly code returns a specific result (left-to-right.wast:214)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_sub&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:196:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-c7f5471e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d641eb56"><details><summary><span class="mark">FAIL</span><span class="sub-name">#69 Test that a WebAssembly code returns a specific result (left-to-right.wast:215)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_mul&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:199:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-d641eb56" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8ca9ba67"><details><summary><span class="mark">FAIL</span><span class="sub-name">#70 Test that a WebAssembly code returns a specific result (left-to-right.wast:215)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_mul&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:202:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-8ca9ba67" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2c6bb644"><details><summary><span class="mark">FAIL</span><span class="sub-name">#71 Test that a WebAssembly code returns a specific result (left-to-right.wast:216)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_div&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:205:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-2c6bb644" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d65a344e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#72 Test that a WebAssembly code returns a specific result (left-to-right.wast:216)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_div&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:208:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-d65a344e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b169da59"><details><summary><span class="mark">FAIL</span><span class="sub-name">#73 Test that a WebAssembly code returns a specific result (left-to-right.wast:217)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_copysign&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:211:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-b169da59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-15dfb733"><details><summary><span class="mark">FAIL</span><span class="sub-name">#74 Test that a WebAssembly code returns a specific result (left-to-right.wast:217)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_copysign&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:214:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-15dfb733" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a3086fe4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#75 Test that a WebAssembly code returns a specific result (left-to-right.wast:218)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_eq&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:217:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-a3086fe4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7f8750fc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#76 Test that a WebAssembly code returns a specific result (left-to-right.wast:218)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_eq&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:220:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-7f8750fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e0503ef0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#77 Test that a WebAssembly code returns a specific result (left-to-right.wast:219)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_ne&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:223:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-e0503ef0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a5294349"><details><summary><span class="mark">FAIL</span><span class="sub-name">#78 Test that a WebAssembly code returns a specific result (left-to-right.wast:219)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_ne&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:226:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-a5294349" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-25dabca3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#79 Test that a WebAssembly code returns a specific result (left-to-right.wast:220)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_lt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:229:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-25dabca3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4317aab1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#80 Test that a WebAssembly code returns a specific result (left-to-right.wast:220)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_lt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:232:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-4317aab1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-18d0c1d4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#81 Test that a WebAssembly code returns a specific result (left-to-right.wast:221)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_le&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:235:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-18d0c1d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-67e50962"><details><summary><span class="mark">FAIL</span><span class="sub-name">#82 Test that a WebAssembly code returns a specific result (left-to-right.wast:221)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_le&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:238:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-67e50962" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-431cb7bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#83 Test that a WebAssembly code returns a specific result (left-to-right.wast:222)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_gt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:241:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-431cb7bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c642f6d7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#84 Test that a WebAssembly code returns a specific result (left-to-right.wast:222)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_gt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:244:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-c642f6d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aba86152"><details><summary><span class="mark">FAIL</span><span class="sub-name">#85 Test that a WebAssembly code returns a specific result (left-to-right.wast:223)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_ge&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:247:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-aba86152" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7c4e5920"><details><summary><span class="mark">FAIL</span><span class="sub-name">#86 Test that a WebAssembly code returns a specific result (left-to-right.wast:223)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_ge&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:250:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-7c4e5920" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e2b333b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#87 Test that a WebAssembly code returns a specific result (left-to-right.wast:224)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_min&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:253:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-e2b333b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-904545b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#88 Test that a WebAssembly code returns a specific result (left-to-right.wast:224)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_min&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:256:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-904545b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-56a9a446"><details><summary><span class="mark">FAIL</span><span class="sub-name">#89 Test that a WebAssembly code returns a specific result (left-to-right.wast:225)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_max&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:259:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-56a9a446" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a946237e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#90 Test that a WebAssembly code returns a specific result (left-to-right.wast:225)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_max&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:262:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-a946237e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c89fc1c8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#91 Test that a WebAssembly code returns a specific result (left-to-right.wast:226)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_store&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:265:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-c89fc1c8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-50f4ef1e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#92 Test that a WebAssembly code returns a specific result (left-to-right.wast:226)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_store&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:268:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-50f4ef1e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4d566e30"><details><summary><span class="mark">FAIL</span><span class="sub-name">#93 Test that a WebAssembly code returns a specific result (left-to-right.wast:227)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_call&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:271:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-4d566e30" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8cf7c8dd"><details><summary><span class="mark">FAIL</span><span class="sub-name">#94 Test that a WebAssembly code returns a specific result (left-to-right.wast:227)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_call&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:274:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-8cf7c8dd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e6e43b0f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#95 Test that a WebAssembly code returns a specific result (left-to-right.wast:228)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_call_indirect&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:277:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-e6e43b0f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-06fa3bb0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#96 Test that a WebAssembly code returns a specific result (left-to-right.wast:229)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_call_indirect&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:280:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-06fa3bb0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ab0d26f1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#97 Test that a WebAssembly code returns a specific result (left-to-right.wast:230)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f32_select&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:283:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-ab0d26f1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cb3bbfde"><details><summary><span class="mark">FAIL</span><span class="sub-name">#98 Test that a WebAssembly code returns a specific result (left-to-right.wast:230)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;f64_select&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:286:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-cb3bbfde" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c4d56a4e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#99 Test that a WebAssembly code returns a specific result (left-to-right.wast:232)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;br_if&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:289:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-c4d56a4e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-12eb6b30"><details><summary><span class="mark">FAIL</span><span class="sub-name">#100 Test that a WebAssembly code returns a specific result (left-to-right.wast:233)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;br_table&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at left_to_right_wast_js (http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:292:1)
+    at http://web-platform.test:8000/wasm/core/js/left-to-right.wast.js:294:3 expected true got false</pre></details><a class="self" href="#s-12eb6b30" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,39 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 20 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/response/response-static-redirect.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>10</b> / 11</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-dc366702"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check default redirect response</span></div><a class="self" href="#s-dc366702" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c8720bb7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response returned by static method redirect(), status = 301</span></div><a class="self" href="#s-c8720bb7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8a74ae62"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response returned by static method redirect(), status = 302</span></div><a class="self" href="#s-8a74ae62" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3fd238e3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response returned by static method redirect(), status = 303</span></div><a class="self" href="#s-3fd238e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b37103d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response returned by static method redirect(), status = 307</span></div><a class="self" href="#s-b37103d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3775cf4d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response returned by static method redirect(), status = 308</span></div><a class="self" href="#s-3775cf4d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-58660d18"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check error returned when giving invalid url to redirect()</span></summary><pre class="msg">assert_throws_js: Expect TypeError exception function &quot;function() { Response.redirect(invalidUrl); }&quot; did not throw</pre></details><a class="self" href="#s-58660d18" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3d40cb86"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check error returned when giving invalid status to redirect(), status = 200</span></div><a class="self" href="#s-3d40cb86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d6631e0a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check error returned when giving invalid status to redirect(), status = 309</span></div><a class="self" href="#s-d6631e0a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f2c04fa6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check error returned when giving invalid status to redirect(), status = 400</span></div><a class="self" href="#s-f2c04fa6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bce5db52"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check error returned when giving invalid status to redirect(), status = 500</span></div><a class="self" href="#s-bce5db52" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/response/response-static-redirect.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>10</b> / 11</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-a2d2689d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check default redirect response</span></div><a class="self" href="#s-a2d2689d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b6e695d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response returned by static method redirect(), status = 301</span></div><a class="self" href="#s-b6e695d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a8c6ec6b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response returned by static method redirect(), status = 302</span></div><a class="self" href="#s-a8c6ec6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8a06cda3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response returned by static method redirect(), status = 303</span></div><a class="self" href="#s-8a06cda3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-04ecadf9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response returned by static method redirect(), status = 307</span></div><a class="self" href="#s-04ecadf9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-47600c31"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response returned by static method redirect(), status = 308</span></div><a class="self" href="#s-47600c31" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-21dd1fc6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check error returned when giving invalid url to redirect()</span></summary><pre class="msg">assert_throws_js: Expect TypeError exception function &quot;function() { Response.redirect(invalidUrl); }&quot; did not throw</pre></details><a class="self" href="#s-21dd1fc6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-641c32d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check error returned when giving invalid status to redirect(), status = 200</span></div><a class="self" href="#s-641c32d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-26f480ed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check error returned when giving invalid status to redirect(), status = 309</span></div><a class="self" href="#s-26f480ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a0c5a56e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check error returned when giving invalid status to redirect(), status = 400</span></div><a class="self" href="#s-a0c5a56e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8b0f8d5f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check error returned when giving invalid status to redirect(), status = 500</span></div><a class="self" href="#s-8b0f8d5f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

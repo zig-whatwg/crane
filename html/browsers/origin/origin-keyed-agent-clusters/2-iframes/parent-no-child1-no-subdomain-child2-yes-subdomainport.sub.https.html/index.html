@@ -32,7 +32,23 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-5fb5b433"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parent to child1: setting document.domain must give sync access</span></summary><pre class="msg">assert_not_equals: contentDocument got disallowed value null</pre></details><a class="self" href="#s-5fb5b433" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-967c616b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parent to child2: messageerror event must occur</span></div><a class="self" href="#s-967c616b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c031f4fc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parent to child2: setting document.domain must not give sync access</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        frameWindow.document;
+      }&quot; did not throw</pre></details><a class="self" href="#s-c031f4fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3bb3c92a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">child1 to child2: messageerror event must occur</span></div><a class="self" href="#s-3bb3c92a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-02fb2919"><details><summary><span class="mark">FAIL</span><span class="sub-name">child1 to child2: setting document.domain must not give sync access</span></summary><pre class="msg">assert_equals: expected &quot;SecurityError&quot; but got &quot;accessed document successfully&quot;</pre></details><a class="self" href="#s-02fb2919" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-112fa4d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">child2 to child1: messageerror event must occur</span></div><a class="self" href="#s-112fa4d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ee7172c5"><details><summary><span class="mark">FAIL</span><span class="sub-name">child2 to child1: setting document.domain must not give sync access</span></summary><pre class="msg">assert_equals: expected &quot;SecurityError&quot; but got &quot;accessed document successfully&quot;</pre></details><a class="self" href="#s-ee7172c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a51e4132"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">parent: originAgentCluster must equal false</span></div><a class="self" href="#s-a51e4132" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ea048e45"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">child1: originAgentCluster must equal false</span></div><a class="self" href="#s-ea048e45" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ba55dd96"><details><summary><span class="mark">FAIL</span><span class="sub-name">child2: originAgentCluster must equal true</span></summary><pre class="msg">assert_equals: expected true but got false</pre></details><a class="self" href="#s-ba55dd96" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,45 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 24 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/FileAPI/url/url-with-xhr.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-9eb4e811"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Blob URLs can be used in XHR</span></div><a class="self" href="#s-9eb4e811" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c844122c"><details><summary><span class="mark">FAIL</span><span class="sub-name">XHR with a fragment should succeed</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;Got unexpected error event&quot;</pre></details><a class="self" href="#s-c844122c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b2aef6be"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR of a revoked URL should fail</span></div><a class="self" href="#s-b2aef6be" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0de7e8d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Only exact matches should revoke URLs, using XHR</span></div><a class="self" href="#s-0de7e8d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e2c7eaba"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Appending a query string should cause XHR to fail</span></div><a class="self" href="#s-e2c7eaba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a12d29a1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Appending a path should cause XHR to fail</span></div><a class="self" href="#s-a12d29a1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4512650c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;HEAD&quot; should fail</span></div><a class="self" href="#s-4512650c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4c333426"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;POST&quot; should fail</span></div><a class="self" href="#s-4c333426" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c0e7d901"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;DELETE&quot; should fail</span></div><a class="self" href="#s-c0e7d901" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-45a46484"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;OPTIONS&quot; should fail</span></div><a class="self" href="#s-45a46484" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ec24192b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;PUT&quot; should fail</span></div><a class="self" href="#s-ec24192b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a2f66685"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;CUSTOM&quot; should fail</span></div><a class="self" href="#s-a2f66685" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-00ddf3dd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR should return Content-Type from Blob</span></div><a class="self" href="#s-00ddf3dd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7501adcc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Revoke blob URL after open(), will fetch</span></summary><pre class="msg">assert_unreached: Got unexpected error event Reached unreachable code</pre></details><a class="self" href="#s-7501adcc" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/FileAPI/url/url-with-xhr.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-c9f21dfd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Blob URLs can be used in XHR</span></div><a class="self" href="#s-c9f21dfd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c66c7b7c"><details><summary><span class="mark">FAIL</span><span class="sub-name">XHR with a fragment should succeed</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;Got unexpected error event&quot;</pre></details><a class="self" href="#s-c66c7b7c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a440b2dc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR of a revoked URL should fail</span></div><a class="self" href="#s-a440b2dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-12707c91"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Only exact matches should revoke URLs, using XHR</span></div><a class="self" href="#s-12707c91" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-050921d3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Appending a query string should cause XHR to fail</span></div><a class="self" href="#s-050921d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6c081c52"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Appending a path should cause XHR to fail</span></div><a class="self" href="#s-6c081c52" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ba167ec4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;HEAD&quot; should fail</span></div><a class="self" href="#s-ba167ec4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c95a36c6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;POST&quot; should fail</span></div><a class="self" href="#s-c95a36c6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-227cf205"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;DELETE&quot; should fail</span></div><a class="self" href="#s-227cf205" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1cc17093"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;OPTIONS&quot; should fail</span></div><a class="self" href="#s-1cc17093" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f5703396"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;PUT&quot; should fail</span></div><a class="self" href="#s-f5703396" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a7e8f9d1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR with method &quot;CUSTOM&quot; should fail</span></div><a class="self" href="#s-a7e8f9d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a7379ac4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XHR should return Content-Type from Blob</span></div><a class="self" href="#s-a7379ac4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-80f3f714"><details><summary><span class="mark">FAIL</span><span class="sub-name">Revoke blob URL after open(), will fetch</span></summary><pre class="msg">assert_unreached: Got unexpected error event Reached unreachable code</pre></details><a class="self" href="#s-80f3f714" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-b1e271ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Handling of property names that look like negative integers</span></div><a class="self" href="#s-b1e271ee" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6f3773c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Handling of property names that look like small nonnegative integers</span></div><a class="self" href="#s-6f3773c9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d6177612"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Handling of property names that look like integers around 2^31</span></div><a class="self" href="#s-d6177612" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c6f366d1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Handling of property names that look like integers around 2^32</span></div><a class="self" href="#s-c6f366d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-520afbef"><details><summary><span class="mark">FAIL</span><span class="sub-name">Trying to set an expando that would shadow an already-existing indexed property</span></summary><pre class="msg">Cannot define property on read-only indexed collection</pre></details><a class="self" href="#s-520afbef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-76932a06"><details><summary><span class="mark">FAIL</span><span class="sub-name">Trying to set an expando with an indexed property name past the end of the list</span></summary><pre class="msg">Cannot define property on read-only indexed collection</pre></details><a class="self" href="#s-76932a06" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9918f105"><details><summary><span class="mark">FAIL</span><span class="sub-name">Trying to delete an indexed property name should never work</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+    &quot;use strict&quot;;
+    delete elements[0];
+  }&quot; did not throw</pre></details><a class="self" href="#s-9918f105" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

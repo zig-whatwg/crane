@@ -32,7 +32,103 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 26 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-e7a84953"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-e7a84953" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4546e9bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (table_grow64.wast:1)</span></summary><pre class="msg">assert_equals: expected false but got true</pre></details><a class="self" href="#s-4546e9bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-77324d61"><details><summary><span class="mark">FAIL</span><span class="sub-name">#3 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-77324d61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ee26d15e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (table_grow64.wast:1)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-ee26d15e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7b271b59"><details><summary><span class="mark">FAIL</span><span class="sub-name">#5 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-7b271b59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e0219e89"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 Test that a WebAssembly code returns a specific result (table_grow64.wast:12)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;size-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:10:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-e0219e89" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ca55b12c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#7 Test that a WebAssembly code traps (table_grow64.wast:13)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-t64&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:13:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-ca55b12c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-75b716b2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 Test that a WebAssembly code traps (table_grow64.wast:14)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-t64&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:16:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-75b716b2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3087dab3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that a WebAssembly code returns a specific result (table_grow64.wast:16)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-3087dab3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2911fa94"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that a WebAssembly code returns a specific result (table_grow64.wast:17)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;size-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-2911fa94" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e38ff78e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#11 Test that a WebAssembly code returns a specific result (table_grow64.wast:18)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:25:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-e38ff78e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-01fb9820"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that a WebAssembly code returns a specific result (table_grow64.wast:19)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:28:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-01fb9820" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e878d541"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (table_grow64.wast:20)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:31:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-e878d541" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-580a9cb8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly code traps (table_grow64.wast:21)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-t64&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:34:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-580a9cb8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-11b3760a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that a WebAssembly code traps (table_grow64.wast:22)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-t64&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:37:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-11b3760a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1c4e0954"><details><summary><span class="mark">FAIL</span><span class="sub-name">#16 Test that a WebAssembly code returns a specific result (table_grow64.wast:24)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:40:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-1c4e0954" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-df84959a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#17 Test that a WebAssembly code returns a specific result (table_grow64.wast:25)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;size-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:43:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-df84959a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9b61acb5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#18 Test that a WebAssembly code returns a specific result (table_grow64.wast:26)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:46:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-9b61acb5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8a800524"><details><summary><span class="mark">FAIL</span><span class="sub-name">#19 Test that a WebAssembly code returns a specific result (table_grow64.wast:27)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:49:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-8a800524" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b1705bdc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#20 Test that a WebAssembly code returns a specific result (table_grow64.wast:28)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:52:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-b1705bdc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cc8a62ad"><details><summary><span class="mark">FAIL</span><span class="sub-name">#21 Test that a WebAssembly code returns a specific result (table_grow64.wast:29)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:55:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-cc8a62ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-da3e033c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#22 Test that a WebAssembly code returns a specific result (table_grow64.wast:30)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:58:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-da3e033c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5814d55a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#23 Test that a WebAssembly code returns a specific result (table_grow64.wast:31)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:61:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-5814d55a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-67641bcf"><details><summary><span class="mark">FAIL</span><span class="sub-name">#24 Test that a WebAssembly code returns a specific result (table_grow64.wast:32)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-t64&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:64:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-67641bcf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c055fb0f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#25 Test that a WebAssembly code traps (table_grow64.wast:33)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-t64&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:67:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-c055fb0f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-576f2bd5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#26 Test that a WebAssembly code traps (table_grow64.wast:34)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-t64&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_grow64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:70:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/table_grow64.wast.js:72:3 expected true got false</pre></details><a class="self" href="#s-576f2bd5" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

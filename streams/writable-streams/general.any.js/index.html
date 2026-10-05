@@ -32,7 +32,49 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 32 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/general.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-8197d676"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize on a released writer</span></div><a class="self" href="#s-8197d676" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8ac83de5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize initial value</span></div><a class="self" href="#s-8ac83de5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-15adf315"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize on a writer for a closed stream</span></div><a class="self" href="#s-15adf315" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a8fdd6c6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize on a writer for an errored stream</span></div><a class="self" href="#s-a8fdd6c6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3a2f557a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on a closing WritableStream</span></div><a class="self" href="#s-3a2f557a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f7543126"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on a closed WritableStream</span></div><a class="self" href="#s-f7543126" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b2ed1639"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on an aborted WritableStream</span></div><a class="self" href="#s-b2ed1639" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a4fd93e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on an errored WritableStream</span></div><a class="self" href="#s-a4fd93e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bd43510b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">closed and ready on a released writer</span></div><a class="self" href="#s-bd43510b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d5d5da64"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream should call underlying sink methods as methods</span></div><a class="self" href="#s-d5d5da64" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8b9279c5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">methods should not not have .apply() or .call() called</span></div><a class="self" href="#s-8b9279c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3bc68f01"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream&#39;s strategy.size should not be called as a method</span></div><a class="self" href="#s-3bc68f01" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e59dd761"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">redundant releaseLock() is no-op</span></div><a class="self" href="#s-e59dd761" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-35be9260"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ready promise should fire before closed on releaseLock</span></div><a class="self" href="#s-35be9260" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cef7b5b9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Subclassing WritableStream should work</span></div><a class="self" href="#s-cef7b5b9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c39b1d08"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the locked getter should return true if the stream has a writer</span></div><a class="self" href="#s-c39b1d08" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/general.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-8ee51ccd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize on a released writer</span></div><a class="self" href="#s-8ee51ccd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d7366c7f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize initial value</span></div><a class="self" href="#s-d7366c7f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-854f8941"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize on a writer for a closed stream</span></div><a class="self" href="#s-854f8941" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-73ed3708"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize on a writer for an errored stream</span></div><a class="self" href="#s-73ed3708" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3c2e4222"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on a closing WritableStream</span></div><a class="self" href="#s-3c2e4222" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4a79df58"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on a closed WritableStream</span></div><a class="self" href="#s-4a79df58" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6dcc980a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on an aborted WritableStream</span></div><a class="self" href="#s-6dcc980a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-75e9623f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on an errored WritableStream</span></div><a class="self" href="#s-75e9623f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-880f7eaa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">closed and ready on a released writer</span></div><a class="self" href="#s-880f7eaa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aac42989"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream should call underlying sink methods as methods</span></div><a class="self" href="#s-aac42989" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cdd93812"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">methods should not not have .apply() or .call() called</span></div><a class="self" href="#s-cdd93812" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-530b905f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream&#39;s strategy.size should not be called as a method</span></div><a class="self" href="#s-530b905f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ab53186b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">redundant releaseLock() is no-op</span></div><a class="self" href="#s-ab53186b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-50997912"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ready promise should fire before closed on releaseLock</span></div><a class="self" href="#s-50997912" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c79f0a9b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Subclassing WritableStream should work</span></div><a class="self" href="#s-c79f0a9b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c828d213"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the locked getter should return true if the stream has a writer</span></div><a class="self" href="#s-c828d213" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

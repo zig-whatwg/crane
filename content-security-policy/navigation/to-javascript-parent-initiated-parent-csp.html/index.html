@@ -32,7 +32,26 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 2 failed, 1 timed out and 4 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/content-security-policy/navigation/to-javascript-parent-initiated-parent-csp.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 7</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-dd8651ed"><details><summary><span class="mark">FAIL</span><span class="sub-name">Should not have executed the javascript url for
+      iframe.contentWindow.location.href</span></summary><pre class="msg">assert_true: Javascript url executed expected true got false</pre></details><a class="self" href="#s-dd8651ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6229618c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Should not have executed the javascript url for
+      iframe.src</span></summary><pre class="msg">assert_true: Javascript url executed expected true got false</pre></details><a class="self" href="#s-6229618c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-timeout" id="s-e36803e5"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Should not have executed the javascript url for
+      otherTab.location.href</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-e36803e5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-27d7f482"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Should not have executed the javascript url for
+      area[target=iframe].href</span></div><a class="self" href="#s-27d7f482" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-08d5a10a"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Should not have executed the javascript url for
+      area[target=otherTab].href</span></div><a class="self" href="#s-08d5a10a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-0e158db7"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Should not have executed the javascript url for
+      a[target=otherTab].href</span></div><a class="self" href="#s-0e158db7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-98fcb32a"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Should not have executed the javascript url for
+      a[target=iframe].href</span></div><a class="self" href="#s-98fcb32a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

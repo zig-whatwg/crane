@@ -32,7 +32,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-696f62d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">localStorage: enumerate a Storage object and get only the keys as a result and the built-in properties of the Storage object should be ignored</span></summary><pre class="msg">assert_equals: expected 6 but got 0</pre></details><a class="self" href="#s-696f62d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-43b32f1a"><details><summary><span class="mark">FAIL</span><span class="sub-name">localStorage: test enumeration of numeric and non-numeric keys</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;0&quot;, &quot;42&quot;, &quot;baz&quot;, &quot;foo&quot;] length 4, got [&quot;42&quot;, &quot;alpha&quot;, &quot;bar&quot;, &quot;batman&quot;, &quot;baz&quot;, &quot;foo&quot;, &quot;fu&quot;, &quot;zeta&quot;] length 8</pre></details><a class="self" href="#s-43b32f1a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fd66f57b"><details><summary><span class="mark">FAIL</span><span class="sub-name">sessionStorage: enumerate a Storage object and get only the keys as a result and the built-in properties of the Storage object should be ignored</span></summary><pre class="msg">assert_equals: expected 6 but got 0</pre></details><a class="self" href="#s-fd66f57b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2d80b595"><details><summary><span class="mark">FAIL</span><span class="sub-name">sessionStorage: test enumeration of numeric and non-numeric keys</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;0&quot;, &quot;42&quot;, &quot;baz&quot;, &quot;foo&quot;] length 4, got [&quot;42&quot;, &quot;alpha&quot;, &quot;bar&quot;, &quot;batman&quot;, &quot;baz&quot;, &quot;foo&quot;, &quot;fu&quot;, &quot;zeta&quot;] length 8</pre></details><a class="self" href="#s-2d80b595" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

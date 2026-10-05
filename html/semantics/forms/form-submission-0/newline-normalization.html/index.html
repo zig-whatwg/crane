@@ -32,7 +32,23 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 8 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-20d28d77"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \n in the value</span></div><a class="self" href="#s-20d28d77" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-01103927"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \r in the value</span></div><a class="self" href="#s-01103927" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c0b3d4f2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \r\n in the value</span></div><a class="self" href="#s-c0b3d4f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3a1f6d56"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \n\r in the value</span></div><a class="self" href="#s-3a1f6d56" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c9d2debd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \n in the name</span></div><a class="self" href="#s-c9d2debd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0f41125b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \r in the name</span></div><a class="self" href="#s-0f41125b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ca361507"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \r\n in the name</span></div><a class="self" href="#s-ca361507" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-25020b42"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \n\r in the name</span></div><a class="self" href="#s-25020b42" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3e4fe999"><details><summary><span class="mark">FAIL</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \n in the filename</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;add&#39;)</pre></details><a class="self" href="#s-3e4fe999" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-30682b5a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \r in the filename</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;add&#39;)</pre></details><a class="self" href="#s-30682b5a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c0bff0cd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \r\n in the filename</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;add&#39;)</pre></details><a class="self" href="#s-c0bff0cd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-512847e7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Constructing the entry list shouldn&#39;t perform newline normalization: \n\r in the filename</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;add&#39;)</pre></details><a class="self" href="#s-512847e7" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

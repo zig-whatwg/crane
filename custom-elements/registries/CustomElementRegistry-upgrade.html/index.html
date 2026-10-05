@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-d1651771"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">upgrade is a function on both global and scoped CustomElementRegistry</span></div><a class="self" href="#s-d1651771" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5ca9f9a8"><details><summary><span class="mark">FAIL</span><span class="sub-name">upgrade is a no-op when called on a shadow root with no association</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;shadowRoot&#39;)</pre></details><a class="self" href="#s-5ca9f9a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-380a6336"><details><summary><span class="mark">FAIL</span><span class="sub-name">upgrade is a no-op when called on an element associated with a different registry</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-380a6336" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c5a55ab0"><details><summary><span class="mark">FAIL</span><span class="sub-name">upgrade should upgrade a candidate element when called on a shadow root with an association</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;shadowRoot&#39;)</pre></details><a class="self" href="#s-c5a55ab0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-79a8138e"><details><summary><span class="mark">FAIL</span><span class="sub-name">upgrade should not upgrade a candidate element not associated with a registry</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;shadowRoot&#39;)</pre></details><a class="self" href="#s-79a8138e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

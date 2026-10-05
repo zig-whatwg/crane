@@ -32,7 +32,27 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 10 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/streams/readable-streams/garbage-collection.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-d98f7e52"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStreamController methods should continue working properly when scripts lose their reference to the readable stream</span></div><a class="self" href="#s-d98f7e52" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-073e2a1b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream closed promise should fulfill even if the stream and reader JS references are lost</span></div><a class="self" href="#s-073e2a1b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-88dd2c57"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream closed promise should reject even if stream and reader JS references are lost</span></div><a class="self" href="#s-88dd2c57" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b625afea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Garbage-collecting a ReadableStreamDefaultReader should not unlock its stream</span></div><a class="self" href="#s-b625afea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2414df5a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A ReadableStream and its reader should not be garbage collected while there is a read promise pending</span></div><a class="self" href="#s-2414df5a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/readable-streams/garbage-collection.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-bfe44bd7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStreamController methods should continue working properly when scripts lose their reference to the readable stream</span></div><a class="self" href="#s-bfe44bd7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4ef55518"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream closed promise should fulfill even if the stream and reader JS references are lost</span></div><a class="self" href="#s-4ef55518" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0f0678e8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream closed promise should reject even if stream and reader JS references are lost</span></div><a class="self" href="#s-0f0678e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1965df03"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Garbage-collecting a ReadableStreamDefaultReader should not unlock its stream</span></div><a class="self" href="#s-1965df03" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-760b1af0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A ReadableStream and its reader should not be garbage collected while there is a read promise pending</span></div><a class="self" href="#s-760b1af0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

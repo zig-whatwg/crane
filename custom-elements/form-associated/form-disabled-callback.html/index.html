@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 9 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-e6b4b64d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Adding/removing disabled content attribute</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-e6b4b64d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2f57bd46"><details><summary><span class="mark">FAIL</span><span class="sub-name">Relationship with FIELDSET</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-2f57bd46" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e8652bf9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A disabled form-associated custom element should not provide an entry for it</span></div><a class="self" href="#s-e8652bf9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-424197e6"><details><summary><span class="mark">FAIL</span><span class="sub-name">A disabled form-associated custom element should not submit an entry for it</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-424197e6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0b9e307b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Disabled attribute affects focus-capability</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-0b9e307b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be30706f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upgrading an element with disabled content attribute</span></summary><pre class="msg">container.firstChild.disabledHistory is not a function</pre></details><a class="self" href="#s-be30706f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e52b152d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Toggling &quot;disabled&quot; attribute on a custom element inside disabled &lt;fieldset&gt; does not trigger a callback</span></summary><pre class="msg">control.disabledHistory is not a function</pre></details><a class="self" href="#s-e52b152d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-80b98053"><details><summary><span class="mark">FAIL</span><span class="sub-name">Toggling &quot;disabled&quot; attribute on a &lt;fieldset&gt; does not trigger a callback on disabled custom element descendant</span></summary><pre class="msg">container.querySelector(...).disabledHistory is not a function</pre></details><a class="self" href="#s-80b98053" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-faef6ee8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Callback triggered during a clone/append operation, with disabled state provided by ancestor</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;cloneNode&#39;)</pre></details><a class="self" href="#s-faef6ee8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d3130b68"><details><summary><span class="mark">FAIL</span><span class="sub-name">Callback triggered during a clone operation, with disabled state provided by ancestor</span></summary><pre class="msg">container.querySelector(...).disabledHistory is not a function</pre></details><a class="self" href="#s-d3130b68" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

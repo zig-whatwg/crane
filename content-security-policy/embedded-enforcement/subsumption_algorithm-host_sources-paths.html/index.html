@@ -32,7 +32,20 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 6 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-985b8ecf"><details><summary><span class="mark">FAIL</span><span class="sub-name">Returned CSP must specify a path.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-985b8ecf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0689fdee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned CSP has a more specific path.</span></div><a class="self" href="#s-0689fdee" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eb3e4af0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Matching paths.</span></div><a class="self" href="#s-eb3e4af0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-55339937"><details><summary><span class="mark">FAIL</span><span class="sub-name">Empty path is not subsumed by specified paths.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-55339937" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-57d4a983"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">All specific paths match except the order.</span></div><a class="self" href="#s-57d4a983" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-203dbfc3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned CSP allows only one path.</span></div><a class="self" href="#s-203dbfc3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c07f9716"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`/` path should be subsumed by an empty path.</span></div><a class="self" href="#s-c07f9716" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-36df5807"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Unspecified path should be subsumed by `/`.</span></div><a class="self" href="#s-36df5807" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c0610743"><details><summary><span class="mark">FAIL</span><span class="sub-name">That should not be true when required csp specifies a specific page.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-c0610743" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

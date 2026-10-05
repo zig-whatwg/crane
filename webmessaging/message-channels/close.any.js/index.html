@@ -32,7 +32,29 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 12 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/close.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>6</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-4b1e5f86"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Message sent to closed port should not arrive.</span></div><a class="self" href="#s-4b1e5f86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-43c78122"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Message sent from closed port should not arrive.</span></div><a class="self" href="#s-43c78122" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aaab05dd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Message sent to closed port from transferred port should not arrive.</span></div><a class="self" href="#s-aaab05dd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fb72d605"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inflight messages should be delivered even when sending port is closed afterwards.</span></div><a class="self" href="#s-fb72d605" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1ca5e8fe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Close in onmessage should not cancel inflight messages.</span></div><a class="self" href="#s-1ca5e8fe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5ae2bd16"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close() detaches a MessagePort (but not the one its entangled with)</span></div><a class="self" href="#s-5ae2bd16" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/close.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>6</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-0d89568f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Message sent to closed port should not arrive.</span></div><a class="self" href="#s-0d89568f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1063de13"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Message sent from closed port should not arrive.</span></div><a class="self" href="#s-1063de13" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cffd748a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Message sent to closed port from transferred port should not arrive.</span></div><a class="self" href="#s-cffd748a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ee2e7bf9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inflight messages should be delivered even when sending port is closed afterwards.</span></div><a class="self" href="#s-ee2e7bf9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-caddb382"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Close in onmessage should not cancel inflight messages.</span></div><a class="self" href="#s-caddb382" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4b0eebd8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close() detaches a MessagePort (but not the one its entangled with)</span></div><a class="self" href="#s-4b0eebd8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

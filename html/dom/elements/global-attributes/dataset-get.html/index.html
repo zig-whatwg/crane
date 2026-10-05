@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 9 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-e897fb1a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Getting element.dataset[&#39;foo&#39;] should return the value of element.getAttribute(&#39;data-foo&#39;)&#39;</span></div><a class="self" href="#s-e897fb1a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c8f870d5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Getting element.dataset[&#39;fooBar&#39;] should return the value of element.getAttribute(&#39;data-foo-bar&#39;)&#39;</span></div><a class="self" href="#s-c8f870d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d98e14d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Getting element.dataset[&#39;-&#39;] should return the value of element.getAttribute(&#39;data--&#39;)&#39;</span></div><a class="self" href="#s-d98e14d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-51d2a292"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Getting element.dataset[&#39;Foo&#39;] should return the value of element.getAttribute(&#39;data--foo&#39;)&#39;</span></div><a class="self" href="#s-51d2a292" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-da4de1e6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Getting element.dataset[&#39;-Foo&#39;] should return the value of element.getAttribute(&#39;data---foo&#39;)&#39;</span></div><a class="self" href="#s-da4de1e6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9754f1ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Getting element.dataset[&#39;foo&#39;] should return the value of element.getAttribute(&#39;data-Foo&#39;)&#39;</span></div><a class="self" href="#s-9754f1ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3951cd6e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Getting element.dataset[&#39;&#39;] should return the value of element.getAttribute(&#39;data-&#39;)&#39;</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-3951cd6e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ae80d6f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Getting element.dataset[&#39;à&#39;] should return the value of element.getAttribute(&#39;data-à&#39;)&#39;</span></div><a class="self" href="#s-ae80d6f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f62016f8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Getting element.dataset[&#39;toString&#39;] should return the value of element.getAttribute(&#39;data-to-string&#39;)&#39;</span></div><a class="self" href="#s-f62016f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c7bf828a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Tests that an attribute named dataFoo does not make an entry in the dataset DOMStringMap.</span></div><a class="self" href="#s-c7bf828a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

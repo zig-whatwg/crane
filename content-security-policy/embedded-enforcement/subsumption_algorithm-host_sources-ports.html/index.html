@@ -32,7 +32,26 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 11 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-c1a24463"><details><summary><span class="mark">FAIL</span><span class="sub-name">Specified ports must match.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-c1a24463" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-efa59552"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned CSP should be subsumed even if the port is not specified but is a default port for a scheme.</span></div><a class="self" href="#s-efa59552" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1037dc5f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned CSP should be subsumed even if the port is not specified but is a default port for a more secure scheme.</span></div><a class="self" href="#s-1037dc5f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e7bd6ec1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The same should hold for `ws` case.</span></div><a class="self" href="#s-e7bd6ec1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0132d238"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Unspecified ports must match if schemes match.</span></div><a class="self" href="#s-0132d238" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dbb07840"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned CSP should be subsumed if the port is specified.</span></div><a class="self" href="#s-dbb07840" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3662a356"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned CSP should be subsumed if the port is specified but the scheme is more secure.</span></div><a class="self" href="#s-3662a356" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9a913ded"><details><summary><span class="mark">FAIL</span><span class="sub-name">Returned CSP should be subsumed if the port is specified but is not default for a more secure scheme.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-9a913ded" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4e0b38d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned CSP should be subsumed if the ports match but schemes are not identical.</span></div><a class="self" href="#s-c4e0b38d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-16e76bfc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned CSP should be subsumed if the ports match but schemes are not identical for `ws`.</span></div><a class="self" href="#s-16e76bfc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-63bf323e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Wildcard port should match unspecified port.</span></div><a class="self" href="#s-63bf323e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-88ede4c3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Wildcard port should match any specific port.</span></div><a class="self" href="#s-88ede4c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3747ce24"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Wildcard port should match a wildcard.</span></div><a class="self" href="#s-3747ce24" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2670a02a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Wildcard port should not be subsumed by a default port.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-2670a02a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c3dec67c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Wildcard port should not be subsumed by a spcified port.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-c3dec67c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

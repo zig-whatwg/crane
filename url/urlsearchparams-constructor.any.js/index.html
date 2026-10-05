@@ -32,7 +32,71 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 54 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/url/urlsearchparams-constructor.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>27</b> / 27</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-d8d95e5e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Basic URLSearchParams construction</span></div><a class="self" href="#s-d8d95e5e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-81ac8e9e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, no arguments</span></div><a class="self" href="#s-81ac8e9e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-01887783"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, remove leading &quot;?&quot;</span></div><a class="self" href="#s-01887783" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-551d2bbf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, DOMException as argument</span></div><a class="self" href="#s-551d2bbf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-132f33d6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, empty string as argument</span></div><a class="self" href="#s-132f33d6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bffc3f22"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, {} as argument</span></div><a class="self" href="#s-bffc3f22" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-712eb998"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, string.</span></div><a class="self" href="#s-712eb998" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6d2ad28f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, object.</span></div><a class="self" href="#s-6d2ad28f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-933f5365"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, FormData.</span></div><a class="self" href="#s-933f5365" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1a208d35"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse +</span></div><a class="self" href="#s-1a208d35" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5ee8bf18"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse encoded +</span></div><a class="self" href="#s-5ee8bf18" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7e73b2ea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse space</span></div><a class="self" href="#s-7e73b2ea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9dd8fb78"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse %20</span></div><a class="self" href="#s-9dd8fb78" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4ff2063c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse \0</span></div><a class="self" href="#s-4ff2063c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-49125c31"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse %00</span></div><a class="self" href="#s-49125c31" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0f130dba"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse ⎄</span></div><a class="self" href="#s-0f130dba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7ecfd685"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse %e2%8e%84</span></div><a class="self" href="#s-7ecfd685" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-46a79d24"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse 💩</span></div><a class="self" href="#s-46a79d24" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5519b438"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse %f0%9f%92%a9</span></div><a class="self" href="#s-5519b438" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-03f5aa10"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Constructor with sequence of sequences of strings</span></div><a class="self" href="#s-03f5aa10" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ea4e57fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with object with +</span></div><a class="self" href="#s-ea4e57fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1797897d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with object with two keys</span></div><a class="self" href="#s-1797897d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3998d662"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with array with two keys</span></div><a class="self" href="#s-3998d662" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e7bba9dd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with 2 unpaired surrogates (no trailing)</span></div><a class="self" href="#s-e7bba9dd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b32369bf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with 3 unpaired surrogates (no leading)</span></div><a class="self" href="#s-b32369bf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-42f4e009"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with object with NULL, non-ASCII, and surrogate keys</span></div><a class="self" href="#s-42f4e009" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-83cc19c1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Custom [Symbol.iterator]</span></div><a class="self" href="#s-83cc19c1" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/url/urlsearchparams-constructor.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>27</b> / 27</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-7c7b084f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Basic URLSearchParams construction</span></div><a class="self" href="#s-7c7b084f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-395d9e02"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, no arguments</span></div><a class="self" href="#s-395d9e02" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0975cf96"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, remove leading &quot;?&quot;</span></div><a class="self" href="#s-0975cf96" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-28d09304"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, DOMException as argument</span></div><a class="self" href="#s-28d09304" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a36f43ba"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, empty string as argument</span></div><a class="self" href="#s-a36f43ba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-96b55054"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, {} as argument</span></div><a class="self" href="#s-96b55054" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a299281c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, string.</span></div><a class="self" href="#s-a299281c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-74c8c1c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, object.</span></div><a class="self" href="#s-74c8c1c9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7e205837"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">URLSearchParams constructor, FormData.</span></div><a class="self" href="#s-7e205837" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b18dbdd8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse +</span></div><a class="self" href="#s-b18dbdd8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-74541e9f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse encoded +</span></div><a class="self" href="#s-74541e9f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-440391eb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse space</span></div><a class="self" href="#s-440391eb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-329e5749"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse %20</span></div><a class="self" href="#s-329e5749" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-41910374"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse \0</span></div><a class="self" href="#s-41910374" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4388907c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse %00</span></div><a class="self" href="#s-4388907c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-744e59c3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse ⎄</span></div><a class="self" href="#s-744e59c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-77d231b3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse %e2%8e%84</span></div><a class="self" href="#s-77d231b3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-196c1481"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse 💩</span></div><a class="self" href="#s-196c1481" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f3fc3907"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parse %f0%9f%92%a9</span></div><a class="self" href="#s-f3fc3907" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c9c50f26"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Constructor with sequence of sequences of strings</span></div><a class="self" href="#s-c9c50f26" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a8cdcc18"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with object with +</span></div><a class="self" href="#s-a8cdcc18" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3de4b346"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with object with two keys</span></div><a class="self" href="#s-3de4b346" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0e6c2e07"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with array with two keys</span></div><a class="self" href="#s-0e6c2e07" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5c98dab4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with 2 unpaired surrogates (no trailing)</span></div><a class="self" href="#s-5c98dab4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3f3e3865"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with 3 unpaired surrogates (no leading)</span></div><a class="self" href="#s-3f3e3865" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fd4b1023"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Construct with object with NULL, non-ASCII, and surrogate keys</span></div><a class="self" href="#s-fd4b1023" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9785354b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Custom [Symbol.iterator]</span></div><a class="self" href="#s-9785354b" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

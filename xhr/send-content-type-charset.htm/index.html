@@ -32,7 +32,30 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 18 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-a3c7202f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">header with invalid MIME type is not changed</span></div><a class="self" href="#s-a3c7202f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d738d3b9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">header with invalid MIME type (empty string) is not changed</span></div><a class="self" href="#s-d738d3b9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f28dc79b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">known charset but bogus header - missing MIME type</span></div><a class="self" href="#s-f28dc79b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aa4659e7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">bogus charset and bogus header - missing MIME type</span></div><a class="self" href="#s-aa4659e7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9aac7683"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If charset= param is UTF-8 (case-insensitive), it should not be changed</span></div><a class="self" href="#s-9aac7683" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-517923a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If no charset= param is given, implementation should not add one - unknown MIME</span></div><a class="self" href="#s-517923a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ec4069f4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If no charset= param is given, implementation should not add one - known MIME</span></div><a class="self" href="#s-ec4069f4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9102cebc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If no charset= param is given, implementation should not add one - known MIME, unknown param, two spaces</span></div><a class="self" href="#s-9102cebc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3da73cc4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">charset given but wrong, fix it (unknown MIME, bogus charset)</span></div><a class="self" href="#s-3da73cc4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7a22aaba"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If charset= param is UTF-8 (case-insensitive), it should not be changed (bogus charset)</span></div><a class="self" href="#s-7a22aaba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-439f4e44"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">charset given but wrong, fix it (known MIME, actual charset)</span></div><a class="self" href="#s-439f4e44" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b13ac989"><details><summary><span class="mark">FAIL</span><span class="sub-name">Multiple non-UTF-8 charset parameters deduplicate, bogus parameter dropped</span></summary><pre class="msg">assert_equals: expected &quot;text/x-pink-unicorn;charset=UTF-8&quot; but got &quot;text/x-pink-unicorn;charset=UTF-8;charset=bogus;charset=ascii&quot;</pre></details><a class="self" href="#s-b13ac989" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f153b79c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">No content type set, give MIME and charset</span></div><a class="self" href="#s-f153b79c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7b8ce775"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">charset with leading space that is UTF-8 does change</span></div><a class="self" href="#s-7b8ce775" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dd3a031f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">charset with trailing space that is UTF-8 does not change</span></div><a class="self" href="#s-dd3a031f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1b1a2e65"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">charset in double quotes that is UTF-8 does not change</span></div><a class="self" href="#s-1b1a2e65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ce082aec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">charset in double quotes with space</span></div><a class="self" href="#s-ce082aec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c6dd8125"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">charset in double quotes with backslashes that is UTF-8 does not change</span></div><a class="self" href="#s-c6dd8125" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eb7515ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">unknown parameters need to be preserved</span></div><a class="self" href="#s-eb7515ae" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

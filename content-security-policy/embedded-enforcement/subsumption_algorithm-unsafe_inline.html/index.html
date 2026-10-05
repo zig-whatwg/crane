@@ -32,7 +32,33 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 11 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/content-security-policy/embedded-enforcement/subsumption_algorithm-unsafe_inline.html?1-8</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 8</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-d5d24420"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;strict-dynamic&#39; is ineffective for `style-src`.</span></div><a class="self" href="#s-d5d24420" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-28c7c2de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;unsafe-inline&#39; is properly subsumed in `style-src`.</span></div><a class="self" href="#s-28c7c2de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6d708622"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;unsafe-inline&#39; is only ineffective if the effective returned csp has nonces in `style-src`.</span></div><a class="self" href="#s-6d708622" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e81e01d8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;unsafe-inline&#39; is only ineffective if the effective returned csp has hashes in `style-src`.</span></div><a class="self" href="#s-e81e01d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-94fdad43"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned csp does not have to allow &#39;unsafe-inline&#39; in `style-src` to be subsumed.</span></div><a class="self" href="#s-94fdad43" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-be104d2e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;unsafe-inline&#39; does not matter if returned csp is effectively `none`.</span></div><a class="self" href="#s-be104d2e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a0f10ab1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;unsafe-inline&#39; is properly subsumed in `script-src`.</span></div><a class="self" href="#s-a0f10ab1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4333ac1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Returned csp only loads &#39;unsafe-inline&#39; scripts with &#39;nonce-abc&#39;.</span></div><a class="self" href="#s-c4333ac1" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/content-security-policy/embedded-enforcement/subsumption_algorithm-unsafe_inline.html?9-last</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 8</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-e9a913b8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;unsafe-inline&#39; is ineffective when nonces are present.</span></div><a class="self" href="#s-e9a913b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-85596eae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;unsafe-inline&#39; is only ineffective if the effective returned csp has hashes in `script-src`.</span></div><a class="self" href="#s-85596eae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9a6662c0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Required csp allows `strict-dynamic`, but retuned csp does.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-9a6662c0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0f9e1ed6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Required csp does not allow `unsafe-inline`, but retuned csp does.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-0f9e1ed6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c211ea8c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Returned csp allows a nonce.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-c211ea8c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-30e39e92"><details><summary><span class="mark">FAIL</span><span class="sub-name">Returned csp allows a hash.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-30e39e92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8f004a65"><details><summary><span class="mark">FAIL</span><span class="sub-name">Effective returned csp allows &#39;unsafe-inline&#39;</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-8f004a65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-10c8bf40"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Effective returned csp does not allow &#39;sha512-321cba&#39; hash.</span></div><a class="self" href="#s-10c8bf40" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,105 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 15 passed, 22 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-aa1b732d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-aa1b732d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a935702a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (table_set.wast:1)</span></div><a class="self" href="#s-a935702a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1e86434d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation fails (table_set.wast:54)</span></div><a class="self" href="#s-1e86434d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-78c5dd1f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#4 Test that WebAssembly compilation fails (table_set.wast:63)</span></div><a class="self" href="#s-78c5dd1f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-22d5a2b1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#5 Test that WebAssembly compilation fails (table_set.wast:72)</span></div><a class="self" href="#s-22d5a2b1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2656e35c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#6 Test that WebAssembly compilation fails (table_set.wast:81)</span></div><a class="self" href="#s-2656e35c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cdb34ea3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#7 Test that WebAssembly compilation fails (table_set.wast:90)</span></div><a class="self" href="#s-cdb34ea3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-53f31816"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#8 Test that WebAssembly compilation fails (table_set.wast:100)</span></div><a class="self" href="#s-53f31816" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ce632a7d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#9 Test that WebAssembly compilation fails (table_set.wast:111)</span></div><a class="self" href="#s-ce632a7d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f967ea94"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-f967ea94" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1e1499d9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#11 Test that WebAssembly compilation succeeds (table_set.wast:1)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-1e1499d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7e223408"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-7e223408" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ea1ebad5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (table_set.wast:29)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-externref&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:10:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-ea1ebad5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5cf02d9f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly code returns a specific result (table_set.wast:30)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-externref&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:13:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-5cf02d9f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e706956e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that a WebAssembly code returns a specific result (table_set.wast:31)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-externref&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:16:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-e706956e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-70f10ea6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#16 Test that a WebAssembly code returns a specific result (table_set.wast:32)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-externref&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-70f10ea6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7294cb1b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#17 Test that a WebAssembly code returns a specific result (table_set.wast:33)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-externref&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-7294cb1b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d29812b7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#18 Test that a WebAssembly code returns a specific result (table_set.wast:35)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-funcref&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:25:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-d29812b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2c39babe"><details><summary><span class="mark">FAIL</span><span class="sub-name">#19 Test that a WebAssembly code returns a specific result (table_set.wast:36)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-funcref-from&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:28:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-2c39babe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5e18112e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#20 Test that a WebAssembly code returns a specific result (table_set.wast:37)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;is_null-funcref&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:31:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-5e18112e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0d6f5035"><details><summary><span class="mark">FAIL</span><span class="sub-name">#21 Test that a WebAssembly code returns a specific result (table_set.wast:38)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-funcref&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:34:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-0d6f5035" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0cddf58d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#22 Test that a WebAssembly code returns a specific result (table_set.wast:39)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;get-funcref&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:37:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-0cddf58d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aaf4a3da"><details><summary><span class="mark">FAIL</span><span class="sub-name">#23 Test that a WebAssembly code traps (table_set.wast:41)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-externref&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:40:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-aaf4a3da" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-599aa739"><details><summary><span class="mark">FAIL</span><span class="sub-name">#24 Test that a WebAssembly code traps (table_set.wast:42)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-funcref&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:43:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-599aa739" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b830750c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#25 Test that a WebAssembly code traps (table_set.wast:43)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-externref&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:46:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-b830750c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-86e8cfdd"><details><summary><span class="mark">FAIL</span><span class="sub-name">#26 Test that a WebAssembly code traps (table_set.wast:44)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-funcref&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:49:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-86e8cfdd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f9be6e4e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#27 Test that a WebAssembly code traps (table_set.wast:46)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-externref&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:52:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-f9be6e4e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-49837529"><details><summary><span class="mark">FAIL</span><span class="sub-name">#28 Test that a WebAssembly code traps (table_set.wast:47)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-funcref-from&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:55:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-49837529" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bc2150d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#29 Test that a WebAssembly code traps (table_set.wast:48)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-externref&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:58:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-bc2150d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bb2bb394"><details><summary><span class="mark">FAIL</span><span class="sub-name">#30 Test that a WebAssembly code traps (table_set.wast:49)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;set-funcref-from&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_set_wast_js (http://web-platform.test:8000/wasm/core/js/table_set.wast.js:61:1)
+    at http://web-platform.test:8000/wasm/core/js/table_set.wast.js:84:3 expected true got false</pre></details><a class="self" href="#s-bb2bb394" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e635d7f2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#31 Test that WebAssembly compilation fails (table_set.wast:54)</span></div><a class="self" href="#s-e635d7f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-321bb45a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#32 Test that WebAssembly compilation fails (table_set.wast:63)</span></div><a class="self" href="#s-321bb45a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-45cf05f3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#33 Test that WebAssembly compilation fails (table_set.wast:72)</span></div><a class="self" href="#s-45cf05f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-39982a3f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#34 Test that WebAssembly compilation fails (table_set.wast:81)</span></div><a class="self" href="#s-39982a3f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8e21e8f6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#35 Test that WebAssembly compilation fails (table_set.wast:90)</span></div><a class="self" href="#s-8e21e8f6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9516fa8d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#36 Test that WebAssembly compilation fails (table_set.wast:100)</span></div><a class="self" href="#s-9516fa8d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5d5baeae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#37 Test that WebAssembly compilation fails (table_set.wast:111)</span></div><a class="self" href="#s-5d5baeae" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

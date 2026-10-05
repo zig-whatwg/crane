@@ -32,7 +32,18 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 6 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-2cede532"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest: send() - non same-origin (mailto:test@example.org)</span></div><a class="self" href="#s-2cede532" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e78a9fbf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest: send() - non same-origin (tel:+31600000000)</span></div><a class="self" href="#s-e78a9fbf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9b7ab3aa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest: send() - non same-origin (http://www1.web-platform.test:8000)</span></div><a class="self" href="#s-9b7ab3aa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2b12ab41"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest: send() - non same-origin (javascript:alert(&#39;FAIL&#39;))</span></div><a class="self" href="#s-2b12ab41" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4d344a39"><details><summary><span class="mark">FAIL</span><span class="sub-name">XMLHttpRequest: send() - non same-origin (folder.txt)</span></summary><pre class="msg">assert_throws_dom: function &quot;function() { client.send() }&quot; did not throw</pre></details><a class="self" href="#s-4d344a39" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-707c55d3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest: send() - non same-origin (about:blank)</span></div><a class="self" href="#s-707c55d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-06ab64bc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest: send() - non same-origin (blob:bogusidentifier)</span></div><a class="self" href="#s-06ab64bc" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

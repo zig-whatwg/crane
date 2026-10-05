@@ -32,7 +32,45 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 24 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/response/response-consume-empty.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-26ee27fa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume response&#39;s body as text</span></div><a class="self" href="#s-26ee27fa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b0dafa99"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume response&#39;s body as blob</span></div><a class="self" href="#s-b0dafa99" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d57748ef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume response&#39;s body as arrayBuffer</span></div><a class="self" href="#s-d57748ef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1bcb6f4c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume response&#39;s body as json (error case)</span></div><a class="self" href="#s-1bcb6f4c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c317aa5f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Consume response&#39;s body as formData with correct multipart type (error case)</span></summary><pre class="msg">assert_unreached: Should have rejected: undefined Reached unreachable code</pre></details><a class="self" href="#s-c317aa5f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0600dd91"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume response&#39;s body as formData with correct urlencoded type</span></div><a class="self" href="#s-0600dd91" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dbd25859"><details><summary><span class="mark">FAIL</span><span class="sub-name">Consume response&#39;s body as formData without correct type (error case)</span></summary><pre class="msg">assert_unreached: Should have rejected: undefined Reached unreachable code</pre></details><a class="self" href="#s-dbd25859" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-56c3f636"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty blob response body as arrayBuffer</span></div><a class="self" href="#s-56c3f636" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d9e27344"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty text response body as arrayBuffer</span></div><a class="self" href="#s-d9e27344" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-efd96395"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty blob response body as text</span></div><a class="self" href="#s-efd96395" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9be99f74"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty text response body as text</span></div><a class="self" href="#s-9be99f74" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-560a5461"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty URLSearchParams response body as text</span></div><a class="self" href="#s-560a5461" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cfb61350"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty FormData response body as text</span></div><a class="self" href="#s-cfb61350" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9a32f938"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty ArrayBuffer response body as text</span></div><a class="self" href="#s-9a32f938" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/response/response-consume-empty.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-9598e3e8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume response&#39;s body as text</span></div><a class="self" href="#s-9598e3e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2c6ddb62"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume response&#39;s body as blob</span></div><a class="self" href="#s-2c6ddb62" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-397173b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume response&#39;s body as arrayBuffer</span></div><a class="self" href="#s-397173b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6a1d4303"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume response&#39;s body as json (error case)</span></div><a class="self" href="#s-6a1d4303" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-84c8dae6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Consume response&#39;s body as formData with correct multipart type (error case)</span></summary><pre class="msg">assert_unreached: Should have rejected: undefined Reached unreachable code</pre></details><a class="self" href="#s-84c8dae6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-15ca189e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume response&#39;s body as formData with correct urlencoded type</span></div><a class="self" href="#s-15ca189e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3c7976d6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Consume response&#39;s body as formData without correct type (error case)</span></summary><pre class="msg">assert_unreached: Should have rejected: undefined Reached unreachable code</pre></details><a class="self" href="#s-3c7976d6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fea65074"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty blob response body as arrayBuffer</span></div><a class="self" href="#s-fea65074" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8b6902ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty text response body as arrayBuffer</span></div><a class="self" href="#s-8b6902ca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2888e673"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty blob response body as text</span></div><a class="self" href="#s-2888e673" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6a15441b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty text response body as text</span></div><a class="self" href="#s-6a15441b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fd42a138"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty URLSearchParams response body as text</span></div><a class="self" href="#s-fd42a138" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-44ced21e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty FormData response body as text</span></div><a class="self" href="#s-44ced21e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-afe54d08"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Consume empty ArrayBuffer response body as text</span></div><a class="self" href="#s-afe54d08" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,32 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 9 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/webidl/ecmascript-binding/global-object-implicit-this-value.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>6</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-0c2ecf87"><details><summary><span class="mark">FAIL</span><span class="sub-name">Global object&#39;s getter throws when called on incompatible object</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { Object.create(globalThis).self; }&quot; did not throw</pre></details><a class="self" href="#s-0c2ecf87" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c198cab1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s setter throws when called on incompatible object</span></div><a class="self" href="#s-c198cab1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-81ebfda9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Global object&#39;s operation throws when called on incompatible object</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { Object.create(globalThis).setInterval(() =&gt; {}, 100); }&quot; did not throw</pre></details><a class="self" href="#s-81ebfda9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3fb261ce"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s getter throws when called on incompatible object (document.all)</span></div><a class="self" href="#s-3fb261ce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-364558b2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s setter throws when called on incompatible object (document.all)</span></div><a class="self" href="#s-364558b2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a7656784"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s operation throws when called on incompatible object (document.all)</span></div><a class="self" href="#s-a7656784" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5fb33116"><details><summary><span class="mark">FAIL</span><span class="sub-name">Global object&#39;s getter works when called on null / undefined</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;call&#39;)</pre></details><a class="self" href="#s-5fb33116" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f0373f6d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s setter works when called on null / undefined</span></div><a class="self" href="#s-f0373f6d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bfa3a9b0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s operation works when called on null / undefined</span></div><a class="self" href="#s-bfa3a9b0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/webidl/ecmascript-binding/global-object-implicit-this-value.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-d99d42a6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Global object&#39;s getter throws when called on incompatible object</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { new Proxy(globalThis, {}).onerror; }&quot; did not throw</pre></details><a class="self" href="#s-d99d42a6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8b6c5956"><details><summary><span class="mark">FAIL</span><span class="sub-name">Global object&#39;s setter throws when called on incompatible object</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { new Proxy(globalThis, {}).ononline = ononline; }&quot; did not throw</pre></details><a class="self" href="#s-8b6c5956" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0193b136"><details><summary><span class="mark">FAIL</span><span class="sub-name">Global object&#39;s operation throws when called on incompatible object</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { Object.create(globalThis).setInterval(() =&gt; {}, 100); }&quot; did not throw</pre></details><a class="self" href="#s-0193b136" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1b08c634"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s getter works when called on null / undefined</span></div><a class="self" href="#s-1b08c634" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3dff78f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s setter works when called on null / undefined</span></div><a class="self" href="#s-3dff78f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3d329fae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Global object&#39;s operation works when called on null / undefined</span></div><a class="self" href="#s-3d329fae" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,14 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-ae1f5dc0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Non-bubbling composed event is retargeted after listenerless dispatch</span></summary><pre class="msg">assert_equals: target is retargeted to the host expected Element node &lt;div&gt;&lt;/div&gt; but got Element node &lt;div&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-ae1f5dc0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ca5eff7c"><details><summary><span class="mark">FAIL</span><span class="sub-name">relatedTarget is preserved after listenerless dispatch</span></summary><pre class="msg">assert_equals: target is retargeted to the host expected Element node &lt;div&gt;&lt;/div&gt; but got Element node &lt;div&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-ca5eff7c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d1ef4082"><details><summary><span class="mark">FAIL</span><span class="sub-name">relatedTarget remains retargetable after listenerless dispatch</span></summary><pre class="msg">assert_equals: relatedTarget is initially retargeted to the second host expected Element node &lt;div&gt;&lt;/div&gt; but got Element node &lt;div&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-d1ef4082" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

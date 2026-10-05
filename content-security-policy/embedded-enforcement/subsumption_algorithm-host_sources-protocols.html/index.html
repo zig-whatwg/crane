@@ -32,7 +32,22 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 7 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-7a4cdfc2"><details><summary><span class="mark">FAIL</span><span class="sub-name">`https` is more restrictive than `http`.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-7a4cdfc2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-705d5d46"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The reverse allows iframe be to be loaded.</span></div><a class="self" href="#s-705d5d46" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-db5dc68f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Matching `https` protocols.</span></div><a class="self" href="#s-db5dc68f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b795a307"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`http:` should subsume all host source expressions with this protocol.</span></div><a class="self" href="#s-b795a307" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f926430c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`http:` should subsume all host source expressions with `https:`.</span></div><a class="self" href="#s-f926430c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8e1a29d0"><details><summary><span class="mark">FAIL</span><span class="sub-name">`http:` does not subsume other protocols.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-8e1a29d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dc7db4d7"><details><summary><span class="mark">FAIL</span><span class="sub-name">If scheme source is present in returned csp, it must be specified in required csp too.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-dc7db4d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-23e28423"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`http:` subsumes other `http:` source expression.</span></div><a class="self" href="#s-23e28423" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-12c2d841"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`http:` subsumes other `https:` source expression and expressions with `http:`.</span></div><a class="self" href="#s-12c2d841" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5b954207"><details><summary><span class="mark">FAIL</span><span class="sub-name">All scheme sources must be subsumed.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-5b954207" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9dbe7e49"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">All scheme sources are subsumed by their stronger variants.</span></div><a class="self" href="#s-9dbe7e49" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

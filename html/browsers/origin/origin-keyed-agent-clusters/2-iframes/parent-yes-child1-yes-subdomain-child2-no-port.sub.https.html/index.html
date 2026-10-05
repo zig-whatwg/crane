@@ -32,7 +32,26 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-eb098049"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parent to child1: messageerror event must occur</span></div><a class="self" href="#s-eb098049" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dd2fd613"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parent to child1: setting document.domain must not give sync access</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        frameWindow.document;
+      }&quot; did not throw</pre></details><a class="self" href="#s-dd2fd613" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bbb2a8e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parent to child2: messageerror event must occur</span></div><a class="self" href="#s-bbb2a8e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f53cf23b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parent to child2: setting document.domain must not give sync access</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+        frameWindow.document;
+      }&quot; did not throw</pre></details><a class="self" href="#s-f53cf23b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-58aed7fa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">child1 to child2: messageerror event must occur</span></div><a class="self" href="#s-58aed7fa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a1f96be6"><details><summary><span class="mark">FAIL</span><span class="sub-name">child1 to child2: setting document.domain must not give sync access</span></summary><pre class="msg">assert_equals: expected &quot;SecurityError&quot; but got &quot;accessed document successfully&quot;</pre></details><a class="self" href="#s-a1f96be6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ce3eb7f4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">child2 to child1: messageerror event must occur</span></div><a class="self" href="#s-ce3eb7f4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f1ecaf6b"><details><summary><span class="mark">FAIL</span><span class="sub-name">child2 to child1: setting document.domain must not give sync access</span></summary><pre class="msg">assert_equals: expected &quot;SecurityError&quot; but got &quot;accessed document successfully&quot;</pre></details><a class="self" href="#s-f1ecaf6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-411a69a8"><details><summary><span class="mark">FAIL</span><span class="sub-name">parent: originAgentCluster must equal true</span></summary><pre class="msg">assert_equals: expected true but got false</pre></details><a class="self" href="#s-411a69a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-98bc38e3"><details><summary><span class="mark">FAIL</span><span class="sub-name">child1: originAgentCluster must equal true</span></summary><pre class="msg">assert_equals: expected true but got false</pre></details><a class="self" href="#s-98bc38e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b6ab1ab9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">child2: originAgentCluster must equal false</span></div><a class="self" href="#s-b6ab1ab9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

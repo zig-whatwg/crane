@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-84aff229"><details><summary><span class="mark">FAIL</span><span class="sub-name">HTML parser must not instantiate custom elements inside template elements</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;firstChild&#39;)</pre></details><a class="self" href="#s-84aff229" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d8631528"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">HTML parser must not use the registry of the owner element&#39;s document inside an iframe</span></div><a class="self" href="#s-d8631528" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-62b3e6fd"><details><summary><span class="mark">FAIL</span><span class="sub-name">HTML parser must use the registry of the content document inside an iframe</span></summary><pre class="msg">assert_true: A custom element must be instantiated inside an iframe using the registry of the content document expected true got false</pre></details><a class="self" href="#s-62b3e6fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-75af23ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">HTML parser must not instantiate a custom element defined inside an frame in frame element&#39;s owner document</span></div><a class="self" href="#s-75af23ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ad81fa6d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">HTML parser must use the registry of window.document in a document created by DOMParser</span></div><a class="self" href="#s-ad81fa6d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bfcf1065"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">HTML parser must use the registry of window.document in a document created by document.implementation.createXHTMLDocument()</span></div><a class="self" href="#s-bfcf1065" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0d98186a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">HTML parser must use the registry of window.document in a document created by new Document</span></div><a class="self" href="#s-0d98186a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9e34bcd3"><details><summary><span class="mark">FAIL</span><span class="sub-name">HTML parser must use the registry of window.document in a document created by XMLHttpRequest</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of null (reading &#39;querySelector&#39;)&quot;</pre></details><a class="self" href="#s-9e34bcd3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-560aa1d4"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.write() must not instantiate a custom element without a defined insertion point</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-560aa1d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-734d7256"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.writeln() must not instantiate a custom element without a defined insertion point</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-734d7256" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

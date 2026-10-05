@@ -32,7 +32,41 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 24 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idb-explicit-commit.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 12</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-b0d53e19"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Explicitly committed data can be read back out.</span></div><a class="self" href="#s-b0d53e19" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-33e97cf0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">commit() on a version change transaction does not cause errors.</span></div><a class="self" href="#s-33e97cf0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5b833e9a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A committed transaction becomes inactive immediately.</span></div><a class="self" href="#s-5b833e9a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-db133b80"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A committed transaction is inactive in future request callbacks.</span></div><a class="self" href="#s-db133b80" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f25d21e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Puts issued after commit are not fulfilled.</span></div><a class="self" href="#s-f25d21e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b681356c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling commit on an aborted transaction throws.</span></div><a class="self" href="#s-b681356c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c9f59eb5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling commit on a committed transaction throws.</span></div><a class="self" href="#s-c9f59eb5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5bf2b29c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling abort on a committed transaction throws and does not prevent persisting the data.</span></div><a class="self" href="#s-5bf2b29c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d8c92b52"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling txn.commit() when txn is inactive should throw.</span></div><a class="self" href="#s-d8c92b52" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d9eda10c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Transactions with same scope should stay in program order, even if one calls commit.</span></div><a class="self" href="#s-d9eda10c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4a2191c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Transactions that explicitly commit and have errors should abort.</span></div><a class="self" href="#s-c4a2191c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cfc3675"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Transactions that handle all errors properly should behave as expected when an explicit commit is called in an onerror handler.</span></div><a class="self" href="#s-3cfc3675" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idb-explicit-commit.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 12</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-9c1bedde"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Explicitly committed data can be read back out.</span></div><a class="self" href="#s-9c1bedde" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4b796431"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">commit() on a version change transaction does not cause errors.</span></div><a class="self" href="#s-4b796431" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9545cf95"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A committed transaction becomes inactive immediately.</span></div><a class="self" href="#s-9545cf95" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d255ab50"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A committed transaction is inactive in future request callbacks.</span></div><a class="self" href="#s-d255ab50" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-af11583b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Puts issued after commit are not fulfilled.</span></div><a class="self" href="#s-af11583b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4ad9f1bc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling commit on an aborted transaction throws.</span></div><a class="self" href="#s-4ad9f1bc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bbc4f732"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling commit on a committed transaction throws.</span></div><a class="self" href="#s-bbc4f732" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-10efbdca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling abort on a committed transaction throws and does not prevent persisting the data.</span></div><a class="self" href="#s-10efbdca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8e4d0a2c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling txn.commit() when txn is inactive should throw.</span></div><a class="self" href="#s-8e4d0a2c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6bcfc9d6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Transactions with same scope should stay in program order, even if one calls commit.</span></div><a class="self" href="#s-6bcfc9d6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e0262706"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Transactions that explicitly commit and have errors should abort.</span></div><a class="self" href="#s-e0262706" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-120ba178"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Transactions that handle all errors properly should behave as expected when an explicit commit is called in an onerror handler.</span></div><a class="self" href="#s-120ba178" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

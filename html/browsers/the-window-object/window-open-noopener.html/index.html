@@ -32,7 +32,39 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 11 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/html/browsers/the-window-object/window-open-noopener.html?_parent</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-5a3e84e4"><details><summary><span class="mark">FAIL</span><span class="sub-name">noopener window.open targeting _parent</span></summary><pre class="msg">assert_equals: Should have reused the existing window expected object &quot;[object Window]&quot; but got null</pre></details><a class="self" href="#s-5a3e84e4" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/html/browsers/the-window-object/window-open-noopener.html?_self</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-6e871812"><details><summary><span class="mark">FAIL</span><span class="sub-name">noopener window.open targeting _self</span></summary><pre class="msg">assert_equals: Should have reused the existing window expected object &quot;[object Window]&quot; but got null</pre></details><a class="self" href="#s-6e871812" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/html/browsers/the-window-object/window-open-noopener.html?_top</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-10ba9f8e"><details><summary><span class="mark">FAIL</span><span class="sub-name">noopener window.open targeting _top</span></summary><pre class="msg">assert_equals: Should have reused the existing window expected object &quot;[object Window]&quot; but got null</pre></details><a class="self" href="#s-10ba9f8e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/html/browsers/the-window-object/window-open-noopener.html?indexed</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-2093c956"><details><summary><span class="mark">FAIL</span><span class="sub-name">window.open() with &#39;noopener&#39; should reuse existing target</span></summary><pre class="msg">assert_equals: Should still have opener expected true but got false</pre></details><a class="self" href="#s-2093c956" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f973492f"><details><summary><span class="mark">FAIL</span><span class="sub-name">noopener=1 means the same as noopener</span></summary><pre class="msg">assert_equals: Should still have opener expected true but got false</pre></details><a class="self" href="#s-f973492f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-192e58a5"><details><summary><span class="mark">FAIL</span><span class="sub-name">noopener=true means the same as noopener</span></summary><pre class="msg">assert_equals: Should still have opener expected true but got false</pre></details><a class="self" href="#s-192e58a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ef2be296"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">noopener=0 means lack of noopener</span></div><a class="self" href="#s-ef2be296" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1de02230"><details><summary><span class="mark">FAIL</span><span class="sub-name">noopener separated only by spaces should work</span></summary><pre class="msg">assert_equals: Should still have opener expected true but got false</pre></details><a class="self" href="#s-1de02230" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3f53717d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Trailing noopener should work</span></summary><pre class="msg">assert_equals: Should still have opener expected true but got false</pre></details><a class="self" href="#s-3f53717d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ed243b86"><details><summary><span class="mark">FAIL</span><span class="sub-name">Leading noopener should work</span></summary><pre class="msg">assert_equals: Should still have opener expected true but got false</pre></details><a class="self" href="#s-ed243b86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0575dacd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Interior noopener should work</span></summary><pre class="msg">assert_equals: Should still have opener expected true but got false</pre></details><a class="self" href="#s-0575dacd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-906fb741"><details><summary><span class="mark">FAIL</span><span class="sub-name">noreferrer should also suppress opener when reusing existing target</span></summary><pre class="msg">assert_equals: Should still have opener expected true but got false</pre></details><a class="self" href="#s-906fb741" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

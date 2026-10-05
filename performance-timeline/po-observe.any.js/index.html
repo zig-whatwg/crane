@@ -32,7 +32,29 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 10 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/performance-timeline/po-observe.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>6</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-f99f650e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">entryTypes must be a sequence or throw a TypeError</span></div><a class="self" href="#s-f99f650e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d887a813"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Empty sequence entryTypes does not throw an exception.</span></div><a class="self" href="#s-d887a813" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-48c6251c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Unknown entryTypes do not throw an exception.</span></div><a class="self" href="#s-48c6251c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8ac4db10"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Filter unsupported entryType entryType names within the entryTypes sequence</span></div><a class="self" href="#s-8ac4db10" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-14df3328"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check observer callback parameter and this values</span></div><a class="self" href="#s-14df3328" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d8d8eeed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">replace observer if already present</span></div><a class="self" href="#s-d8d8eeed" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/performance-timeline/po-observe.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-c36a7a92"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">entryTypes must be a sequence or throw a TypeError</span></div><a class="self" href="#s-c36a7a92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-72459631"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Empty sequence entryTypes does not throw an exception.</span></div><a class="self" href="#s-72459631" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9376d721"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Unknown entryTypes do not throw an exception.</span></div><a class="self" href="#s-9376d721" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f910f052"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Filter unsupported entryType entryType names within the entryTypes sequence</span></div><a class="self" href="#s-f910f052" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2c639de4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check observer callback parameter and this values</span></summary><pre class="msg">self.performance.clearMarks is not a function</pre></details><a class="self" href="#s-2c639de4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f89f5771"><details><summary><span class="mark">FAIL</span><span class="sub-name">replace observer if already present</span></summary><pre class="msg">self.performance.clearMarks is not a function</pre></details><a class="self" href="#s-f89f5771" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

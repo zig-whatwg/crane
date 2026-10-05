@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-aa8f0937"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">stepDown() on input with no initial or min values</span></div><a class="self" href="#s-aa8f0937" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f49aa040"><details><summary><span class="mark">FAIL</span><span class="sub-name">stepDown() on input with no initial value and positive min value</span></summary><pre class="msg">assert_equals: expected &quot;7&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-f49aa040" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f1095801"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">stepDown() on input with no initial value and negative min value</span></div><a class="self" href="#s-f1095801" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-66cbffd2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">stepDown() on input with initial value equal to min value</span></div><a class="self" href="#s-66cbffd2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-102da8d3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">stepDown() on input with initial value less than min value</span></div><a class="self" href="#s-102da8d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5d934e69"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">stepDown() on input with initial value greater than min value</span></div><a class="self" href="#s-5d934e69" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

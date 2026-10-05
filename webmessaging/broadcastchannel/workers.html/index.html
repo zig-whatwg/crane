@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 10 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-1ca39713"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BroadcastChannel works in workers</span></div><a class="self" href="#s-1ca39713" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4d85d005"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BroadcastChannel works in shared workers</span></div><a class="self" href="#s-4d85d005" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-961fcfc1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Closing and re-opening a channel works.</span></div><a class="self" href="#s-961fcfc1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0d996b8d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BroadcastChannel created after a worker self.close()</span></div><a class="self" href="#s-0d996b8d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-42960868"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BroadcastChannel messages from closed worker to parent should be ignored (BC created before closing)</span></div><a class="self" href="#s-42960868" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9e656c40"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BroadcastChannel messages from closed worker to parent should be ignored (BC created after closing)</span></div><a class="self" href="#s-9e656c40" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-efbdb081"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BroadcastChannel messages from parent to closed worker should be ignored (BC created before closing)</span></div><a class="self" href="#s-efbdb081" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c333db45"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BroadcastChannel messages from parent to closed worker should be ignored (BC created after closing)</span></div><a class="self" href="#s-c333db45" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a05f65d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BroadcastChannel messages within closed worker should be ignored (BCs created before closing)</span></div><a class="self" href="#s-a05f65d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-894eca77"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BroadcastChannel messages within closed worker should be ignored (BCs created after closing)</span></div><a class="self" href="#s-894eca77" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

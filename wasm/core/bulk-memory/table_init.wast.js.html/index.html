@@ -32,7 +32,787 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 746 passed, 196 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-72b86dbf"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-72b86dbf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5a22391c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#110 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-5a22391c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f4e41887"><details><summary><span class="mark">FAIL</span><span class="sub-name">#111 Test that WebAssembly compilation succeeds (table_init.wast:6)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-f4e41887" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-66b5c074"><details><summary><span class="mark">FAIL</span><span class="sub-name">#112 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-66b5c074" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-31ec1f06"><details><summary><span class="mark">FAIL</span><span class="sub-name">#114 Test that WebAssembly instantiation succeeds (table_init.wast:15)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;a&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:16:10)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-31ec1f06" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9486c3c0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#115 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;test&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-9486c3c0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a0ea376c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#116 Test that a WebAssembly code traps (table_init.wast:43)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-a0ea376c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ed09d0c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#117 Test that a WebAssembly code traps (table_init.wast:44)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:25:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-ed09d0c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cc7a377d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#118 Test that a WebAssembly code returns a specific result (table_init.wast:45)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:28:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-cc7a377d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fd5e2610"><details><summary><span class="mark">FAIL</span><span class="sub-name">#119 Test that a WebAssembly code returns a specific result (table_init.wast:46)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:31:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-fd5e2610" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9d9b76d7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#120 Test that a WebAssembly code returns a specific result (table_init.wast:47)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:34:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-9d9b76d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fcc739ff"><details><summary><span class="mark">FAIL</span><span class="sub-name">#121 Test that a WebAssembly code returns a specific result (table_init.wast:48)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:37:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-fcc739ff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-34e3b5b4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#122 Test that a WebAssembly code traps (table_init.wast:49)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:40:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-34e3b5b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fb8faf9d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#123 Test that a WebAssembly code returns a specific result (table_init.wast:50)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:43:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-fb8faf9d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-284d0207"><details><summary><span class="mark">FAIL</span><span class="sub-name">#124 Test that a WebAssembly code returns a specific result (table_init.wast:51)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:46:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-284d0207" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d613a820"><details><summary><span class="mark">FAIL</span><span class="sub-name">#125 Test that a WebAssembly code returns a specific result (table_init.wast:52)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:49:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d613a820" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0df5d4bc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#126 Test that a WebAssembly code returns a specific result (table_init.wast:53)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:52:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-0df5d4bc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2014fd86"><details><summary><span class="mark">FAIL</span><span class="sub-name">#127 Test that a WebAssembly code traps (table_init.wast:54)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:55:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2014fd86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-654e3b97"><details><summary><span class="mark">FAIL</span><span class="sub-name">#128 Test that a WebAssembly code returns a specific result (table_init.wast:55)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:58:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-654e3b97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f6583c6b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#129 Test that a WebAssembly code returns a specific result (table_init.wast:56)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:61:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-f6583c6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c5e07319"><details><summary><span class="mark">FAIL</span><span class="sub-name">#130 Test that a WebAssembly code returns a specific result (table_init.wast:57)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:64:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-c5e07319" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e5ba74e6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#131 Test that a WebAssembly code returns a specific result (table_init.wast:58)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:67:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-e5ba74e6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-91ae0172"><details><summary><span class="mark">FAIL</span><span class="sub-name">#132 Test that a WebAssembly code returns a specific result (table_init.wast:59)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:70:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-91ae0172" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-82038a6f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#133 Test that a WebAssembly code traps (table_init.wast:60)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:73:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-82038a6f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a3d680de"><details><summary><span class="mark">FAIL</span><span class="sub-name">#134 Test that a WebAssembly code traps (table_init.wast:61)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:76:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-a3d680de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-18067d70"><details><summary><span class="mark">FAIL</span><span class="sub-name">#135 Test that a WebAssembly code traps (table_init.wast:62)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:79:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-18067d70" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-87185877"><details><summary><span class="mark">FAIL</span><span class="sub-name">#136 Test that a WebAssembly code traps (table_init.wast:63)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:82:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-87185877" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-325db33f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#137 Test that a WebAssembly code traps (table_init.wast:64)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:85:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-325db33f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2da4d83e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#138 Test that a WebAssembly code traps (table_init.wast:65)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:88:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2da4d83e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-02eeec7e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#139 Test that a WebAssembly code traps (table_init.wast:66)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:91:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-02eeec7e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-60312c10"><details><summary><span class="mark">FAIL</span><span class="sub-name">#140 Test that a WebAssembly code traps (table_init.wast:67)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:94:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-60312c10" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d0b10125"><details><summary><span class="mark">FAIL</span><span class="sub-name">#141 Test that a WebAssembly code traps (table_init.wast:68)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:97:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d0b10125" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d5c1fb4b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#142 Test that a WebAssembly code traps (table_init.wast:69)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:100:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d5c1fb4b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aba8c089"><details><summary><span class="mark">FAIL</span><span class="sub-name">#143 Test that a WebAssembly code traps (table_init.wast:70)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:103:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-aba8c089" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3cbcb083"><details><summary><span class="mark">FAIL</span><span class="sub-name">#144 Test that a WebAssembly code traps (table_init.wast:71)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:106:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-3cbcb083" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a1073f09"><details><summary><span class="mark">FAIL</span><span class="sub-name">#145 Test that a WebAssembly code traps (table_init.wast:72)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:109:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-a1073f09" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d05df781"><details><summary><span class="mark">FAIL</span><span class="sub-name">#147 Test that WebAssembly instantiation succeeds (table_init.wast:74)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;a&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:115:10)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d05df781" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1371ac64"><details><summary><span class="mark">FAIL</span><span class="sub-name">#148 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;test&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:118:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-1371ac64" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e8a875fb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#149 Test that a WebAssembly code traps (table_init.wast:102)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:121:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-e8a875fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e9c9c520"><details><summary><span class="mark">FAIL</span><span class="sub-name">#150 Test that a WebAssembly code traps (table_init.wast:103)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:124:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-e9c9c520" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7ec7a08e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#151 Test that a WebAssembly code returns a specific result (table_init.wast:104)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:127:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-7ec7a08e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1afc136a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#152 Test that a WebAssembly code returns a specific result (table_init.wast:105)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:130:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-1afc136a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e1072177"><details><summary><span class="mark">FAIL</span><span class="sub-name">#153 Test that a WebAssembly code returns a specific result (table_init.wast:106)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:133:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-e1072177" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aff4efe7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#154 Test that a WebAssembly code returns a specific result (table_init.wast:107)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:136:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-aff4efe7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dc0fe683"><details><summary><span class="mark">FAIL</span><span class="sub-name">#155 Test that a WebAssembly code traps (table_init.wast:108)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:139:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-dc0fe683" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-72f86975"><details><summary><span class="mark">FAIL</span><span class="sub-name">#156 Test that a WebAssembly code traps (table_init.wast:109)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:142:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-72f86975" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3cf77abc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#157 Test that a WebAssembly code traps (table_init.wast:110)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:145:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-3cf77abc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d1d167fc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#158 Test that a WebAssembly code traps (table_init.wast:111)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:148:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d1d167fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dc3ee391"><details><summary><span class="mark">FAIL</span><span class="sub-name">#159 Test that a WebAssembly code traps (table_init.wast:112)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:151:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-dc3ee391" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9b411d20"><details><summary><span class="mark">FAIL</span><span class="sub-name">#160 Test that a WebAssembly code traps (table_init.wast:113)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:154:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-9b411d20" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-edffd1cf"><details><summary><span class="mark">FAIL</span><span class="sub-name">#161 Test that a WebAssembly code returns a specific result (table_init.wast:114)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:157:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-edffd1cf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dcf0ed17"><details><summary><span class="mark">FAIL</span><span class="sub-name">#162 Test that a WebAssembly code returns a specific result (table_init.wast:115)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:160:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-dcf0ed17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d1ba538d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#163 Test that a WebAssembly code returns a specific result (table_init.wast:116)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:163:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d1ba538d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5682aaf7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#164 Test that a WebAssembly code returns a specific result (table_init.wast:117)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:166:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-5682aaf7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ae719dcb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#165 Test that a WebAssembly code returns a specific result (table_init.wast:118)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:169:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-ae719dcb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e360d853"><details><summary><span class="mark">FAIL</span><span class="sub-name">#166 Test that a WebAssembly code returns a specific result (table_init.wast:119)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:172:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-e360d853" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e25d6667"><details><summary><span class="mark">FAIL</span><span class="sub-name">#167 Test that a WebAssembly code traps (table_init.wast:120)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:175:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-e25d6667" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aef1f788"><details><summary><span class="mark">FAIL</span><span class="sub-name">#168 Test that a WebAssembly code traps (table_init.wast:121)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:178:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-aef1f788" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6ec99c80"><details><summary><span class="mark">FAIL</span><span class="sub-name">#169 Test that a WebAssembly code traps (table_init.wast:122)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:181:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-6ec99c80" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f862ce71"><details><summary><span class="mark">FAIL</span><span class="sub-name">#170 Test that a WebAssembly code traps (table_init.wast:123)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:184:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-f862ce71" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-119addce"><details><summary><span class="mark">FAIL</span><span class="sub-name">#171 Test that a WebAssembly code traps (table_init.wast:124)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:187:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-119addce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b1e919c7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#172 Test that a WebAssembly code traps (table_init.wast:125)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:190:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-b1e919c7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aba612f8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#173 Test that a WebAssembly code traps (table_init.wast:126)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:193:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-aba612f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e5ea888e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#174 Test that a WebAssembly code traps (table_init.wast:127)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:196:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-e5ea888e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-75fbec0a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#175 Test that a WebAssembly code traps (table_init.wast:128)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:199:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-75fbec0a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7ce4784c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#176 Test that a WebAssembly code traps (table_init.wast:129)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:202:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-7ce4784c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-50fff2e6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#177 Test that a WebAssembly code traps (table_init.wast:130)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:205:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-50fff2e6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-29bbc690"><details><summary><span class="mark">FAIL</span><span class="sub-name">#178 Test that a WebAssembly code traps (table_init.wast:131)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:208:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-29bbc690" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b2fe3fa9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#180 Test that WebAssembly instantiation succeeds (table_init.wast:133)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;a&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:214:10)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-b2fe3fa9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7ee3ee70"><details><summary><span class="mark">FAIL</span><span class="sub-name">#181 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;test&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:217:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-7ee3ee70" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1fcea14e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#182 Test that a WebAssembly code traps (table_init.wast:169)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:220:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-1fcea14e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2e8927a2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#183 Test that a WebAssembly code traps (table_init.wast:170)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:223:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2e8927a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ba20de1b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#184 Test that a WebAssembly code returns a specific result (table_init.wast:171)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:226:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-ba20de1b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-80f603ec"><details><summary><span class="mark">FAIL</span><span class="sub-name">#185 Test that a WebAssembly code returns a specific result (table_init.wast:172)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:229:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-80f603ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d26d4c3f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#186 Test that a WebAssembly code returns a specific result (table_init.wast:173)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:232:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d26d4c3f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5eb8cea3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#187 Test that a WebAssembly code returns a specific result (table_init.wast:174)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:235:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-5eb8cea3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f6a3ad96"><details><summary><span class="mark">FAIL</span><span class="sub-name">#188 Test that a WebAssembly code traps (table_init.wast:175)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:238:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-f6a3ad96" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-eee4aa06"><details><summary><span class="mark">FAIL</span><span class="sub-name">#189 Test that a WebAssembly code returns a specific result (table_init.wast:176)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:241:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-eee4aa06" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1c352a7a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#190 Test that a WebAssembly code returns a specific result (table_init.wast:177)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:244:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-1c352a7a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b9162488"><details><summary><span class="mark">FAIL</span><span class="sub-name">#191 Test that a WebAssembly code returns a specific result (table_init.wast:178)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:247:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-b9162488" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0b705bdc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#192 Test that a WebAssembly code returns a specific result (table_init.wast:179)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:250:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-0b705bdc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-774e60a0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#193 Test that a WebAssembly code traps (table_init.wast:180)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:253:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-774e60a0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bb5f54d7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#194 Test that a WebAssembly code returns a specific result (table_init.wast:181)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:256:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-bb5f54d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6e41bdd4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#195 Test that a WebAssembly code traps (table_init.wast:182)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:259:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-6e41bdd4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a6bc2438"><details><summary><span class="mark">FAIL</span><span class="sub-name">#196 Test that a WebAssembly code returns a specific result (table_init.wast:183)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:262:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-a6bc2438" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6ad0b6c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#197 Test that a WebAssembly code returns a specific result (table_init.wast:184)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:265:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-6ad0b6c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ce1992ef"><details><summary><span class="mark">FAIL</span><span class="sub-name">#198 Test that a WebAssembly code returns a specific result (table_init.wast:185)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:268:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-ce1992ef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-05b7fea7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#199 Test that a WebAssembly code returns a specific result (table_init.wast:186)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:271:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-05b7fea7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1846b823"><details><summary><span class="mark">FAIL</span><span class="sub-name">#200 Test that a WebAssembly code traps (table_init.wast:187)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:274:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-1846b823" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7a7c2a70"><details><summary><span class="mark">FAIL</span><span class="sub-name">#201 Test that a WebAssembly code returns a specific result (table_init.wast:188)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:277:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-7a7c2a70" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-932061c3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#202 Test that a WebAssembly code traps (table_init.wast:189)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:280:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-932061c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a5467e3a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#203 Test that a WebAssembly code returns a specific result (table_init.wast:190)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:283:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-a5467e3a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6503158a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#204 Test that a WebAssembly code traps (table_init.wast:191)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:286:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-6503158a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f42e6eec"><details><summary><span class="mark">FAIL</span><span class="sub-name">#205 Test that a WebAssembly code returns a specific result (table_init.wast:192)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:289:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-f42e6eec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bb6ddf08"><details><summary><span class="mark">FAIL</span><span class="sub-name">#206 Test that a WebAssembly code returns a specific result (table_init.wast:193)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:292:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-bb6ddf08" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2faddf1a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#207 Test that a WebAssembly code traps (table_init.wast:194)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:295:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2faddf1a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1cd3dc9f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#208 Test that a WebAssembly code traps (table_init.wast:195)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:298:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-1cd3dc9f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-61663fa4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#209 Test that a WebAssembly code traps (table_init.wast:196)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:301:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-61663fa4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6e07913c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#210 Test that a WebAssembly code traps (table_init.wast:197)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:304:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-6e07913c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-250ce533"><details><summary><span class="mark">FAIL</span><span class="sub-name">#211 Test that a WebAssembly code traps (table_init.wast:198)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:307:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-250ce533" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3b4c2e97"><details><summary><span class="mark">FAIL</span><span class="sub-name">#213 Test that WebAssembly instantiation succeeds (table_init.wast:200)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;a&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:313:10)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-3b4c2e97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dc549e13"><details><summary><span class="mark">FAIL</span><span class="sub-name">#214 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;test&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:316:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-dc549e13" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dac98e09"><details><summary><span class="mark">FAIL</span><span class="sub-name">#215 Test that a WebAssembly code traps (table_init.wast:228)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:319:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-dac98e09" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-63a9ffbc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#216 Test that a WebAssembly code traps (table_init.wast:229)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:322:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-63a9ffbc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-afe3460f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#217 Test that a WebAssembly code returns a specific result (table_init.wast:230)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:325:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-afe3460f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4f478863"><details><summary><span class="mark">FAIL</span><span class="sub-name">#218 Test that a WebAssembly code returns a specific result (table_init.wast:231)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:328:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-4f478863" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b51e89cb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#219 Test that a WebAssembly code returns a specific result (table_init.wast:232)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:331:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-b51e89cb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-26a7028b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#220 Test that a WebAssembly code returns a specific result (table_init.wast:233)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:334:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-26a7028b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-53583dec"><details><summary><span class="mark">FAIL</span><span class="sub-name">#221 Test that a WebAssembly code traps (table_init.wast:234)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:337:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-53583dec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-90c1c150"><details><summary><span class="mark">FAIL</span><span class="sub-name">#222 Test that a WebAssembly code returns a specific result (table_init.wast:235)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:340:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-90c1c150" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d1c517f0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#223 Test that a WebAssembly code returns a specific result (table_init.wast:236)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:343:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d1c517f0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e9204c4a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#224 Test that a WebAssembly code returns a specific result (table_init.wast:237)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:346:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-e9204c4a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b5c5670f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#225 Test that a WebAssembly code returns a specific result (table_init.wast:238)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:349:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-b5c5670f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4eeb75d7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#226 Test that a WebAssembly code traps (table_init.wast:239)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:352:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-4eeb75d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d103693c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#227 Test that a WebAssembly code returns a specific result (table_init.wast:240)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:355:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d103693c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cbb69622"><details><summary><span class="mark">FAIL</span><span class="sub-name">#228 Test that a WebAssembly code returns a specific result (table_init.wast:241)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:358:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-cbb69622" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a57ae130"><details><summary><span class="mark">FAIL</span><span class="sub-name">#229 Test that a WebAssembly code returns a specific result (table_init.wast:242)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:361:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-a57ae130" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-11112a1b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#230 Test that a WebAssembly code returns a specific result (table_init.wast:243)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:364:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-11112a1b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6159cc00"><details><summary><span class="mark">FAIL</span><span class="sub-name">#231 Test that a WebAssembly code returns a specific result (table_init.wast:244)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:367:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-6159cc00" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e4a4678d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#232 Test that a WebAssembly code traps (table_init.wast:245)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:370:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-e4a4678d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0d01634f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#233 Test that a WebAssembly code traps (table_init.wast:246)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:373:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-0d01634f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-038594a9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#234 Test that a WebAssembly code traps (table_init.wast:247)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:376:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-038594a9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0205f570"><details><summary><span class="mark">FAIL</span><span class="sub-name">#235 Test that a WebAssembly code traps (table_init.wast:248)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:379:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-0205f570" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-939ce561"><details><summary><span class="mark">FAIL</span><span class="sub-name">#236 Test that a WebAssembly code traps (table_init.wast:249)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:382:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-939ce561" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2426737c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#237 Test that a WebAssembly code traps (table_init.wast:250)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:385:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2426737c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c0ca605a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#238 Test that a WebAssembly code traps (table_init.wast:251)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:388:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-c0ca605a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-61c3a9fa"><details><summary><span class="mark">FAIL</span><span class="sub-name">#239 Test that a WebAssembly code traps (table_init.wast:252)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:391:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-61c3a9fa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c2df4463"><details><summary><span class="mark">FAIL</span><span class="sub-name">#240 Test that a WebAssembly code traps (table_init.wast:253)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:394:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-c2df4463" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-79753b08"><details><summary><span class="mark">FAIL</span><span class="sub-name">#241 Test that a WebAssembly code traps (table_init.wast:254)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:397:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-79753b08" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d7ea41df"><details><summary><span class="mark">FAIL</span><span class="sub-name">#242 Test that a WebAssembly code traps (table_init.wast:255)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:400:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d7ea41df" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-530c758f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#243 Test that a WebAssembly code traps (table_init.wast:256)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:403:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-530c758f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9159cb77"><details><summary><span class="mark">FAIL</span><span class="sub-name">#244 Test that a WebAssembly code traps (table_init.wast:257)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:406:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-9159cb77" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-adae8707"><details><summary><span class="mark">FAIL</span><span class="sub-name">#246 Test that WebAssembly instantiation succeeds (table_init.wast:259)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;a&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:412:10)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-adae8707" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f4523029"><details><summary><span class="mark">FAIL</span><span class="sub-name">#247 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;test&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:415:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-f4523029" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1a9150f0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#248 Test that a WebAssembly code traps (table_init.wast:287)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:418:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-1a9150f0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2c259408"><details><summary><span class="mark">FAIL</span><span class="sub-name">#249 Test that a WebAssembly code traps (table_init.wast:288)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:421:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2c259408" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-11668abf"><details><summary><span class="mark">FAIL</span><span class="sub-name">#250 Test that a WebAssembly code returns a specific result (table_init.wast:289)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:424:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-11668abf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a64fa215"><details><summary><span class="mark">FAIL</span><span class="sub-name">#251 Test that a WebAssembly code returns a specific result (table_init.wast:290)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:427:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-a64fa215" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6830f2ca"><details><summary><span class="mark">FAIL</span><span class="sub-name">#252 Test that a WebAssembly code returns a specific result (table_init.wast:291)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:430:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-6830f2ca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-02462f2e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#253 Test that a WebAssembly code returns a specific result (table_init.wast:292)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:433:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-02462f2e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2003beca"><details><summary><span class="mark">FAIL</span><span class="sub-name">#254 Test that a WebAssembly code traps (table_init.wast:293)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:436:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2003beca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-00d4baea"><details><summary><span class="mark">FAIL</span><span class="sub-name">#255 Test that a WebAssembly code traps (table_init.wast:294)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:439:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-00d4baea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-faa7bea2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#256 Test that a WebAssembly code traps (table_init.wast:295)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:442:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-faa7bea2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2397869a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#257 Test that a WebAssembly code traps (table_init.wast:296)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:445:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2397869a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-44565171"><details><summary><span class="mark">FAIL</span><span class="sub-name">#258 Test that a WebAssembly code traps (table_init.wast:297)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:448:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-44565171" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8fd6ab1d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#259 Test that a WebAssembly code traps (table_init.wast:298)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:451:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-8fd6ab1d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0cffa2f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#260 Test that a WebAssembly code returns a specific result (table_init.wast:299)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:454:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-0cffa2f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-af5ed6d9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#261 Test that a WebAssembly code returns a specific result (table_init.wast:300)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:457:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-af5ed6d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2c6de2d2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#262 Test that a WebAssembly code returns a specific result (table_init.wast:301)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:460:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2c6de2d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-637f19b3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#263 Test that a WebAssembly code returns a specific result (table_init.wast:302)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:463:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-637f19b3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-df008dda"><details><summary><span class="mark">FAIL</span><span class="sub-name">#264 Test that a WebAssembly code returns a specific result (table_init.wast:303)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:466:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-df008dda" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aea67866"><details><summary><span class="mark">FAIL</span><span class="sub-name">#265 Test that a WebAssembly code returns a specific result (table_init.wast:304)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:469:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-aea67866" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d21a54a5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#266 Test that a WebAssembly code traps (table_init.wast:305)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:472:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d21a54a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c5670e8a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#267 Test that a WebAssembly code traps (table_init.wast:306)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:475:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-c5670e8a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-246c9897"><details><summary><span class="mark">FAIL</span><span class="sub-name">#268 Test that a WebAssembly code traps (table_init.wast:307)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:478:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-246c9897" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f24d2ce4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#269 Test that a WebAssembly code traps (table_init.wast:308)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:481:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-f24d2ce4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2356ea50"><details><summary><span class="mark">FAIL</span><span class="sub-name">#270 Test that a WebAssembly code traps (table_init.wast:309)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:484:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2356ea50" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1c635d47"><details><summary><span class="mark">FAIL</span><span class="sub-name">#271 Test that a WebAssembly code traps (table_init.wast:310)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:487:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-1c635d47" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-38dea70f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#272 Test that a WebAssembly code traps (table_init.wast:311)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:490:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-38dea70f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3e516dd7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#273 Test that a WebAssembly code traps (table_init.wast:312)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:493:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-3e516dd7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7c100632"><details><summary><span class="mark">FAIL</span><span class="sub-name">#274 Test that a WebAssembly code traps (table_init.wast:313)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:496:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-7c100632" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e4ea30e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#275 Test that a WebAssembly code traps (table_init.wast:314)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:499:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-e4ea30e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-81384464"><details><summary><span class="mark">FAIL</span><span class="sub-name">#276 Test that a WebAssembly code traps (table_init.wast:315)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:502:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-81384464" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ecd012d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#277 Test that a WebAssembly code traps (table_init.wast:316)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:505:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-ecd012d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d3111fc4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#279 Test that WebAssembly instantiation succeeds (table_init.wast:318)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;a&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:511:10)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d3111fc4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dd925847"><details><summary><span class="mark">FAIL</span><span class="sub-name">#280 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;test&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:514:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-dd925847" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6d85cbf3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#281 Test that a WebAssembly code traps (table_init.wast:354)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:517:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-6d85cbf3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2be9783d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#282 Test that a WebAssembly code traps (table_init.wast:355)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:520:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-2be9783d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-350845ce"><details><summary><span class="mark">FAIL</span><span class="sub-name">#283 Test that a WebAssembly code returns a specific result (table_init.wast:356)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:523:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-350845ce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aa3f957d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#284 Test that a WebAssembly code returns a specific result (table_init.wast:357)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:526:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-aa3f957d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cf689d33"><details><summary><span class="mark">FAIL</span><span class="sub-name">#285 Test that a WebAssembly code returns a specific result (table_init.wast:358)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:529:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-cf689d33" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9c2c113a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#286 Test that a WebAssembly code returns a specific result (table_init.wast:359)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:532:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-9c2c113a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b94bcea3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#287 Test that a WebAssembly code traps (table_init.wast:360)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:535:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-b94bcea3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d6429da2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#288 Test that a WebAssembly code returns a specific result (table_init.wast:361)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:538:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-d6429da2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1c4e5151"><details><summary><span class="mark">FAIL</span><span class="sub-name">#289 Test that a WebAssembly code returns a specific result (table_init.wast:362)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:541:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-1c4e5151" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a81167af"><details><summary><span class="mark">FAIL</span><span class="sub-name">#290 Test that a WebAssembly code returns a specific result (table_init.wast:363)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:544:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-a81167af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8d2f1adf"><details><summary><span class="mark">FAIL</span><span class="sub-name">#291 Test that a WebAssembly code returns a specific result (table_init.wast:364)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:547:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-8d2f1adf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-28e7ebb4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#292 Test that a WebAssembly code traps (table_init.wast:365)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:550:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-28e7ebb4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a0f9a163"><details><summary><span class="mark">FAIL</span><span class="sub-name">#293 Test that a WebAssembly code returns a specific result (table_init.wast:366)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:553:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-a0f9a163" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-35958d28"><details><summary><span class="mark">FAIL</span><span class="sub-name">#294 Test that a WebAssembly code traps (table_init.wast:367)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:556:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-35958d28" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4846209b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#295 Test that a WebAssembly code returns a specific result (table_init.wast:368)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:559:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-4846209b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8ed97e93"><details><summary><span class="mark">FAIL</span><span class="sub-name">#296 Test that a WebAssembly code returns a specific result (table_init.wast:369)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:562:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-8ed97e93" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5931cbdb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#297 Test that a WebAssembly code returns a specific result (table_init.wast:370)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:565:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-5931cbdb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-529c516f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#298 Test that a WebAssembly code returns a specific result (table_init.wast:371)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:568:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-529c516f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-32148a66"><details><summary><span class="mark">FAIL</span><span class="sub-name">#299 Test that a WebAssembly code traps (table_init.wast:372)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:571:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-32148a66" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-12790a7c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#300 Test that a WebAssembly code returns a specific result (table_init.wast:373)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:574:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-12790a7c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a6fbb834"><details><summary><span class="mark">FAIL</span><span class="sub-name">#301 Test that a WebAssembly code traps (table_init.wast:374)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:577:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-a6fbb834" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-28c0e820"><details><summary><span class="mark">FAIL</span><span class="sub-name">#302 Test that a WebAssembly code returns a specific result (table_init.wast:375)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:580:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-28c0e820" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6b92ad6b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#303 Test that a WebAssembly code traps (table_init.wast:376)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:583:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-6b92ad6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5c547ce7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#304 Test that a WebAssembly code returns a specific result (table_init.wast:377)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:586:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-5c547ce7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f4068a11"><details><summary><span class="mark">FAIL</span><span class="sub-name">#305 Test that a WebAssembly code returns a specific result (table_init.wast:378)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:589:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-f4068a11" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-48737564"><details><summary><span class="mark">FAIL</span><span class="sub-name">#306 Test that a WebAssembly code traps (table_init.wast:379)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:592:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-48737564" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3ce759af"><details><summary><span class="mark">FAIL</span><span class="sub-name">#307 Test that a WebAssembly code traps (table_init.wast:380)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:595:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-3ce759af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-eb93df16"><details><summary><span class="mark">FAIL</span><span class="sub-name">#308 Test that a WebAssembly code traps (table_init.wast:381)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:598:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-eb93df16" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-81502729"><details><summary><span class="mark">FAIL</span><span class="sub-name">#309 Test that a WebAssembly code traps (table_init.wast:382)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:601:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-81502729" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f70a1789"><details><summary><span class="mark">FAIL</span><span class="sub-name">#310 Test that a WebAssembly code traps (table_init.wast:383)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;check&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at table_init_wast_js (http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:604:1)
+    at http://web-platform.test:8000/wasm/core/js/bulk-memory/table_init.wast.js:2502:3 expected true got false</pre></details><a class="self" href="#s-f70a1789" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<p class="omitted">746 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-038491bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;form&gt; submission with GET method and submitter passed into requestSubmit</span></summary><pre class="msg">assert_equals: NavigateEvent.sourceElement should be set to the submitter passed into requestSubmit. expected Element node &lt;input id=&quot;submitter&quot; type=&quot;submit&quot;&gt;&lt;/input&gt; but got Element node &lt;form id=&quot;form&quot;&gt;
+  &lt;input id=&quot;submitter&quot; type=&quot;submit&quot;&gt;
+&lt;...</pre></details><a class="self" href="#s-038491bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6b88d19d"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;form&gt; submission with GET method and submitter is clicked</span></summary><pre class="msg">assert_equals: NavigateEvent.sourceElement should be set to the submitter that was clicked. expected Element node &lt;input id=&quot;submitter&quot; type=&quot;submit&quot;&gt;&lt;/input&gt; but got Element node &lt;form id=&quot;form&quot;&gt;
+  &lt;input id=&quot;submitter&quot; type=&quot;submit&quot;&gt;
+&lt;...</pre></details><a class="self" href="#s-6b88d19d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

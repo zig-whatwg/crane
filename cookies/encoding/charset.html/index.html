@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-81881b8b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ASCII name and utf-8 value</span></div><a class="self" href="#s-81881b8b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6bf39414"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-8 name and ASCII value</span></summary><pre class="msg">assert_equals: The cookie was set as expected. expected &quot;тест=2&quot; but got &quot;test=1春节回家路·春运完全手册; тест=2&quot;</pre></details><a class="self" href="#s-6bf39414" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0f867921"><details><summary><span class="mark">FAIL</span><span class="sub-name">ASCII name and quoted utf-8 value</span></summary><pre class="msg">assert_equals: The cookie was set as expected. expected &quot;test=\&quot;3春节回家路·春运完全手册\&quot;&quot; but got &quot;test=\&quot;3春节回家路·春运完全手册\&quot;; тест=2&quot;</pre></details><a class="self" href="#s-0f867921" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b56038f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-8 name and value</span></summary><pre class="msg">assert_equals: The cookie was set as expected. expected &quot;春节回=4家路·春运完全手册&quot; but got &quot;test=\&quot;3春节回家路·春运完全手册\&quot;; тест=2; 春节回=4家路·春运完全手册&quot;</pre></details><a class="self" href="#s-b56038f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8170c883"><details><summary><span class="mark">FAIL</span><span class="sub-name">quoted utf-8 name and value</span></summary><pre class="msg">assert_equals: The cookie was set as expected. expected &quot;\&quot;春节回=5家路·春运完全手册\&quot;&quot; but got &quot;test=\&quot;3春节回家路·春运完全手册\&quot;; тест=2; 春节回=4家路·春运完全手册; \&quot;春节回=5家路·春运完全手册\&quot;&quot;</pre></details><a class="self" href="#s-8170c883" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dac395ec"><details><summary><span class="mark">FAIL</span><span class="sub-name">utf-8 name and value, with (invalid) utf-8 attribute</span></summary><pre class="msg">assert_equals: The cookie was set as expected. expected &quot;春节回=6家路·春运&quot; but got &quot;test=\&quot;3春节回家路·春运完全手册\&quot;; тест=2; 春节回=6家路·春运; \&quot;春节回=5家路·春运完全手册\&quot;&quot;</pre></details><a class="self" href="#s-dac395ec" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

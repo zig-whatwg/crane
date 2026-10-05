@@ -33,7 +33,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 3 failed, 0 timed out and 1 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/html/semantics/forms/the-select-element/customizable-select/select-inside-top-layer.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<pre class="msg harness-msg">Test named &#39;select can be nested inside a modal dialog&#39; specified 1 &#39;cleanup&#39; function, and 1 failed.</pre>
+<ol class="subtests">
+<li class="sub s-fail" id="s-e7329cf8"><details><summary><span class="mark">FAIL</span><span class="sub-name">select can be nested inside a popover</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;SyntaxError: SyntaxError&quot;</pre></details><a class="self" href="#s-e7329cf8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5c8c217d"><details><summary><span class="mark">FAIL</span><span class="sub-name">a popover can be nested inside select</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;unsupported operation: Crane has no layout: a pointer moves onto an element origin only&quot;</pre></details><a class="self" href="#s-5c8c217d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be3c57f9"><details><summary><span class="mark">FAIL</span><span class="sub-name">select can be nested inside a modal dialog</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-be3c57f9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-a66e424e"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">a modal dialog can be nested inside select</span></div><a class="self" href="#s-a66e424e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

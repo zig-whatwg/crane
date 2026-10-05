@@ -32,7 +32,29 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 14 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-102edebc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.insertData() out of bounds</span></div><a class="self" href="#s-102edebc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dda68153"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.insertData() negative out of bounds</span></div><a class="self" href="#s-dda68153" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6d9eff5f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.insertData() negative in bounds</span></div><a class="self" href="#s-6d9eff5f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0a9fd89d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.insertData(&#39;&#39;)</span></div><a class="self" href="#s-0a9fd89d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a34a5f80"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.insertData() at the start</span></div><a class="self" href="#s-a34a5f80" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-44691f0f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.insertData() in the middle</span></div><a class="self" href="#s-44691f0f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3a3c22a2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.insertData() at the end</span></div><a class="self" href="#s-3a3c22a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6d290d81"><details><summary><span class="mark">FAIL</span><span class="sub-name">Text.insertData() with non-ascii data</span></summary><pre class="msg">assert_equals: expected &quot;This is the character data test, append more 資料，更多測試資料&quot; but got &quot;This is the character data test, append more 資更多料，測試資料&quot;</pre></details><a class="self" href="#s-6d290d81" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-48428b28"><details><summary><span class="mark">FAIL</span><span class="sub-name">Text.insertData() with non-BMP data</span></summary><pre class="msg">assert_equals: expected &quot;🌠 te--st 🌠 TEST&quot; but got &quot;🌠 --test 🌠 TEST&quot;</pre></details><a class="self" href="#s-48428b28" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-67cd0278"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.insertData() out of bounds</span></div><a class="self" href="#s-67cd0278" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0b7089dc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.insertData() negative out of bounds</span></div><a class="self" href="#s-0b7089dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7f4169aa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.insertData() negative in bounds</span></div><a class="self" href="#s-7f4169aa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d2c582d8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.insertData(&#39;&#39;)</span></div><a class="self" href="#s-d2c582d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-471d3d0b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.insertData() at the start</span></div><a class="self" href="#s-471d3d0b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d127d8e3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.insertData() in the middle</span></div><a class="self" href="#s-d127d8e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-41b9bfc1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.insertData() at the end</span></div><a class="self" href="#s-41b9bfc1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-090871d2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Comment.insertData() with non-ascii data</span></summary><pre class="msg">assert_equals: expected &quot;This is the character data test, append more 資料，更多測試資料&quot; but got &quot;This is the character data test, append more 資更多料，測試資料&quot;</pre></details><a class="self" href="#s-090871d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4d78c47f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Comment.insertData() with non-BMP data</span></summary><pre class="msg">assert_equals: expected &quot;🌠 te--st 🌠 TEST&quot; but got &quot;🌠 --test 🌠 TEST&quot;</pre></details><a class="self" href="#s-4d78c47f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,27 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 6 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-wasm-unsafe-eval-allows-wasm.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-ee2bb114"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.instantiate() is allowed</span></div><a class="self" href="#s-ee2bb114" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c855391f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.compile() is allowed</span></div><a class="self" href="#s-c855391f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f162f686"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">new WebAssembly.Module() is allowed</span></div><a class="self" href="#s-f162f686" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b9b4c988"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compileStreaming() is allowed</span></summary><pre class="msg">WebAssembly.compileStreaming is not a function</pre></details><a class="self" href="#s-b9b4c988" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f804eb48"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.instantiateStreaming() is allowed</span></summary><pre class="msg">WebAssembly.instantiateStreaming is not a function</pre></details><a class="self" href="#s-f804eb48" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-wasm-unsafe-eval-allows-wasm.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-50a23322"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.instantiate() is allowed</span></div><a class="self" href="#s-50a23322" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-08437f5b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WebAssembly.compile() is allowed</span></div><a class="self" href="#s-08437f5b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-256ddb0b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">new WebAssembly.Module() is allowed</span></div><a class="self" href="#s-256ddb0b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1430a695"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compileStreaming() is allowed</span></summary><pre class="msg">WebAssembly.compileStreaming is not a function</pre></details><a class="self" href="#s-1430a695" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6820a055"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.instantiateStreaming() is allowed</span></summary><pre class="msg">WebAssembly.instantiateStreaming is not a function</pre></details><a class="self" href="#s-6820a055" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

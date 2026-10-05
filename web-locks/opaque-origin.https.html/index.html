@@ -32,7 +32,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-c5b878ef"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigator.locks.request() in non-sandboxed iframe should not throw</span></summary><pre class="msg">assert_equals: navigator.locks.request() should not throw expected &quot;no exception&quot; but got &quot;TypeError&quot;</pre></details><a class="self" href="#s-c5b878ef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c6ea80dc"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigator.locks.request() in sandboxed iframe should throw SecurityError</span></summary><pre class="msg">assert_equals: Exception should be SecurityError expected &quot;SecurityError&quot; but got &quot;TypeError&quot;</pre></details><a class="self" href="#s-c6ea80dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e131b15e"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigator.locks.query() in non-sandboxed iframe should not throw</span></summary><pre class="msg">assert_equals: navigator.locks.request() should not throw expected &quot;no exception&quot; but got &quot;TypeError&quot;</pre></details><a class="self" href="#s-e131b15e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-55f1bf4c"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigator.locks.query() in sandboxed iframe should throw SecurityError</span></summary><pre class="msg">assert_equals: Exception should be SecurityError expected &quot;SecurityError&quot; but got &quot;TypeError&quot;</pre></details><a class="self" href="#s-55f1bf4c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

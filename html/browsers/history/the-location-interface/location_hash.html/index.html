@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-f787708e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">location hash</span></div><a class="self" href="#s-f787708e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-361336ad"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting location.hash on srcdoc iframe</span></summary><pre class="msg">assert_true: Should have scrolled by more than one viewport height expected true got false</pre></details><a class="self" href="#s-361336ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b454768f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting hash should automatically include hash character</span></div><a class="self" href="#s-b454768f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-98946aeb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting hash should encode incompatible characters</span></div><a class="self" href="#s-98946aeb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4ee26261"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting hash to an already encoded value should not double encode it</span></div><a class="self" href="#s-4ee26261" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3811019c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Setting hash which is partially encoded should only encode incompatible characters</span></div><a class="self" href="#s-3811019c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

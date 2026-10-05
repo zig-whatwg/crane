@@ -32,7 +32,18 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-deae8260"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Indexed properties of the window object (non-strict mode)</span></div><a class="self" href="#s-deae8260" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4d42ecae"><details><summary><span class="mark">FAIL</span><span class="sub-name">Ensure indexed properties have the correct configuration</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-4d42ecae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c9d4be61"><details><summary><span class="mark">FAIL</span><span class="sub-name">Indexed properties of the window object (non-strict mode) 1</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; Object.defineProperty(window, 0, { value: &quot;bar&quot; })&quot; did not throw</pre></details><a class="self" href="#s-c9d4be61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-06b7d125"><details><summary><span class="mark">FAIL</span><span class="sub-name">Indexed properties of the window object (non-strict mode) 2</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; Object.defineProperty(window, 1, { value: &quot;bar&quot; })&quot; did not throw</pre></details><a class="self" href="#s-06b7d125" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0101e509"><details><summary><span class="mark">FAIL</span><span class="sub-name">Borderline numeric key: 2 ** 32 - 2 is an index</span></summary><pre class="msg">assert_false: expected false got true</pre></details><a class="self" href="#s-0101e509" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4e70efd8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Borderline numeric key: 2 ** 32 - 1 is not an index</span></div><a class="self" href="#s-4e70efd8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-89f25ba0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Indexed properties of the window object (non-strict mode) 3</span></div><a class="self" href="#s-89f25ba0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 6 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-a8f0ecdd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testFormDataSetToForm1</span></div><a class="self" href="#s-a8f0ecdd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dd5fadc9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testFormDataSetToForm2</span></div><a class="self" href="#s-dd5fadc9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-46bacfbb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testFormDataSetToFormUndefined1</span></div><a class="self" href="#s-46bacfbb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7daab579"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testFormDataSetToFormUndefined2</span></div><a class="self" href="#s-7daab579" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8cbd26b1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testFormDataSetToFormNull1</span></div><a class="self" href="#s-8cbd26b1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a3543134"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testFormDataSetToFormNull2</span></div><a class="self" href="#s-a3543134" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ae5333d4"><details><summary><span class="mark">FAIL</span><span class="sub-name">testFormDataSetToFormString</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {fd.set(&#39;name&#39;, &quot;string&quot;, &#39;filename&#39;)}&quot; did not throw</pre></details><a class="self" href="#s-ae5333d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-59ff99bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">testFormDataSetToFormWrongPlatformObject</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {fd.set(&#39;name&#39;, new URLSearchParams(), &#39;filename&#39;)}&quot; did not throw</pre></details><a class="self" href="#s-59ff99bd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

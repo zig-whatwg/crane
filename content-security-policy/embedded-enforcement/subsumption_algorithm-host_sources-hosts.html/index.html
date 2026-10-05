@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-e1767525"><details><summary><span class="mark">FAIL</span><span class="sub-name">Host must match.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-e1767525" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0668fc0b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Hosts without wildcards must match.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-0668fc0b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-872e2652"><details><summary><span class="mark">FAIL</span><span class="sub-name">More specific subdomain should not match.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-872e2652" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0e83e9cc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Specified host should not match a wildcard host.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-0e83e9cc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c9a4fd6c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A wildcard host should match a more specific host.</span></div><a class="self" href="#s-c9a4fd6c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,85 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 20 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-568a104d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-568a104d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-17572275"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (load1.wast:1)</span></div><a class="self" href="#s-17572275" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1b91a470"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation succeeds (load1.wast:10)</span></div><a class="self" href="#s-1b91a470" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-87dee938"><details><summary><span class="mark">FAIL</span><span class="sub-name">#4 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-87dee938" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-44e5b78a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#5 Test that WebAssembly compilation succeeds (load1.wast:1)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-44e5b78a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-25fb999d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:8:10)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-25fb999d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-99dcd753"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#7 Test that WebAssembly compilation succeeds (load1.wast:10)</span></div><a class="self" href="#s-99dcd753" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-79748e85"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 Test that WebAssembly instantiation succeeds (load1.wast:10)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;M&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:18:10)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-79748e85" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0eb56ade"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that a WebAssembly code returns a specific result (load1.wast:25)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:21:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-0eb56ade" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-32793de3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that a WebAssembly code returns a specific result (load1.wast:26)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:24:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-32793de3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8fe14dd2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#11 Test that a WebAssembly code returns a specific result (load1.wast:27)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:27:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-8fe14dd2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e26d2964"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that a WebAssembly code returns a specific result (load1.wast:28)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:30:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-e26d2964" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cc9c947d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (load1.wast:29)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:33:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-cc9c947d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-17a6ea7e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly code returns a specific result (load1.wast:31)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read1&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:36:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-17a6ea7e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b4e1e828"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that a WebAssembly code returns a specific result (load1.wast:32)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read1&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:39:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-b4e1e828" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3d445e3b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#16 Test that a WebAssembly code returns a specific result (load1.wast:33)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read1&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:42:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-3d445e3b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f68827f6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#17 Test that a WebAssembly code returns a specific result (load1.wast:34)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read1&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:45:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-f68827f6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4155ad99"><details><summary><span class="mark">FAIL</span><span class="sub-name">#18 Test that a WebAssembly code returns a specific result (load1.wast:35)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read1&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:48:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-4155ad99" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be4bccb8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#19 Test that a WebAssembly code returns a specific result (load1.wast:37)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read2&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:51:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-be4bccb8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b8caf848"><details><summary><span class="mark">FAIL</span><span class="sub-name">#20 Test that a WebAssembly code returns a specific result (load1.wast:38)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read2&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:54:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-b8caf848" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1ac23c65"><details><summary><span class="mark">FAIL</span><span class="sub-name">#21 Test that a WebAssembly code returns a specific result (load1.wast:39)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read2&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:57:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-1ac23c65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-875b832f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#22 Test that a WebAssembly code returns a specific result (load1.wast:40)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read2&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:60:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-875b832f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f562608a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#23 Test that a WebAssembly code returns a specific result (load1.wast:41)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;read2&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at load1_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:63:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/load1.wast.js:65:3 expected true got false</pre></details><a class="self" href="#s-f562608a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

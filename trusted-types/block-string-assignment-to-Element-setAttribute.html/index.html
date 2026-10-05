@@ -33,7 +33,27 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 13 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/trusted-types/block-string-assignment-to-Element-setAttribute.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>13</b> / 14</span></h3>
+<pre class="msg harness-msg">SyntaxError: Unexpected identifier &#39;want&#39;</pre>
+<ol class="subtests">
+<li class="sub s-pass" id="s-f5c6e5ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">script.src accepts only TrustedScriptURL</span></div><a class="self" href="#s-f5c6e5ee" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2926bf04"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">iframe.srcdoc accepts only TrustedHTML</span></div><a class="self" href="#s-2926bf04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2aad1175"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">div.onclick accepts only TrustedScript</span></div><a class="self" href="#s-2aad1175" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-61312840"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`Script.prototype.setAttribute.SrC = string` throws.</span></div><a class="self" href="#s-61312840" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-038be788"><details><summary><span class="mark">FAIL</span><span class="sub-name">script.src accepts string and null after default policy was created.</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/trusted-types/null&quot; but got &quot;null&quot;</pre></details><a class="self" href="#s-038be788" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-88fe5d11"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">script.src&#39;s mutationobservers receive the default policy&#39;s value.</span></div><a class="self" href="#s-88fe5d11" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-73fb3004"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">iframe.srcdoc&#39;s mutationobservers receive the default policy&#39;s value.</span></div><a class="self" href="#s-73fb3004" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-881bd0c8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">div.onclick&#39;s mutationobservers receive the default policy&#39;s value.</span></div><a class="self" href="#s-881bd0c8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c18be46a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">iframe.srcdoc accepts string and null after default policy was created.</span></div><a class="self" href="#s-c18be46a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e7c4c134"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">div.onclick accepts string and null after default policy was created.</span></div><a class="self" href="#s-e7c4c134" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7d432733"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a.rel accepts a Trusted Type</span></div><a class="self" href="#s-7d432733" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-88088804"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a.rel accepts strings</span></div><a class="self" href="#s-88088804" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-94854614"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a.rel accepts null</span></div><a class="self" href="#s-94854614" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4639ee7d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`script.src = setAttributeNode(embed.src)` with string works.</span></div><a class="self" href="#s-4639ee7d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

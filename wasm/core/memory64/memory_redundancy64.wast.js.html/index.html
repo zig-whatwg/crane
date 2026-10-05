@@ -32,7 +32,55 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 2 passed, 13 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-562ff456"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-562ff456" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c6dbf97d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (memory_redundancy64.wast:5)</span></summary><pre class="msg">assert_equals: expected false but got true</pre></details><a class="self" href="#s-c6dbf97d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e593b8e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-e593b8e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-31fb82f9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#4 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-31fb82f9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1fc9fabd"><details><summary><span class="mark">FAIL</span><span class="sub-name">#5 Test that WebAssembly compilation succeeds (memory_redundancy64.wast:5)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-1fc9fabd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-24e7b6ab"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at memory_redundancy64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:30:3 expected true got false</pre></details><a class="self" href="#s-24e7b6ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-15fe47c0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#7 Test that a WebAssembly code returns a specific result (memory_redundancy64.wast:59)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;test_store_to_load&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at memory_redundancy64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:10:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:30:3 expected true got false</pre></details><a class="self" href="#s-15fe47c0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c78ba44c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;zero_everything&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at memory_redundancy64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:13:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:30:3 expected true got false</pre></details><a class="self" href="#s-c78ba44c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-254a7544"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that a WebAssembly code returns a specific result (memory_redundancy64.wast:61)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;test_redundant_load&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at memory_redundancy64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:16:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:30:3 expected true got false</pre></details><a class="self" href="#s-254a7544" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4efbb81a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;zero_everything&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at memory_redundancy64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:30:3 expected true got false</pre></details><a class="self" href="#s-4efbb81a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-877fccb1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#11 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-877fccb1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-adf460c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;module&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:22:16
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
+    at memory_redundancy64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:30:3 expected true got false</pre></details><a class="self" href="#s-adf460c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bc74ca8f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at memory_redundancy64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:30:3 expected true got false</pre></details><a class="self" href="#s-bc74ca8f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-04a957c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;zero_everything&#39;) 
+    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
+    at memory_redundancy64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:25:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:30:3 expected true got false</pre></details><a class="self" href="#s-04a957c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3d4b4056"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that a WebAssembly code returns a specific result (memory_redundancy64.wast:65)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;malloc_aliasing&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at memory_redundancy64_wast_js (http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:28:1)
+    at http://web-platform.test:8000/wasm/core/js/memory64/memory_redundancy64.wast.js:30:3 expected true got false</pre></details><a class="self" href="#s-3d4b4056" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

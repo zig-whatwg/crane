@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-f698c676"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Valid and invalid characters in createElement.</span></div><a class="self" href="#s-f698c676" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2cb8c293"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Valid and invalid characters in createElementNS and createDocument.</span></div><a class="self" href="#s-2cb8c293" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2ae631a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Valid and invalid characters in setAttribute, toggleAttribute, and createAttribute.</span></div><a class="self" href="#s-2ae631a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3c57bcf7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Valid and invalid characters in setAttributeNS and createAttributeNS.</span></div><a class="self" href="#s-3c57bcf7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-71bd6707"><details><summary><span class="mark">FAIL</span><span class="sub-name">Valid and invalid characters in createDocumentType.</span></summary><pre class="msg">assert_unreached: createDocumentType should not have thrown an error for code points: [], string: &quot;&quot; InvalidCharacterError: InvalidCharacterError Reached unreachable code</pre></details><a class="self" href="#s-71bd6707" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

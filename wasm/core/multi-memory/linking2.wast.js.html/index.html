@@ -32,7 +32,57 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 13 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-88bffde5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-88bffde5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-56513905"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (linking2.wast:1)</span></div><a class="self" href="#s-56513905" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bdf8d56c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation succeeds (linking2.wast:14)</span></div><a class="self" href="#s-bdf8d56c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1972d8c3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#4 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-1972d8c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d73b8c3f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#5 Test that WebAssembly compilation succeeds (linking2.wast:1)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-d73b8c3f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7b16566e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at linking2_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:8:10)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:46:3 expected true got false</pre></details><a class="self" href="#s-7b16566e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a38e1980"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#7 Test that WebAssembly compilation succeeds (linking2.wast:14)</span></div><a class="self" href="#s-a38e1980" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-da4df0c7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 Test that WebAssembly instantiation succeeds (linking2.wast:14)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;Mm&quot;: module is not an object or function 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at linking2_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:19:10)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:46:3 expected true got false</pre></details><a class="self" href="#s-da4df0c7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a80a4b13"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that a WebAssembly code returns a specific result (linking2.wast:22)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at linking2_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:23:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:46:3 expected true got false</pre></details><a class="self" href="#s-a80a4b13" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a9f6135d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that a WebAssembly code returns a specific result (linking2.wast:23)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at linking2_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:26:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:46:3 expected true got false</pre></details><a class="self" href="#s-a9f6135d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9caf705e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#11 Test that a WebAssembly code returns a specific result (linking2.wast:24)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at linking2_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:29:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:46:3 expected true got false</pre></details><a class="self" href="#s-9caf705e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-691c3bca"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that a WebAssembly code returns a specific result (linking2.wast:25)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at linking2_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:32:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:46:3 expected true got false</pre></details><a class="self" href="#s-691c3bca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bc1e6b58"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (linking2.wast:26)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at linking2_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:35:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:46:3 expected true got false</pre></details><a class="self" href="#s-bc1e6b58" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7604b3b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly code returns a specific result (linking2.wast:27)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at linking2_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:38:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:46:3 expected true got false</pre></details><a class="self" href="#s-7604b3b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-28c78db1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that a WebAssembly code returns a specific result (linking2.wast:28)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at linking2_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:41:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:46:3 expected true got false</pre></details><a class="self" href="#s-28c78db1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1d42b139"><details><summary><span class="mark">FAIL</span><span class="sub-name">#16 Test that a WebAssembly code returns a specific result (linking2.wast:29)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;grow&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at linking2_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:44:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking2.wast.js:46:3 expected true got false</pre></details><a class="self" href="#s-1d42b139" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

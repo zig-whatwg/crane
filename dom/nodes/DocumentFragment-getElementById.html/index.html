@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-3dcbbaf7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The method must exist</span></div><a class="self" href="#s-3dcbbaf7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6454be08"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">It must return null when there are no matches</span></div><a class="self" href="#s-6454be08" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c23953b6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">It must return the first element when there are matches</span></div><a class="self" href="#s-c23953b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bc4e9dec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Empty string ID values</span></div><a class="self" href="#s-bc4e9dec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8677e245"><details><summary><span class="mark">FAIL</span><span class="sub-name">It must return the first element when there are matches, using a template</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;getElementById&#39;)</pre></details><a class="self" href="#s-8677e245" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

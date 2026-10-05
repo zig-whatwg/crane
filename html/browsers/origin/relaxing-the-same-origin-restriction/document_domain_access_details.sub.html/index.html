@@ -32,7 +32,24 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 0 failed, 1 timed out and 11 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/html/browsers/origin/relaxing-the-same-origin-restriction/document_domain_access_details.sub.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 12</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-cb26915e"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Access allowed if same-origin with no &#39;document.domain&#39; modification. (Sanity check)</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-cb26915e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-29c92d50"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access not allowed if different-origin with no &#39;document.domain&#39; modification. (Sanity check)</span></div><a class="self" href="#s-29c92d50" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-97600120"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access disallowed if same-origin but only one sets document.domain.</span></div><a class="self" href="#s-97600120" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-6a5c8162"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access allowed if same-origin and both set document.domain to existing value.</span></div><a class="self" href="#s-6a5c8162" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-f7cb6bf7"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access allowed if different-origin but both set document.domain to parent domain.</span></div><a class="self" href="#s-f7cb6bf7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-38b7b4da"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access disallowed again if same-origin, both set document-domain to existing value, then one sets to parent.</span></div><a class="self" href="#s-38b7b4da" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-2920ed7c"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access is revoked to Window object when we stop being same effective script origin due to document.domain.</span></div><a class="self" href="#s-2920ed7c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-ce24b617"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access is revoked to Location object when we stop being same effective script origin due to document.domain.</span></div><a class="self" href="#s-ce24b617" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-4b840849"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access is not revoked to Document object when we stop being same effective script origin due to document.domain.</span></div><a class="self" href="#s-4b840849" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-bb93cb63"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access is not revoked to random object when we stop being same effective script origin due to document.domain.</span></div><a class="self" href="#s-bb93cb63" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-4c49f08e"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access evolves correctly for non-cross-origin objects when we join up via document.domain and then diverge again.</span></div><a class="self" href="#s-4c49f08e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-a7b46bf9"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access evolves correctly for cross-origin objects when we join up via document.domain and then diverge again.</span></div><a class="self" href="#s-a7b46bf9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

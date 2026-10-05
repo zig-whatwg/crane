@@ -32,7 +32,22 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 8 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-a9708959"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.images should contain all HTML img elements</span></summary><pre class="msg">assert_equals: expected 10 but got 11</pre></details><a class="self" href="#s-a9708959" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5ccf1ce2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">img with id</span></div><a class="self" href="#s-5ccf1ce2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a4fd7552"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">img with name</span></div><a class="self" href="#s-a4fd7552" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5795a101"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">img with id and name</span></div><a class="self" href="#s-5795a101" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c7d720a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Two img elements with the same id</span></div><a class="self" href="#s-c7d720a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-696bcc50"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Two img elements with the same name</span></div><a class="self" href="#s-696bcc50" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0bad070d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Unknown name should not be in the collection</span></div><a class="self" href="#s-0bad070d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-df691328"><details><summary><span class="mark">FAIL</span><span class="sub-name">Foreign element should not be in the collection</span></summary><pre class="msg">assert_equals: expected (undefined) undefined but got (object) Element node &lt;img id=&quot;f&quot;&gt;&lt;/img&gt;</pre></details><a class="self" href="#s-df691328" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5e3207bf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Input elements should not be in the collection</span></div><a class="self" href="#s-5e3207bf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3ea01dac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The empty string should not be in the collections</span></div><a class="self" href="#s-3ea01dac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-40cc1111"><details><summary><span class="mark">FAIL</span><span class="sub-name">Document.images should be a live collection</span></summary><pre class="msg">assert_equals: expected 10 but got 11</pre></details><a class="self" href="#s-40cc1111" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

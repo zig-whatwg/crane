@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 2 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-b0fc8f70"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">localStorage.removeItem()</span></div><a class="self" href="#s-b0fc8f70" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f12c888f"><details><summary><span class="mark">FAIL</span><span class="sub-name">delete localStorage[]</span></summary><pre class="msg">assert_equals: storage.getItem(&#39;name&#39;) expected (object) null but got (string) &quot;user1&quot;</pre></details><a class="self" href="#s-f12c888f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0c806d4f"><details><summary><span class="mark">FAIL</span><span class="sub-name">localStorage.removeItem(null)</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-0c806d4f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-115fd6f1"><details><summary><span class="mark">FAIL</span><span class="sub-name">localStorage.removeItem(undefined)</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-115fd6f1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e587f5d7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sessionStorage.removeItem()</span></div><a class="self" href="#s-e587f5d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4d414e21"><details><summary><span class="mark">FAIL</span><span class="sub-name">delete sessionStorage[]</span></summary><pre class="msg">assert_equals: storage.getItem(&#39;name&#39;) expected (object) null but got (string) &quot;user1&quot;</pre></details><a class="self" href="#s-4d414e21" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-50e80021"><details><summary><span class="mark">FAIL</span><span class="sub-name">sessionStorage.removeItem(null)</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-50e80021" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d562ed87"><details><summary><span class="mark">FAIL</span><span class="sub-name">sessionStorage.removeItem(undefined)</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-d562ed87" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

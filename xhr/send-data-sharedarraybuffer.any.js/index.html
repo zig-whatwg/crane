@@ -32,7 +32,49 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 26 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/xhr/send-data-sharedarraybuffer.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>13</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-aa2add4e"><details><summary><span class="mark">FAIL</span><span class="sub-name">sending a SharedArrayBuffer</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+        xhr.send(buf)
+    }&quot; did not throw</pre></details><a class="self" href="#s-aa2add4e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-03bd4552"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Int8Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-03bd4552" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dfbdf1fd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Uint8Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-dfbdf1fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-63a2873a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Uint8ClampedArray backed by a SharedArrayBuffer</span></div><a class="self" href="#s-63a2873a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9bd5906b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Int16Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-9bd5906b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b1c10823"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Uint16Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-b1c10823" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-07e3b7b0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Int32Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-07e3b7b0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-60f134bf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Uint32Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-60f134bf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0b0d34f8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a BigInt64Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-0b0d34f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-69bae240"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a BigUint64Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-69bae240" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-faeeb73e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Float16Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-faeeb73e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2548a018"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Float32Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-2548a018" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2dff3716"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Float64Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-2dff3716" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0e308675"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a DataView backed by a SharedArrayBuffer</span></div><a class="self" href="#s-0e308675" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/xhr/send-data-sharedarraybuffer.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>13</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-7315ccc9"><details><summary><span class="mark">FAIL</span><span class="sub-name">sending a SharedArrayBuffer</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+        xhr.send(buf)
+    }&quot; did not throw</pre></details><a class="self" href="#s-7315ccc9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-373ad662"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Int8Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-373ad662" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6567ce61"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Uint8Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-6567ce61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dfe84818"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Uint8ClampedArray backed by a SharedArrayBuffer</span></div><a class="self" href="#s-dfe84818" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-71c3b0fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Int16Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-71c3b0fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4492748f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Uint16Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-4492748f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-615b2656"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Int32Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-615b2656" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-98265155"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Uint32Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-98265155" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-80ca8568"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a BigInt64Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-80ca8568" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0bfe198d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a BigUint64Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-0bfe198d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-71435e0b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Float16Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-71435e0b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4bdb447d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Float32Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-4bdb447d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cb59db0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a Float64Array backed by a SharedArrayBuffer</span></div><a class="self" href="#s-3cb59db0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aa3a5fb3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sending a DataView backed by a SharedArrayBuffer</span></div><a class="self" href="#s-aa3a5fb3" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

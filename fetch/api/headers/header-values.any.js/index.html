@@ -32,7 +32,29 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 10 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/headers/header-values.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>7</b> / 8</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-f8be4c64"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest with value x%00x needs to throw</span></div><a class="self" href="#s-f8be4c64" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-396a02bc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%00x needs to throw</span></div><a class="self" href="#s-396a02bc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6bbf1d13"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest with value x%0Ax needs to throw</span></div><a class="self" href="#s-6bbf1d13" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-afb97c38"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%0Ax needs to throw</span></div><a class="self" href="#s-afb97c38" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6202dfaa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest with value x%0Dx needs to throw</span></div><a class="self" href="#s-6202dfaa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2de126ab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%0Dx needs to throw</span></div><a class="self" href="#s-2de126ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2bf6d1f6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest with all valid values</span></div><a class="self" href="#s-2bf6d1f6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6c81e71c"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetch() with all valid values</span></summary><pre class="msg">assert_equals: expected (string) &quot;x\x01x&quot; but got (object) null</pre></details><a class="self" href="#s-6c81e71c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/headers/header-values.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-4a4c00a5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%00x needs to throw</span></div><a class="self" href="#s-4a4c00a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6edb0a45"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%0Ax needs to throw</span></div><a class="self" href="#s-6edb0a45" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c7ed39d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%0Dx needs to throw</span></div><a class="self" href="#s-c7ed39d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-96ad0385"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetch() with all valid values</span></summary><pre class="msg">assert_equals: expected (string) &quot;x\x01x&quot; but got (object) null</pre></details><a class="self" href="#s-96ad0385" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

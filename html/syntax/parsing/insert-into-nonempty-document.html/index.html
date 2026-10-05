@@ -32,7 +32,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-412983a6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Baseline: a DOCTYPE token appends a doctype to an empty Document</span></summary><pre class="msg">assert_equals: the parser&#39;s doctype was appended expected (string) &quot;html&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-412983a6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c973ff04"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A DOCTYPE token is dropped when the Document already has a doctype child</span></div><a class="self" href="#s-c973ff04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ddf9d122"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A DOCTYPE token is dropped when the Document already has an element child</span></div><a class="self" href="#s-ddf9d122" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9954621d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">An html start tag is dropped when the Document already has an element child</span></div><a class="self" href="#s-9954621d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

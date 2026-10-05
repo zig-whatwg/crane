@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 6 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-f0b8f341"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get value by getIten(key) and named access in localStorage.</span></div><a class="self" href="#s-f0b8f341" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f31236b1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">All items should be added to localStorage.</span></div><a class="self" href="#s-f31236b1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5d1c0f0a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Named access to localStorage should be correct</span></summary><pre class="msg">assert_equals: storage[&#39;name&#39;] expected (string) &quot;x&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-5d1c0f0a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c0570ab2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">localStorage.getItem should be correct</span></div><a class="self" href="#s-c0570ab2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5441bd18"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Get value by getIten(key) and named access in sessionStorage.</span></div><a class="self" href="#s-5441bd18" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-27a5996e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">All items should be added to sessionStorage.</span></div><a class="self" href="#s-27a5996e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-10509fa6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Named access to sessionStorage should be correct</span></summary><pre class="msg">assert_equals: storage[&#39;name&#39;] expected (string) &quot;x&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-10509fa6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-340e7464"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sessionStorage.getItem should be correct</span></div><a class="self" href="#s-340e7464" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

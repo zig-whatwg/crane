@@ -32,7 +32,18 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 7 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-330b2f2f"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open() removes the document&#39;s children (fully active document)</span></summary><pre class="msg">assert_equals: after write: doctype node in document expected 1 but got 0</pre></details><a class="self" href="#s-330b2f2f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-424cc5f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open() removes the document&#39;s children (active but not fully active document)</span></summary><pre class="msg">assert_equals: after write: doctype node in document expected 1 but got 0</pre></details><a class="self" href="#s-424cc5f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-86f663d7"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open() removes the document&#39;s children (non-active document with an associated Window object; frame is removed)</span></summary><pre class="msg">assert_equals: after write: doctype node in document expected 1 but got 0</pre></details><a class="self" href="#s-86f663d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-80d4f93b"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open() removes the document&#39;s children (non-active document with an associated Window object; navigated away)</span></summary><pre class="msg">assert_equals: after write: doctype node in document expected 1 but got 0</pre></details><a class="self" href="#s-80d4f93b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ff4ef779"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open() removes the document&#39;s children (non-active document without an associated Window object; createHTMLDocument)</span></summary><pre class="msg">assert_equals: after write: doctype node in document expected 1 but got 0</pre></details><a class="self" href="#s-ff4ef779" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-209cad34"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open() removes the document&#39;s children (non-active document without an associated Window object; DOMParser)</span></summary><pre class="msg">assert_equals: after write: doctype node in document expected 1 but got 0</pre></details><a class="self" href="#s-209cad34" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d3b239a2"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open() removes the document&#39;s children (non-active document without an associated Window object; XMLHttpRequest)</span></summary><pre class="msg">Cannot read properties of null (reading &#39;childNodes&#39;)</pre></details><a class="self" href="#s-d3b239a2" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

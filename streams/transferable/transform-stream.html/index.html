@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-98611f65"><details><summary><span class="mark">FAIL</span><span class="sub-name">window.postMessage should be able to transfer a TransformStream</span></summary><pre class="msg">TransformStream object could not be cloned.</pre></details><a class="self" href="#s-98611f65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-45a21986"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a TransformStream with a locked writable should not be transferable</span></div><a class="self" href="#s-45a21986" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc7d69b6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a TransformStream with a locked readable should not be transferable</span></div><a class="self" href="#s-cc7d69b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a403a4fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a TransformStream with both sides locked should not be transferable</span></div><a class="self" href="#s-a403a4fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e3b3c1de"><details><summary><span class="mark">FAIL</span><span class="sub-name">piping through transferred transforms should work</span></summary><pre class="msg">ReadableStream object could not be cloned.</pre></details><a class="self" href="#s-e3b3c1de" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

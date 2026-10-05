@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-3bd35f35"><details><summary><span class="mark">FAIL</span><span class="sub-name">direction doesn&#39;t affect :dir()</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [Element node &lt;html&gt;&lt;head&gt;&lt;meta charset=&quot;iso-8859-8&quot; id=&quot;meta&quot;&gt;
+&lt;title ..., Element node &lt;head&gt;&lt;meta charset=&quot;iso-8859-8&quot; id=&quot;meta&quot;&gt;
+&lt;title id=&quot;ti..., Element node &lt;meta charset=&quot;iso-8859-8&quot; id=&quot;meta&quot;&gt;&lt;/meta&gt;, Element node &lt;title id=&quot;title&quot;&gt;Selector: pseudo-classes (:dir(ltr), :d..., Element node &lt;link rel=&quot;author&quot; title=&quot;Denis Ah-Kang&quot; href=&quot;mailto:den..., Element node &lt;link rel=&quot;help&quot; href=&quot;https://html.spec.whatwg.org/multi..., Element node &lt;script src=&quot;/resources/testharness.js&quot; id=&quot;script1&quot;&gt;&lt;/sc..., Element node &lt;script src=&quot;/resources/testharnessreport.js&quot; id=&quot;script2..., Element node &lt;script src=&quot;utils.js&quot; id=&quot;script3&quot;&gt;&lt;/script&gt;, Element node &lt;body&gt;&lt;div id=&quot;log&quot;&gt;&lt;/div&gt;
+&lt;div&gt;This text is left to righ..., Element node &lt;div id=&quot;log&quot;&gt;&lt;/div&gt;, Element node &lt;div&gt;This text is left to right&lt;div id=&quot;div1&quot; style=&quot;dire..., Element node &lt;div id=&quot;div1&quot; style=&quot;direction:rtl&quot;&gt;this is right to lef..., Element node &lt;div&gt;This text is left to right&lt;span id=&quot;div2&quot; style=&quot;dir..., Element node &lt;span id=&quot;div2&quot; style=&quot;direction:rtl&quot;&gt;this is left to rig..., Element node &lt;script&gt;
+  var ltr = new Array(),
+      all = document.qu...] length 16, got [] length 0</pre></details><a class="self" href="#s-3bd35f35" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-ebc0aee1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">replaceState serializes state before checking the rate limit</span></div><a class="self" href="#s-ebc0aee1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-98537b31"><details><summary><span class="mark">FAIL</span><span class="sub-name">replaceState parses the URL before checking the rate limit</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    iframeWindow.history.replaceState(null, &quot;&quot;, &quot;http://[&quot;);
+  }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-98537b31" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3edcf3a2"><details><summary><span class="mark">FAIL</span><span class="sub-name">replaceState checks whether the URL can be rewritten before checking the rate limit</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    iframeWindow.history.replaceState(null, &quot;&quot;, &quot;https://example.com/&quot;);
+  }&quot; threw an exception from the wrong global</pre></details><a class="self" href="#s-3edcf3a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0932fd26"><details><summary><span class="mark">FAIL</span><span class="sub-name">replaceState checks fully active before checking the rate limit</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+      iframeHistory.replaceState(null, &quot;&quot;, `#inactive-${i}`);
+    }&quot; did not throw</pre></details><a class="self" href="#s-0932fd26" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

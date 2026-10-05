@@ -32,7 +32,41 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 23 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/basic/request-upload.h2.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 12</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-e4121131"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with empty ReadableStream</span></div><a class="self" href="#s-e4121131" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0a5a3911"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream</span></div><a class="self" href="#s-0a5a3911" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b946cd6f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream on 421 response should return the response and not retry.</span></div><a class="self" href="#s-b946cd6f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1d367d04"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Feature detect for POST with ReadableStream</span></div><a class="self" href="#s-1d367d04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e367877c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Feature detect for POST with ReadableStream, using request object</span></div><a class="self" href="#s-e367877c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2b8eef1d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Synchronous feature detect</span></div><a class="self" href="#s-2b8eef1d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-35878c90"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Synchronous feature detect fails if feature unsupported</span></div><a class="self" href="#s-35878c90" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6c94aa12"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Streaming upload with body containing a String</span></div><a class="self" href="#s-6c94aa12" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0dfc0a2d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Streaming upload with body containing null</span></div><a class="self" href="#s-0dfc0a2d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f15d63be"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Streaming upload with body containing a number</span></div><a class="self" href="#s-f15d63be" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8df80b3c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Streaming upload should fail on a 401 response</span></div><a class="self" href="#s-8df80b3c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-91103c4a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadbleStream should be closed on signal.abort</span></div><a class="self" href="#s-91103c4a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/basic/request-upload.h2.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 12</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-6f70430c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with empty ReadableStream</span></div><a class="self" href="#s-6f70430c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6ada06e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream</span></div><a class="self" href="#s-6ada06e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-51b7aad9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ReadableStream on 421 response should return the response and not retry.</span></div><a class="self" href="#s-51b7aad9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a994e106"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Feature detect for POST with ReadableStream</span></div><a class="self" href="#s-a994e106" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c5348335"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Feature detect for POST with ReadableStream, using request object</span></div><a class="self" href="#s-c5348335" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-28171fa9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Synchronous feature detect</span></div><a class="self" href="#s-28171fa9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-063e5df5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Synchronous feature detect fails if feature unsupported</span></div><a class="self" href="#s-063e5df5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-13b6681f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Streaming upload with body containing a String</span></div><a class="self" href="#s-13b6681f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c6654708"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Streaming upload with body containing null</span></div><a class="self" href="#s-c6654708" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b06dea5f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Streaming upload with body containing a number</span></div><a class="self" href="#s-b06dea5f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2dd46e0f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Streaming upload should fail on a 401 response</span></summary><pre class="msg">assert_unreached: Should have rejected: undefined Reached unreachable code</pre></details><a class="self" href="#s-2dd46e0f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4813c6bd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadbleStream should be closed on signal.abort</span></div><a class="self" href="#s-4813c6bd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,51 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 20 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/html/semantics/scripting-1/the-script-element/module/dynamic-import/blob-url.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-527c33cc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Blob URLs are supported in dynamic imports</span></div><a class="self" href="#s-527c33cc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2a8c92c5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Identical blob URLs resolve to the same module</span></div><a class="self" href="#s-2a8c92c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-073f9da1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Different blob URLs pointing to the same blob resolve to different modules</span></div><a class="self" href="#s-073f9da1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f6547d4b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A revoked blob URL will not resolve</span></div><a class="self" href="#s-f6547d4b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e278cd9f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A revoked blob URL will resolve if it&#39;s already in the module graph</span></div><a class="self" href="#s-e278cd9f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c4fadcb5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Revoking a blob URL immediately after calling import will not fail</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Failed to fetch dynamically imported module&quot;</pre></details><a class="self" href="#s-c4fadcb5" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/html/semantics/scripting-1/the-script-element/module/dynamic-import/blob-url.any.sharedworker-module.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-e0ecf95f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Blob URLs are supported in dynamic imports</span></div><a class="self" href="#s-e0ecf95f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-96201477"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Identical blob URLs resolve to the same module</span></div><a class="self" href="#s-96201477" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6c9f9db5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Different blob URLs pointing to the same blob resolve to different modules</span></div><a class="self" href="#s-6c9f9db5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-447b0f76"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A revoked blob URL will not resolve</span></div><a class="self" href="#s-447b0f76" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-604e34cb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A revoked blob URL will resolve if it&#39;s already in the module graph</span></div><a class="self" href="#s-604e34cb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-76c5cbb9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Revoking a blob URL immediately after calling import will not fail</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Failed to fetch dynamically imported module&quot;</pre></details><a class="self" href="#s-76c5cbb9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/html/semantics/scripting-1/the-script-element/module/dynamic-import/blob-url.any.worker-module.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-60629d3f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Blob URLs are supported in dynamic imports</span></div><a class="self" href="#s-60629d3f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dac5336c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Identical blob URLs resolve to the same module</span></div><a class="self" href="#s-dac5336c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a3396af6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Different blob URLs pointing to the same blob resolve to different modules</span></div><a class="self" href="#s-a3396af6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3057a5a5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A revoked blob URL will not resolve</span></div><a class="self" href="#s-3057a5a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4091e4d1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A revoked blob URL will resolve if it&#39;s already in the module graph</span></div><a class="self" href="#s-4091e4d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-56dc34ee"><details><summary><span class="mark">FAIL</span><span class="sub-name">Revoking a blob URL immediately after calling import will not fail</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Failed to fetch dynamically imported module&quot;</pre></details><a class="self" href="#s-56dc34ee" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/html/semantics/scripting-1/the-script-element/module/dynamic-import/blob-url.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-cae25254"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Blob URLs are supported in dynamic imports</span></div><a class="self" href="#s-cae25254" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c9050c71"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Identical blob URLs resolve to the same module</span></div><a class="self" href="#s-c9050c71" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c65093cd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Different blob URLs pointing to the same blob resolve to different modules</span></div><a class="self" href="#s-c65093cd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-85ed1fee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A revoked blob URL will not resolve</span></div><a class="self" href="#s-85ed1fee" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b3ff51e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A revoked blob URL will resolve if it&#39;s already in the module graph</span></div><a class="self" href="#s-b3ff51e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1daf61f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Revoking a blob URL immediately after calling import will not fail</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Failed to fetch dynamically imported module&quot;</pre></details><a class="self" href="#s-1daf61f2" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

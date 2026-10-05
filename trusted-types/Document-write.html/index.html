@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 7 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-27652dec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">document.write with html assigned via policy (successful transformation).</span></div><a class="self" href="#s-27652dec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b110b740"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.writeln with html assigned via policy (successful transformation).</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-b110b740" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8632f61e"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.write(TrustedHTML, TrustedHTML)</span></summary><pre class="msg">assert_equals: expected &quot;abcdefghijkl&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-8632f61e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c9da12d1"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.writeln(TrustedHTML, TrustedHTML)</span></summary><pre class="msg">assert_equals: expected &quot;abcdefghijkl&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-c9da12d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4dbb38bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.write(TrustedHTML, String)</span></summary><pre class="msg">assert_equals: expected &quot;abcdefghijkl&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-4dbb38bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-30074a76"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.writeln(TrustedHTML, String)</span></summary><pre class="msg">assert_equals: expected &quot;abcdefghijkl&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-30074a76" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-77107b16"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.write(String, String)</span></summary><pre class="msg">assert_equals: expected &quot;abcdefghijkl&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-77107b16" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1832ff5f"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.writeln(String, String)</span></summary><pre class="msg">assert_equals: expected &quot;abcdefghijkl&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-1832ff5f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

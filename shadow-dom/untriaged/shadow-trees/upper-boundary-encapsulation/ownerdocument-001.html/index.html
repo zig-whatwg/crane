@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 2 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-65991f5e"><details><summary><span class="mark">FAIL</span><span class="sub-name">ownerDocument property of a shadow root should be the document of the shadow host, regardless of the location of the shadow host.</span></summary><pre class="msg">assert_equals: expected Document node with 2 children but got null</pre></details><a class="self" href="#s-65991f5e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-59a3eb92"><details><summary><span class="mark">FAIL</span><span class="sub-name">ownerDocument property of elements in a shadow tree should match the document of the shadow host, regardless of the element&#39;s location in a shadow tree.</span></summary><pre class="msg">assert_equals: ownerDocument mismatch for #depth-1 expected Document node with 2 children but got null</pre></details><a class="self" href="#s-59a3eb92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-398f1b6b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Elements added to a shadow tree should automatically get a valid ownerDocument.</span></div><a class="self" href="#s-398f1b6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be819615"><details><summary><span class="mark">FAIL</span><span class="sub-name">ownerDocument property of an element in a shadow tree should be the document of the shadow host, even if the host element is created from another document.</span></summary><pre class="msg">assert_equals: expected Document node with 2 children but got Document node with 2 children</pre></details><a class="self" href="#s-be819615" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8a2235a8"><details><summary><span class="mark">FAIL</span><span class="sub-name">All children nodes of a shadow root get a valid ownerDocument when added to a shadow tree.</span></summary><pre class="msg">assert_equals: expected Document node with 2 children but got Document node with 2 children</pre></details><a class="self" href="#s-8a2235a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-69cacec2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ownerDocument property of a node should remain the same, even if its child is adopted into a shadow tree.</span></div><a class="self" href="#s-69cacec2" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

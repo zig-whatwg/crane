@@ -32,7 +32,49 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 32 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/dom/abort/event.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-08aa1a2a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortController abort() should fire event synchronously</span></div><a class="self" href="#s-08aa1a2a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a3dab0c0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.signal should always return the same object</span></div><a class="self" href="#s-a3dab0c0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a38089ed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.abort() should do nothing the second time it is called</span></div><a class="self" href="#s-a38089ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-91f4c466"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">event handler should not be called if added after controller.abort()</span></div><a class="self" href="#s-91f4c466" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ea512690"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the abort event should have the right properties</span></div><a class="self" href="#s-ea512690" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2aa1c14c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortController abort(reason) should set signal.reason</span></div><a class="self" href="#s-2aa1c14c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-23f176f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">aborting AbortController without reason creates an &quot;AbortError&quot; DOMException</span></div><a class="self" href="#s-23f176f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-01c566ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortController abort(undefined) creates an &quot;AbortError&quot; DOMException</span></div><a class="self" href="#s-01c566ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3a0c9c3c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortController abort(null) should set signal.reason</span></div><a class="self" href="#s-3a0c9c3c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9ba1ebad"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">static aborting signal should have right properties</span></div><a class="self" href="#s-9ba1ebad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f9cea0d8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">static aborting signal with reason should set signal.reason</span></div><a class="self" href="#s-f9cea0d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-710a1bba"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">throwIfAborted() should throw abort.reason if signal aborted</span></div><a class="self" href="#s-710a1bba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b981c7d9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">throwIfAborted() should throw primitive abort.reason if signal aborted</span></div><a class="self" href="#s-b981c7d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9dd1a5fe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">throwIfAborted() should not throw if signal not aborted</span></div><a class="self" href="#s-9dd1a5fe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3e81b17c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortSignal.reason returns the same DOMException</span></div><a class="self" href="#s-3e81b17c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9831a35c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortController.signal.reason returns the same DOMException</span></div><a class="self" href="#s-9831a35c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/dom/abort/event.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-6107741b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortController abort() should fire event synchronously</span></div><a class="self" href="#s-6107741b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-64eb0c1e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.signal should always return the same object</span></div><a class="self" href="#s-64eb0c1e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c6dc4dac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.abort() should do nothing the second time it is called</span></div><a class="self" href="#s-c6dc4dac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f57bf78c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">event handler should not be called if added after controller.abort()</span></div><a class="self" href="#s-f57bf78c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d522e979"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the abort event should have the right properties</span></div><a class="self" href="#s-d522e979" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1249fa9d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortController abort(reason) should set signal.reason</span></div><a class="self" href="#s-1249fa9d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d6a1707f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">aborting AbortController without reason creates an &quot;AbortError&quot; DOMException</span></div><a class="self" href="#s-d6a1707f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d4f3b593"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortController abort(undefined) creates an &quot;AbortError&quot; DOMException</span></div><a class="self" href="#s-d4f3b593" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fa4c7a36"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortController abort(null) should set signal.reason</span></div><a class="self" href="#s-fa4c7a36" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ec93f4ab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">static aborting signal should have right properties</span></div><a class="self" href="#s-ec93f4ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cdd93946"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">static aborting signal with reason should set signal.reason</span></div><a class="self" href="#s-cdd93946" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3fbd3712"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">throwIfAborted() should throw abort.reason if signal aborted</span></div><a class="self" href="#s-3fbd3712" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7d923b4a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">throwIfAborted() should throw primitive abort.reason if signal aborted</span></div><a class="self" href="#s-7d923b4a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-18dad87a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">throwIfAborted() should not throw if signal not aborted</span></div><a class="self" href="#s-18dad87a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2da4de65"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortSignal.reason returns the same DOMException</span></div><a class="self" href="#s-2da4de65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4ddc5409"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">AbortController.signal.reason returns the same DOMException</span></div><a class="self" href="#s-4ddc5409" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

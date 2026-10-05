@@ -33,7 +33,37 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 10 failed, 0 timed out and 8 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-delete.https.any.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 9</span></h3>
+<pre class="msg harness-msg">Unhandled rejection: This feature is not yet implemented</pre>
+<ol class="subtests">
+<li class="sub s-fail" id="s-3956477e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cache.delete with no arguments</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-3956477e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be4b3c4e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cache.delete called with a string URL</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-be4b3c4e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9acc6365"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cache.delete called with a Request object</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-9acc6365" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-18361391"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cache.delete called with a HEAD request</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-18361391" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-180c1535"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cache.delete supports ignoreVary</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-180c1535" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4c15c809"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cache.delete with a non-existent entry</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-4c15c809" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3a01b729"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cache.delete with ignoreSearch option (request with search parameters)</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-3a01b729" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ab4ec9ab"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cache.delete with ignoreSearch option (when it is specified as false)</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-ab4ec9ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-59c35db9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cache.delete with a string that cannot construct a Request</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-59c35db9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-delete.https.any.worker.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 9</span></h3>
+<pre class="msg harness-msg">Test named &#39;Cache.delete with no arguments&#39; specified 1 &#39;cleanup&#39; function, and 1 failed.</pre>
+<ol class="subtests">
+<li class="sub s-fail" id="s-57156fcf"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cache.delete with no arguments</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;delete&#39;)</pre></details><a class="self" href="#s-57156fcf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-dfb3db18"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Cache.delete called with a string URL</span></div><a class="self" href="#s-dfb3db18" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-5c211ef9"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Cache.delete called with a Request object</span></div><a class="self" href="#s-5c211ef9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-dc753bb9"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Cache.delete called with a HEAD request</span></div><a class="self" href="#s-dc753bb9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-828ed079"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Cache.delete supports ignoreVary</span></div><a class="self" href="#s-828ed079" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-18fb2b31"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Cache.delete with a non-existent entry</span></div><a class="self" href="#s-18fb2b31" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-d8a66f59"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Cache.delete with ignoreSearch option (request with search parameters)</span></div><a class="self" href="#s-d8a66f59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-06ad59cb"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Cache.delete with ignoreSearch option (when it is specified as false)</span></div><a class="self" href="#s-06ad59cb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-8410775d"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Cache.delete with a string that cannot construct a Request</span></div><a class="self" href="#s-8410775d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

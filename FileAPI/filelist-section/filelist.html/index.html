@@ -32,7 +32,18 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 2 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-77267f18"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check if window has a FileList property</span></div><a class="self" href="#s-77267f18" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-80a60c3c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check if FileList.length is 0</span></div><a class="self" href="#s-80a60c3c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fe3fcb83"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check if item is a instanceof Function</span></summary><pre class="msg">Cannot read properties of null (reading &#39;item&#39;)</pre></details><a class="self" href="#s-fe3fcb83" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-30efcec3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check if item is a method of fileList</span></summary><pre class="msg">assert_inherits: item is a method of fileList provided value is not an object</pre></details><a class="self" href="#s-30efcec3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-80b2d9e4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check if the item method returns null when no file selected</span></summary><pre class="msg">Cannot read properties of null (reading &#39;item&#39;)</pre></details><a class="self" href="#s-80b2d9e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4723cad2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check if length is fileList&#39;s attribute</span></summary><pre class="msg">assert_inherits: length is fileList attribute provided value is not an object</pre></details><a class="self" href="#s-4723cad2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5931dcdd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check if the fileList length is 0 when no file selected</span></summary><pre class="msg">Cannot read properties of null (reading &#39;length&#39;)</pre></details><a class="self" href="#s-5931dcdd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

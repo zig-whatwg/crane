@@ -32,7 +32,18 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-92e8e52b"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;form rel=&quot;&quot;&gt; with &lt;form target&gt;</span></summary><pre class="msg">assert_false: opener expected false got true</pre></details><a class="self" href="#s-92e8e52b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-834e13c5"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;form rel=&quot;noopener&quot;&gt; with &lt;form target&gt;</span></summary><pre class="msg">assert_false: opener expected false got true</pre></details><a class="self" href="#s-834e13c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a635f66e"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;form rel=&quot;noreferrer&quot;&gt; with &lt;form target&gt;</span></summary><pre class="msg">assert_equals: referrer expected &quot;&quot; but got &quot;http://web-platform.test:8000/html/semantics/forms/form-submission-target/rel-form-target.html&quot;</pre></details><a class="self" href="#s-a635f66e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f9b2c890"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&lt;form rel=&quot;opener&quot;&gt; with &lt;form target&gt;</span></div><a class="self" href="#s-f9b2c890" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6baa1c7f"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;form rel=&quot;noopener noreferrer&quot;&gt; with &lt;form target&gt;</span></summary><pre class="msg">assert_equals: referrer expected &quot;&quot; but got &quot;http://web-platform.test:8000/html/semantics/forms/form-submission-target/rel-form-target.html&quot;</pre></details><a class="self" href="#s-6baa1c7f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4a801024"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;form rel=&quot;noreferrer opener&quot;&gt; with &lt;form target&gt;</span></summary><pre class="msg">assert_equals: referrer expected &quot;&quot; but got &quot;http://web-platform.test:8000/html/semantics/forms/form-submission-target/rel-form-target.html&quot;</pre></details><a class="self" href="#s-4a801024" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bc4f235c"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;form rel=&quot;opener noopener&quot;&gt; with &lt;form target&gt;</span></summary><pre class="msg">assert_false: opener expected false got true</pre></details><a class="self" href="#s-bc4f235c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

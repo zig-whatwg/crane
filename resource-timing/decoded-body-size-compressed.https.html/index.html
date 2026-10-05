@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 8 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-a09a7182"><details><summary><span class="mark">FAIL</span><span class="sub-name">decodedBodySize for gzip-compressed XML resource</span></summary><pre class="msg">assert_equals: decodedBodySize should match the uncompressed XML file size expected 125 but got 0</pre></details><a class="self" href="#s-a09a7182" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d7d72a6e"><details><summary><span class="mark">FAIL</span><span class="sub-name">decodedBodySize for brotli-compressed text resource</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-d7d72a6e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-23fc0819"><details><summary><span class="mark">FAIL</span><span class="sub-name">decodedBodySize for gzip-compressed text resource</span></summary><pre class="msg">assert_equals: decodedBodySize should match the uncompressed gzip file size expected 10500 but got 0</pre></details><a class="self" href="#s-23fc0819" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7de5d6f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">decodedBodySize for dynamically gzip-compressed JS resource</span></summary><pre class="msg">assert_equals: decodedBodySize should match the uncompressed JS file size expected 53 but got 0</pre></details><a class="self" href="#s-7de5d6f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-70e7ba8a"><details><summary><span class="mark">FAIL</span><span class="sub-name">decodedBodySize for deflate-compressed JS resource</span></summary><pre class="msg">assert_equals: decodedBodySize should match the uncompressed JS file size expected 53 but got 0</pre></details><a class="self" href="#s-70e7ba8a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7324024a"><details><summary><span class="mark">FAIL</span><span class="sub-name">decodedBodySize equals encodedBodySize for uncompressed resource</span></summary><pre class="msg">assert_equals: decodedBodySize should match file size for uncompressed resource expected 53 but got 0</pre></details><a class="self" href="#s-7324024a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9d01d33b"><details><summary><span class="mark">FAIL</span><span class="sub-name">decodedBodySize for dictionary-compressed brotli (dcb) resource</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-9d01d33b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fac03572"><details><summary><span class="mark">FAIL</span><span class="sub-name">decodedBodySize for dictionary-compressed zstd (dcz) resource</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-fac03572" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

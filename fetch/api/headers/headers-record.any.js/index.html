@@ -32,7 +32,51 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 22 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/headers/headers-record.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 13</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-8815a6e0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing nothing to Headers constructor</span></div><a class="self" href="#s-8815a6e0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5df38765"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing undefined to Headers constructor</span></div><a class="self" href="#s-5df38765" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1aaac250"><details><summary><span class="mark">FAIL</span><span class="sub-name">Passing null to Headers constructor</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+    var h = new Headers(null);
+  }&quot; did not throw</pre></details><a class="self" href="#s-1aaac250" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4ca267da"><details><summary><span class="mark">FAIL</span><span class="sub-name">Basic operation with one property</span></summary><pre class="msg">assert_equals: expected 4 but got 3</pre></details><a class="self" href="#s-4ca267da" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ddb02c7e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Basic operation with one property and a proto</span></summary><pre class="msg">assert_equals: expected 4 but got 3</pre></details><a class="self" href="#s-ddb02c7e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-48cce6a5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with two properties</span></summary><pre class="msg">assert_equals: expected 6 but got 5</pre></details><a class="self" href="#s-48cce6a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b5c114aa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with two properties one of which has an invalid name</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;get&quot;, object &quot;[object Object]&quot;, symbol &quot;Symbol(Symbol.iterator)&quot;, object &quot;[object Object]&quot;] length 4, got [&quot;ownKeys&quot;, object &quot;[object Object]&quot;] length 2</pre></details><a class="self" href="#s-b5c114aa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e87faa9a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with two properties one of which has an invalid value</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+    var h = new Headers(proxy);
+  }&quot; did not throw</pre></details><a class="self" href="#s-e87faa9a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-58b69cd5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with non-enumerable properties</span></summary><pre class="msg">assert_equals: expected 6 but got 5</pre></details><a class="self" href="#s-58b69cd5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cf2dfe57"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with undefined descriptors</span></summary><pre class="msg">assert_equals: expected 6 but got 5</pre></details><a class="self" href="#s-cf2dfe57" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0d80bc5d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with repeated keys</span></summary><pre class="msg">assert_equals: expected 2 but got 1</pre></details><a class="self" href="#s-0d80bc5d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2ef9a23f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Basic operation with Symbol keys</span></summary><pre class="msg">assert_throws_js: function &quot;function() { var h = new Headers(proxy); }&quot; did not throw</pre></details><a class="self" href="#s-2ef9a23f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-abe0fe7c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Operation with non-enumerable Symbol keys</span></summary><pre class="msg">assert_equals: expected 9 but got 7</pre></details><a class="self" href="#s-abe0fe7c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/headers/headers-record.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 13</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-b036b1a0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing nothing to Headers constructor</span></div><a class="self" href="#s-b036b1a0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2165ec6f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing undefined to Headers constructor</span></div><a class="self" href="#s-2165ec6f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1f3bb7ad"><details><summary><span class="mark">FAIL</span><span class="sub-name">Passing null to Headers constructor</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+    var h = new Headers(null);
+  }&quot; did not throw</pre></details><a class="self" href="#s-1f3bb7ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f83d966b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Basic operation with one property</span></summary><pre class="msg">assert_equals: expected 4 but got 3</pre></details><a class="self" href="#s-f83d966b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ea0d6bad"><details><summary><span class="mark">FAIL</span><span class="sub-name">Basic operation with one property and a proto</span></summary><pre class="msg">assert_equals: expected 4 but got 3</pre></details><a class="self" href="#s-ea0d6bad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b6923b2e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with two properties</span></summary><pre class="msg">assert_equals: expected 6 but got 5</pre></details><a class="self" href="#s-b6923b2e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d56249cf"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with two properties one of which has an invalid name</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;get&quot;, object &quot;[object Object]&quot;, symbol &quot;Symbol(Symbol.iterator)&quot;, object &quot;[object Object]&quot;] length 4, got [&quot;ownKeys&quot;, object &quot;[object Object]&quot;] length 2</pre></details><a class="self" href="#s-d56249cf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-47be2f34"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with two properties one of which has an invalid value</span></summary><pre class="msg">assert_throws_js: function &quot;function() {
+    var h = new Headers(proxy);
+  }&quot; did not throw</pre></details><a class="self" href="#s-47be2f34" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d3328e17"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with non-enumerable properties</span></summary><pre class="msg">assert_equals: expected 6 but got 5</pre></details><a class="self" href="#s-d3328e17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-75bf2fd0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with undefined descriptors</span></summary><pre class="msg">assert_equals: expected 6 but got 5</pre></details><a class="self" href="#s-75bf2fd0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1397c0f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Correct operation ordering with repeated keys</span></summary><pre class="msg">assert_equals: expected 2 but got 1</pre></details><a class="self" href="#s-1397c0f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b3398483"><details><summary><span class="mark">FAIL</span><span class="sub-name">Basic operation with Symbol keys</span></summary><pre class="msg">assert_throws_js: function &quot;function() { var h = new Headers(proxy); }&quot; did not throw</pre></details><a class="self" href="#s-b3398483" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e7f41053"><details><summary><span class="mark">FAIL</span><span class="sub-name">Operation with non-enumerable Symbol keys</span></summary><pre class="msg">assert_equals: expected 9 but got 7</pre></details><a class="self" href="#s-e7f41053" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

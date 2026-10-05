@@ -32,7 +32,79 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 3 failed, 9 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=document&amp;contention=query</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-d80d3ad8"><details><summary><span class="mark">FAIL</span><span class="sub-name">A held lock on the main thread should cause eviction on navigator.locks.query()</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;request&#39;)&quot;</pre></details><a class="self" href="#s-d80d3ad8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=document&amp;contention=request</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-d3a8cf5b"><details><summary><span class="mark">FAIL</span><span class="sub-name">A held lock on the main thread should cause eviction on navigator.locks.request()</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;request&#39;)&quot;</pre></details><a class="self" href="#s-d3a8cf5b" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=document&amp;contention=request-if-available</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-c899af56"><details><summary><span class="mark">FAIL</span><span class="sub-name">A held lock on the main thread should cause eviction on navigator.locks.request() with ifAvailable: true</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;request&#39;)&quot;</pre></details><a class="self" href="#s-c899af56" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=nested-worker&amp;contention=query</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-a821c47e"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">A held lock on a nested worker should cause eviction on navigator.locks.query()</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-a821c47e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=nested-worker&amp;contention=request</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-5d115631"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">A held lock on a nested worker should cause eviction on navigator.locks.request()</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-5d115631" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=nested-worker&amp;contention=request-if-available</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-58a01820"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">A held lock on a nested worker should cause eviction on navigator.locks.request() with ifAvailable: true</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-58a01820" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=shared-worker&amp;contention=query</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-7f7842b7"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">A held lock on a shared worker should cause eviction on navigator.locks.query()</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-7f7842b7" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=shared-worker&amp;contention=request</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-7baa1626"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">A held lock on a shared worker should cause eviction on navigator.locks.request()</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-7baa1626" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=shared-worker&amp;contention=request-if-available</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-34461d7f"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">A held lock on a shared worker should cause eviction on navigator.locks.request() with ifAvailable: true</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-34461d7f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=worker&amp;contention=query</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-77e9ffdb"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">A held lock on a worker should cause eviction on navigator.locks.query()</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-77e9ffdb" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=worker&amp;contention=request</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-10791aff"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">A held lock on a worker should cause eviction on navigator.locks.request()</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-10791aff" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/bfcache/contention.https.window.html?context=worker&amp;contention=request-if-available</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-d52e46b9"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">A held lock on a worker should cause eviction on navigator.locks.request() with ifAvailable: true</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-d52e46b9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 8 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-de55e581"><details><summary><span class="mark">FAIL</span><span class="sub-name">Registering same scope as the script directory without the last slash</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;register&#39;)</pre></details><a class="self" href="#s-de55e581" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b7cc515e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Registration scope outside the script directory</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;register&#39;)</pre></details><a class="self" href="#s-b7cc515e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7a290f20"><details><summary><span class="mark">FAIL</span><span class="sub-name">Registering scope outside domain</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;register&#39;)</pre></details><a class="self" href="#s-7a290f20" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-29eae006"><details><summary><span class="mark">FAIL</span><span class="sub-name">Registering script outside domain</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;register&#39;)</pre></details><a class="self" href="#s-29eae006" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4ca18be7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Registering redirected script</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;register&#39;)</pre></details><a class="self" href="#s-4ca18be7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a755bc06"><details><summary><span class="mark">FAIL</span><span class="sub-name">Scope including parent-reference and not under the script directory</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;register&#39;)</pre></details><a class="self" href="#s-a755bc06" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-95cf1cc7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Script URL including consecutive slashes</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;register&#39;)</pre></details><a class="self" href="#s-95cf1cc7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8c7de45a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Script URL is same-origin filesystem: URL</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;register&#39;)</pre></details><a class="self" href="#s-8c7de45a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

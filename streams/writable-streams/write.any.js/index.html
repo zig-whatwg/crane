@@ -32,7 +32,43 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 26 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/write.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>13</b> / 13</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-b3415f17"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream should complete asynchronous writes before close resolves</span></div><a class="self" href="#s-b3415f17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-257414c1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream should complete synchronous writes before close resolves</span></div><a class="self" href="#s-257414c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dbfceec0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fulfillment value of ws.write() call should be undefined even if the underlying sink returns a non-undefined value</span></div><a class="self" href="#s-dbfceec0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-433dc0d1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream should transition to waiting until write is acknowledged</span></div><a class="self" href="#s-433dc0d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-036ee85e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">when write returns a rejected promise, queued writes and close should be cleared</span></div><a class="self" href="#s-036ee85e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-16bcfe20"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">when sink&#39;s write throws an error, the stream should become errored and the promise should reject</span></div><a class="self" href="#s-16bcfe20" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-18a5cbb4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writer.write(), ready and closed reject with the error passed to controller.error() made before sink.write rejection</span></div><a class="self" href="#s-18a5cbb4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-933cd82e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a large queue of writes should be processed completely</span></div><a class="self" href="#s-933cd82e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-46dcb749"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStreamDefaultWriter should work when manually constructed</span></div><a class="self" href="#s-46dcb749" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a340093f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">returning a thenable from write() should work</span></div><a class="self" href="#s-a340093f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1ba54292"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">failing DefaultWriter constructor should not release an existing writer</span></div><a class="self" href="#s-1ba54292" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e5f6ae2a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write() on a stream with HWM 0 should not cause the ready Promise to resolve</span></div><a class="self" href="#s-e5f6ae2a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-092aa1df"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writing to a released writer should reject the returned promise</span></div><a class="self" href="#s-092aa1df" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/write.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>13</b> / 13</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-00c00238"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream should complete asynchronous writes before close resolves</span></div><a class="self" href="#s-00c00238" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4795a783"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream should complete synchronous writes before close resolves</span></div><a class="self" href="#s-4795a783" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5b9d2ffc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fulfillment value of ws.write() call should be undefined even if the underlying sink returns a non-undefined value</span></div><a class="self" href="#s-5b9d2ffc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6e76aa45"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream should transition to waiting until write is acknowledged</span></div><a class="self" href="#s-6e76aa45" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2e5185a6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">when write returns a rejected promise, queued writes and close should be cleared</span></div><a class="self" href="#s-2e5185a6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eaf0431f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">when sink&#39;s write throws an error, the stream should become errored and the promise should reject</span></div><a class="self" href="#s-eaf0431f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0ccc0f35"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writer.write(), ready and closed reject with the error passed to controller.error() made before sink.write rejection</span></div><a class="self" href="#s-0ccc0f35" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0c310b3a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a large queue of writes should be processed completely</span></div><a class="self" href="#s-0c310b3a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3a285100"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStreamDefaultWriter should work when manually constructed</span></div><a class="self" href="#s-3a285100" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4fadab2f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">returning a thenable from write() should work</span></div><a class="self" href="#s-4fadab2f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b9cfeb14"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">failing DefaultWriter constructor should not release an existing writer</span></div><a class="self" href="#s-b9cfeb14" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5e60f1d8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write() on a stream with HWM 0 should not cause the ready Promise to resolve</span></div><a class="self" href="#s-5e60f1d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e86b4cc1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">writing to a released writer should reject the returned promise</span></div><a class="self" href="#s-e86b4cc1" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,43 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/websockets/Send-65K-data.any.html?default</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-38ce6bf6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Send 65K data on a WebSocket - Connection should be closed</span></div><a class="self" href="#s-38ce6bf6" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/websockets/Send-65K-data.any.html?wpt_flags=h2</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-3a0935e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Send 65K data on a WebSocket - Connection should be closed</span></summary><pre class="msg">assert_true: WebSocket connection should be open expected true got false</pre></details><a class="self" href="#s-3a0935e8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/websockets/Send-65K-data.any.html?wss</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-2a9f1a90"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Send 65K data on a WebSocket - Connection should be closed</span></div><a class="self" href="#s-2a9f1a90" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/websockets/Send-65K-data.any.worker.html?default</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-7dc3b6c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Send 65K data on a WebSocket - Connection should be closed</span></div><a class="self" href="#s-7dc3b6c9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/websockets/Send-65K-data.any.worker.html?wpt_flags=h2</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-c5ccac98"><details><summary><span class="mark">FAIL</span><span class="sub-name">Send 65K data on a WebSocket - Connection should be closed</span></summary><pre class="msg">assert_true: WebSocket connection should be open expected true got false</pre></details><a class="self" href="#s-c5ccac98" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/websockets/Send-65K-data.any.worker.html?wss</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-a71c9c95"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Send 65K data on a WebSocket - Connection should be closed</span></div><a class="self" href="#s-a71c9c95" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

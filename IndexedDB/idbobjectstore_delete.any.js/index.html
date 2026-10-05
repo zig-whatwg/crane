@@ -32,7 +32,31 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 14 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbobjectstore_delete.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>7</b> / 7</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-fedaee5e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">delete() removes record (inline keys)</span></div><a class="self" href="#s-fedaee5e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-98bc3fcc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">delete() key doesn&#39;t match any records</span></div><a class="self" href="#s-98bc3fcc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d2be313b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Object store&#39;s key path is an object attribute</span></div><a class="self" href="#s-d2be313b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6bcc6335"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">delete() removes record (out-of-line keys)</span></div><a class="self" href="#s-6bcc6335" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8719eaa6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">delete() removes all of the records in the range</span></div><a class="self" href="#s-8719eaa6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-11c9d61a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If the transaction this IDBObjectStore belongs to has its mode set to readonly, throw ReadOnlyError</span></div><a class="self" href="#s-11c9d61a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8ce0cddf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If the object store has been deleted, the implementation must throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-8ce0cddf" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbobjectstore_delete.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>7</b> / 7</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-d81ea23e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">delete() removes record (inline keys)</span></div><a class="self" href="#s-d81ea23e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2d431a80"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">delete() key doesn&#39;t match any records</span></div><a class="self" href="#s-2d431a80" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5c563d8d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Object store&#39;s key path is an object attribute</span></div><a class="self" href="#s-5c563d8d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0f8b2b69"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">delete() removes record (out-of-line keys)</span></div><a class="self" href="#s-0f8b2b69" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-926f0c0c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">delete() removes all of the records in the range</span></div><a class="self" href="#s-926f0c0c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a58d6148"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If the transaction this IDBObjectStore belongs to has its mode set to readonly, throw ReadOnlyError</span></div><a class="self" href="#s-a58d6148" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bb3ec4fa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If the object store has been deleted, the implementation must throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-bb3ec4fa" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

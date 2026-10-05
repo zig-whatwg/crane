@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 6 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-fc28e274"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">event exists on window, which is initially set to undefined</span></div><a class="self" href="#s-fc28e274" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6cfac419"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">window.event is only defined during dispatch</span></div><a class="self" href="#s-6cfac419" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ac4e5f8c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">window.event is undefined if the target is in a shadow tree (event dispatched outside shadow tree)</span></div><a class="self" href="#s-ac4e5f8c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cc093ca1"><details><summary><span class="mark">FAIL</span><span class="sub-name">window.event is undefined if the target is in a shadow tree (event dispatched inside shadow tree)</span></summary><pre class="msg">assert_not_equals: got disallowed value object &quot;[object Event]&quot;</pre></details><a class="self" href="#s-cc093ca1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d07e6ddf"><details><summary><span class="mark">FAIL</span><span class="sub-name">window.event is undefined inside window.onerror if the target is in a shadow tree (ErrorEvent dispatched inside shadow tree)</span></summary><pre class="msg">assert_not_equals: got disallowed value object &quot;[object ErrorEvent]&quot;</pre></details><a class="self" href="#s-d07e6ddf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7f59797a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">window.event is set to the current event during dispatch</span></div><a class="self" href="#s-7f59797a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-603d411a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">window.event is set to the current event, which is the event passed to dispatch</span></div><a class="self" href="#s-603d411a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-97140877"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">window.event is set to the current event, which is the event passed to dispatch (2)</span></div><a class="self" href="#s-97140877" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

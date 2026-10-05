@@ -32,7 +32,55 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 38 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/WebCryptoAPI/derive_bits_keys/cfrg_curves_bits_curve25519.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>19</b> / 19</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-f4ef1460"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setup - define tests</span></div><a class="self" href="#s-f4ef1460" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-459d5e0a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order 0</span></div><a class="self" href="#s-459d5e0a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3ff2b59c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order 1</span></div><a class="self" href="#s-3ff2b59c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3ea2f81b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order 8</span></div><a class="self" href="#s-3ea2f81b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b54eca73"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order p-1 (order 2)</span></div><a class="self" href="#s-b54eca73" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c99546c6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order p (=0, order 4)</span></div><a class="self" href="#s-c99546c6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ac825ad7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order p+1 (=1, order 1)</span></div><a class="self" href="#s-ac825ad7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2a4f72b8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 good parameters</span></div><a class="self" href="#s-2a4f72b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a46549c3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 mixed case parameters</span></div><a class="self" href="#s-a46549c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7ae4b5d8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 short result</span></div><a class="self" href="#s-7ae4b5d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6593aee7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 non-multiple of 8 bits</span></div><a class="self" href="#s-6593aee7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6cadc077"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 missing public property</span></div><a class="self" href="#s-6cadc077" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ae5fbd9d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 public property of algorithm is not a CryptoKey</span></div><a class="self" href="#s-ae5fbd9d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dddcbdf0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 mismatched algorithms</span></div><a class="self" href="#s-dddcbdf0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d277efb7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 no deriveBits usage for base key</span></div><a class="self" href="#s-d277efb7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9bb8b300"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 base key is not a private key</span></div><a class="self" href="#s-9bb8b300" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c0cf4965"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 public property value is a private key</span></div><a class="self" href="#s-c0cf4965" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-510f077b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 public property value is a secret key</span></div><a class="self" href="#s-510f077b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d9944565"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 asking for too many bits</span></div><a class="self" href="#s-d9944565" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/WebCryptoAPI/derive_bits_keys/cfrg_curves_bits_curve25519.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>19</b> / 19</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-a164fab7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">setup - define tests</span></div><a class="self" href="#s-a164fab7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-00651d17"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order 0</span></div><a class="self" href="#s-00651d17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-435b03a0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order 1</span></div><a class="self" href="#s-435b03a0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-69da5fa9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order 8</span></div><a class="self" href="#s-69da5fa9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cfda7f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order p-1 (order 2)</span></div><a class="self" href="#s-3cfda7f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cd4997e6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order p (=0, order 4)</span></div><a class="self" href="#s-cd4997e6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c11c3611"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 key derivation checks for all-zero value result with a key of order p+1 (=1, order 1)</span></div><a class="self" href="#s-c11c3611" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eae88d02"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 good parameters</span></div><a class="self" href="#s-eae88d02" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-98516c15"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 mixed case parameters</span></div><a class="self" href="#s-98516c15" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bbb52a1c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 short result</span></div><a class="self" href="#s-bbb52a1c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8f0cf804"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 non-multiple of 8 bits</span></div><a class="self" href="#s-8f0cf804" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f743d0d5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 missing public property</span></div><a class="self" href="#s-f743d0d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc7e1c33"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 public property of algorithm is not a CryptoKey</span></div><a class="self" href="#s-cc7e1c33" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bfa7ef48"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 mismatched algorithms</span></div><a class="self" href="#s-bfa7ef48" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7e13f808"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 no deriveBits usage for base key</span></div><a class="self" href="#s-7e13f808" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a912489d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 base key is not a private key</span></div><a class="self" href="#s-a912489d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cfb6470b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 public property value is a private key</span></div><a class="self" href="#s-cfb6470b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8b821a8d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 public property value is a secret key</span></div><a class="self" href="#s-8b821a8d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fca4a270"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">X25519 asking for too many bits</span></div><a class="self" href="#s-fca4a270" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,20 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 7 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-c4f78a79"><details><summary><span class="mark">FAIL</span><span class="sub-name">insertAdjacentHTML with html assigned via policy (successful HTML transformation).</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-c4f78a79" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-51b8c501"><details><summary><span class="mark">FAIL</span><span class="sub-name">insertAdjacentHTML(TrustedHTML) throws SyntaxError DOMException when position invalid.</span></summary><pre class="msg">assert_throws_dom: function &quot;_ =&gt; {
+      d.insertAdjacentHTML(&#39;invalid&#39;, p.createHTML(&quot;&lt;p&gt;Fail&lt;/p&gt;&quot;));
+    }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException SyntaxError: property &quot;code&quot; is equal to 9, expected 12</pre></details><a class="self" href="#s-51b8c501" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-88656e62"><details><summary><span class="mark">FAIL</span><span class="sub-name">`insertAdjacentHTML(string)` throws.</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-88656e62" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8a1c437e"><details><summary><span class="mark">FAIL</span><span class="sub-name">`insertAdjacentHTML(string)` still throws TypeError when position invalid.</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-8a1c437e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-85147d6b"><details><summary><span class="mark">FAIL</span><span class="sub-name">`insertAdjacentHTML(null)` throws.</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-85147d6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-32c2f0b4"><details><summary><span class="mark">FAIL</span><span class="sub-name">`insertAdjacentHTML(string)` assigned via default policy (successful HTML transformation).</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-32c2f0b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1ff171a4"><details><summary><span class="mark">FAIL</span><span class="sub-name">`insertAdjacentHTML(null)` assigned via default policy does not throw.</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-1ff171a4" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 7 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-7a0dea1c"><details><summary><span class="mark">FAIL</span><span class="sub-name">querySelector</span></summary><pre class="msg">assert_equals: expected Element node &lt;p&gt;&lt;span&gt;hello&lt;/span&gt;&lt;/p&gt; but got null</pre></details><a class="self" href="#s-7a0dea1c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5f641f1b"><details><summary><span class="mark">FAIL</span><span class="sub-name">querySelectorAll</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [Element node &lt;p&gt;&lt;span&gt;hello&lt;/span&gt;&lt;/p&gt;, Element node &lt;p id=&quot;p2&quot;&gt;hey&lt;/p&gt;] length 2, got object &quot;[object NodeList]&quot; length 0</pre></details><a class="self" href="#s-5f641f1b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-61870bd9"><details><summary><span class="mark">FAIL</span><span class="sub-name">querySelector comma separated</span></summary><pre class="msg">assert_equals: expected Element node &lt;p&gt;&lt;span&gt;hello&lt;/span&gt;&lt;/p&gt; but got null</pre></details><a class="self" href="#s-61870bd9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3b0f3564"><details><summary><span class="mark">FAIL</span><span class="sub-name">querySelectorAll comma separated</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [Element node &lt;p&gt;&lt;span&gt;hello&lt;/span&gt;&lt;/p&gt;, Element node &lt;p id=&quot;p2&quot;&gt;hey&lt;/p&gt;, Element node &lt;div id=&quot;d2&quot;&gt;div&lt;/div&gt;] length 3, got object &quot;[object NodeList]&quot; length 0</pre></details><a class="self" href="#s-3b0f3564" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b1d7b950"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">querySelector with :scope &gt; child should not match descendants</span></div><a class="self" href="#s-b1d7b950" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1ba58882"><details><summary><span class="mark">FAIL</span><span class="sub-name">querySelectorAll with :scope &gt; child should only match direct children</span></summary><pre class="msg">assert_array_equals: :scope &gt; li should only match direct children lengths differ, expected array [&quot;alpha&quot;, &quot;beta&quot;] length 2, got [] length 0</pre></details><a class="self" href="#s-1ba58882" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d30fb533"><details><summary><span class="mark">FAIL</span><span class="sub-name">querySelectorAll with :scope in unattached svg document</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-d30fb533" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-638320a9"><details><summary><span class="mark">FAIL</span><span class="sub-name">querySelectorAll with :scope in document where element moved</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-638320a9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

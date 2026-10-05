@@ -32,7 +32,30 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 0 failed, 1 timed out and 5 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/content-security-policy/navigation/to-javascript-parent-initiated-child-csp.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>3</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-a2461a90"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Should have executed the javascript url for
+        iframe.contentWindow.location.href with child&#39;s CSP &quot;script-src &#39;unsafe-inline&#39;&quot;</span></div><a class="self" href="#s-a2461a90" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-11e506d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Should have executed the javascript url for
+        iframe.src with child&#39;s CSP &quot;script-src &#39;unsafe-inline&#39;&quot;</span></div><a class="self" href="#s-11e506d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1edba5d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Should have executed the javascript url for
+        a[target=iframeWithScriptSrcUnsafeInline].href with child&#39;s CSP &quot;script-src &#39;unsafe-inline&#39;&quot;</span></div><a class="self" href="#s-1edba5d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-timeout" id="s-6888e1df"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Should not have executed the javascript URL for
+        iframe.contentWindow.location.href with child&#39;s CSP &quot;script-src &#39;none&#39;&quot;</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-6888e1df" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-04e7d6a2"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Should not have executed the javascript URL for
+        iframe.src with child&#39;s CSP &quot;script-src &#39;none&#39;&quot;</span></div><a class="self" href="#s-04e7d6a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-23f4fc30"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Should not have executed the javascript URL for
+        otherTabWithScriptSrcNone.location.href with child&#39;s CSP &quot;script-src &#39;none&#39;&quot;</span></div><a class="self" href="#s-23f4fc30" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-2834ccd5"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Should not have executed the javascript URL for
+        a[target=iframeWithScriptSrcNone].href with child&#39;s CSP &quot;script-src &#39;none&#39;&quot;</span></div><a class="self" href="#s-2834ccd5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-8f1f2968"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Should not have executed the javascript URL for
+        area[target=iframeWithScriptSrcNone].href with child&#39;s CSP &quot;script-src &#39;none&#39;&quot;</span></div><a class="self" href="#s-8f1f2968" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-db26b6d0"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Should not have executed the javascript URL for
+        area[target=otherTabWithScriptSrcNone].href with child&#39;s CSP &quot;script-src &#39;none&#39;&quot;</span></div><a class="self" href="#s-db26b6d0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

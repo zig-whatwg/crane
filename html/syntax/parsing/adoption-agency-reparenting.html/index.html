@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 5 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-7b04d85c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Baseline: adoption agency for &lt;b&gt;1&lt;p&gt;2&lt;/b&gt;3&lt;/p&gt; (no script)</span></summary><pre class="msg">assert_equals: expected &quot;&lt;b&gt;[\&quot;1\&quot;]&lt;p&gt;[&lt;b&gt;[\&quot;2\&quot;]\&quot;3\&quot;]&quot; but got &quot;&lt;b&gt;[\&quot;1\&quot;&lt;p&gt;[\&quot;2\&quot;]]\&quot;3\&quot;&lt;p&gt;&quot;</pre></details><a class="self" href="#s-7b04d85c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-322c0899"><details><summary><span class="mark">FAIL</span><span class="sub-name">Furthest block adopted into another Document before &lt;/b&gt;</span></summary><pre class="msg">assert_equals: furthest block&#39;s document after the algorithm runs expected &quot;main&quot; but got &quot;other&quot;</pre></details><a class="self" href="#s-322c0899" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d7622e36"><details><summary><span class="mark">FAIL</span><span class="sub-name">Common ancestor adopted into another Document before &lt;/b&gt;</span></summary><pre class="msg">assert_equals: other document body expected &quot;&lt;div#ca&gt;[&lt;b&gt;[\&quot;1\&quot;]&lt;p#fb&gt;[&lt;b&gt;[\&quot;2\&quot;&lt;script&gt;]\&quot;3\&quot;]]&quot; but got &quot;&lt;div#ca&gt;[&lt;b&gt;[\&quot;1\&quot;&lt;p#fb&gt;[\&quot;2\&quot;&lt;script&gt;]]\&quot;3\&quot;&lt;p&gt;]&quot;</pre></details><a class="self" href="#s-d7622e36" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dae370fa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Furthest block detached before &lt;/b&gt;</span></summary><pre class="msg">assert_equals: main document body expected &quot;&lt;b&gt;[\&quot;1\&quot;]&lt;p#fb&gt;[&lt;b&gt;[\&quot;2\&quot;&lt;script&gt;]\&quot;3\&quot;]&quot; but got &quot;&lt;b&gt;[\&quot;1\&quot;]\&quot;3\&quot;&lt;p&gt;&quot;</pre></details><a class="self" href="#s-dae370fa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3f9344ed"><details><summary><span class="mark">FAIL</span><span class="sub-name">Adoption agency with a foster-parenting common ancestor (&lt;tr&gt;)</span></summary><pre class="msg">assert_equals: main document body expected &quot;&lt;b&gt;&lt;div#fb&gt;[&lt;b&gt;[&lt;script&gt;]]&lt;table&gt;[&lt;tbody&gt;[&lt;tr&gt;]]&quot; but got &quot;&lt;table&gt;[&lt;tbody&gt;[&lt;tr&gt;[&lt;b&gt;]]]&quot;</pre></details><a class="self" href="#s-3f9344ed" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

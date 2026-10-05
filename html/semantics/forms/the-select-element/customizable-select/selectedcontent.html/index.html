@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-12cc960b"><details><summary><span class="mark">FAIL</span><span class="sub-name">The &lt;selectedcontent&gt; element should reflect the HTML contents of the selected &lt;option&gt;.</span></summary><pre class="msg">assert_equals: The innerHTML of &lt;selectedcontent&gt; should initially match the innerHTML of the selected &lt;option&gt;. expected &quot;\n      &lt;span class=\&quot;one\&quot;&gt;span&lt;/span&gt; one\n    &quot; but got &quot;&quot;</pre></details><a class="self" href="#s-12cc960b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-370c4867"><details><summary><span class="mark">FAIL</span><span class="sub-name">When there are multiple &lt;selectedcontent&gt; elements, both of them should be kept up to date.</span></summary><pre class="msg">assert_equals: selectedcontent should initially be one. expected &quot;one&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-370c4867" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1af060d9"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;seletedcontent&gt; behavior in disconnected &lt;select&gt;.</span></summary><pre class="msg">assert_equals: &lt;selectedcontent&gt; should be updated when changing value of a disconnected select. expected &quot;two&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-1af060d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6c577f51"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting HTMLOptionElement.selected updates the &lt;selectedcontent&gt;.</span></summary><pre class="msg">Cannot read properties of null (reading &#39;innerHTML&#39;)</pre></details><a class="self" href="#s-6c577f51" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f332a0cf"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting the option selected attribute updates the &lt;selectedcontent&gt;.</span></summary><pre class="msg">Cannot read properties of null (reading &#39;innerHTML&#39;)</pre></details><a class="self" href="#s-f332a0cf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8c1c2cbe"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting HTMLOptionElement.selected does not cause a redundant async selectedcontent update.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-8c1c2cbe" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

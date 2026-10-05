@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-ce47096a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CookieStore change of expires only should be observed</span></div><a class="self" href="#s-ce47096a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-44c16c9b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CookieStore change of sameSite only should be observed</span></div><a class="self" href="#s-44c16c9b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9ba96119"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.cookie change of Secure only should be observed</span></summary><pre class="msg">assert_equals: Change of secure is observed: number of changed cookies expected 1 but got 2</pre></details><a class="self" href="#s-9ba96119" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f561dc61"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CookieStore change from no expires to expires should be observed</span></div><a class="self" href="#s-f561dc61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-83da5f4c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CookieStore change from expires to no expires should be observed</span></div><a class="self" href="#s-83da5f4c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

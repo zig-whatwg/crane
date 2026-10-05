@@ -32,7 +32,27 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 10 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbcursor_delete_index.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-1db8302e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Remove a record from the object store</span></div><a class="self" href="#s-1db8302e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-89bb6b2d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to remove a record in a read-only transaction</span></div><a class="self" href="#s-89bb6b2d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0a7c3e4a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to remove a record in an inactive transaction</span></div><a class="self" href="#s-0a7c3e4a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6128a941"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If the cursor&#39;s source or effective object store has been deleted, the implementation MUST throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-6128a941" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6973a472"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw InvalidStateError when the cursor is being iterated</span></div><a class="self" href="#s-6973a472" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbcursor_delete_index.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-fa55f2ab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Remove a record from the object store</span></div><a class="self" href="#s-fa55f2ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-15fb6742"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to remove a record in a read-only transaction</span></div><a class="self" href="#s-15fb6742" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1d97fe91"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to remove a record in an inactive transaction</span></div><a class="self" href="#s-1d97fe91" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b930ed04"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If the cursor&#39;s source or effective object store has been deleted, the implementation MUST throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-b930ed04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a48b9017"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw InvalidStateError when the cursor is being iterated</span></div><a class="self" href="#s-a48b9017" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,28 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 7 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-58fad974"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throws when given an invalid position</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    el.insertAdjacentHTML(&quot;invalid&quot;, &quot;test&quot;);
+  }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException SyntaxError: property &quot;code&quot; is equal to 9, expected 12</pre></details><a class="self" href="#s-58fad974" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8df6af9d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throws when inserting using &quot;beforebegin&quot; into an element whose parent is null</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    el.insertAdjacentHTML(&quot;beforebegin&quot;, &quot;test&quot;);
+  }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException NoModificationAllowedError: property &quot;code&quot; is equal to 9, expected 7</pre></details><a class="self" href="#s-8df6af9d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-27073839"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throws when inserting using &quot;afterend&quot; into an element whose parent is null</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    el.insertAdjacentHTML(&quot;afterend&quot;, &quot;test&quot;);
+  }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException NoModificationAllowedError: property &quot;code&quot; is equal to 9, expected 7</pre></details><a class="self" href="#s-27073839" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0c9f8f5e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Does not throw when inserting using &quot;afterbegin&quot; and &quot;beforeend&quot; into an element whose parent is null</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-0c9f8f5e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-760d4d97"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throws when inserting using &quot;beforebegin&quot; into an element whose parent is a document</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    el.insertAdjacentHTML(&quot;beforebegin&quot;, &quot;test&quot;);
+  }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException NoModificationAllowedError: property &quot;code&quot; is equal to 9, expected 7</pre></details><a class="self" href="#s-760d4d97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-acc6c478"><details><summary><span class="mark">FAIL</span><span class="sub-name">Throws when inserting using &quot;afterend&quot; into an element whose parent is a document</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    el.insertAdjacentHTML(&quot;afterend&quot;, &quot;test&quot;);
+  }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException NoModificationAllowedError: property &quot;code&quot; is equal to 9, expected 7</pre></details><a class="self" href="#s-acc6c478" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6db93e12"><details><summary><span class="mark">FAIL</span><span class="sub-name">Does not throw when inserting using &quot;afterbegin&quot; and &quot;beforeend&quot; into an element whose parent is a document</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-6db93e12" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

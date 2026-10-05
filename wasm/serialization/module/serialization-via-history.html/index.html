@@ -32,7 +32,31 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-be3f87da"><details><summary><span class="mark">FAIL</span><span class="sub-name">history.pushState(): simple case</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+      history[method](createEmptyWasmModule(), &quot;dummy title&quot;);
+    }&quot; did not throw</pre></details><a class="self" href="#s-be3f87da" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f6a63e03"><details><summary><span class="mark">FAIL</span><span class="sub-name">history.pushState(): is interleaved correctly</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+      history[method]([
+        { get x() { getter1Called = true; return 5; } },
+        createEmptyWasmModule(),
+        { get x() { getter2Called = true; return 5; } }
+      ], &quot;dummy title&quot;);
+    }&quot; did not throw</pre></details><a class="self" href="#s-f6a63e03" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2494d719"><details><summary><span class="mark">FAIL</span><span class="sub-name">history.replaceState(): simple case</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+      history[method](createEmptyWasmModule(), &quot;dummy title&quot;);
+    }&quot; did not throw</pre></details><a class="self" href="#s-2494d719" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e63d567b"><details><summary><span class="mark">FAIL</span><span class="sub-name">history.replaceState(): is interleaved correctly</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+      history[method]([
+        { get x() { getter1Called = true; return 5; } },
+        createEmptyWasmModule(),
+        { get x() { getter2Called = true; return 5; } }
+      ], &quot;dummy title&quot;);
+    }&quot; did not throw</pre></details><a class="self" href="#s-e63d567b" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

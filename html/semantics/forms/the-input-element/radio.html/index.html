@@ -32,7 +32,23 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 11 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-7cd2ca98"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">click on mutable radio fires click event, then input event, then change event</span></div><a class="self" href="#s-7cd2ca98" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ac591a2c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">click on non-mutable radio doesn&#39;t fire the input event</span></div><a class="self" href="#s-ac591a2c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b7e2bfef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">click on non-mutable radio doesn&#39;t fire the change event</span></div><a class="self" href="#s-b7e2bfef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1b0503b6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">canceled activation steps on unchecked radio</span></div><a class="self" href="#s-1b0503b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bb116299"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">only one control of a radio button group can have its checkedness set to true</span></div><a class="self" href="#s-bb116299" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c1fc55d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">radio inputs with non-ASCII name attributes belong to the same radio button group</span></div><a class="self" href="#s-c1fc55d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-867b7223"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">changing the name of a radio input element and setting its checkedness to true makes all the other elements&#39; checkedness in the same radio button group be set to false</span></div><a class="self" href="#s-867b7223" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2d88c81d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">moving radio input element out of or into a form should still work as expected</span></div><a class="self" href="#s-2d88c81d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-13579039"><details><summary><span class="mark">FAIL</span><span class="sub-name">Radio buttons in an orphan tree should make a group</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;valueMissing&#39;)</pre></details><a class="self" href="#s-13579039" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9a52b20e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Radio buttons in different groups (because they have different form owners or no form owner) do not affect each other&#39;s checkedness</span></div><a class="self" href="#s-9a52b20e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e9756fd9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Radio buttons in different groups (because they are not in the same tree) do not affect each other&#39;s checkedness</span></div><a class="self" href="#s-e9756fd9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-73e36c5b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Radio buttons in different groups (because they have different name attribute values, or no name attribute) do not affect each other&#39;s checkedness</span></div><a class="self" href="#s-73e36c5b" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

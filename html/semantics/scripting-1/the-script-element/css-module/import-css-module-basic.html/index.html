@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-509b6d49"><details><summary><span class="mark">FAIL</span><span class="sub-name">A CSS Module should load</span></summary><pre class="msg">assert_equals: CSS module import should succeed expected &quot;rgb(255, 0, 0)&quot; but got &quot;rgba(0, 0, 0, 0)&quot;</pre></details><a class="self" href="#s-509b6d49" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f739099a"><details><summary><span class="mark">FAIL</span><span class="sub-name">A large CSS Module should load</span></summary><pre class="msg">assert_equals: CSS module import should succeed expected &quot;rgb(255, 0, 0)&quot; but got &quot;rgba(0, 0, 0, 0)&quot;</pre></details><a class="self" href="#s-f739099a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1ac1e16f"><details><summary><span class="mark">FAIL</span><span class="sub-name">An @import CSS Module should not load, but should not throw an exception</span></summary><pre class="msg">assert_equals: Rule after @import should still be applied expected &quot;rgb(0, 255, 0)&quot; but got &quot;rgba(0, 0, 0, 0)&quot;</pre></details><a class="self" href="#s-1ac1e16f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-36116f75"><details><summary><span class="mark">FAIL</span><span class="sub-name">A parse error should not prevent subsequent rules from being included in a CSS module</span></summary><pre class="msg">assert_equals: Parsing should recover and rules after malformed rules should be applied expected &quot;rgb(0, 255, 0)&quot; but got &quot;rgba(0, 0, 0, 0)&quot;</pre></details><a class="self" href="#s-36116f75" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-37d0bb19"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CSS module without type attribute should result in a fetch error</span></div><a class="self" href="#s-37d0bb19" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

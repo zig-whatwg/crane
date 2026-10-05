@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 5 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-01590f80"><details><summary><span class="mark">FAIL</span><span class="sub-name">Relative URL-like from same origin classic &lt;script&gt;</span></summary><pre class="msg">assert_equals: expected &quot;gamma/import.js&quot; but got &quot;beta/import.js&quot;</pre></details><a class="self" href="#s-01590f80" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a8818c3f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Absolute URL-like from same origin classic &lt;script&gt;</span></div><a class="self" href="#s-a8818c3f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aa29e797"><details><summary><span class="mark">FAIL</span><span class="sub-name">Relative URL-like from cross origin classic &lt;script&gt; without crossorigin attribute</span></summary><pre class="msg">assert_equals: Relative URL-like specifier resolution should fail expected &quot;(unreached)&quot; but got &quot;beta/import.js&quot;</pre></details><a class="self" href="#s-aa29e797" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-79f79fd7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Absolute URL-like from cross origin classic &lt;script&gt; without crossorigin attribute</span></div><a class="self" href="#s-79f79fd7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c40ff4d3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Relative URL-like from cross origin classic &lt;script&gt; with crossorigin attribute</span></summary><pre class="msg">assert_equals: expected &quot;gamma/import.js&quot; but got &quot;beta/import.js&quot;</pre></details><a class="self" href="#s-c40ff4d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-17c987bb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Absolute URL-like from cross origin classic &lt;script&gt; with crossorigin attribute</span></div><a class="self" href="#s-17c987bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a095cc38"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Relative URL-like from cross origin module &lt;script&gt;</span></div><a class="self" href="#s-a095cc38" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-82194485"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Absolute URL-like from cross origin module &lt;script&gt;</span></div><a class="self" href="#s-82194485" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

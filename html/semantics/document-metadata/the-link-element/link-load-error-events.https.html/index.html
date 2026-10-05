@@ -32,7 +32,28 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 14 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-81757d18"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Basic load of stylesheet</span></div><a class="self" href="#s-81757d18" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-02b324a9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempted load of nonexistent stylesheet</span></div><a class="self" href="#s-02b324a9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3fb30cd2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Import of stylesheet</span></div><a class="self" href="#s-3fb30cd2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-391a982c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Import of nonexistent stylesheet</span></div><a class="self" href="#s-391a982c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-25f5fe3d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Import of import of stylesheet</span></div><a class="self" href="#s-25f5fe3d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c1453e4a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Import of import of nonexistent stylesheet</span></div><a class="self" href="#s-c1453e4a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4f1d8182"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Load of non-CSS stylesheet</span></div><a class="self" href="#s-4f1d8182" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a9c258fc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Import of non-CSS stylesheet</span></div><a class="self" href="#s-a9c258fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4beb0541"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Import of import of non-CSS stylesheet</span></div><a class="self" href="#s-4beb0541" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d848ef3f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Load of http:// stylesheet</span></summary><pre class="msg">assert_unreached: load fired when error expected Reached unreachable code</pre></details><a class="self" href="#s-d848ef3f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-01e9fad5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Import of http:// stylesheet</span></summary><pre class="msg">assert_unreached: load fired when error expected Reached unreachable code</pre></details><a class="self" href="#s-01e9fad5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2249ff58"><details><summary><span class="mark">FAIL</span><span class="sub-name">Import of import of http:// stylesheet</span></summary><pre class="msg">assert_unreached: load fired when error expected Reached unreachable code</pre></details><a class="self" href="#s-2249ff58" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-36242676"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Load of https:// stylesheet</span></div><a class="self" href="#s-36242676" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6cad16e7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Import of https:// stylesheet</span></div><a class="self" href="#s-6cad16e7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-abaca826"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Import of import of https:// stylesheet</span></div><a class="self" href="#s-abaca826" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-632f5380"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Slow successful import, fast failing import</span></div><a class="self" href="#s-632f5380" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ac3e400d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fast successful import, slow failing import</span></div><a class="self" href="#s-ac3e400d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

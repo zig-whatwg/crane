@@ -32,7 +32,57 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 26 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/bad-underlying-sinks.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>13</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-77dd1184"><details><summary><span class="mark">FAIL</span><span class="sub-name">start: errors in start cause WritableStream constructor to throw</span></summary><pre class="msg">assert_throws_exactly: constructor should throw same error as throwing start method function &quot;() =&gt; {
+    new WritableStream({
+      start() {
+        throw error1;
+      }
+    });
+  }&quot; did not throw</pre></details><a class="self" href="#s-77dd1184" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-44008321"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close: throwing method should cause writer close() and ready to reject</span></div><a class="self" href="#s-44008321" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-281671fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close: returning a rejected promise should cause writer close() and ready to reject</span></div><a class="self" href="#s-281671fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0fbe5dfa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close: throwing getter should cause constructor to throw</span></div><a class="self" href="#s-0fbe5dfa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8d0d4d22"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write: throwing getter should cause write() and closed to reject</span></div><a class="self" href="#s-8d0d4d22" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-514bea89"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write: throwing method should cause write() and closed to reject</span></div><a class="self" href="#s-514bea89" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-324dcd98"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write: returning a promise that becomes rejected after the writer write() should cause writer write() and ready to reject</span></div><a class="self" href="#s-324dcd98" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a066ba33"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write: returning a rejected promise (second write) should cause writer write() and ready to reject</span></div><a class="self" href="#s-a066ba33" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a6912019"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">start: non-function start method</span></div><a class="self" href="#s-a6912019" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2ccbf88b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write: non-function write method</span></div><a class="self" href="#s-2ccbf88b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-af49b3a9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close: non-function close method</span></div><a class="self" href="#s-af49b3a9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-076eb12d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">abort: non-function abort method with .apply</span></div><a class="self" href="#s-076eb12d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-06d0391d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">abort: throwing getter should cause abort() and closed to reject</span></div><a class="self" href="#s-06d0391d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bb1a36c2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">abort: throwing method should cause abort() and closed to reject</span></div><a class="self" href="#s-bb1a36c2" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/bad-underlying-sinks.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>13</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-afbab003"><details><summary><span class="mark">FAIL</span><span class="sub-name">start: errors in start cause WritableStream constructor to throw</span></summary><pre class="msg">assert_throws_exactly: constructor should throw same error as throwing start method function &quot;() =&gt; {
+    new WritableStream({
+      start() {
+        throw error1;
+      }
+    });
+  }&quot; did not throw</pre></details><a class="self" href="#s-afbab003" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5de8b7ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close: throwing method should cause writer close() and ready to reject</span></div><a class="self" href="#s-5de8b7ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b46c152e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close: returning a rejected promise should cause writer close() and ready to reject</span></div><a class="self" href="#s-b46c152e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dbdd9884"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close: throwing getter should cause constructor to throw</span></div><a class="self" href="#s-dbdd9884" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b0197433"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write: throwing getter should cause write() and closed to reject</span></div><a class="self" href="#s-b0197433" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc59f3b2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write: throwing method should cause write() and closed to reject</span></div><a class="self" href="#s-cc59f3b2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2d6b0c2e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write: returning a promise that becomes rejected after the writer write() should cause writer write() and ready to reject</span></div><a class="self" href="#s-2d6b0c2e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-775afacb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write: returning a rejected promise (second write) should cause writer write() and ready to reject</span></div><a class="self" href="#s-775afacb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d78d3a62"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">start: non-function start method</span></div><a class="self" href="#s-d78d3a62" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f738bdcd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">write: non-function write method</span></div><a class="self" href="#s-f738bdcd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3c1d0955"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">close: non-function close method</span></div><a class="self" href="#s-3c1d0955" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-80955e3c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">abort: non-function abort method with .apply</span></div><a class="self" href="#s-80955e3c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7da115d8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">abort: throwing getter should cause abort() and closed to reject</span></div><a class="self" href="#s-7da115d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-81a775a4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">abort: throwing method should cause abort() and closed to reject</span></div><a class="self" href="#s-81a775a4" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

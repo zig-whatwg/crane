@@ -32,7 +32,35 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 16 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/workers/modules/dedicated-worker-import-data-url.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-7b5b42ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Static import.</span></div><a class="self" href="#s-7b5b42ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8d61d148"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Static import (cross-origin).</span></div><a class="self" href="#s-8d61d148" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-914342d2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Static import (redirect).</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-914342d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a0ae31c3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Nested static import.</span></div><a class="self" href="#s-a0ae31c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9efd4696"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Static import and then dynamic import.</span></div><a class="self" href="#s-9efd4696" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5873bfa7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dynamic import.</span></div><a class="self" href="#s-5873bfa7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8b63f2ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Nested dynamic import.</span></div><a class="self" href="#s-8b63f2ca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2bd53203"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dynamic import and then static import.</span></div><a class="self" href="#s-2bd53203" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9503aff6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">eval(import()).</span></div><a class="self" href="#s-9503aff6" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/workers/modules/dedicated-worker-import-data-url.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-5a39a252"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Static import.</span></div><a class="self" href="#s-5a39a252" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fdea7f2c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Static import (cross-origin).</span></div><a class="self" href="#s-fdea7f2c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9b89498c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Static import (redirect).</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-9b89498c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-944d52a7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Nested static import.</span></div><a class="self" href="#s-944d52a7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-da7285e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Static import and then dynamic import.</span></div><a class="self" href="#s-da7285e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-38c0430c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dynamic import.</span></div><a class="self" href="#s-38c0430c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9fb15fac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Nested dynamic import.</span></div><a class="self" href="#s-9fb15fac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-80b73a0a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Dynamic import and then static import.</span></div><a class="self" href="#s-80b73a0a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cc867e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">eval(import()).</span></div><a class="self" href="#s-3cc867e4" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

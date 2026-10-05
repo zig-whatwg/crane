@@ -32,7 +32,12 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-b3479f39"><details><summary><span class="mark">FAIL</span><span class="sub-name">Modify inline script element&#39;s text after prepare-a-script before evaluation</span></summary><pre class="msg">assert_equals: &lt;script&gt;&#39;s textContent should be already modified expected &quot;t.unreached_func(\&quot;This should not be evaluated\&quot;)();&quot; but got &quot;\nt.step(() =&gt; {\n    // When this is evaluated after the stylesheet is loaded,\n    // script0&#39;s textContent is modified by the async script above,\n    // but the evaluated script is still the original script here,\n    // not what is overwritten, because \&quot;child text content\&quot; is taken in\n    // #prepare-a-script and passed to \&quot;creating a classic script\&quot;.\n    var s = document.getElementById(&#39;script0&#39;);\n    assert_equals(s.textContent,\n                  &#39;t.unreached_func(\&quot;This should not be evaluated\&quot;)();&#39;,\n                  \&quot;&lt;script&gt;&#39;s textContent should be already modified\&quot;);\n    t.done();\n  });\n&quot;</pre></details><a class="self" href="#s-b3479f39" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

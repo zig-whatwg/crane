@@ -32,7 +32,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-c8b6f81f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parsing of initial style attribute</span></summary><pre class="msg">assert_equals: expected &quot;color: red;&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-c8b6f81f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dadf7741"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Parsing of invalid style attribute</span></div><a class="self" href="#s-dadf7741" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0e7783f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parsing of style attribute</span></summary><pre class="msg">assert_equals: expected &quot;color: green;&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-0e7783f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-088372ec"><details><summary><span class="mark">FAIL</span><span class="sub-name">Update style.backgroundColor</span></summary><pre class="msg">assert_equals: Should not drop the existing style expected &quot;color: green; background-color: blue;&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-088372ec" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

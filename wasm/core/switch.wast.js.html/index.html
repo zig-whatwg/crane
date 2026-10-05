@@ -32,7 +32,125 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 30 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-7c0d7fc0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-7c0d7fc0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2cd08cb8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (switch.wast:1)</span></div><a class="self" href="#s-2cd08cb8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2277a15f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation fails (switch.wast:150)</span></div><a class="self" href="#s-2277a15f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-08f2c97c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#4 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-08f2c97c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-259ce550"><details><summary><span class="mark">FAIL</span><span class="sub-name">#5 Test that WebAssembly compilation succeeds (switch.wast:1)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-259ce550" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b0b5cd42"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-b0b5cd42" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9aa93d08"><details><summary><span class="mark">FAIL</span><span class="sub-name">#7 Test that a WebAssembly code returns a specific result (switch.wast:120)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;stmt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:10:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-9aa93d08" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a3b8df63"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 Test that a WebAssembly code returns a specific result (switch.wast:121)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;stmt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:13:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-a3b8df63" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-43d8b675"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that a WebAssembly code returns a specific result (switch.wast:122)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;stmt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:16:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-43d8b675" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bd4b1ec3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that a WebAssembly code returns a specific result (switch.wast:123)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;stmt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-bd4b1ec3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fa46f4b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#11 Test that a WebAssembly code returns a specific result (switch.wast:124)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;stmt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-fa46f4b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f2200147"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that a WebAssembly code returns a specific result (switch.wast:125)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;stmt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:25:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-f2200147" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0bbf30a2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (switch.wast:126)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;stmt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:28:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-0bbf30a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-268736ce"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly code returns a specific result (switch.wast:127)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;stmt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:31:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-268736ce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-501091c4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that a WebAssembly code returns a specific result (switch.wast:128)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;stmt&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:34:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-501091c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-98afdfa5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#16 Test that a WebAssembly code returns a specific result (switch.wast:130)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;expr&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:37:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-98afdfa5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b761fdc5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#17 Test that a WebAssembly code returns a specific result (switch.wast:131)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;expr&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:40:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-b761fdc5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8a77ceac"><details><summary><span class="mark">FAIL</span><span class="sub-name">#18 Test that a WebAssembly code returns a specific result (switch.wast:132)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;expr&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:43:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-8a77ceac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-86fc967b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#19 Test that a WebAssembly code returns a specific result (switch.wast:133)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;expr&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:46:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-86fc967b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7bc7224b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#20 Test that a WebAssembly code returns a specific result (switch.wast:134)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;expr&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:49:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-7bc7224b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-60d46f73"><details><summary><span class="mark">FAIL</span><span class="sub-name">#21 Test that a WebAssembly code returns a specific result (switch.wast:135)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;expr&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:52:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-60d46f73" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4d11b677"><details><summary><span class="mark">FAIL</span><span class="sub-name">#22 Test that a WebAssembly code returns a specific result (switch.wast:136)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;expr&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:55:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-4d11b677" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b84696bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#23 Test that a WebAssembly code returns a specific result (switch.wast:138)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;arg&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:58:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-b84696bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b7d55b96"><details><summary><span class="mark">FAIL</span><span class="sub-name">#24 Test that a WebAssembly code returns a specific result (switch.wast:139)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;arg&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:61:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-b7d55b96" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f4a90d0a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#25 Test that a WebAssembly code returns a specific result (switch.wast:140)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;arg&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:64:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-f4a90d0a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-80c6271d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#26 Test that a WebAssembly code returns a specific result (switch.wast:141)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;arg&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:67:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-80c6271d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d83b6ab2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#27 Test that a WebAssembly code returns a specific result (switch.wast:142)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;arg&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:70:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-d83b6ab2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aa8350c7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#28 Test that a WebAssembly code returns a specific result (switch.wast:143)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;arg&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:73:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-aa8350c7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5f06fc5b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#29 Test that a WebAssembly code returns a specific result (switch.wast:144)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;arg&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:76:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-5f06fc5b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-291da2d6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#30 Test that a WebAssembly code returns a specific result (switch.wast:145)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;arg&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:79:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-291da2d6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2545c5e1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#31 Test that a WebAssembly code returns a specific result (switch.wast:146)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;arg&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:82:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-2545c5e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2f5ff666"><details><summary><span class="mark">FAIL</span><span class="sub-name">#32 Test that a WebAssembly code returns a specific result (switch.wast:148)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;corner&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at switch_wast_js (http://web-platform.test:8000/wasm/core/js/switch.wast.js:85:1)
+    at http://web-platform.test:8000/wasm/core/js/switch.wast.js:90:3 expected true got false</pre></details><a class="self" href="#s-2f5ff666" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ce90a16e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#33 Test that WebAssembly compilation fails (switch.wast:150)</span></div><a class="self" href="#s-ce90a16e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

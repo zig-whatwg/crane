@@ -32,7 +32,87 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 24 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/websockets/constructor/target-address-space.any.html?default</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-7a3c224a"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with matching targetAddressSpace &#39;loopback&#39; succeeds</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-7a3c224a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-84905f3e"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with targetAddressSpace &#39;private&#39; throws TypeError as it is an unsupported legacy alias</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;private&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-84905f3e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-546ae871"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with mismatched targetAddressSpace &#39;local&#39; fails connection</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-546ae871" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ad263e8a"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with mismatched targetAddressSpace &#39;public&#39; fails connection</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-ad263e8a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b6f462f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with targetAddressSpace &#39;unknown&#39; throws TypeError</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;unknown&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-b6f462f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-278f3140"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with invalid targetAddressSpace throws TypeError</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;invalid&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-278f3140" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/websockets/constructor/target-address-space.any.html?wss</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-32d61a1a"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with matching targetAddressSpace &#39;loopback&#39; succeeds</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-32d61a1a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f56968b7"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with targetAddressSpace &#39;private&#39; throws TypeError as it is an unsupported legacy alias</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;private&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-f56968b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dcec90f9"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with mismatched targetAddressSpace &#39;local&#39; fails connection</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-dcec90f9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8edcd307"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with mismatched targetAddressSpace &#39;public&#39; fails connection</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-8edcd307" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6f270e1e"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with targetAddressSpace &#39;unknown&#39; throws TypeError</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;unknown&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-6f270e1e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-86a0a6a8"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with invalid targetAddressSpace throws TypeError</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;invalid&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-86a0a6a8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/websockets/constructor/target-address-space.any.worker.html?default</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-c67d46ef"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with matching targetAddressSpace &#39;loopback&#39; succeeds</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-c67d46ef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-04db934b"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with targetAddressSpace &#39;private&#39; throws TypeError as it is an unsupported legacy alias</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;private&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-04db934b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2f331a3e"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with mismatched targetAddressSpace &#39;local&#39; fails connection</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-2f331a3e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d6bf0c78"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with mismatched targetAddressSpace &#39;public&#39; fails connection</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-d6bf0c78" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-19f39b0f"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with targetAddressSpace &#39;unknown&#39; throws TypeError</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;unknown&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-19f39b0f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6de1de8f"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with invalid targetAddressSpace throws TypeError</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;invalid&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-6de1de8f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/websockets/constructor/target-address-space.any.worker.html?wss</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-8a47e009"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with matching targetAddressSpace &#39;loopback&#39; succeeds</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-8a47e009" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-443aabae"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with targetAddressSpace &#39;private&#39; throws TypeError as it is an unsupported legacy alias</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;private&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-443aabae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bb9d7f6a"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with mismatched targetAddressSpace &#39;local&#39; fails connection</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-bb9d7f6a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-58fda90e"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with mismatched targetAddressSpace &#39;public&#39; fails connection</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-58fda90e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cf211205"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with targetAddressSpace &#39;unknown&#39; throws TypeError</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;unknown&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-cf211205" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-23f5cc70"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebSocket constructor with invalid targetAddressSpace throws TypeError</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+    new WebSocket(SCHEME_DOMAIN_PORT + &#39;/echo&#39;,
+                  {targetAddressSpace: &#39;invalid&#39;});
+  }&quot; threw object &quot;SyntaxError: SyntaxError&quot; (&quot;SyntaxError&quot;) expected instance of function &quot;function TypeError() { [native code] }&quot; (&quot;TypeError&quot;)</pre></details><a class="self" href="#s-23f5cc70" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

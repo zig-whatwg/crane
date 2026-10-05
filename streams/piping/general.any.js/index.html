@@ -32,7 +32,45 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 28 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/streams/piping/general.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-1eb8d499"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping must lock both the ReadableStream and WritableStream</span></div><a class="self" href="#s-1eb8d499" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ed649af6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping finishing must unlock both the ReadableStream and WritableStream</span></div><a class="self" href="#s-ed649af6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5cb2701c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo must check the brand of its ReadableStream this value</span></div><a class="self" href="#s-5cb2701c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aaa0b711"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo must check the brand of its WritableStream argument</span></div><a class="self" href="#s-aaa0b711" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-17341a9c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo must fail if the ReadableStream is locked, and not lock the WritableStream</span></div><a class="self" href="#s-17341a9c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-27bae18b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo must fail if the WritableStream is locked, and not lock the ReadableStream</span></div><a class="self" href="#s-27bae18b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6265ebcd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping from a ReadableStream from which lots of chunks are synchronously readable</span></div><a class="self" href="#s-6265ebcd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1d09433c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping from a ReadableStream for which a chunk becomes asynchronously readable after the pipeTo</span></div><a class="self" href="#s-1d09433c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2aea8606"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an undefined rejection from pull should cause pipeTo() to reject when preventAbort is true</span></div><a class="self" href="#s-2aea8606" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-afa8ea0b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an undefined rejection from pull should cause pipeTo() to reject when preventAbort is false</span></div><a class="self" href="#s-afa8ea0b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5dee7434"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an undefined rejection from write should cause pipeTo() to reject when preventCancel is true</span></div><a class="self" href="#s-5dee7434" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-654df6ef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an undefined rejection from write should cause pipeTo() to reject when preventCancel is false</span></div><a class="self" href="#s-654df6ef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f55d50b2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo() should reject if an option getter grabs a writer</span></div><a class="self" href="#s-f55d50b2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d24d4e05"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo() promise should resolve if null is passed</span></div><a class="self" href="#s-d24d4e05" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/piping/general.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-91d51eb1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping must lock both the ReadableStream and WritableStream</span></div><a class="self" href="#s-91d51eb1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7120e763"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping finishing must unlock both the ReadableStream and WritableStream</span></div><a class="self" href="#s-7120e763" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b180d8fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo must check the brand of its ReadableStream this value</span></div><a class="self" href="#s-b180d8fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7bb7b66c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo must check the brand of its WritableStream argument</span></div><a class="self" href="#s-7bb7b66c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4cdbd0ed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo must fail if the ReadableStream is locked, and not lock the WritableStream</span></div><a class="self" href="#s-4cdbd0ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-48fce942"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo must fail if the WritableStream is locked, and not lock the ReadableStream</span></div><a class="self" href="#s-48fce942" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-298d5126"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping from a ReadableStream from which lots of chunks are synchronously readable</span></div><a class="self" href="#s-298d5126" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-58f4699d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Piping from a ReadableStream for which a chunk becomes asynchronously readable after the pipeTo</span></div><a class="self" href="#s-58f4699d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c18276b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an undefined rejection from pull should cause pipeTo() to reject when preventAbort is true</span></div><a class="self" href="#s-c18276b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-75eaba5e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an undefined rejection from pull should cause pipeTo() to reject when preventAbort is false</span></div><a class="self" href="#s-75eaba5e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6aa0e44b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an undefined rejection from write should cause pipeTo() to reject when preventCancel is true</span></div><a class="self" href="#s-6aa0e44b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-031b6f12"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an undefined rejection from write should cause pipeTo() to reject when preventCancel is false</span></div><a class="self" href="#s-031b6f12" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-29aab4c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo() should reject if an option getter grabs a writer</span></div><a class="self" href="#s-29aab4c9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ca2cd4c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pipeTo() promise should resolve if null is passed</span></div><a class="self" href="#s-ca2cd4c9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

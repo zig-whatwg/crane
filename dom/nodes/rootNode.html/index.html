@@ -32,7 +32,16 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-f5c67259"><details><summary><span class="mark">FAIL</span><span class="sub-name">getRootNode() must return context object&#39;s shadow-including root if options&#39;s composed is true, and context object&#39;s root otherwise</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-f5c67259" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-70037333"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getRootNode() must return the context object when it does not have any parent</span></div><a class="self" href="#s-70037333" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-293e9cf6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getRootNode() must return the parent node of the context object when the context object has a single ancestor not in a document</span></div><a class="self" href="#s-293e9cf6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f5ccb729"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getRootNode() must return the document when a node is in document</span></div><a class="self" href="#s-f5ccb729" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a395a31a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getRootNode() must return a document fragment when a node is in the fragment</span></div><a class="self" href="#s-a395a31a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

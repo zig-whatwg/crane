@@ -32,7 +32,33 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 16 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbcursor_advance_index.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 8</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-0a056a87"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">index - iterate cursor number of times specified by count</span></div><a class="self" href="#s-0a056a87" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ebbebdfa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">attempt to pass a count parameter that is not a number</span></div><a class="self" href="#s-ebbebdfa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-39fe47b0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">index - attempt to advance backwards</span></div><a class="self" href="#s-39fe47b0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ee18dc72"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">index - iterate to the next record</span></div><a class="self" href="#s-ee18dc72" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3e7a8228"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling advance() with count argument 0 should throw TypeError.</span></div><a class="self" href="#s-3e7a8228" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-af6b8042"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling advance() should throws an exception TransactionInactiveError when the transaction is not active.</span></div><a class="self" href="#s-af6b8042" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc056ed1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling advance() should throw DOMException when the cursor is currently being iterated.</span></div><a class="self" href="#s-cc056ed1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6630c25f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If the cursor&#39;s source or effective object store has been deleted, the implementation MUST throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-6630c25f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbcursor_advance_index.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 8</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-e94e64d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">index - iterate cursor number of times specified by count</span></div><a class="self" href="#s-e94e64d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7065a536"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">attempt to pass a count parameter that is not a number</span></div><a class="self" href="#s-7065a536" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c6f71866"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">index - attempt to advance backwards</span></div><a class="self" href="#s-c6f71866" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0c82b6c7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">index - iterate to the next record</span></div><a class="self" href="#s-0c82b6c7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-35a94adb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling advance() with count argument 0 should throw TypeError.</span></div><a class="self" href="#s-35a94adb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-70a29ccb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling advance() should throws an exception TransactionInactiveError when the transaction is not active.</span></div><a class="self" href="#s-70a29ccb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-498f5816"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling advance() should throw DOMException when the cursor is currently being iterated.</span></div><a class="self" href="#s-498f5816" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b4c1a692"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If the cursor&#39;s source or effective object store has been deleted, the implementation MUST throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-b4c1a692" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

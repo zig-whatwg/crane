@@ -32,7 +32,20 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 2 passed, 7 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-c4ab2199"><details><summary><span class="mark">FAIL</span><span class="sub-name">If there is one img, it should be returned (name)</span></summary><pre class="msg">assert_true: &quot;test1&quot; in document should be true expected true got false</pre></details><a class="self" href="#s-c4ab2199" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-09b331c2"><details><summary><span class="mark">FAIL</span><span class="sub-name">If there are two imgs, a collection should be returned. (name)</span></summary><pre class="msg">assert_true: &quot;test2&quot; in document should be true expected true got false</pre></details><a class="self" href="#s-09b331c2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f79f7310"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If there is one img, it should not be returned (id)</span></div><a class="self" href="#s-f79f7310" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-95d46bab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If there are two imgs, nothing should be returned. (id)</span></div><a class="self" href="#s-95d46bab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-056c57b1"><details><summary><span class="mark">FAIL</span><span class="sub-name">If there are two imgs, the one with a name should be returned. (name and id)</span></summary><pre class="msg">assert_true: &quot;test5&quot; in document should be true expected true got false</pre></details><a class="self" href="#s-056c57b1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b977706d"><details><summary><span class="mark">FAIL</span><span class="sub-name">If there are two imgs, the one with a name should be returned. (id and name)</span></summary><pre class="msg">assert_true: &quot;test6&quot; in document should be true expected true got false</pre></details><a class="self" href="#s-b977706d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ccedc183"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dynamically removing the name attribute from img elements, should not be accessible.</span></summary><pre class="msg">assert_true: test7 in document should be true expected true got false</pre></details><a class="self" href="#s-ccedc183" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5d33f696"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dynamically updating the name attribute from img elements, should be accessible by its name.</span></summary><pre class="msg">assert_true: test8a in document should be true expected true got false</pre></details><a class="self" href="#s-5d33f696" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b0e56dd6"><details><summary><span class="mark">FAIL</span><span class="sub-name">img elements that is removed, should not be accessible.</span></summary><pre class="msg">assert_true: test9 in document should be true expected true got false</pre></details><a class="self" href="#s-b0e56dd6" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,25 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 8 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/upgrade-transaction-lifecycle-user-aborted.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-cac01812"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">synchronously after abort() is called</span></div><a class="self" href="#s-cac01812" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d0d3678d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">in a promise microtask after abort() is called, before the transaction abort event is fired</span></div><a class="self" href="#s-d0d3678d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a33cc36c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">in the abort event handler for a transaction aborted due to an abort() call</span></div><a class="self" href="#s-a33cc36c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e415a31e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">in a setTimeout(0) callback after the abort event is fired for a transaction aborted due to an abort() call</span></div><a class="self" href="#s-e415a31e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/upgrade-transaction-lifecycle-user-aborted.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-c8ed0b0f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">synchronously after abort() is called</span></div><a class="self" href="#s-c8ed0b0f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-12d373bd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">in a promise microtask after abort() is called, before the transaction abort event is fired</span></div><a class="self" href="#s-12d373bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ad151649"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">in the abort event handler for a transaction aborted due to an abort() call</span></div><a class="self" href="#s-ad151649" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7f5fa26e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">in a setTimeout(0) callback after the abort event is fired for a transaction aborted due to an abort() call</span></div><a class="self" href="#s-7f5fa26e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

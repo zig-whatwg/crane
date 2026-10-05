@@ -32,7 +32,18 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 3 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-ee0cfa6a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;unsafe-eval&#39; is properly subsumed.</span></div><a class="self" href="#s-ee0cfa6a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-96486483"><details><summary><span class="mark">FAIL</span><span class="sub-name">No other keyword has the same effect as &#39;unsafe-eval&#39;.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-96486483" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5f9567c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Other expressions have to be subsumed.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-5f9567c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-be244ff8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Effective policy is properly found.</span></div><a class="self" href="#s-be244ff8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c67ee5bc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Required csp must allow &#39;unsafe-eval&#39;.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-c67ee5bc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-09b5f15a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Effective policy is properly found where &#39;unsafe-eval&#39; is not subsumed.</span></summary><pre class="msg">assert_unreached: No message should be sent from the frame. Reached unreachable code</pre></details><a class="self" href="#s-09b5f15a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-82aca340"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Effective policy is properly found where &#39;unsafe-eval&#39; is not part of it.</span></div><a class="self" href="#s-82aca340" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

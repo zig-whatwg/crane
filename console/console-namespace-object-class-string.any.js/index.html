@@ -32,7 +32,25 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 8 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/console/console-namespace-object-class-string.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-744ec905"><details><summary><span class="mark">FAIL</span><span class="sub-name">@@toStringTag exists on the namespace object with the appropriate descriptor</span></summary><pre class="msg">assert_own_property: expected property symbol &quot;Symbol(Symbol.toStringTag)&quot; missing</pre></details><a class="self" href="#s-744ec905" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ddf254a8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Object.prototype.toString applied to the namespace object</span></summary><pre class="msg">assert_equals: expected &quot;[object console]&quot; but got &quot;[object Object]&quot;</pre></details><a class="self" href="#s-ddf254a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ba68866b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Object.prototype.toString applied after modifying the namespace object&#39;s @@toStringTag</span></summary><pre class="msg">assert_own_property: Precondition: @@toStringTag on the namespace object expected property symbol &quot;Symbol(Symbol.toStringTag)&quot; missing</pre></details><a class="self" href="#s-ba68866b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-da1bcca6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Object.prototype.toString applied after deleting @@toStringTag</span></summary><pre class="msg">assert_own_property: Precondition: @@toStringTag on the namespace object expected property symbol &quot;Symbol(Symbol.toStringTag)&quot; missing</pre></details><a class="self" href="#s-da1bcca6" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/console/console-namespace-object-class-string.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-02b4d055"><details><summary><span class="mark">FAIL</span><span class="sub-name">@@toStringTag exists on the namespace object with the appropriate descriptor</span></summary><pre class="msg">assert_own_property: expected property symbol &quot;Symbol(Symbol.toStringTag)&quot; missing</pre></details><a class="self" href="#s-02b4d055" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f330be6c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Object.prototype.toString applied to the namespace object</span></summary><pre class="msg">assert_equals: expected &quot;[object console]&quot; but got &quot;[object Object]&quot;</pre></details><a class="self" href="#s-f330be6c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a6fc337a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Object.prototype.toString applied after modifying the namespace object&#39;s @@toStringTag</span></summary><pre class="msg">assert_own_property: Precondition: @@toStringTag on the namespace object expected property symbol &quot;Symbol(Symbol.toStringTag)&quot; missing</pre></details><a class="self" href="#s-a6fc337a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-243d17da"><details><summary><span class="mark">FAIL</span><span class="sub-name">Object.prototype.toString applied after deleting @@toStringTag</span></summary><pre class="msg">assert_own_property: Precondition: @@toStringTag on the namespace object expected property symbol &quot;Symbol(Symbol.toStringTag)&quot; missing</pre></details><a class="self" href="#s-243d17da" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,35 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 18 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbcursor_update_index.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-196fb413"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Modify a record in the object store </span></div><a class="self" href="#s-196fb413" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0e1e0e66"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to modify a record in a read-only transaction</span></div><a class="self" href="#s-0e1e0e66" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bd1846ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to modify a record in an inactive transaction</span></div><a class="self" href="#s-bd1846ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f3b48886"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to modify a record after the cursor&#39;s source or effective object store has been deleted. The implementation MUST throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-f3b48886" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ad7d2e01"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw DataCloneError</span></div><a class="self" href="#s-ad7d2e01" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c89350de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">No argument</span></div><a class="self" href="#s-c89350de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3292d963"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw DataError</span></div><a class="self" href="#s-3292d963" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-356ad20f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw InvalidStateError when the cursor is being iterated</span></div><a class="self" href="#s-356ad20f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-67390e86"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Modify records during cursor iteration and verify updated records</span></div><a class="self" href="#s-67390e86" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbcursor_update_index.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-5eb8ad84"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Modify a record in the object store </span></div><a class="self" href="#s-5eb8ad84" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-49acaa63"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to modify a record in a read-only transaction</span></div><a class="self" href="#s-49acaa63" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-19946218"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to modify a record in an inactive transaction</span></div><a class="self" href="#s-19946218" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dfc429de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to modify a record after the cursor&#39;s source or effective object store has been deleted. The implementation MUST throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-dfc429de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cbac96cf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw DataCloneError</span></div><a class="self" href="#s-cbac96cf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a164410e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">No argument</span></div><a class="self" href="#s-a164410e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-49337a29"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw DataError</span></div><a class="self" href="#s-49337a29" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ca3d2e26"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Throw InvalidStateError when the cursor is being iterated</span></div><a class="self" href="#s-ca3d2e26" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1273a50d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Modify records during cursor iteration and verify updated records</span></div><a class="self" href="#s-1273a50d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

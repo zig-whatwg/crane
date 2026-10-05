@@ -32,7 +32,20 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 2 passed, 7 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-9af94715"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A new events composed value should be set to false by default.</span></div><a class="self" href="#s-9af94715" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f18228eb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Users should be able to set a composed value.</span></div><a class="self" href="#s-f18228eb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f84090ae"><details><summary><span class="mark">FAIL</span><span class="sub-name">An event should be scoped by default</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-f84090ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a54f3870"><details><summary><span class="mark">FAIL</span><span class="sub-name">An event should not be scoped if composed is specified</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-a54f3870" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ac3a9eca"><details><summary><span class="mark">FAIL</span><span class="sub-name">A synthetic MouseEvent should be scoped by default</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-ac3a9eca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3151cdb5"><details><summary><span class="mark">FAIL</span><span class="sub-name">A synthetic MouseEvent with composed=true should not be scoped</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-3151cdb5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ecde5ff5"><details><summary><span class="mark">FAIL</span><span class="sub-name">A synthetic FocusEvent should be scoped by default</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-ecde5ff5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fab87ede"><details><summary><span class="mark">FAIL</span><span class="sub-name">A synthetic FocusEvent with composed=true should not be scoped</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-fab87ede" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-db648625"><details><summary><span class="mark">FAIL</span><span class="sub-name">A UA click event should not be scoped</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-db648625" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

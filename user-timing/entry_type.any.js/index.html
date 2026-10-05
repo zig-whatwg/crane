@@ -32,7 +32,21 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 2 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/user-timing/entry_type.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-08064ffa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Validate the user timing entry type PerformanceMark</span></div><a class="self" href="#s-08064ffa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-741e1071"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Validate the user timing entry type PerformanceMeasure</span></div><a class="self" href="#s-741e1071" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/user-timing/entry_type.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-a95adff0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Validate the user timing entry type PerformanceMark</span></summary><pre class="msg">self.performance.mark is not a function</pre></details><a class="self" href="#s-a95adff0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2db7dd3f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Validate the user timing entry type PerformanceMeasure</span></summary><pre class="msg">self.performance.measure is not a function</pre></details><a class="self" href="#s-2db7dd3f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

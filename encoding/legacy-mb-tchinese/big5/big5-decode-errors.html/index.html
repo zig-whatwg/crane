@@ -32,7 +32,19 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-2a1c0ed6"><details><summary><span class="mark">FAIL</span><span class="sub-name">lead not 0x00 and no more bytes: AB</span></summary><pre class="msg">assert_equals: expected &quot;\ufffd&quot; but got &quot;\ufffd/span&gt; 奏\ufffd/span&gt; 垂\ufffd/span&gt; \ufffd 奏\ufffd \ufffd \ufffd \ufffd \n\n&quot;</pre></details><a class="self" href="#s-2a1c0ed6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8bdbcbd2"><details><summary><span class="mark">FAIL</span><span class="sub-name">lead not 0x00 and no more bytes: AB B5 AB</span></summary><pre class="msg">assert_equals: expected &quot;奏\ufffd&quot; but got &quot;奏\ufffd/span&gt; 垂\ufffd/span&gt; \ufffd 奏\ufffd \ufffd \ufffd \ufffd \n\n&quot;</pre></details><a class="self" href="#s-8bdbcbd2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-db4d62f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">lead not 0x00 and no more bytes: AB AB AB</span></summary><pre class="msg">assert_equals: expected &quot;垂\ufffd&quot; but got &quot;垂\ufffd/span&gt; \ufffd 奏\ufffd \ufffd \ufffd \ufffd \n\n&quot;</pre></details><a class="self" href="#s-db4d62f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a02e0d3a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">lead byte outside 0x81-0xFE: FF</span></div><a class="self" href="#s-a02e0d3a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-05114bf4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">lead byte outside 0x81-0xFE: AB AB FF</span></div><a class="self" href="#s-05114bf4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b1081a1d"><details><summary><span class="mark">FAIL</span><span class="sub-name">trail byte outside 0x41-0xFE: AB 31</span></summary><pre class="msg">assert_equals: expected &quot;\ufffd1&quot; but got &quot;\ufffd&quot;</pre></details><a class="self" href="#s-b1081a1d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ed6d2804"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">trail byte outside 0x41-0xFE: AB FF</span></div><a class="self" href="#s-ed6d2804" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3a237168"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">pointer is null: C8 F2</span></div><a class="self" href="#s-3a237168" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

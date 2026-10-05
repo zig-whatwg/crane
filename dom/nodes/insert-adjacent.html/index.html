@@ -32,7 +32,29 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 12 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-7572b868"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentElement(beforebegin, [object HTMLHeadingElement] )</span></div><a class="self" href="#s-7572b868" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-853d526f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentText(beforebegin, raclette )</span></div><a class="self" href="#s-853d526f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f1db4825"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentElement(afterbegin, [object HTMLHeadingElement] )</span></div><a class="self" href="#s-f1db4825" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a3523968"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentText(afterbegin, tartiflette )</span></div><a class="self" href="#s-a3523968" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-91314951"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentElement(beforeend, [object HTMLHeadingElement] )</span></div><a class="self" href="#s-91314951" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-db177811"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentText(beforeend, lasagne )</span></div><a class="self" href="#s-db177811" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3db1d3e6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentElement(afterend, [object HTMLHeadingElement] )</span></div><a class="self" href="#s-3db1d3e6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc9f0fa5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentText(afterend, gateau aux pommes )</span></div><a class="self" href="#s-cc9f0fa5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-54fad8d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid object argument insertAdjacentElement</span></div><a class="self" href="#s-54fad8d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a5a9d188"><details><summary><span class="mark">FAIL</span><span class="sub-name">invalid caller object insertAdjacentElement</span></summary><pre class="msg">assert_throws_dom: function &quot;function() {
+    el.insertAdjacentElement(&#39;beforebegin&#39;, document.createElement(&#39;banane&#39;))
+  }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-a5a9d188" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-515ffbd5"><details><summary><span class="mark">FAIL</span><span class="sub-name">invalid caller object insertAdjacentText</span></summary><pre class="msg">assert_throws_dom: function &quot;function() {
+    el.insertAdjacentText(&#39;beforebegin&#39;, &#39;tomate farcie&#39;)
+  }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-515ffbd5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4cd62d73"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid syntax for insertAdjacentElement</span></div><a class="self" href="#s-4cd62d73" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-47274824"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">invalid syntax for insertAdjacentText</span></div><a class="self" href="#s-47274824" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-503c3231"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentText should return null</span></div><a class="self" href="#s-503c3231" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,25 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 4 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/encoding/textdecoder-ignorebom.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-31aec037"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BOM is ignored if ignoreBOM option is specified: utf-8</span></div><a class="self" href="#s-31aec037" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c7d238ab"><details><summary><span class="mark">FAIL</span><span class="sub-name">BOM is ignored if ignoreBOM option is specified: utf-16le</span></summary><pre class="msg">assert_equals: utf-16le: BOM should be absent from decoded string if not ignored expected &quot;abc&quot; but got &quot;﻿abc&quot;</pre></details><a class="self" href="#s-c7d238ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5b509079"><details><summary><span class="mark">FAIL</span><span class="sub-name">BOM is ignored if ignoreBOM option is specified: utf-16be</span></summary><pre class="msg">assert_equals: utf-16be: BOM should be absent from decoded string if not ignored expected &quot;abc&quot; but got &quot;﻿abc&quot;</pre></details><a class="self" href="#s-5b509079" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a9188f07"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The ignoreBOM attribute of TextDecoder</span></div><a class="self" href="#s-a9188f07" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/encoding/textdecoder-ignorebom.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 4</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-fa4489c6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">BOM is ignored if ignoreBOM option is specified: utf-8</span></div><a class="self" href="#s-fa4489c6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b62c9a00"><details><summary><span class="mark">FAIL</span><span class="sub-name">BOM is ignored if ignoreBOM option is specified: utf-16le</span></summary><pre class="msg">assert_equals: utf-16le: BOM should be absent from decoded string if not ignored expected &quot;abc&quot; but got &quot;﻿abc&quot;</pre></details><a class="self" href="#s-b62c9a00" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2e77c946"><details><summary><span class="mark">FAIL</span><span class="sub-name">BOM is ignored if ignoreBOM option is specified: utf-16be</span></summary><pre class="msg">assert_equals: utf-16be: BOM should be absent from decoded string if not ignored expected &quot;abc&quot; but got &quot;﻿abc&quot;</pre></details><a class="self" href="#s-2e77c946" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ca0b6986"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The ignoreBOM attribute of TextDecoder</span></div><a class="self" href="#s-ca0b6986" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

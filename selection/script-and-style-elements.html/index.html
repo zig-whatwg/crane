@@ -32,7 +32,12 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-40ffd1ea"><details><summary><span class="mark">FAIL</span><span class="sub-name">Selection: STYLE and SCRIPT elements should be included in Selection.toString() if they are display!=none</span></summary><pre class="msg">assert_equals: expected &quot;\nstyle { display:block; color: green; } script { color: blue; }\nfunction test_block_script() { let pre = document.createElement(\&quot;pre\&quot;); pre.append(document.createTextNode(\&quot;PASS\&quot;)); document.getElementById(\&quot;p1\&quot;).append(pre); }\n\nPASS&quot; but got &quot;\n#not_included{}\n\n  style { display:block; color: green; }\n  script { color: blue; }\n\nfunction not_included(){}\n\nfunction test_block_script() {\n  let pre = document.createElement(\&quot;pre\&quot;);\n  pre.append(document.createTextNode(\&quot;PASS\&quot;));\n  document.getElementById(\&quot;p1\&quot;).append(pre);\n}\n\nPASS&quot;</pre></details><a class="self" href="#s-40ffd1ea" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

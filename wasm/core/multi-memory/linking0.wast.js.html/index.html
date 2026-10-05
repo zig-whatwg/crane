@@ -32,7 +32,41 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 7 passed, 8 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-7d7bae06"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-7d7bae06" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c497ecc0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (linking0.wast:1)</span></div><a class="self" href="#s-c497ecc0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dd32b916"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation succeeds (linking0.wast:17)</span></div><a class="self" href="#s-dd32b916" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-95cab5d3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (linking0.wast:31)</span></div><a class="self" href="#s-95cab5d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4f4657be"><details><summary><span class="mark">FAIL</span><span class="sub-name">#5 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-4f4657be" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5903c1da"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 Test that WebAssembly compilation succeeds (linking0.wast:1)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-5903c1da" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-95d854f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#7 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at linking0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking0.wast.js:8:10)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking0.wast.js:32:3 expected true got false</pre></details><a class="self" href="#s-95d854f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0a372741"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#8 Test that WebAssembly compilation succeeds (linking0.wast:17)</span></div><a class="self" href="#s-0a372741" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1faf8969"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#9 Test that WebAssembly instantiation fails (linking0.wast:17)</span></div><a class="self" href="#s-1faf8969" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-732ed63a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that a WebAssembly module is unlinkable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;Mt&quot;: module is not an object or function 
+    at assert_unlinkable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:410:15)
+    at linking0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking0.wast.js:18:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking0.wast.js:32:3 expected true got false</pre></details><a class="self" href="#s-732ed63a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c2213a41"><details><summary><span class="mark">FAIL</span><span class="sub-name">#11 Test that a WebAssembly code traps (linking0.wast:27)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at linking0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking0.wast.js:21:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking0.wast.js:32:3 expected true got false</pre></details><a class="self" href="#s-c2213a41" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aab26f19"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#12 Test that WebAssembly compilation succeeds (linking0.wast:31)</span></div><a class="self" href="#s-aab26f19" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2c6a9a0f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#13 Test that WebAssembly instantiation fails (linking0.wast:31)</span></div><a class="self" href="#s-2c6a9a0f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9c6136b4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly module is uninstantiable</span></summary><pre class="msg">assert_true: expected link error, observed TypeError: WebAssembly.instantiate(): Import #0 &quot;Mt&quot;: module is not an object or function 
+    at assert_uninstantiable (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:433:15)
+    at linking0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking0.wast.js:27:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking0.wast.js:32:3 expected true got false</pre></details><a class="self" href="#s-9c6136b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cc7b2dd4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that a WebAssembly code returns a specific result (linking0.wast:42)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;call&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at linking0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/linking0.wast.js:30:1)
+    at http://web-platform.test:8000/wasm/core/js/multi-memory/linking0.wast.js:32:3 expected true got false</pre></details><a class="self" href="#s-cc7b2dd4" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

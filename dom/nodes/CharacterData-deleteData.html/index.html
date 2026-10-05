@@ -32,7 +32,29 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 14 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-dfb43856"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() out of bounds</span></div><a class="self" href="#s-dfb43856" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a0e342fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() at the start</span></div><a class="self" href="#s-a0e342fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b2ff7e04"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() at the end</span></div><a class="self" href="#s-b2ff7e04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-464bef51"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() in the middle</span></div><a class="self" href="#s-464bef51" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-02b10216"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() with zero count</span></div><a class="self" href="#s-02b10216" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-381f4585"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() with small negative count</span></div><a class="self" href="#s-381f4585" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-436dd484"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() with large negative count</span></div><a class="self" href="#s-436dd484" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9a7cd75a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Text.deleteData() with non-ascii data</span></summary><pre class="msg">assert_equals: expected &quot;This is the character data test, append 資料，更多資料&quot; but got &quot;This is the character data test, append 資於\ufffd更多測試資料&quot;</pre></details><a class="self" href="#s-9a7cd75a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cec38ab3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Text.deleteData() with non-BMP data</span></summary><pre class="msg">assert_equals: expected &quot;🌠 teST&quot; but got &quot;🌠 \ufffd TEST&quot;</pre></details><a class="self" href="#s-cec38ab3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-95a53b42"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() out of bounds</span></div><a class="self" href="#s-95a53b42" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-13587ba3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() at the start</span></div><a class="self" href="#s-13587ba3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-79fa2ce4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() at the end</span></div><a class="self" href="#s-79fa2ce4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9192b797"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() in the middle</span></div><a class="self" href="#s-9192b797" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9806865c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() with zero count</span></div><a class="self" href="#s-9806865c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-53fb1bc5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() with small negative count</span></div><a class="self" href="#s-53fb1bc5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-664ff3c4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() with large negative count</span></div><a class="self" href="#s-664ff3c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dea1f8e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Comment.deleteData() with non-ascii data</span></summary><pre class="msg">assert_equals: expected &quot;This is the character data test, append 資料，更多資料&quot; but got &quot;This is the character data test, append 資於\ufffd更多測試資料&quot;</pre></details><a class="self" href="#s-dea1f8e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-50d9e5ec"><details><summary><span class="mark">FAIL</span><span class="sub-name">Comment.deleteData() with non-BMP data</span></summary><pre class="msg">assert_equals: expected &quot;🌠 teST&quot; but got &quot;🌠 \ufffd TEST&quot;</pre></details><a class="self" href="#s-50d9e5ec" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

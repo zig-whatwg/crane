@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 2 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-e33d7ce3"><details><summary><span class="mark">FAIL</span><span class="sub-name">options should check ancestor optgroup for disabled state.</span></summary><pre class="msg">assert_equals: color after optgroup disabled expected &quot;rgb(128, 128, 128)&quot; but got &quot;rgb(0, 0, 0)&quot;</pre></details><a class="self" href="#s-e33d7ce3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7faa965f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">nested optgroup</span></div><a class="self" href="#s-7faa965f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-80d9fb2e"><details><summary><span class="mark">FAIL</span><span class="sub-name">disabled select</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-80d9fb2e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-115b819c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">select in optgroup</span></div><a class="self" href="#s-115b819c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8818b403"><details><summary><span class="mark">FAIL</span><span class="sub-name">nested options</span></summary><pre class="msg">assert_true: parent option expected true got false</pre></details><a class="self" href="#s-8818b403" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ec212b38"><details><summary><span class="mark">FAIL</span><span class="sub-name">nesting options and optgroups in disabled select</span></summary><pre class="msg">assert_true: optgroup expected true got false</pre></details><a class="self" href="#s-ec212b38" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

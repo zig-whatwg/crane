@@ -32,7 +32,35 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 16 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/request/request-disturbed.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-ab621f59"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request&#39;s body: initial state</span></div><a class="self" href="#s-ab621f59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-337223ac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request without body cannot be disturbed</span></div><a class="self" href="#s-337223ac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0f8fd962"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check cloning a disturbed request</span></div><a class="self" href="#s-0f8fd962" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6d8e51d7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check creating a new request from a disturbed request</span></div><a class="self" href="#s-6d8e51d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8ffab17f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check creating a new request with a new body from a disturbed request</span></div><a class="self" href="#s-8ffab17f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-842e0aa9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Input request used for creating new request became disturbed</span></div><a class="self" href="#s-842e0aa9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e3eb302f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Input request used for creating new request became disturbed even if body is not used</span></summary><pre class="msg">assert_true: bodyUsed is true when request is disturbed expected true got false</pre></details><a class="self" href="#s-e3eb302f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2dec2290"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check consuming a disturbed request</span></div><a class="self" href="#s-2dec2290" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b925f7ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request construction failure should not set &quot;bodyUsed&quot;</span></div><a class="self" href="#s-b925f7ee" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/request/request-disturbed.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-ec84522a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request&#39;s body: initial state</span></div><a class="self" href="#s-ec84522a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1012fd32"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request without body cannot be disturbed</span></div><a class="self" href="#s-1012fd32" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-275a278d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check cloning a disturbed request</span></div><a class="self" href="#s-275a278d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f4fdf656"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check creating a new request from a disturbed request</span></div><a class="self" href="#s-f4fdf656" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-100719f9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check creating a new request with a new body from a disturbed request</span></div><a class="self" href="#s-100719f9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6bce1b82"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Input request used for creating new request became disturbed</span></div><a class="self" href="#s-6bce1b82" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-eb646b95"><details><summary><span class="mark">FAIL</span><span class="sub-name">Input request used for creating new request became disturbed even if body is not used</span></summary><pre class="msg">assert_true: bodyUsed is true when request is disturbed expected true got false</pre></details><a class="self" href="#s-eb646b95" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d0bd552d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check consuming a disturbed request</span></div><a class="self" href="#s-d0bd552d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2a7b3d23"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Request construction failure should not set &quot;bodyUsed&quot;</span></div><a class="self" href="#s-2a7b3d23" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

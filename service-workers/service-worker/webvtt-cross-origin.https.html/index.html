@@ -32,7 +32,20 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 9 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-29ec7531"><details><summary><span class="mark">FAIL</span><span class="sub-name">initialize global state</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;getRegistration&#39;)</pre></details><a class="self" href="#s-29ec7531" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-879fc5e6"><details><summary><span class="mark">FAIL</span><span class="sub-name">same-origin text track should load</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;contentDocument&#39;)</pre></details><a class="self" href="#s-879fc5e6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ee68e9b7"><details><summary><span class="mark">FAIL</span><span class="sub-name">cross-origin text track with no-cors request should not load</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;contentDocument&#39;)</pre></details><a class="self" href="#s-ee68e9b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-14303be8"><details><summary><span class="mark">FAIL</span><span class="sub-name">cross-origin text track with rejected cors request should not load</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;contentDocument&#39;)</pre></details><a class="self" href="#s-14303be8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2cc31e60"><details><summary><span class="mark">FAIL</span><span class="sub-name">cross-origin text track with approved cors request should not load</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;contentDocument&#39;)</pre></details><a class="self" href="#s-2cc31e60" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-56ffb419"><details><summary><span class="mark">FAIL</span><span class="sub-name">same-origin text track that redirects same-origin should load</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;contentDocument&#39;)</pre></details><a class="self" href="#s-56ffb419" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-adec4d04"><details><summary><span class="mark">FAIL</span><span class="sub-name">same-origin text track that redirects cross-origin should not load</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;contentDocument&#39;)</pre></details><a class="self" href="#s-adec4d04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-732eee7a"><details><summary><span class="mark">FAIL</span><span class="sub-name">same-origin text track that redirects to a cross-origin text track with rejected cors should not load</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;contentDocument&#39;)</pre></details><a class="self" href="#s-732eee7a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a4cbbd17"><details><summary><span class="mark">FAIL</span><span class="sub-name">same-origin text track that redirects to a cross-origin text track with approved cors should not load</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;contentDocument&#39;)</pre></details><a class="self" href="#s-a4cbbd17" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

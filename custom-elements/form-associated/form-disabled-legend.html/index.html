@@ -32,7 +32,17 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-5f9ff47d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Custom element inside the first legend of a disabled fieldset is not disabled</span></summary><pre class="msg">assert_true: in legend :enabled expected true got false</pre></details><a class="self" href="#s-5f9ff47d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fbf7cc41"><details><summary><span class="mark">FAIL</span><span class="sub-name">Custom element inside a legend other than the first one is disabled</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-fbf7cc41" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7e97deaa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Legend of an inner fieldset does not shield from an outer disabled fieldset</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-7e97deaa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1d308236"><details><summary><span class="mark">FAIL</span><span class="sub-name">Toggling disabled on the fieldset does not affect a custom element inside its first legend</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-1d308236" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d19de364"><details><summary><span class="mark">FAIL</span><span class="sub-name">Changing the first legend updates the disabled state of a custom element</span></summary><pre class="msg">assert_true: after inserting a new first legend expected true got false</pre></details><a class="self" href="#s-d19de364" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f97a5c4e"><details><summary><span class="mark">FAIL</span><span class="sub-name">fieldset.elements includes custom elements inside the legend</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;length&#39;)</pre></details><a class="self" href="#s-f97a5c4e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

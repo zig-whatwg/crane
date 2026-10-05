@@ -32,7 +32,35 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 898 passed, 8 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/url/a-element.html?exclude=(file|javascript|mailto)</code> <span class="gate">OK</span> <span class="fcount"><b>732</b> / 739</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-8f7d9f40"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parsing: &lt;http://﷐zyx.com&gt; against &lt;http://other.com/&gt;</span></summary><pre class="msg">assert_unreached: Expected URL to fail parsing Reached unreachable code</pre></details><a class="self" href="#s-8f7d9f40" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4d9b938a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parsing: &lt;http://%ef%b7%90zyx.com&gt; against &lt;http://other.com/&gt;</span></summary><pre class="msg">assert_unreached: Expected URL to fail parsing Reached unreachable code</pre></details><a class="self" href="#s-4d9b938a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c80f51d3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parsing: &lt;https://�&gt; against &lt;about:blank&gt;</span></summary><pre class="msg">assert_unreached: Expected URL to fail parsing Reached unreachable code</pre></details><a class="self" href="#s-c80f51d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4ca74eeb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parsing: &lt;https://%EF%BF%BD&gt; against &lt;about:blank&gt;</span></summary><pre class="msg">assert_unreached: Expected URL to fail parsing Reached unreachable code</pre></details><a class="self" href="#s-4ca74eeb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-99967640"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parsing: &lt;https://￿y&gt; against &lt;about:blank&gt;</span></summary><pre class="msg">assert_unreached: Expected URL to fail parsing Reached unreachable code</pre></details><a class="self" href="#s-99967640" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-42753f96"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parsing: &lt;https://xn--/&gt; against &lt;about:blank&gt;</span></summary><pre class="msg">assert_equals: protocol expected &quot;https:&quot; but got &quot;:&quot;</pre></details><a class="self" href="#s-42753f96" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5592dcf9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parsing: &lt;http://example.com/U+d800𐟾U+dfff﷐﷏﷯ﷰ￾￿?U+d800𐟾U+dfff﷐﷏﷯ﷰ￾￿&gt; against &lt;about:blank&gt;</span></summary><pre class="msg">assert_equals: href expected &quot;http://example.com/%EF%BF%BD%F0%90%9F%BE%EF%BF%BD%EF%B7%90%EF%B7%8F%EF%B7%AF%EF%B7%B0%EF%BF%BE%EF%BF%BF?%EF%BF%BD%F0%90%9F%BE%EF%BF%BD%EF%B7%90%EF%B7%8F%EF%B7%AF%EF%B7%B0%EF%BF%BE%EF%BF%BF&quot; but got &quot;http://example.com/%ED%A0%80%F0%90%9F%BE%ED%BF%BF%EF%B7%90%EF%B7%8F%EF%B7%AF%EF%B7%B0%EF%BF%BE%EF%BF%BF?%ED%A0%80%F0%90%9F%BE%ED%BF%BF%EF%B7%90%EF%B7%8F%EF%B7%AF%EF%B7%B0%EF%BF%BE%EF%BF%BF&quot;</pre></details><a class="self" href="#s-5592dcf9" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<p class="omitted">732 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/url/a-element.html?include=file</code> <span class="gate">OK</span> <span class="fcount"><b>137</b> / 138</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-d08c9ff1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Parsing: &lt;file://xn--/p&gt; against &lt;about:blank&gt;</span></summary><pre class="msg">assert_equals: protocol expected &quot;file:&quot; but got &quot;:&quot;</pre></details><a class="self" href="#s-d08c9ff1" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<p class="omitted">137 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/url/a-element.html?include=javascript</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 14</span></h3>
+<p class="omitted">14 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/url/a-element.html?include=mailto</code> <span class="gate">OK</span> <span class="fcount"><b>15</b> / 15</span></h3>
+<p class="omitted">15 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

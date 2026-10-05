@@ -32,7 +32,18 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 6 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-ce90a738"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">adoptNode() plain DocumentFragment (no host): adopts and returns it</span></div><a class="self" href="#s-ce90a738" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2689cd00"><details><summary><span class="mark">FAIL</span><span class="sub-name">adoptNode() template.content: adopts fragment + children, returns it</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;appendChild&#39;)</pre></details><a class="self" href="#s-2689cd00" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ef6397e4"><details><summary><span class="mark">FAIL</span><span class="sub-name">adoptNode() template.content into browsing-context document</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;appendChild&#39;)</pre></details><a class="self" href="#s-ef6397e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7e48b50c"><details><summary><span class="mark">FAIL</span><span class="sub-name">adoptNode() shadow root: throws HierarchyRequestError</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; target.adoptNode(root)&quot; did not throw</pre></details><a class="self" href="#s-7e48b50c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1c9a794f"><details><summary><span class="mark">FAIL</span><span class="sub-name">adoptNode() &lt;template&gt; element: content follows via template adopting steps</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;appendChild&#39;)</pre></details><a class="self" href="#s-1c9a794f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7b4a9266"><details><summary><span class="mark">FAIL</span><span class="sub-name">adoptNode() nested &lt;template&gt; elements: all owner documents update</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;appendChild&#39;)</pre></details><a class="self" href="#s-7b4a9266" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1efed470"><details><summary><span class="mark">FAIL</span><span class="sub-name">appendChild() template.content: moves children, fragment ownerDocument stays</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;appendChild&#39;)</pre></details><a class="self" href="#s-1efed470" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

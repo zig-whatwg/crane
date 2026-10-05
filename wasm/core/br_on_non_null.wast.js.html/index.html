@@ -32,7 +32,53 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 11 passed, 10 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-a20fcaad"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-a20fcaad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ef1607c5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (br_on_non_null.wast:1)</span></div><a class="self" href="#s-ef1607c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-edb28114"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation succeeds (br_on_non_null.wast:57)</span></div><a class="self" href="#s-edb28114" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ae69635a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (br_on_non_null.wast:65)</span></div><a class="self" href="#s-ae69635a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-89835d86"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#5 Test that WebAssembly compilation fails (br_on_non_null.wast:91)</span></div><a class="self" href="#s-89835d86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ec23f200"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-ec23f200" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5d9ca2ce"><details><summary><span class="mark">FAIL</span><span class="sub-name">#7 Test that WebAssembly compilation succeeds (br_on_non_null.wast:1)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-5d9ca2ce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f26d32a6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at br_on_non_null_wast_js (http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:48:3 expected true got false</pre></details><a class="self" href="#s-f26d32a6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-29ff77e0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that a WebAssembly code traps (br_on_non_null.wast:49)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;unreachable&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at br_on_non_null_wast_js (http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:10:1)
+    at http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:48:3 expected true got false</pre></details><a class="self" href="#s-29ff77e0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-39f4e6b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that a WebAssembly code returns a specific result (br_on_non_null.wast:51)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;nonnullable-f&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at br_on_non_null_wast_js (http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:13:1)
+    at http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:48:3 expected true got false</pre></details><a class="self" href="#s-39f4e6b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3e193a55"><details><summary><span class="mark">FAIL</span><span class="sub-name">#11 Test that a WebAssembly code returns a specific result (br_on_non_null.wast:52)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;nullable-null&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at br_on_non_null_wast_js (http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:16:1)
+    at http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:48:3 expected true got false</pre></details><a class="self" href="#s-3e193a55" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-49e2392a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that a WebAssembly code returns a specific result (br_on_non_null.wast:53)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;nullable-f&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at br_on_non_null_wast_js (http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:48:3 expected true got false</pre></details><a class="self" href="#s-49e2392a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f860134f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (br_on_non_null.wast:54)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;nullable2-null&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at br_on_non_null_wast_js (http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:48:3 expected true got false</pre></details><a class="self" href="#s-f860134f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9c54d949"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly code returns a specific result (br_on_non_null.wast:55)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;nullable2-f&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at br_on_non_null_wast_js (http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:25:1)
+    at http://web-platform.test:8000/wasm/core/js/br_on_non_null.wast.js:48:3 expected true got false</pre></details><a class="self" href="#s-9c54d949" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cbba6eb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#15 Test that WebAssembly compilation succeeds (br_on_non_null.wast:57)</span></div><a class="self" href="#s-3cbba6eb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5f318993"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#16 Test that WebAssembly instantiation succeeds (br_on_non_null.wast:57)</span></div><a class="self" href="#s-5f318993" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-247be72c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#17 Test that WebAssembly compilation succeeds (br_on_non_null.wast:65)</span></div><a class="self" href="#s-247be72c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-879bef67"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#18 Test that WebAssembly instantiation succeeds (br_on_non_null.wast:65)</span></div><a class="self" href="#s-879bef67" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-293fda7f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#19 Test that a WebAssembly code returns a specific result (br_on_non_null.wast:86)</span></div><a class="self" href="#s-293fda7f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-152b6fa4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#20 Test that a WebAssembly code returns a specific result (br_on_non_null.wast:87)</span></div><a class="self" href="#s-152b6fa4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6784c854"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#21 Test that WebAssembly compilation fails (br_on_non_null.wast:91)</span></div><a class="self" href="#s-6784c854" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

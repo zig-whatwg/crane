@@ -32,7 +32,28 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 5 failed, 1 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<h3 class="run-head"><code>/html/webappapis/dynamic-markup-insertion/opening-the-input-stream/bailout-exception-vs-return-origin.sub.window.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-e8dcb8e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open should throw an InvalidStateError with XML document even if it is cross-origin</span></summary><pre class="msg">assert_throws_dom: opening an XML document should throw an InvalidStateError function &quot;() =&gt; {
+        iframe.contentDocument.open();
+      }&quot; threw object &quot;TypeError: Cannot read properties of null (reading &#39;open&#39;)&quot; that is not a DOMException InvalidStateError: property &quot;code&quot; is equal to undefined, expected 11</pre></details><a class="self" href="#s-e8dcb8e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-timeout" id="s-b00f6fb9"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">document.open should throw an InvalidStateError when the throw-on-dynamic-markup-insertion counter is incremented even if the document is cross-origin</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-b00f6fb9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-79b73afb"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open should throw a SecurityError with cross-origin document even when there is an active parser executing script</span></summary><pre class="msg">assert_throws_dom: opening a same origin-domain (but not same origin) document should throw a SecurityError function &quot;() =&gt; {
+          iframe.contentDocument.open();
+        }&quot; threw object &quot;TypeError: Cannot read properties of null (reading &#39;open&#39;)&quot; that is not a DOMException SecurityError: property &quot;code&quot; is equal to undefined, expected 18</pre></details><a class="self" href="#s-79b73afb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ef0f556f"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open should throw a SecurityError with cross-origin document even when the ignore-opens-during-unload counter is greater than 0 (during beforeunload event)</span></summary><pre class="msg">assert_throws_dom: opening a same origin-domain (but not same origin) document should throw a SecurityError function &quot;() =&gt; {
+              iframe.contentDocument.open();
+            }&quot; threw object &quot;TypeError: Cannot read properties of null (reading &#39;open&#39;)&quot; that is not a DOMException SecurityError: property &quot;code&quot; is equal to undefined, expected 18</pre></details><a class="self" href="#s-ef0f556f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9e4dbe3e"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open should throw a SecurityError with cross-origin document even when the ignore-opens-during-unload counter is greater than 0 (during pagehide event)</span></summary><pre class="msg">assert_throws_dom: opening a same origin-domain (but not same origin) document should throw a SecurityError function &quot;() =&gt; {
+              iframe.contentDocument.open();
+            }&quot; threw object &quot;TypeError: Cannot read properties of null (reading &#39;open&#39;)&quot; that is not a DOMException SecurityError: property &quot;code&quot; is equal to undefined, expected 18</pre></details><a class="self" href="#s-9e4dbe3e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-96121438"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open should throw a SecurityError with cross-origin document even when the ignore-opens-during-unload counter is greater than 0 (during unload event)</span></summary><pre class="msg">assert_throws_dom: opening a same origin-domain (but not same origin) document should throw a SecurityError function &quot;() =&gt; {
+              iframe.contentDocument.open();
+            }&quot; threw object &quot;TypeError: Cannot read properties of null (reading &#39;open&#39;)&quot; that is not a DOMException SecurityError: property &quot;code&quot; is equal to undefined, expected 18</pre></details><a class="self" href="#s-96121438" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

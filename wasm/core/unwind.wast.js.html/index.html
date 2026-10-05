@@ -32,7 +32,215 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 53 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-67cc2b2b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-67cc2b2b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9dc00cb1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (unwind.wast:3)</span></div><a class="self" href="#s-9dc00cb1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-28a64e17"><details><summary><span class="mark">FAIL</span><span class="sub-name">#3 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-28a64e17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-44e7ecdd"><details><summary><span class="mark">FAIL</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (unwind.wast:3)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-44e7ecdd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cf544908"><details><summary><span class="mark">FAIL</span><span class="sub-name">#5 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
+    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:7:10)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-cf544908" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-82374312"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 Test that a WebAssembly code traps (unwind.wast:212)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;func-unwind-by-unreachable&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:10:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-82374312" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1098c7af"><details><summary><span class="mark">FAIL</span><span class="sub-name">#7 Test that a WebAssembly code returns a specific result (unwind.wast:213)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;func-unwind-by-br&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:13:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-1098c7af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-91fdf13d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 Test that a WebAssembly code returns a specific result (unwind.wast:214)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;func-unwind-by-br-value&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:16:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-91fdf13d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bc2d4daa"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that a WebAssembly code returns a specific result (unwind.wast:215)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;func-unwind-by-br_if&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:19:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-bc2d4daa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3a134f09"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that a WebAssembly code returns a specific result (unwind.wast:216)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;func-unwind-by-br_if-value&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:22:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-3a134f09" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dbd5c01d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#11 Test that a WebAssembly code returns a specific result (unwind.wast:217)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;func-unwind-by-br_table&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:25:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-dbd5c01d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-73b4f9d1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 Test that a WebAssembly code returns a specific result (unwind.wast:218)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;func-unwind-by-br_table-value&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:28:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-73b4f9d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ef483515"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (unwind.wast:219)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;func-unwind-by-return&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:31:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-ef483515" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-83b470a5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly code traps (unwind.wast:221)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-unwind-by-unreachable&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:34:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-83b470a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-78d3e769"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 Test that a WebAssembly code returns a specific result (unwind.wast:222)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-unwind-by-br&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:37:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-78d3e769" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e07a6e37"><details><summary><span class="mark">FAIL</span><span class="sub-name">#16 Test that a WebAssembly code returns a specific result (unwind.wast:223)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-unwind-by-br-value&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:40:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-e07a6e37" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1c213759"><details><summary><span class="mark">FAIL</span><span class="sub-name">#17 Test that a WebAssembly code returns a specific result (unwind.wast:224)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-unwind-by-br_if&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:43:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-1c213759" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cdd0bb95"><details><summary><span class="mark">FAIL</span><span class="sub-name">#18 Test that a WebAssembly code returns a specific result (unwind.wast:225)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-unwind-by-br_if-value&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:46:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-cdd0bb95" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-83e549c8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#19 Test that a WebAssembly code returns a specific result (unwind.wast:226)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-unwind-by-br_table&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:49:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-83e549c8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-755a9709"><details><summary><span class="mark">FAIL</span><span class="sub-name">#20 Test that a WebAssembly code returns a specific result (unwind.wast:227)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-unwind-by-br_table-value&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:52:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-755a9709" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-518e597f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#21 Test that a WebAssembly code returns a specific result (unwind.wast:228)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-unwind-by-return&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:55:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-518e597f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-562c06f1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#22 Test that a WebAssembly code traps (unwind.wast:230)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-nested-unwind-by-unreachable&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:58:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-562c06f1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1b9c54a8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#23 Test that a WebAssembly code returns a specific result (unwind.wast:231)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-nested-unwind-by-br&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:61:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-1b9c54a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-37b8d7f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#24 Test that a WebAssembly code returns a specific result (unwind.wast:232)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-nested-unwind-by-br-value&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:64:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-37b8d7f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0bba04b3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#25 Test that a WebAssembly code returns a specific result (unwind.wast:233)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-nested-unwind-by-br_if&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:67:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-0bba04b3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f831a1c7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#26 Test that a WebAssembly code returns a specific result (unwind.wast:234)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-nested-unwind-by-br_if-value&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:70:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-f831a1c7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b75017f4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#27 Test that a WebAssembly code returns a specific result (unwind.wast:235)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-nested-unwind-by-br_table&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:73:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-b75017f4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-40738720"><details><summary><span class="mark">FAIL</span><span class="sub-name">#28 Test that a WebAssembly code returns a specific result (unwind.wast:236)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-nested-unwind-by-br_table-value&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:76:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-40738720" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3df73b0e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#29 Test that a WebAssembly code returns a specific result (unwind.wast:237)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-nested-unwind-by-return&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:79:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-3df73b0e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7f7f420c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#30 Test that a WebAssembly code traps (unwind.wast:239)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;unary-after-unreachable&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:82:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-7f7f420c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ee7812f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#31 Test that a WebAssembly code returns a specific result (unwind.wast:240)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;unary-after-br&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:85:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-ee7812f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f9408cee"><details><summary><span class="mark">FAIL</span><span class="sub-name">#32 Test that a WebAssembly code returns a specific result (unwind.wast:241)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;unary-after-br_if&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:88:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-f9408cee" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6d25b111"><details><summary><span class="mark">FAIL</span><span class="sub-name">#33 Test that a WebAssembly code returns a specific result (unwind.wast:242)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;unary-after-br_table&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:91:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-6d25b111" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aacb9e1e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#34 Test that a WebAssembly code returns a specific result (unwind.wast:243)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;unary-after-return&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:94:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-aacb9e1e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a08e0bb9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#35 Test that a WebAssembly code traps (unwind.wast:245)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;binary-after-unreachable&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:97:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-a08e0bb9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-85061103"><details><summary><span class="mark">FAIL</span><span class="sub-name">#36 Test that a WebAssembly code returns a specific result (unwind.wast:246)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;binary-after-br&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:100:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-85061103" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-59e58d82"><details><summary><span class="mark">FAIL</span><span class="sub-name">#37 Test that a WebAssembly code returns a specific result (unwind.wast:247)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;binary-after-br_if&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:103:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-59e58d82" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dda18896"><details><summary><span class="mark">FAIL</span><span class="sub-name">#38 Test that a WebAssembly code returns a specific result (unwind.wast:248)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;binary-after-br_table&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:106:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-dda18896" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d318f058"><details><summary><span class="mark">FAIL</span><span class="sub-name">#39 Test that a WebAssembly code returns a specific result (unwind.wast:249)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;binary-after-return&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:109:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-d318f058" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3fbbff81"><details><summary><span class="mark">FAIL</span><span class="sub-name">#40 Test that a WebAssembly code traps (unwind.wast:251)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;select-after-unreachable&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:112:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-3fbbff81" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3b41fcf3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#41 Test that a WebAssembly code returns a specific result (unwind.wast:252)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;select-after-br&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:115:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-3b41fcf3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-67e9f5d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#42 Test that a WebAssembly code returns a specific result (unwind.wast:253)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;select-after-br_if&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:118:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-67e9f5d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7f900ef8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#43 Test that a WebAssembly code returns a specific result (unwind.wast:254)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;select-after-br_table&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:121:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-7f900ef8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3a404b53"><details><summary><span class="mark">FAIL</span><span class="sub-name">#44 Test that a WebAssembly code returns a specific result (unwind.wast:255)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;select-after-return&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:124:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-3a404b53" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-08aae399"><details><summary><span class="mark">FAIL</span><span class="sub-name">#45 Test that a WebAssembly code traps (unwind.wast:257)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-value-after-unreachable&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:127:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-08aae399" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-116758a6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#46 Test that a WebAssembly code returns a specific result (unwind.wast:258)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-value-after-br&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:130:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-116758a6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d3775bb7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#47 Test that a WebAssembly code returns a specific result (unwind.wast:259)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-value-after-br_if&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:133:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-d3775bb7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-54dd68bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">#48 Test that a WebAssembly code returns a specific result (unwind.wast:260)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-value-after-br_table&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:136:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-54dd68bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-09014a46"><details><summary><span class="mark">FAIL</span><span class="sub-name">#49 Test that a WebAssembly code returns a specific result (unwind.wast:261)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;block-value-after-return&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:139:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-09014a46" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8eb7bc3c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#50 Test that a WebAssembly code traps (unwind.wast:263)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;loop-value-after-unreachable&#39;) 
+    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:142:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-8eb7bc3c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-72336000"><details><summary><span class="mark">FAIL</span><span class="sub-name">#51 Test that a WebAssembly code returns a specific result (unwind.wast:264)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;loop-value-after-br&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:145:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-72336000" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f6b69146"><details><summary><span class="mark">FAIL</span><span class="sub-name">#52 Test that a WebAssembly code returns a specific result (unwind.wast:265)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;loop-value-after-br_if&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:148:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-f6b69146" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d5fbf368"><details><summary><span class="mark">FAIL</span><span class="sub-name">#53 Test that a WebAssembly code returns a specific result (unwind.wast:266)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;loop-value-after-br_table&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:151:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-d5fbf368" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-899feb0e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#54 Test that a WebAssembly code returns a specific result (unwind.wast:267)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;loop-value-after-return&#39;) 
+    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
+    at unwind_wast_js (http://web-platform.test:8000/wasm/core/js/unwind.wast.js:154:1)
+    at http://web-platform.test:8000/wasm/core/js/unwind.wast.js:156:3 expected true got false</pre></details><a class="self" href="#s-899feb0e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

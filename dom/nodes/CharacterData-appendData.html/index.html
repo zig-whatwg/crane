@@ -32,7 +32,25 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 12 passed, 2 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-a868eb79"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.appendData(&#39;bar&#39;)</span></div><a class="self" href="#s-a868eb79" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5c312795"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.appendData(&#39;&#39;)</span></div><a class="self" href="#s-5c312795" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-21308b3d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Text.appendData(non-ASCII)</span></summary><pre class="msg">assert_equals: expected 25 but got 39</pre></details><a class="self" href="#s-21308b3d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e5597430"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.appendData(null)</span></div><a class="self" href="#s-e5597430" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-35afd1c4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.appendData(undefined)</span></div><a class="self" href="#s-35afd1c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a56fa22a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.appendData(&#39;&#39;, &#39;bar&#39;)</span></div><a class="self" href="#s-a56fa22a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-82695e60"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.appendData()</span></div><a class="self" href="#s-82695e60" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8721551b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.appendData(&#39;bar&#39;)</span></div><a class="self" href="#s-8721551b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f127b81b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.appendData(&#39;&#39;)</span></div><a class="self" href="#s-f127b81b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3466b639"><details><summary><span class="mark">FAIL</span><span class="sub-name">Comment.appendData(non-ASCII)</span></summary><pre class="msg">assert_equals: expected 25 but got 39</pre></details><a class="self" href="#s-3466b639" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-78d9b16c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.appendData(null)</span></div><a class="self" href="#s-78d9b16c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-979a3c74"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.appendData(undefined)</span></div><a class="self" href="#s-979a3c74" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-48999ede"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.appendData(&#39;&#39;, &#39;bar&#39;)</span></div><a class="self" href="#s-48999ede" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2375c401"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.appendData()</span></div><a class="self" href="#s-2375c401" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

@@ -32,7 +32,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 4 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-6dd58af3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting ariaLabelledByElements should determine the computed label for the labelled element</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: window.test_driver_internal.get_computed_label is not a function&quot;</pre></details><a class="self" href="#s-6dd58af3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9f67fb2b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting ariaLabelledByElements before inserting the elements referred to in the document should cause the label to be updated once elements are inserted</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: window.test_driver_internal.get_computed_label is not a function&quot;</pre></details><a class="self" href="#s-9f67fb2b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f95cba64"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting ariaLabelledByElements on an element before inserting it in the document should cause the label to be updated once the element is inserted</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: window.test_driver_internal.get_computed_label is not a function&quot;</pre></details><a class="self" href="#s-f95cba64" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-571a7b7e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Moving the label from shadow DOM to light DOM causes the reference to become valid</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of null (reading &#39;firstElementChild&#39;)&quot;</pre></details><a class="self" href="#s-571a7b7e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>

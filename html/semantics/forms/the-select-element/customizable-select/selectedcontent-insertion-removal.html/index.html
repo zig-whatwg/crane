@@ -32,7 +32,15 @@
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 3 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-aa8e88f8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Selectedcontent element removal steps.</span></div><a class="self" href="#s-aa8e88f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1ed7d261"><details><summary><span class="mark">FAIL</span><span class="sub-name">Selectedcontent element insertion steps.</span></summary><pre class="msg">assert_equals: The selectedcontent should be updated after post-connection steps. expected &quot;one&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-1ed7d261" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b6988c5d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Option element insertion steps.</span></summary><pre class="msg">assert_equals: The selectedcontent should not be updated yet before option post-connection steps. expected &quot;one&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-b6988c5d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a0c61416"><details><summary><span class="mark">FAIL</span><span class="sub-name">Option element removal steps.</span></summary><pre class="msg">assert_equals: The selectedcontent element should not be updated synchronously after removal of the selected option. expected &quot;one&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-a0c61416" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>
