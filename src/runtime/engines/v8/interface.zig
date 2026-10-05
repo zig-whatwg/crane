@@ -925,6 +925,69 @@ fn rejectOnThrow(info: *const v8.FunctionCallbackInfo, comptime body: fn (*const
     info.setReturnValue(@ptrCast(promise));
 }
 
+/// HTML 4.13.6 [CEReactions]: whether `fn_name` runs a custom element
+/// reactions bracket - its generated interface lists it in `ce_reactions`.
+pub fn runsCEReactions(comptime Interface: type, comptime fn_name: []const u8) bool {
+    if (!@hasDecl(Interface, "ce_reactions")) return false;
+    inline for (Interface.ce_reactions) |name| {
+        if (comptime std.mem.eql(u8, name, fn_name)) return true;
+    }
+    return false;
+}
+
+/// An operation's dispatch - installed for its first overload, which may
+/// forward to `<zig_name>__<k>`: whether any function it can run brackets.
+pub fn dispatchRunsCEReactions(comptime Interface: type, comptime zig_name: []const u8) bool {
+    if (!@hasDecl(Interface, "ce_reactions")) return false;
+    inline for (Interface.ce_reactions) |name| {
+        if (comptime std.mem.eql(u8, name, zig_name) or std.mem.startsWith(u8, name, zig_name ++ "__")) return true;
+    }
+    return false;
+}
+
+/// Run `body(info)` in a binding catch scope (v8_wrapper.cpp, "Binding catch
+/// scopes"): the dispatch of a [CEReactions] member, so what its steps leave
+/// pending is held where engine.takePendingException can take it - V8 hands a
+/// thrown exception only to a TryCatch made before the throw. Blink's
+/// CEReactionsScope holds a v8::TryCatch for its life the same way
+/// (third_party/blink/renderer/core/html/custom/ce_reactions_scope.cc). A
+/// caught exception is rethrown when the scope ends, so script sees what it
+/// would have.
+fn inBindingCatchScope(info: *const v8.FunctionCallbackInfo, comptime body: fn (*const v8.FunctionCallbackInfo) void) void {
+    const Thunk = struct {
+        fn run(data: ?*anyopaque) callconv(.c) void {
+            body(@ptrCast(@alignCast(data.?)));
+        }
+    };
+    v8.v8_RunInBindingCatchScope(info.getIsolate(), Thunk.run, @ptrCast(@constCast(info)));
+}
+
+/// `function(args)`, in a binding catch scope when its generated interface
+/// lists `fn_name` in `ce_reactions` - an interceptor's call of a special
+/// setter, which has no FunctionCallbackInfo to scope.
+fn callInCatchScopeIfListed(
+    comptime Interface: type,
+    comptime fn_name: []const u8,
+    isolate: *v8.Isolate,
+    comptime function: anytype,
+    args: anytype,
+) @typeInfo(@TypeOf(function)).@"fn".return_type.? {
+    const Result = @typeInfo(@TypeOf(function)).@"fn".return_type.?;
+    if (comptime !runsCEReactions(Interface, fn_name)) return @call(.auto, function, args);
+    const Call = struct {
+        args: @TypeOf(args),
+        result: Result = undefined,
+
+        fn run(data: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.result = @call(.auto, function, self.args);
+        }
+    };
+    var call: Call = .{ .args = args };
+    v8.v8_RunInBindingCatchScope(isolate, Call.run, &call);
+    return call.result;
+}
+
 pub fn legacyNullToEmptyMask(comptime Interface: type, comptime fn_name: []const u8) u32 {
     if (!@hasDecl(Interface, "legacy_null_to_empty")) return 0;
     inline for (Interface.legacy_null_to_empty) |entry| {
@@ -3610,7 +3673,14 @@ pub fn V8Interface(comptime Interface: type) type {
         fn MethodCallback(comptime zig_name: []const u8) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-                    if (comptime returnsPromise(Interface, zig_name)) return rejectOnThrow(info, body);
+                    if (comptime returnsPromise(Interface, zig_name)) return rejectOnThrow(info, scoped);
+                    scoped(info);
+                }
+
+                /// A [CEReactions] operation is dispatched in a binding catch
+                /// scope (engine.takePendingException).
+                fn scoped(info: *const v8.FunctionCallbackInfo) void {
+                    if (comptime dispatchRunsCEReactions(Interface, zig_name)) return inBindingCatchScope(info, body);
                     body(info);
                 }
 
@@ -5650,6 +5720,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 Interface.set_item
             else
                 Interface.call_setter;
+            const setter_name = comptime if (@hasDecl(Interface, "set_item")) "set_item" else "call_setter";
 
             // Get the value type from the setter function signature
             const SetterFnType = @TypeOf(setter_fn);
@@ -5686,8 +5757,8 @@ pub fn V8Interface(comptime Interface: type) type {
                 return .kNo;
             };
 
-            // Call the setter
-            setter_fn(instance, index, zig_value) catch {
+            // Call the setter (in a binding catch scope when it is [CEReactions])
+            callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, index, zig_value }) catch {
                 return .kNo;
             };
 
@@ -5778,7 +5849,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             conv.throwTypeError(isolate, @errorName(err));
                             return .kYes;
                         };
-                        Interface.set_item(instance, index, zig_value) catch |err| {
+                        callInCatchScopeIfListed(Interface, "set_item", isolate, Interface.set_item, .{ instance, index, zig_value }) catch |err| {
                             conv.throwTypeError(isolate, @errorName(err));
                         };
                     } else if (@hasDecl(Interface, "call_setter")) {
@@ -5795,7 +5866,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             conv.throwTypeError(isolate, @errorName(err));
                             return .kYes;
                         };
-                        Interface.call_setter(instance, index, zig_value) catch |err| {
+                        callInCatchScopeIfListed(Interface, "call_setter", isolate, Interface.call_setter, .{ instance, index, zig_value }) catch |err| {
                             conv.throwTypeError(isolate, @errorName(err));
                         };
                     }
@@ -6470,6 +6541,12 @@ pub fn V8Interface(comptime Interface: type) type {
                 Interface.set_namedItem
             else
                 Interface.call_setter;
+            const setter_name = comptime if (@hasDecl(Interface, "call_setNamedItem"))
+                "call_setNamedItem"
+            else if (@hasDecl(Interface, "set_namedItem"))
+                "set_namedItem"
+            else
+                "call_setter";
 
             // Get the value type from the setter function signature
             const SetterFnType = @TypeOf(setter_fn);
@@ -6506,8 +6583,8 @@ pub fn V8Interface(comptime Interface: type) type {
             // Free the converted value after use (handles DOMString, USVString, []const u8, etc.)
             defer freeConvertedValue(ValueType, instance.ctx.allocator, zig_value);
 
-            // Call the setter
-            setter_fn(instance, dom_str, zig_value) catch |err| {
+            // Call the setter (in a binding catch scope when it is [CEReactions])
+            callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, dom_str, zig_value }) catch |err| {
                 if (info.shouldThrowOnError()) {
                     conv.throwWebIDLError(isolate, @errorName(err));
                 }
@@ -7798,7 +7875,14 @@ pub fn V8Interface(comptime Interface: type) type {
         fn makeSetterCallback(comptime iface_name: []const u8, comptime setter_name_param: []const u8) v8.FunctionCallback {
             _ = iface_name; // Used only for uniqueness of instantiation
             return struct {
+                /// A [CEReactions] attribute's setter is dispatched in a
+                /// binding catch scope (engine.takePendingException).
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    if (comptime runsCEReactions(Interface, setter_name_param)) return inBindingCatchScope(info, body);
+                    body(info);
+                }
+
+                fn body(info: *const v8.FunctionCallbackInfo) void {
                     const zig_setter = @field(Interface, setter_name_param);
                     const isolate_inner = info.getIsolate();
                     const context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
@@ -8342,7 +8426,14 @@ pub fn V8Interface(comptime Interface: type) type {
         fn StaticMethodCallback(comptime zig_name: []const u8) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-                    if (comptime returnsPromise(Interface, zig_name)) return rejectOnThrow(info, body);
+                    if (comptime returnsPromise(Interface, zig_name)) return rejectOnThrow(info, scoped);
+                    scoped(info);
+                }
+
+                /// A [CEReactions] operation is dispatched in a binding catch
+                /// scope (engine.takePendingException).
+                fn scoped(info: *const v8.FunctionCallbackInfo) void {
+                    if (comptime runsCEReactions(Interface, zig_name)) return inBindingCatchScope(info, body);
                     body(info);
                 }
 

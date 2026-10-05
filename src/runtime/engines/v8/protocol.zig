@@ -354,6 +354,24 @@ pub fn throwValue(realm: Context, value: JSValue) Error!void {
 
 pub const completionOf = @import("protocol_completion.zig").completionOf;
 
+/// What the innermost binding catch scope holds (v8_wrapper.cpp,
+/// "Binding catch scopes"): V8 hands a thrown exception only to a TryCatch
+/// registered before the throw, so the binding dispatches every
+/// [CEReactions] member in one, and this takes from it.
+pub fn takePendingException(realm: Context) Error!?Owned {
+    const entered = try enter(realm);
+    defer entered.leave();
+    var thrown: ?*ffi.Value = null;
+    switch (ffi.v8_TakeBindingCaughtException(entered.isolate, &thrown)) {
+        1 => return support.owned(thrown orelse return error.OperationFailed),
+        0 => return null,
+        // Pending outside any binding catch scope: V8 cannot reach it.
+        -1 => return error.NotSupported,
+        // Terminating: nothing to take, and nothing may run.
+        else => return error.ExceptionPending,
+    }
+}
+
 pub const parseJsonToValue = protocol_values.parseJsonToValue;
 pub const parseJsonInNewGlobal = protocol_values.parseJsonInNewGlobal;
 pub const serializeJsonToBytes = protocol_values.serializeJsonToBytes;

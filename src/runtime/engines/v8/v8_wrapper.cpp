@@ -1943,6 +1943,57 @@ bool v8_RunCatching(Isolate* isolate, void (*body)(void*), void* data, Global<Va
     return true;
 }
 
+// ============================================================================
+// Binding catch scopes (HTML 4.13.6 [CEReactions]; engine.takePendingException)
+// ============================================================================
+//
+// V8 hands an exception thrown inside an API callback only to a v8::TryCatch
+// registered BEFORE the throw (Isolate::Throw ->
+// PropagateExceptionToExternalTryCatch); the public API has no way to read or
+// clear one afterwards, and the next Function::Call clears it silently
+// (PrepareForExecutionScope -> clear_internal_exception). So a [CEReactions]
+// member's dispatch runs in a catch scope, as Blink's CEReactionsScope holds
+// a v8::TryCatch member for its life (ce_reactions_scope.cc): what the member
+// leaves pending is held by the scope's TryCatch, takePendingException takes
+// it from the innermost scope, and on exit a caught exception is rethrown -
+// what script sees is unchanged.
+//
+// The innermost scope is kept in the isolate's data slot 3 (a scope saves the
+// outer one and restores it on exit). Slot 3 held a snapshot isolate's copy
+// of its blob only "for cleanup", and nothing ever read it back: the copy is
+// the StartupData's `data` in slot 2.
+static constexpr uint32_t kBindingCatchScopeSlot = 3;
+
+/// Run `body(data)` in a binding catch scope. A caught exception is rethrown
+/// when the scope ends (ReThrow keeps the throw's message).
+void v8_RunInBindingCatchScope(Isolate* isolate, void (*body)(void*), void* data) {
+    TryCatch try_catch(isolate);
+    void* outer = isolate->GetData(kBindingCatchScopeSlot);
+    isolate->SetData(kBindingCatchScopeSlot, &try_catch);
+    body(data);
+    isolate->SetData(kBindingCatchScopeSlot, outer);
+    if (try_catch.HasCaught()) try_catch.ReThrow();
+}
+
+/// engine.takePendingException on V8. 1: taken - `*exception` is a new
+/// Global the caller owns, and nothing is pending. 0: nothing is pending.
+/// -1: an exception is pending that no binding catch scope holds - V8 cannot
+/// reach it, and it stays pending. -2: the isolate is terminating; nothing
+/// can be taken, and the termination stays in flight.
+int v8_TakeBindingCaughtException(Isolate* isolate, Global<Value>** exception) {
+    *exception = nullptr;
+    TryCatch* scope = static_cast<TryCatch*>(isolate->GetData(kBindingCatchScopeSlot));
+    if (scope && scope->HasCaught()) {
+        if (scope->HasTerminated()) return -2;
+        HandleScope handle_scope(isolate);
+        *exception = trackHandle(new Global<Value>(isolate, scope->Exception()));
+        scope->Reset();
+        return 1;
+    }
+    if (isolate->IsExecutionTerminating()) return -2;
+    return isolate->HasPendingException() ? -1 : 0;
+}
+
 /// Call `function` with `recv` (null = undefined) under a TryCatch and return
 /// the completion. On a normal return the result is returned and `*threw` is
 /// false; on a throw the thrown value is returned and `*threw` is true - the
@@ -9578,11 +9629,10 @@ Isolate* v8_Isolate_NewFromSnapshot(
     // NOTE: Slots 0-1 are reserved for Zig-side usage:
     //   Slot 0: IsolateAllocator (see isolate_allocator.zig)
     //   Slot 1: IsolateTemplates (see isolate_templates.zig)
-    // We use higher slots for C++ snapshot data:
-    //   Slot 2: StartupData struct pointer
-    //   Slot 3: Snapshot data buffer pointer
+    // We use higher slots for C++ data:
+    //   Slot 2: StartupData struct pointer (its `data` is the blob's copy)
+    //   Slot 3: the innermost binding catch scope (kBindingCatchScopeSlot)
     isolate->SetData(2, startup_data);
-    isolate->SetData(3, data_copy);
     
     return isolate;
 }

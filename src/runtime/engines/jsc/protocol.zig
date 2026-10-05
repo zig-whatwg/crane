@@ -268,6 +268,15 @@ pub fn throwValue(_: Context, _: JSValue) Error!void {
 pub fn completionOf(_: Context, _: *const fn (data: ?*anyopaque) Error!void, _: ?*anyopaque) Error!?Owned {
     return error.NotSupported;
 }
+/// No engine is linked, so nothing is ever pending (throwValue is
+/// NotSupported): null. Linked, JSC reports a throw through each call's
+/// `JSValueRef* exception` out-parameter, never as engine state: the adapter
+/// keeps the value an operation's call reported in its own pending slot (that
+/// is what ExceptionPending means here), and this moves it out - the slot
+/// emptied, the value JSValueProtect'ed as the Owned.
+pub fn takePendingException(_: Context) Error!?Owned {
+    return null;
+}
 pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {
     return error.NotSupported;
 }

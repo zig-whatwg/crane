@@ -1339,6 +1339,18 @@ pub extern fn v8_FreeFunctionCallResult(result: ?*V8FunctionCallResult) void;
 /// cleared. A terminating isolate is rethrown and reports false.
 pub extern fn v8_RunCatching(isolate: *Isolate, body: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque, exception: *?*Value) bool;
 
+/// Run `body(data)` in a binding catch scope - what a [CEReactions] member's
+/// dispatch runs in (Blink's CEReactionsScope holds a TryCatch the same way):
+/// an exception the body leaves pending is held by the scope, where
+/// `v8_TakeBindingCaughtException` can take it, and rethrown when it ends.
+pub extern fn v8_RunInBindingCatchScope(isolate: *Isolate, body: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) void;
+
+/// Take what the innermost binding catch scope holds. 1: taken -
+/// `exception.*` is a new Global the caller owns, nothing pending. 0: nothing
+/// is pending. -1: an exception is pending outside any binding catch scope
+/// (left pending: V8 cannot reach it). -2: the isolate is terminating.
+pub extern fn v8_TakeBindingCaughtException(isolate: *Isolate, exception: *?*Value) c_int;
+
 pub extern fn v8_Function_CallCatching(
     context: *Context,
     function: *Value,

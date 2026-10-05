@@ -1159,6 +1159,40 @@ pub inline fn completionOf(realm: Context, steps: *const fn (data: ?*anyopaque) 
     return impl.completionOf(realm, steps, data);
 }
 
+/// Take the exception the running operation has left pending - its steps
+/// threw (`throwValue`, a conversion's throw, a callback rethrown) and it is
+/// about to return ExceptionPending: the thrown value, OWNED, with nothing
+/// pending afterwards; null when nothing is pending.
+///
+/// For HTML 4.13.6 [CEReactions], whose steps are "2. Run the originally-
+/// specified steps for this construct, catching any exceptions. ... 4. Invoke
+/// custom element reactions in queue. 5. If an exception exception was thrown
+/// by the original steps, rethrow exception.": the bracket's `end`, when the
+/// popped element queue is not empty, takes the exception, invokes the
+/// queue's reactions (each reports its own exception), then rethrows the
+/// taken value with `throwValue`. An empty queue makes no engine call. (WebKit:
+/// CustomElementQueue::processQueue saves, clears and restores the VM's
+/// exception; Blink: CEReactionsScope holds it in a v8::TryCatch.)
+///
+/// `error.NotSupported`: an exception is pending that the engine cannot take.
+/// On V8 that is one left pending outside a binding catch scope: the binding
+/// dispatches every [CEReactions] member (its generated interface's
+/// `ce_reactions` table) in one, so a member called by script is always
+/// covered, but a [CEReactions] member reached from Zig code is not. The
+/// exception stays pending, and the caller must run no script before it
+/// returns: invoking a callback would clear it (V8's next call does). So
+/// `end` then does NOT invoke the popped queue's reactions. It moves the
+/// popped queue's elements, in order, onto the agent's backup element queue
+/// and, unless processing the backup element queue is set, sets it and
+/// queues the microtask that invokes the backup queue's reactions (HTML
+/// "enqueue an element on the appropriate element queue" step 1) - they run
+/// once the exception has propagated.
+/// `error.ExceptionPending`: the agent is terminating; nothing is taken and
+/// no script may run - `end` does the same as for NotSupported.
+pub inline fn takePendingException(realm: Context) Error!?Owned {
+    return impl.takePendingException(realm);
+}
+
 /// Infra "parse JSON bytes to a JavaScript value".
 pub inline fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
     return impl.parseJsonToValue(realm, bytes);
