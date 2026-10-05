@@ -1336,6 +1336,14 @@ pub fn build(b: *std.Build) void {
     });
     impls_mod.addImport("webcrypto", webcrypto_mod);
     webcrypto_mod.addImport("runtime", runtime_mod);
+
+    const eventsource_mod = b.addModule("eventsource", .{
+        .root_source_file = b.path("src/eventsource/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    eventsource_mod.addImport("infra", infra_mod);
+    impls_mod.addImport("eventsource", eventsource_mod);
     impls_mod.addOptions("build_options", build_options);
     impls_mod.addOptions("debug_options", debug_options);
 
@@ -1792,6 +1800,7 @@ pub fn build(b: *std.Build) void {
 
     // Encoding module for TextDecoder/TextEncoder implementations
     impls_mod.addImport("encoding", encoding_mod);
+    eventsource_mod.addImport("encoding", encoding_mod);
 
     // ========================================================================
     // URLPATTERN MODULE (WHATWG URLPattern Standard)
@@ -2217,6 +2226,7 @@ pub fn build(b: *std.Build) void {
     html_core_mod.addImport("host", host_mod);
     html_core_mod.addImport("infra", infra_mod);
     html_core_mod.addImport("dom", dom_mod);
+    html_core_mod.addImport("eventsource", eventsource_mod);
     html_core_mod.addImport("platform", platform_mod);
     html_core_mod.addImport("fetch", fetch_mod);
     html_core_mod.addImport("storage", storage_mod); // For web_storage.zig Storage backend
@@ -2383,6 +2393,23 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
 
     const test_step = b.step("test", "Run WHATWG spec tests (use -Dspec=<name> to filter)");
+
+    const eventsource_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/eventsource/parser_test.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    eventsource_test_mod.addImport("eventsource", eventsource_mod);
+    eventsource_test_mod.addImport("infra", infra_mod);
+    eventsource_test_mod.addImport("fetch", fetch_mod);
+    const eventsource_tests = b.addTest(.{ .root_module = eventsource_test_mod });
+    const run_eventsource_tests = b.addRunArtifact(eventsource_tests);
+    const eventsource_test_step = b.step("test-eventsource", "Run server-sent event parser and connection tests");
+    eventsource_test_step.dependOn(&run_eventsource_tests.step);
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "eventsource")) {
+        test_step.dependOn(&run_eventsource_tests.step);
+    }
 
     const webcrypto_tests = b.addTest(.{ .root_module = webcrypto_mod });
     const run_webcrypto_tests = b.addRunArtifact(webcrypto_tests);
