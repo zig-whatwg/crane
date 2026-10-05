@@ -12,4 +12,7 @@ pub const CanvasFontStretch = enum {
     _expanded_,
     _extra_expanded_,
     _ultra_expanded_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "ultra-condensed", "extra-condensed", "condensed", "semi-condensed", "normal", "semi-expanded", "expanded", "extra-expanded", "ultra-expanded" };
 };

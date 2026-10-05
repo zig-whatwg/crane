@@ -130,12 +130,28 @@ pub const PresentationRequest = struct {
         }
     }
 
-    /// WebIDL constructor
+    /// Arguments for constructor (WebIDL overloading)
+    pub const ConstructorArgs = union(enum) {
+        /// constructor(url)
+        USVString: runtime.USVString,
+        /// constructor(urls)
+        sequence: runtime.JSValue,
+    };
+
+    /// WebIDL overload set of the constructor: one entry per variant of
+    /// ConstructorArgs, in its order, for the overload resolution algorithm
+    /// (webidl.overload_resolution) the binding runs to pick the variant.
+    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
+        .{ .function = "USVString", .args = &.{.{ .kinds = &.{.string} }} },
+        .{ .function = "sequence", .args = &.{.{ .kinds = &.{.sequence} }} },
+    };
+
+    /// WebIDL constructor (overloaded)
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try PresentationRequestImpl.call_constructor(ctx, url);
+    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
+        // Pass args union directly to impl
+        return try PresentationRequestImpl.call_constructor(ctx, args);
     }
 
     pub fn get_onconnectionavailable(instance: *runtime.Instance) anyerror!EventHandler {

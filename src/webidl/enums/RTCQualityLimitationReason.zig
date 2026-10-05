@@ -7,4 +7,7 @@ pub const RTCQualityLimitationReason = enum {
     _cpu_,
     _bandwidth_,
     _other_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "none", "cpu", "bandwidth", "other" };
 };

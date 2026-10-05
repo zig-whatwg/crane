@@ -7,4 +7,7 @@ pub const AttestationConveyancePreference = enum {
     _indirect_,
     _direct_,
     _enterprise_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "none", "indirect", "direct", "enterprise" };
 };

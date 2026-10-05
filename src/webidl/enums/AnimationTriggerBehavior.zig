@@ -7,4 +7,7 @@ pub const AnimationTriggerBehavior = enum {
     _repeat_,
     _alternate_,
     _state_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "once", "repeat", "alternate", "state" };
 };

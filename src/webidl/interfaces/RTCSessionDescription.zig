@@ -79,6 +79,8 @@ pub const RTCSessionDescription = struct {
     pub const RTCSessionDescriptionToJSON = struct {
         type: RTCSdpType,
         sdp: runtime.DOMString,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

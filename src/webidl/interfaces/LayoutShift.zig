@@ -95,6 +95,8 @@ pub const LayoutShift = struct {
         hadRecentInput: bool,
         lastInputTime: DOMHighResTimeStamp,
         sources: runtime.JSValue,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

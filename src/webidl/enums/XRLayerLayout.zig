@@ -8,4 +8,7 @@ pub const XRLayerLayout = enum {
     _stereo_,
     _stereo_left_right_,
     _stereo_top_bottom_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "default", "mono", "stereo", "stereo-left-right", "stereo-top-bottom" };
 };

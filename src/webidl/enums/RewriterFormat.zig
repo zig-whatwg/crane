@@ -6,4 +6,7 @@ pub const RewriterFormat = enum {
     _as_is_,
     _plain_text_,
     _markdown_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "as-is", "plain-text", "markdown" };
 };

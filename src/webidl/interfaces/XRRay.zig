@@ -121,7 +121,15 @@ pub const XRRay = struct {
             direction: webidl.Opt(XRRayDirectionInit),
         },
         /// constructor(transform)
-        XRRigidTransform: XRRigidTransform,
+        XRRigidTransform: *runtime.Instance,
+    };
+
+    /// WebIDL overload set of the constructor: one entry per variant of
+    /// ConstructorArgs, in its order, for the overload resolution algorithm
+    /// (webidl.overload_resolution) the binding runs to pick the variant.
+    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
+        .{ .function = "DOMPointInit_XRRayDirectionInit", .args = &.{ .{ .kinds = &.{.dictionary}, .optionality = .optional }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        .{ .function = "XRRigidTransform", .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "XRRigidTransform")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").XRRigidTransform.State) } else .other)} }} },
     };
 
     /// WebIDL constructor (overloaded)

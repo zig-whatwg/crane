@@ -9,4 +9,7 @@ pub const BackgroundFetchFailureReason = enum {
     _fetch_error_,
     _quota_exceeded_,
     _download_total_exceeded_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "", "aborted", "bad-status", "fetch-error", "quota-exceeded", "download-total-exceeded" };
 };

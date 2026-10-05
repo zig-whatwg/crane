@@ -85,6 +85,8 @@ pub const PerformanceServerTiming = struct {
         name: runtime.DOMString,
         duration: DOMHighResTimeStamp,
         description: runtime.DOMString,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

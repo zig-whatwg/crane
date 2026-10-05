@@ -108,6 +108,8 @@ pub const PerformanceNavigation = struct {
     pub const PerformanceNavigationToJSON = struct {
         type: u16,
         redirectCount: u16,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

@@ -95,6 +95,8 @@ pub const PerformanceLongTaskTiming = struct {
         duration: DOMHighResTimeStamp,
         navigationId: u64,
         attribution: runtime.JSValue,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

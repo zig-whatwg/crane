@@ -93,10 +93,12 @@ pub const GeolocationCoordinates = struct {
         accuracy: f64,
         latitude: f64,
         longitude: f64,
-        altitude: f64,
-        altitudeAccuracy: f64,
-        heading: f64,
-        speed: f64,
+        altitude: ?f64,
+        altitudeAccuracy: ?f64,
+        heading: ?f64,
+        speed: ?f64,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

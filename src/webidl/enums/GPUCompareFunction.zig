@@ -11,4 +11,7 @@ pub const GPUCompareFunction = enum {
     _not_equal_,
     _greater_equal_,
     _always_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "never", "less", "equal", "less-equal", "greater", "not-equal", "greater-equal", "always" };
 };

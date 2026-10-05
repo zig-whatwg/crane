@@ -7,4 +7,7 @@ pub const RTCDataChannelState = enum {
     _open_,
     _closing_,
     _closed_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "connecting", "open", "closing", "closed" };
 };

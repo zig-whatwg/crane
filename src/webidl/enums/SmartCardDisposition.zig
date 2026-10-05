@@ -7,4 +7,7 @@ pub const SmartCardDisposition = enum {
     _reset_,
     _unpower_,
     _eject_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "leave", "reset", "unpower", "eject" };
 };

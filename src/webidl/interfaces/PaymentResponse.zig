@@ -122,12 +122,14 @@ pub const PaymentResponse = struct {
         requestId: runtime.DOMString,
         methodName: runtime.DOMString,
         details: runtime.JSValue,
-        shippingAddress: *runtime.Instance,
-        shippingOption: runtime.DOMString,
-        payerName: runtime.DOMString,
-        payerEmail: runtime.DOMString,
-        payerPhone: runtime.DOMString,
+        shippingAddress: ?*runtime.Instance,
+        shippingOption: ?runtime.DOMString,
+        payerName: ?runtime.DOMString,
+        payerEmail: ?runtime.DOMString,
+        payerPhone: ?runtime.DOMString,
         onpayerdetailchange: EventHandler,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

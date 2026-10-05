@@ -6,4 +6,7 @@ pub const XRSessionMode = enum {
     _inline_,
     _immersive_vr_,
     _immersive_ar_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "inline", "immersive-vr", "immersive-ar" };
 };

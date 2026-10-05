@@ -15,4 +15,7 @@ pub const KeyUsage = enum {
     _encapsulateBits_,
     _decapsulateKey_,
     _decapsulateBits_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "encrypt", "decrypt", "sign", "verify", "deriveKey", "deriveBits", "wrapKey", "unwrapKey", "encapsulateKey", "encapsulateBits", "decapsulateKey", "decapsulateBits" };
 };

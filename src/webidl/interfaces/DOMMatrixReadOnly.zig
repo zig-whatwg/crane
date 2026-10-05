@@ -217,6 +217,8 @@ pub const DOMMatrixReadOnly = struct {
         m44: f64,
         is2D: bool,
         isIdentity: bool,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

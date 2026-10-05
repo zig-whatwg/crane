@@ -9,4 +9,7 @@ pub const RTCSignalingState = enum {
     _have_local_pranswer_,
     _have_remote_pranswer_,
     _closed_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "stable", "have-local-offer", "have-remote-offer", "have-local-pranswer", "have-remote-pranswer", "closed" };
 };

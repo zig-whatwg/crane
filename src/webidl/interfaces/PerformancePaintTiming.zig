@@ -88,7 +88,9 @@ pub const PerformancePaintTiming = struct {
         duration: DOMHighResTimeStamp,
         navigationId: u64,
         paintTime: DOMHighResTimeStamp,
-        presentationTime: DOMHighResTimeStamp,
+        presentationTime: ?DOMHighResTimeStamp,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

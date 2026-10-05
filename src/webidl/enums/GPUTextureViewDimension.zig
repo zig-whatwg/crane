@@ -9,4 +9,7 @@ pub const GPUTextureViewDimension = enum {
     _cube_,
     _cube_array_,
     _3d_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "1d", "2d", "2d-array", "cube", "cube-array", "3d" };
 };

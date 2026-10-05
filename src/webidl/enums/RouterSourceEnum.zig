@@ -7,4 +7,7 @@ pub const RouterSourceEnum = enum {
     _fetch_event_,
     _network_,
     _race_network_and_fetch_handler_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "cache", "fetch-event", "network", "race-network-and-fetch-handler" };
 };

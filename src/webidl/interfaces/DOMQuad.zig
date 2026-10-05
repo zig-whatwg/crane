@@ -107,6 +107,8 @@ pub const DOMQuad = struct {
         p2: *runtime.Instance,
         p3: *runtime.Instance,
         p4: *runtime.Instance,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

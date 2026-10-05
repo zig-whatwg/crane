@@ -5,4 +5,7 @@
 pub const GPUCanvasAlphaMode = enum {
     _opaque_,
     _premultiplied_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "opaque", "premultiplied" };
 };

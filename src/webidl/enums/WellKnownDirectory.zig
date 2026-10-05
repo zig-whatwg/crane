@@ -9,4 +9,7 @@ pub const WellKnownDirectory = enum {
     _music_,
     _pictures_,
     _videos_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "desktop", "documents", "downloads", "music", "pictures", "videos" };
 };

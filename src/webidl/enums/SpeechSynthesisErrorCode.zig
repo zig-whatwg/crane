@@ -15,4 +15,7 @@ pub const SpeechSynthesisErrorCode = enum {
     _text_too_long_,
     _invalid_argument_,
     _not_allowed_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "canceled", "interrupted", "audio-busy", "audio-hardware", "network", "synthesis-unavailable", "synthesis-failed", "language-unavailable", "voice-unavailable", "text-too-long", "invalid-argument", "not-allowed" };
 };

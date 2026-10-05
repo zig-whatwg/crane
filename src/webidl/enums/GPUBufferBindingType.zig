@@ -6,4 +6,7 @@ pub const GPUBufferBindingType = enum {
     _uniform_,
     _storage_,
     _read_only_storage_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "uniform", "storage", "read-only-storage" };
 };

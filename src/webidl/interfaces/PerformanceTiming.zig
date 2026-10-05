@@ -152,6 +152,8 @@ pub const PerformanceTiming = struct {
         domComplete: u64,
         loadEventStart: u64,
         loadEventEnd: u64,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

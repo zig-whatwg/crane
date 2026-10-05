@@ -20,3 +20,12 @@ operation: the overload you are testing may not exist.**
 **Fix**: codegen emits `call_<op>__<k>` delegates and an `overloads` table; `interface.zig` runs WebIDL overload resolution inside overload 0's callback; `callMethodWithArgs` has an `ArgsTuple` fallback for any arity. `sameOverloadSignature` treats all string types as equal (one operation declared as DOMString and CSSOMString in two IDL sources is not an overload). The supplementary codegen run rewrites every `root.zig` and `typedefs/{CSSOMString,WindowProxy}.zig` with only its own definitions - restore them from HEAD. To implement an overload, add `call_<op>__<k>` to the impl; until then overload 0 runs.
 
 **Takeaway**: **Dedupe by signature, not by name, and read a hand-unrolled arity switch's `else` branch - it is an undocumented limit.**
+
+## Constructors were deduplicated by argument count
+
+**Date**: 2026-10-04 (binding2)
+**Lesson**: `generator.deduplicateConstructors` kept the first constructor of each ARITY, so MediaStream(sequence<MediaStreamTrack>), PasswordCredential(PasswordCredentialData), VideoFrame(AllowSharedBufferSource, VideoFrameBufferInit) and PresentationRequest(sequence<USVString>) never existed: the overload resolution algorithm could not choose what the IDL declares.
+
+**Fix**: constructors deduplicate by signature (`sameArgumentList`, the rule operations use); pinned by tests/codegen/overload_typedef_kinds_test.zig. The three single-constructor impls took ConstructorArgs.
+
+**Takeaway**: **Dedupe by signature, never by a key two signatures can share - a name, an arity.**

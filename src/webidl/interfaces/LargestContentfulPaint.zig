@@ -110,9 +110,11 @@ pub const LargestContentfulPaint = struct {
         renderTime: DOMHighResTimeStamp,
         size: u32,
         url: runtime.DOMString,
-        element: *runtime.Instance,
+        element: ?*runtime.Instance,
         paintTime: DOMHighResTimeStamp,
-        presentationTime: DOMHighResTimeStamp,
+        presentationTime: ?DOMHighResTimeStamp,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

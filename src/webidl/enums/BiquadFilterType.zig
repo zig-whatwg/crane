@@ -11,4 +11,7 @@ pub const BiquadFilterType = enum {
     _peaking_,
     _notch_,
     _allpass_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "lowpass", "highpass", "bandpass", "lowshelf", "highshelf", "peaking", "notch", "allpass" };
 };

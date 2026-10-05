@@ -160,6 +160,14 @@ pub const URLPattern = struct {
         },
     };
 
+    /// WebIDL overload set of the constructor: one entry per variant of
+    /// ConstructorArgs, in its order, for the overload resolution algorithm
+    /// (webidl.overload_resolution) the binding runs to pick the variant.
+    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
+        .{ .function = "URLPatternInput_USVString_URLPatternOptions", .args = &.{ .{ .kinds = &.{ .string, .dictionary } }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        .{ .function = "URLPatternInput_URLPatternOptions", .args = &.{ .{ .kinds = &.{ .string, .dictionary }, .optionality = .optional }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+    };
+
     /// WebIDL constructor (overloaded)
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

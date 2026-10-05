@@ -10,4 +10,7 @@ pub const RTCErrorDetailType = enum {
     _sdp_syntax_error_,
     _hardware_encoder_not_available_,
     _hardware_encoder_error_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "data-channel-failure", "dtls-failure", "fingerprint-failure", "sctp-failure", "sdp-syntax-error", "hardware-encoder-not-available", "hardware-encoder-error" };
 };

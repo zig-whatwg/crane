@@ -92,12 +92,14 @@ pub const PermissionsPolicyViolationReportBody = struct {
     /// Generated from [Default] toJSON extended attribute
     pub const PermissionsPolicyViolationReportBodyToJSON = struct {
         featureId: runtime.DOMString,
-        sourceFile: runtime.DOMString,
-        lineNumber: i32,
-        columnNumber: i32,
+        sourceFile: ?runtime.DOMString,
+        lineNumber: ?i32,
+        columnNumber: ?i32,
         disposition: runtime.DOMString,
-        allowAttribute: runtime.DOMString,
-        srcAttribute: runtime.DOMString,
+        allowAttribute: ?runtime.DOMString,
+        srcAttribute: ?runtime.DOMString,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

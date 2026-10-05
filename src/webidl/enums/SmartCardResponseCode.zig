@@ -19,4 +19,7 @@ pub const SmartCardResponseCode = enum {
     _unresponsive_card_,
     _unsupported_card_,
     _unsupported_feature_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "no-service", "no-smartcard", "not-ready", "not-transacted", "proto-mismatch", "reader-unavailable", "removed-card", "reset-card", "server-too-busy", "sharing-violation", "system-cancelled", "unknown-reader", "unpowered-card", "unresponsive-card", "unsupported-card", "unsupported-feature" };
 };

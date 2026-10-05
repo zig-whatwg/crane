@@ -308,3 +308,22 @@ test "functionLength - the fewest required arguments of any overload" {
     try testing.expectEqual(@as(usize, 0), ovl.functionLength(&element_scroll));
     try testing.expectEqual(@as(usize, 0), ovl.functionLength(&spec_example));
 }
+
+test "distinguishingPrefix - the arguments step 11 converts before step 12 inspects args[d]" {
+    // Window.postMessage with two arguments: both overloads have an entry of
+    // length 2, agree on `message` (any) and differ at index 1 - step 11
+    // converts message, then step 12 looks at the second argument.
+    const two = ovl.distinguishingPrefix(&window_post_message, 2).?;
+    try testing.expectEqual(@as(usize, 1), two.d);
+    try testing.expectEqual(@as(usize, 0), two.entry);
+    // One argument: only the options overload has an entry - no step 12,
+    // nothing converts early.
+    try testing.expect(ovl.distinguishingPrefix(&window_post_message, 1) == null);
+    // XMLHttpRequest.open with one argument: S is empty, step 5 throws before
+    // any conversion.
+    try testing.expect(ovl.distinguishingPrefix(&xhr_open, 1) == null);
+    // The spec example with four arguments: Node vs Event at index 0 - no
+    // argument before it.
+    const four = ovl.distinguishingPrefix(&spec_example, 4).?;
+    try testing.expectEqual(@as(usize, 0), four.d);
+}

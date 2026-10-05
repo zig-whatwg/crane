@@ -123,10 +123,12 @@ pub const PerformanceElementTiming = struct {
         identifier: runtime.DOMString,
         naturalWidth: u32,
         naturalHeight: u32,
-        element: *runtime.Instance,
+        element: ?*runtime.Instance,
         url: runtime.USVString,
         paintTime: DOMHighResTimeStamp,
-        presentationTime: DOMHighResTimeStamp,
+        presentationTime: ?DOMHighResTimeStamp,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

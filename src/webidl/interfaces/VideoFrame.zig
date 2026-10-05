@@ -210,12 +210,34 @@ pub const VideoFrame = struct {
         break :blk @hasDecl(impls.VideoFrame, "serializationSteps") and @hasDecl(impls.VideoFrame, "deserializationSteps");
     };
 
-    /// WebIDL constructor
+    /// Arguments for constructor (WebIDL overloading)
+    pub const ConstructorArgs = union(enum) {
+        /// constructor(image, init)
+        CanvasImageSource_VideoFrameInit: struct {
+            image: CanvasImageSource,
+            init: webidl.Opt(VideoFrameInit),
+        },
+        /// constructor(data, init)
+        AllowSharedBufferSource_VideoFrameBufferInit: struct {
+            data: AllowSharedBufferSource,
+            init: VideoFrameBufferInit,
+        },
+    };
+
+    /// WebIDL overload set of the constructor: one entry per variant of
+    /// ConstructorArgs, in its order, for the overload resolution algorithm
+    /// (webidl.overload_resolution) the binding runs to pick the variant.
+    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
+        .{ .function = "CanvasImageSource_VideoFrameInit", .args = &.{ .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "SVGImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").SVGImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        .{ .function = "AllowSharedBufferSource_VideoFrameBufferInit", .args = &.{ .{ .kinds = &.{ .array_buffer, .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.dictionary} } } },
+    };
+
+    /// WebIDL constructor (overloaded)
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, image: CanvasImageSource, init_data: webidl.Opt(VideoFrameInit)) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try VideoFrameImpl.call_constructor(ctx, image, init_data);
+    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
+        // Pass args union directly to impl
+        return try VideoFrameImpl.call_constructor(ctx, args);
     }
 
     pub fn get_format(instance: *runtime.Instance) anyerror!?VideoPixelFormat {

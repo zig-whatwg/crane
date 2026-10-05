@@ -89,12 +89,14 @@ pub const NotRestoredReasons = struct {
     /// ToJSON result struct for NotRestoredReasons
     /// Generated from [Default] toJSON extended attribute
     pub const NotRestoredReasonsToJSON = struct {
-        src: runtime.USVString,
-        id: runtime.DOMString,
-        name: runtime.DOMString,
-        url: runtime.USVString,
-        reasons: runtime.JSValue,
-        children: runtime.JSValue,
+        src: ?runtime.USVString,
+        id: ?runtime.DOMString,
+        name: ?runtime.DOMString,
+        url: ?runtime.USVString,
+        reasons: ?runtime.JSValue,
+        children: ?runtime.JSValue,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

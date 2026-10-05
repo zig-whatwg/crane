@@ -166,9 +166,11 @@ pub const PerformanceNavigationTiming = struct {
         type: NavigationTimingType,
         redirectCount: u16,
         criticalCHRestart: DOMHighResTimeStamp,
-        notRestoredReasons: *runtime.Instance,
+        notRestoredReasons: ?*runtime.Instance,
         confidence: *runtime.Instance,
         activationStart: DOMHighResTimeStamp,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

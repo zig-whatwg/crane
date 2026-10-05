@@ -87,6 +87,8 @@ pub const MediaDeviceInfo = struct {
         kind: MediaDeviceKind,
         label: runtime.DOMString,
         groupId: runtime.DOMString,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

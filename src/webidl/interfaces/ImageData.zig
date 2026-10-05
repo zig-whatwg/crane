@@ -175,6 +175,14 @@ pub const ImageData = struct {
         },
     };
 
+    /// WebIDL overload set of the constructor: one entry per variant of
+    /// ConstructorArgs, in its order, for the overload resolution algorithm
+    /// (webidl.overload_resolution) the binding runs to pick the variant.
+    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
+        .{ .function = "unsigned_long_unsigned_long_ImageDataSettings", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        .{ .function = "ImageDataArray_unsigned_long_unsigned_long_ImageDataSettings", .args = &.{ .{ .kinds = &.{ .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "Float16Array" } } }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+    };
+
     /// WebIDL constructor (overloaded)
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

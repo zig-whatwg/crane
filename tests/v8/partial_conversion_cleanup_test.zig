@@ -104,6 +104,10 @@ const Overloads = union(enum) {
         number: f64,
     },
 };
+/// Its overload set, as codegen writes `constructor_overloads`.
+const overloads = &[_]resolver.Overload{
+    .{ .function = "string_number", .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.numeric} } } },
+};
 
 /// `probe(...)`: resolves `Overloads` from its arguments with the testing
 /// allocator, and frees what it built.
@@ -112,12 +116,12 @@ const Probe = struct {
 
     fn callback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
         const e = env_once.?;
-        const args = resolver.resolveConstructorOverload(Overloads, info, testing.allocator, e.isolate, e.context) catch {
+        const args = resolver.resolveConstructorOverload(Overloads, overloads, info, testing.allocator, e.isolate, e.context) catch {
             failed = true;
             return;
         };
         failed = false;
-        resolver.freeConstructorOverload(Overloads, testing.allocator, args);
+        resolver.freeConstructorOverload(Overloads, overloads, testing.allocator, args);
     }
 
     fn install() !void {
@@ -137,7 +141,7 @@ const Probe = struct {
 test "an overload variant whose later argument fails frees the arguments before it" {
     try Probe.install();
     // `text` converts (an owned copy), then ToNumber(Symbol()) fails: the
-    // variant fails, and there is no other to try. (What reaches script is
+    // call fails. (What reaches script is
     // the binding's to throw; the probe throws nothing.)
     _ = try evalInt("try { probe('t'.repeat(64), Symbol()); 0 } catch (e) { 1 }");
     try testing.expect(Probe.failed);

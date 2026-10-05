@@ -9,4 +9,7 @@ pub const CanvasTextBaseline = enum {
     _alphabetic_,
     _ideographic_,
     _bottom_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "top", "hanging", "middle", "alphabetic", "ideographic", "bottom" };
 };

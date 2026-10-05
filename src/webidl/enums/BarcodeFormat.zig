@@ -17,4 +17,7 @@ pub const BarcodeFormat = enum {
     _unknown_,
     _upc_a_,
     _upc_e_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "aztec", "code_128", "code_39", "code_93", "codabar", "data_matrix", "ean_13", "ean_8", "itf", "pdf417", "qr_code", "unknown", "upc_a", "upc_e" };
 };

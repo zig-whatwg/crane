@@ -7,4 +7,7 @@ pub const USBRecipient = enum {
     _interface_,
     _endpoint_,
     _other_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "device", "interface", "endpoint", "other" };
 };

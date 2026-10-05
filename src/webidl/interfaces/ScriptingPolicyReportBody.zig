@@ -91,10 +91,12 @@ pub const ScriptingPolicyReportBody = struct {
     /// Generated from [Default] toJSON extended attribute
     pub const ScriptingPolicyReportBodyToJSON = struct {
         violationType: runtime.DOMString,
-        violationURL: runtime.USVString,
-        violationSample: runtime.USVString,
+        violationURL: ?runtime.USVString,
+        violationSample: ?runtime.USVString,
         lineno: u32,
         colno: u32,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

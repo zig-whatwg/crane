@@ -52,4 +52,7 @@ pub const JsonLdErrorCode = enum {
     _multiple_context_link_headers_,
     _processing_mode_conflict_,
     _protected_term_redefinition_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "colliding keywords", "conflicting indexes", "context overflow", "cyclic IRI mapping", "invalid @id value", "invalid @import value", "invalid @included value", "invalid @index value", "invalid @nest value", "invalid @prefix value", "invalid @propagate value", "invalid @protected value", "invalid @reverse value", "invalid @version value", "invalid base direction", "invalid base IRI", "invalid container mapping", "invalid context entry", "invalid context nullification", "invalid default language", "invalid IRI mapping", "invalid JSON literal", "invalid keyword alias", "invalid language map value", "invalid language mapping", "invalid language-tagged string", "invalid language-tagged value", "invalid local context", "invalid remote context", "invalid reverse property map", "invalid reverse property value", "invalid reverse property", "invalid scoped context", "invalid script element", "invalid set or list object", "invalid term definition", "invalid type mapping", "invalid type value", "invalid typed value", "invalid value object value", "invalid value object", "invalid vocab mapping", "IRI confused with prefix", "keyword redefinition", "loading document failed", "loading remote context failed", "multiple context link headers", "processing mode conflict", "protected term redefinition" };
 };
