@@ -282,6 +282,19 @@ pub fn domAdapterOnElementPopped(tree_node: *TreeNode, context: ?*anyopaque) voi
     dom.style_sheet_owners.poppedByParser(element);
 }
 
+/// Static callback wrapper for an element the tree builder removed from its
+/// stack of open elements, however it left it: an element type with steps in
+/// dom.finish_parsing_children hears that the element's children are parsed.
+/// Passed to tree_builder.setDomAdapterFinishedCallback().
+pub fn domAdapterOnChildrenFinished(tree_node: *TreeNode, context: ?*anyopaque) void {
+    if (tree_node.node_type != .element or tree_node.namespace != .html) return;
+    const local_name = tree_node.local_name orelse return;
+    if (!dom.finish_parsing_children.hasSteps(local_name)) return;
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    const element = adapter.node_map.get(tree_node) orelse return;
+    dom.finish_parsing_children.finishedParsingChildren(element, local_name);
+}
+
 /// The DOM document mode for the parser's.
 pub fn documentMode(mode: html_core.parser.QuirksMode) document_internals.Mode {
     return switch (mode) {
@@ -317,6 +330,13 @@ pub const DomTreeAdapter = struct {
     /// deinit. An unattached node is unreachable from script, so nothing can have
     /// wrapped or collected it and its pointer stays valid until we free it here.
     unattached_nodes: std.AutoHashMap(*runtime.Instance, void),
+
+    /// The tree builder tells this adapter when an element leaves its stack
+    /// of open elements (`domAdapterOnChildrenFinished`, wired by the
+    /// scripted parser): only then may an element type hear that the parser
+    /// created one of its elements, since only then will it hear that the
+    /// parser is done with it (dom.finish_parsing_children).
+    notifies_children_finished: bool = false,
 
     pub fn init(
         allocator: Allocator,
@@ -469,6 +489,13 @@ pub const DomTreeAdapter = struct {
         // A style element updates its style block when the parser pops it
         // (`domAdapterOnElementPopped`), not as it is inserted and filled.
         if (std.mem.eql(u8, local_name, "style")) dom.style_sheet_owners.createdByParser(element);
+        // An element type that acts when the parser pops its elements
+        // (dom.finish_parsing_children) hears that this one is on the stack
+        // of open elements - before its attributes are appended, so their
+        // change steps already know.
+        if (is_html and self.notifies_children_finished and dom.finish_parsing_children.hasSteps(local_name)) {
+            dom.finish_parsing_children.createdByParser(element, local_name);
+        }
 
         for (tree_node.attributes.toSlice()) |attr| appendParsedAttribute(element, attr);
 

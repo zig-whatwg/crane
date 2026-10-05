@@ -74,6 +74,7 @@ pub const window_globals = @import("window_globals.zig");
 pub const content_navigables = @import("content_navigables.zig");
 pub const style_sheet_owners = @import("style_sheet_owners.zig");
 pub const attribute_change_steps = @import("attribute_change_steps.zig");
+pub const finish_parsing_children = @import("finish_parsing_children.zig");
 pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
 pub const form_controls = @import("form_controls.zig");
