@@ -607,7 +607,7 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
         allocator,
         script_final_url,
         worker_type,
-        ctx.getOptionalTimer(),
+        ctx,
     ) catch |err| {
         std.log.warn("Failed to create the worker's agent: {}", .{err});
         return;

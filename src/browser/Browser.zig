@@ -127,6 +127,11 @@ pub const Browser = struct {
     /// moves a worker, or any fetch step, onto another thread must lock
     /// this jar first.
     cookie_jar: cookiestore.CookieJar,
+    /// The Browser's scope: its per-Browser state, as supplements every realm
+    /// of it reaches (ContextData.browser_scope; docs/instances.md rule 2) -
+    /// its live workers (html.WorkerRegistry). Ends after every realm and
+    /// every worker thread.
+    scope: *runtime.BrowserScope,
 
     /// Initialize a new Browser instance
     ///
@@ -202,6 +207,12 @@ pub const Browser = struct {
         errdefer allocator.destroy(event_loop);
         event_loop.* = try EventLoop.init(agent, allocator);
 
+        // The Browser's scope, which its realms carry.
+        const scope = try allocator.create(runtime.BrowserScope);
+        errdefer allocator.destroy(scope);
+        scope.* = runtime.BrowserScope.init(allocator);
+        errdefer scope.deinit();
+
         // Allocate browser struct
         const browser = try allocator.create(Browser);
         errdefer allocator.destroy(browser);
@@ -217,6 +228,7 @@ pub const Browser = struct {
             .event_loop = event_loop,
             .used_snapshot = used_snapshot,
             .cookie_jar = cookiestore.CookieJar.init(allocator),
+            .scope = scope,
         };
 
         // Always create initial about:blank context - a real browser always has a window/document
@@ -287,6 +299,10 @@ pub const Browser = struct {
             // (BrowsingContext.discard) can finally be freed.
             @import("html").window.browsing_context.BrowsingContext.freeRetired();
         }
+
+        // The Browser's scope: every realm and every worker thread is gone.
+        self.scope.deinit();
+        self.allocator.destroy(self.scope);
 
         // Cleanup WebIDL runtime
         runtime.deinitializeRuntime();
@@ -379,6 +395,7 @@ pub const Browser = struct {
             self.event_loop,
             context_type,
             self.used_snapshot,
+            self.scope,
         );
         errdefer {
             ctx.deinit();

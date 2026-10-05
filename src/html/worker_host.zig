@@ -707,6 +707,15 @@ pub const WorkerHost = struct {
     /// tasks went to whichever loop the last worker made had.
     timer: ?runtime.TimerInterface,
 
+    /// The creator's Browser scope and the cross-thread inbox of the loop
+    /// the worker's tasks run on - its creator's, while a worker's tasks are
+    /// timers on that loop. The worker's realm carries both
+    /// (ContextData.browser_scope, .task_sink): a MessagePort made in it
+    /// binds its channel end to that inbox. BORROWED, from the creator's
+    /// realm.
+    browser_scope: ?*runtime.BrowserScope = null,
+    task_sink: ?*runtime.TaskSink = null,
+
     /// Allocator
     allocator: Allocator,
 
@@ -797,14 +806,16 @@ pub const WorkerHost = struct {
     /// worker agent - [[CanBlock]] true - with this host's hooks
     /// (`worker_hooks`). The realm follows when the global scope is set up.
     ///
-    /// `timer` is the loop the worker's tasks run on: its creator's, which a
-    /// nested worker's creator - a worker - has from its own host.
+    /// `creator` is the realm that made the worker: its timers are the loop
+    /// the worker's tasks run on - a nested worker's creator, a worker, has
+    /// them from its own host - and its scope and inbox the worker realm's.
     pub fn init(
         allocator: Allocator,
         script_url: []const u8,
         worker_type: WorkerType,
-        timer: ?runtime.TimerInterface,
+        creator: runtime.Context,
     ) !*Self {
+        const timer = creator.getOptionalTimer();
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
 
@@ -827,6 +838,8 @@ pub const WorkerHost = struct {
             .worker_type = worker_type,
             .policy_container = fetch_mod.internal.PolicyContainer.init(allocator),
             .timer = timer,
+            .browser_scope = creator.browser_scope,
+            .task_sink = creator.task_sink,
             .allocator = allocator,
         };
         live_contexts.append(std.heap.page_allocator, self) catch {};
@@ -1369,6 +1382,8 @@ pub const WorkerHost = struct {
     fn recordRealm(data: ?*anyopaque, realm: runtime.Context) void {
         const self: *Self = @ptrCast(@alignCast(data orelse return));
         self.realm = realm;
+        realm.browser_scope = self.browser_scope;
+        realm.task_sink = self.task_sink;
         installRealmHooks(realm);
     }
 
@@ -2174,7 +2189,7 @@ const SharedConnect = struct {
 
         // 4. The agent: a shared worker agent, [[CanBlock]] false in the
         // spec - the engine's default blocks, which only Atomics.wait sees.
-        const host = WorkerHost.init(allocator, fetched.final_url, self.worker_type, self.timer) catch return self.fireError();
+        const host = WorkerHost.init(allocator, fetched.final_url, self.worker_type, self.owner_realm) catch return self.fireError();
         // The manager owns the worker: its memory goes when its agent does.
         host.owner_released = true;
         host.cookie_jar = creatorCookieJar(self.owner_realm);

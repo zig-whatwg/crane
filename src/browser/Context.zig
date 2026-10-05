@@ -731,6 +731,10 @@ pub const Context = struct {
     event_loop: ?runtime.EventLoop,
     /// Make the realm from the engine's snapshot, when the agent has one.
     from_snapshot: bool,
+    /// The Browser's scope and its loop's cross-thread inbox, which the realm
+    /// carries (runtime.ContextData.browser_scope, .task_sink). BORROWED.
+    browser_scope: ?*runtime.BrowserScope = null,
+    task_sink: ?*runtime.TaskSink = null,
 
     // Singleton instances for cleanup
     window_instance: ?*runtime.Instance = null,
@@ -758,6 +762,7 @@ pub const Context = struct {
         event_loop: anytype,
         context_type: ContextType,
         from_snapshot: bool,
+        browser_scope: ?*runtime.BrowserScope,
     ) !*Context {
         context_id_counter += 1;
         log.debug("[Context.init] #{d}: {s}", .{ context_id_counter, url });
@@ -779,6 +784,8 @@ pub const Context = struct {
             .timer = if (event_loop) |ev| ev.timerInterface() else null,
             .event_loop = if (event_loop) |ev| ev.eventLoop() else null,
             .from_snapshot = from_snapshot,
+            .browser_scope = browser_scope,
+            .task_sink = if (event_loop) |ev| ev.taskSink() else null,
         };
 
         try ctx.createRealm();
@@ -803,6 +810,9 @@ pub const Context = struct {
             return error.ContextCreateFailed;
         };
         self.realm = realm;
+        // The realm's Browser, and the inbox other threads post its tasks to.
+        realm.browser_scope = self.browser_scope;
+        realm.task_sink = self.task_sink;
 
         // __internal and GLOBAL, before the singletons stored in __internal.
         self.setupGlobalAliases() catch |err| {

@@ -16,12 +16,11 @@ const callbacks = @import("callbacks");
 const MessageChannel = interfaces.MessageChannel;
 const MessagePortInterface = interfaces.MessagePort;
 
-// Import streams internal for MessagePort pair creation
-const message_port = @import("streams_internal");
-const createMessagePortPair = message_port.createMessagePortPair;
-
-// Import MessagePort impl for initialization
-const MessagePortImpl = @import("MessagePort.zig");
+// The channel the two ports share (its ends may later live on two
+// threads), and the hook that makes a MessagePort on an end of it.
+const dom = @import("dom");
+const port_channels = dom.port_channels;
+const message_ports = dom.message_ports;
 
 // A channel keeps the ports it has handed out alive for as long as it lives.
 const same_object = @import("same_object.zig");
@@ -131,30 +130,18 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
     var state = instance.getState(State);
 
-    // Create entangled internal MessagePort pair
-    const ports = try createMessagePortPair(ctx.allocator);
-    errdefer {
-        ports[0].deinit();
-        ports[1].deinit();
-    }
-
-    // Create WebIDL MessagePort instances wrapping the internal ports
-    const port1_instance = try MessagePortImpl.initWithInternal(
-        ctx.allocator,
-        MessagePortInterface.State,
-        &MessagePortInterface.vtable,
-        ctx,
-        ports[0],
-    );
+    // "Set this's port 1 to a new MessagePort in this's relevant realm. Set
+    // this's port 2 to a new MessagePort in this's relevant realm. Entangle
+    // this's port 1 and this's port 2." - two ports on the two ends of a new
+    // channel, entangled from the start.
+    const channel = try port_channels.Channel.create(ctx.allocator);
+    const port1_instance = message_ports.adopt(ctx, channel.end(0)) catch |err| {
+        channel.end(1).discard();
+        return err;
+    };
     errdefer MessagePortInterface.deinit(port1_instance);
-
-    const port2_instance = try MessagePortImpl.initWithInternal(
-        ctx.allocator,
-        MessagePortInterface.State,
-        &MessagePortInterface.vtable,
-        ctx,
-        ports[1],
-    );
+    // `adopt` takes the end whatever happens.
+    const port2_instance = try message_ports.adopt(ctx, channel.end(1));
     errdefer MessagePortInterface.deinit(port2_instance);
 
     // Store ports in state

@@ -3273,6 +3273,9 @@ fn attachRealm(
         log.debug("a frame's realm was not made: {}", .{err});
         return null;
     };
+    // Its Browser and its loop's cross-thread inbox are the parent's too.
+    realm.browser_scope = parent.browser_scope;
+    realm.task_sink = parent.task_sink;
     const window_instance = frame_window.window.?;
 
     // The Window's origin defaults to "null" (opaque), and stays so when
