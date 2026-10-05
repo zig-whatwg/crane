@@ -61,7 +61,6 @@ pub const interface_skip_list = .{
     "MediaMetadata", // ChapterInformation array issues
     "Notification", // Missing unsignedlong type
     "PerformanceLongAnimationFrameTiming", // PerformanceScriptTiming array issues
-    "PerformanceObserver", // Missing cached field
     "PressureObserver", // Missing cached field
     "PublicKeyCredential", // ArrayBuffer type issues
     "PushManager", // Missing cached field
@@ -419,6 +418,7 @@ pub fn registerAllTemplatesOnly(
             const is_window = comptime std.mem.eql(u8, decl.name, "Window");
             if (is_window) {
                 log.debug("[registerAllTemplatesOnly] SKIPPING Window (not registering template or global)\n", .{});
+                linkSnapshotWindowInterfaceObject(isolate, context, global);
                 continue;
             }
 
@@ -472,6 +472,23 @@ pub fn registerAllTemplatesOnly(
     // object this realm now has; a realm restored from the snapshot would
     // otherwise keep the snapshot's Image, whose prototype is a stale one.
     registerLegacyFactoryFunctions(isolate, context);
+}
+
+/// The snapshot's Window interface object, which a restored realm keeps (see
+/// registerAllTemplatesOnly), inherits from THIS realm's EventTarget interface
+/// object (WebIDL 3.7.1): the snapshot linked it to the snapshot's
+/// EventTarget, which the restored realm's global no longer has - every
+/// other interface object here is made anew, EventTarget's included, so
+/// `Object.getPrototypeOf(Window) === EventTarget` was false.
+fn linkSnapshotWindowInterfaceObject(isolate: *v8.Isolate, context: *v8.Context, global: *v8.Object) void {
+    const key = v8.v8_String_NewFromUtf8(isolate, "Window", 6) orelse return;
+    defer v8.v8_String_Dispose(key);
+    const window_value = v8.v8_Object_Get(global, context, @ptrCast(key)) orelse return;
+    defer v8.v8_Value_Dispose(window_value);
+    if (!v8.v8_Value_IsFunction(window_value)) return;
+    const event_target = EventTarget.materializeInterfaceObject(isolate, context, "EventTarget") orelse return;
+    defer v8.v8_Function_Dispose(event_target);
+    _ = v8.v8_Object_SetPrototypeV2(@ptrCast(window_value), context, @ptrCast(event_target));
 }
 
 /// Install interfaces filtered by scope exposure

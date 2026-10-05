@@ -100,6 +100,7 @@ src/dom/node_creation.zig node_steps 1 G H decl:bb9a0de5733f91ea
 src/dom/node_document.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/node_lists.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/observer_registrations.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/performance_timeline.zig hooks 1 G P-res decl:4dad5b7413d7153c
 src/dom/policy_containers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/process_start.zig state 1 G P-res decl:befbfbf730f2b19f
 src/dom/range_boundaries.zig live_range 1 G H decl:1b0949cd267e9be6

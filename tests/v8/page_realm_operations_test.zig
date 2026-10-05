@@ -2552,8 +2552,19 @@ test "protocol: an agent made inside another's realm is not the host agent, even
     // so only its own isolate's state goes - the context manager keeps this
     // file's realm, and its templates still work.
     {
-        ffi.v8_Isolate_Exit(isolate_once.?);
-        defer ffi.v8_Isolate_Enter(isolate_once.?);
+        // Every isolate this thread has entered is exited, not only this
+        // file's: tests/v8 runs in one process, and the files before this one
+        // leave their own isolates entered beneath it.
+        var entered: [64]*ffi.Isolate = undefined;
+        var depth: usize = 0;
+        while (ffi.v8_Isolate_GetCurrent()) |current| : (depth += 1) {
+            entered[depth] = current;
+            ffi.v8_Isolate_Exit(current);
+        }
+        defer while (depth > 0) {
+            depth -= 1;
+            ffi.v8_Isolate_Enter(entered[depth]);
+        };
         try std.testing.expect(ffi.v8_Isolate_GetCurrent() == null);
         protocol.destroyAgent(agent);
         try std.testing.expect(ffi.v8_Isolate_GetCurrent() == null);

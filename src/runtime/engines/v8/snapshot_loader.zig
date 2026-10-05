@@ -94,11 +94,19 @@ const snapshot_only_flags = "--hash-seed=0 --predictable";
 ///
 /// `--harmony-shadow-realm` enables the TC39 Stage 3 ShadowRealm proposal.
 ///
+/// `--js-float16array` installs Float16Array, Math.f16round and DataView's
+/// getFloat16/setFloat16 (ES2025). The V8 Crane links (13.1, the prebuilt
+/// monolith; the source checkout beside it is newer) has them behind this
+/// flag - shipping only from 13.5 - so the global had no Float16Array, and
+/// WebIDL's (Float16Array or ...) arms, ImageDataArray's among them, could
+/// never be given one. Genesis installs it per context, so the snapshot is
+/// generated with it too (SNAPSHOT_V8_FLAGS includes these).
+///
 /// `--jitless` is appended when built for a target that cannot JIT. iOS gives
 /// third-party apps no W^X exception, so V8 generating code there gets the process
 /// killed; interpreter-only is the only way to run at all. It is a build-time
 /// decision rather than runtime because it must be set before V8 initializes.
-pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++ if (build_options.jitless) " --jitless" else "";
+pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm --js-float16array" ++ if (build_options.jitless) " --jitless" else "";
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.

@@ -145,8 +145,10 @@ fn evalStringIn(agent: *runtime.Agent, realm: runtime.Context, code: []const u8,
 test "two agents on two threads make worker realms and churn platform objects at once" {
     // The platform and the process-wide runtime start on this thread first,
     // as crane.Process starts them before any Browser or worker thread.
+    // tests/v8 runs in one process: start the runtime only if no file
+    // before this one has.
     ffi.v8_Platform_Initialize();
-    runtime.initializeRuntime(std.heap.page_allocator);
+    if (runtime.SlabAllocator.tryGet()) |_| {} else |_| runtime.initializeRuntime(std.heap.page_allocator);
 
     var agents = [_]Agent{ .{}, .{} };
     var threads: [2]std.Thread = undefined;

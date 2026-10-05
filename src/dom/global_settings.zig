@@ -39,6 +39,10 @@ pub const Settings = struct {
     caches: ?*const fn (global: *runtime.Instance) anyerror!*runtime.Instance = null,
     /// The global's Performance; null where this kind of global has none yet.
     performance: ?*const fn (global: *runtime.Instance) anyerror!*runtime.Instance = null,
+    /// The settings object's time origin (HR-Time), as the global recorded
+    /// it when it was made: a monotonic moment in nanoseconds, not yet
+    /// coarsened. Null where this kind of global records none.
+    time_origin: ?*const fn (global: *runtime.Instance) ?i64 = null,
     /// The global's Crypto, retained as a traced child of this global.
     crypto: ?*const fn (global: *runtime.Instance) anyerror!*runtime.Instance = null,
     /// The global's trusted type policy factory (Trusted Types 4.1), retained
@@ -97,6 +101,9 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     if (settings.policy_container) |container_of| client.request.policy_container = container_of(global);
     // CSP 2.4.2: the global its requests' violations are reported to.
     client.request.csp_violation_reporter = @import("csp_violations.zig").reporterFor(global);
+    // Fetch "report timing": the global its requests' resource timing is
+    // marked for (Resource Timing 4).
+    client.request.timing_reporter = @import("performance_timeline.zig").timingReporterFor(global);
     return client;
 }
 

@@ -450,39 +450,42 @@ pub const BrowsingContext = struct {
         return ctx;
     }
 
-    /// Remove this browsing context from its parent's children list.
-    /// Call this when an iframe is removed from the document BEFORE deinit.
-    /// This is separate from deinit() because during normal DOM removal the parent
-    /// is still alive and valid, while during teardown it may not be.
+    /// Leave the parent: off its children list, and the link to it gone. The
+    /// parent link and the parent's list are one fact, ended at both ends -
+    /// as Blink's Frame::RemoveChild clears the child's parent as it unlinks
+    /// it. A context with no parent has nothing to leave.
     pub fn removeFromParent(self: *BrowsingContext) void {
-        if (self.parent) |parent_ctx| {
-            // Don't modify a closed parent's children list - it may be in teardown
-            if (parent_ctx.is_closed) return;
-
-            // Find and remove self from parent's children list
-            for (parent_ctx.children.items, 0..) |child, i| {
-                if (child == self) {
-                    _ = parent_ctx.children.orderedRemove(i);
-                    break;
-                }
+        const parent_ctx = self.parent orelse return;
+        for (parent_ctx.children.items, 0..) |child, i| {
+            if (child == self) {
+                _ = parent_ctx.children.orderedRemove(i);
+                break;
             }
         }
+        self.parent = null;
+    }
+
+    /// Let go of every child: each one's link to this context ends with its
+    /// entry on the list.
+    fn releaseChildren(self: *BrowsingContext) void {
+        for (self.children.items) |child| child.parent = null;
+        self.children.clearRetainingCapacity();
     }
 
     /// Discard this context for its container (HTML "destroy a child
-    /// navigable"): it leaves its parent, closes, and forgets its children - a
-    /// discarded navigable has none - so a Window that script still holds reads
-    /// `closed` true and `length` 0. Returns whether the caller may free it
-    /// now. If a Window was ever active in it, it is retired instead: freeing
-    /// it here left `w.length` reading a freed child list (an @intCast panic in
-    /// Window.get_length), and no Window is told when its context goes, so the
-    /// only safe time to free it is when no Window is left (`freeRetired`).
+    /// navigable"): it leaves its parent, closes, and lets go of its children -
+    /// a discarded navigable has none - so a Window that script still holds
+    /// reads `closed` true and `length` 0. Returns whether the caller may free
+    /// it now. If a Window was ever active in it, it is retired instead:
+    /// freeing it here left `w.length` reading a freed child list (an @intCast
+    /// panic in Window.get_length), and no Window is told when its context
+    /// goes, so the only safe time to free it is when no Window is left
+    /// (`freeRetired`).
     pub fn discard(self: *BrowsingContext) bool {
         self.container = null;
         self.removeFromParent();
         self.close();
-        self.parent = null;
-        self.children.clearRetainingCapacity();
+        self.releaseChildren();
         if (self.active_window == null) return true;
         self.orphaned = true;
         // On OOM, leak rather than free under a reader.
@@ -500,32 +503,18 @@ pub const BrowsingContext = struct {
 
     /// Deinitialize and free resources
     pub fn deinit(self: *BrowsingContext) void {
-        // NOTE: We intentionally do NOT remove ourselves from parent's children list here.
-        //
-        // Reasoning:
-        // 1. During context teardown, the parent may already be freed or in the process
-        //    of being torn down. Accessing parent_ctx.children would be use-after-free.
-        // 2. The children list is just a view for frames[index] lookup during runtime.
-        //    During teardown, no one should be accessing frames[index].
-        // 3. Each BrowsingContext is owned by its respective Window/IFrameIntegration,
-        //    and they handle their own cleanup independently.
-        //
-        // The parent's children list may briefly contain dangling pointers during teardown,
-        // but this is safe because:
-        // - The parent deinits its children list (ArrayListUnmanaged.deinit) without
-        //   dereferencing the child pointers
-        // - No code should access children during teardown
+        // The tree's links end at both ends before the memory goes: off the
+        // parent's children list, and every child's link to this context
+        // gone. Each context is owned elsewhere - an IFrameIntegration, a
+        // Window - and freed on its owner's schedule, in no fixed order with
+        // its parent or its children; a list or link left behind was read
+        // freed by the next walk ("definitely close", History's traversal,
+        // window[i]). With both ends ended at every unlink, a link that is
+        // set always names a context that is still allocated. Children are
+        // not freed here: their owners free them.
+        self.removeFromParent();
+        self.releaseChildren();
 
-        // Clear parent reference to prevent any accidental access
-        self.parent = null;
-
-        // Note: We do NOT recursively deinit children here.
-        // Each child browsing context is owned by its respective Window instance,
-        // which will clean it up when that Window is destroyed.
-        // The children list is just a view for frames[index] lookup.
-        // Trying to deinit children here would cause double-free because the child
-        // Window may have already been destroyed (and its browsing context freed).
-        //
         // Only deinit the children list if it was actually allocated (capacity > 0).
         // An unallocated ArrayListUnmanaged (initialized with .{}) has capacity 0
         // and a pointer to static memory that should not be freed.

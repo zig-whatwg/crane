@@ -1,0 +1,12 @@
+# Architecture: An interface object's [[Prototype]] is the binding's to set, where every realm makes it
+
+**Date**: 2026-10-04
+**Lesson**: V8's `FunctionTemplate::Inherit` links the PROTOTYPE objects of two interfaces, never their interface objects: `Object.getPrototypeOf(IDBRequest) === EventTarget` is the embedder's to make true, and it has to happen on the one path every realm goes through.
+
+**Why**: WebIDL 3.7.1 makes an interface object's [[Prototype]] the inherited interface's interface object (else %Function.prototype%). V8's api-natives.cc `InstantiateFunction` sets only `prototype.__proto__` from the parent template. Crane had a pass that linked the functions (`setupConstructorInheritance`), but it ran only on the realm-creation paths nothing uses any more: a snapshot-restored page re-registers its interface objects (`registerAllTemplatesOnly`), a frame builds them lazily on first read, a worker installs them by exposure - none of them called it.
+
+**What Happened**: 616 interface objects of a window and 141 of a worker had %Function.prototype% as their [[Prototype]] (crane/bd-interface-object-prototype.any.js lists them). IndexedDB/idlharness failed six assertions for it (codex-indexeddb Q41), and in a frame `Text.ELEMENT_NODE` was undefined: an interface's constants and static members are inherited through exactly this chain. The snapshot's Window interface object - kept by a restored realm - pointed at the snapshot's EventTarget, a function the realm's global no longer had.
+
+**Fix**: `materializeInterfaceObject` - the function every path calls to build an interface object - builds the parent's interface object first and makes it the child's [[Prototype]], as Blink's `V8PerContextData::ConstructorForTypeSlowCase` does. V8 instantiates a template once per context, so the parent built for a child IS the object the parent's own global property or lazy getter returns later; a private marker (`crane:interface-object`) makes the set-up run once per realm, since the second call gets the same function back. The restored realm's Window interface object is linked to that realm's EventTarget in `registerAllTemplatesOnly`. +94 subtests over the 35 idlharness files.
+
+**Takeaway**: **A V8 template gives you the prototype chain, not the interface-object chain; set the interface object's [[Prototype]] in the one function every realm-creation path calls, and test it in a page, a frame and a worker - a fix on one path is a fix on none of the others.**

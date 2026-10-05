@@ -43,12 +43,29 @@ pub const NavigationResult = struct {
     /// taken (`takePolicyContainer`); null for a response from no network,
     /// whose document gets a new policy container.
     policy_container: ?@import("fetch").internal.PolicyContainer = null,
+    /// What Navigation Timing's "create the navigation timing entry" takes
+    /// from an HTTP(S) navigation's fetch: its timing info, redirect count
+    /// and response status. Owned; null for a response from no network.
+    timing: ?NavigationTiming = null,
+
+    pub const NavigationTiming = struct {
+        /// fetchTiming (its times are the unsafe shared current time, ms).
+        timing_info: @import("fetch").internal.FetchTimingInfo,
+        /// How many redirects the fetch followed - 0 when any of them was to
+        /// another origin (HTML "create navigation params by fetching": a
+        /// response with cross-origin redirects counts none).
+        redirect_count: u16,
+        response_status: u16,
+        /// The response body info's content encoding (static).
+        content_encoding: []const u8 = "",
+    };
 
     pub fn deinit(self: *NavigationResult) void {
         self.allocator.free(self.body);
         self.allocator.free(self.final_url);
         self.allocator.free(self.content_type);
         if (self.policy_container) |*container| container.deinit();
+        if (self.timing) |*timing| timing.timing_info.deinit();
     }
 
     /// The response's policy container, handed over: the result keeps none.
@@ -315,7 +332,10 @@ fn fetchHttpUrl(
             error.OutOfMemory => NavigationError.OutOfMemory,
         };
     };
-    defer result.timing_info.deinit();
+    // The timing info goes to the result (Navigation Timing's fetchTiming);
+    // it is freed here only if no result takes it.
+    var timing_taken = false;
+    defer if (!timing_taken) result.timing_info.deinit();
 
     const response = result.response;
     defer response.deinit();
@@ -361,6 +381,9 @@ fn fetchHttpUrl(
     // response's CSP headers (step 3) and `Referrer-Policy` header (step 5).
     const policy_container = policyContainerOf(allocator, response, url) catch return NavigationError.OutOfMemory;
 
+    // Navigation Timing: the fetch's timing info, its redirect count (the
+    // response's URL list beyond the first URL) and status.
+    timing_taken = true;
     return NavigationResult{
         .status_code = response.status,
         .content_type = content_type,
@@ -368,6 +391,12 @@ fn fetchHttpUrl(
         .final_url = final_url,
         .allocator = allocator,
         .policy_container = policy_container,
+        .timing = .{
+            .timing_info = result.timing_info,
+            .redirect_count = if (response.redirect_taint != .same_origin) 0 else @intCast(@min(response.url_list.items.len -| 1, std.math.maxInt(u16))),
+            .response_status = response.status,
+            .content_encoding = response.body_info.content_encoding,
+        },
     };
 }
 

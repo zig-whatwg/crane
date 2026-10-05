@@ -5,6 +5,9 @@
 .zig-cache*/
 zig-out/
 zig-cache/
+# Each test directory's generated test root (build.zig, addTestFilesFromDir)
+.all_tests.zig
+.all_tests.zig.*.tmp
 
 # Build output files
 *.a

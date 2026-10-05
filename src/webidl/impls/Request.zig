@@ -307,6 +307,9 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     // step 12 asks a CORS-preflight fetch for a cross-origin request with a
     // method or headers that are not CORS-safelisted.
     base_request.unsafe_request = true;
+    // Step 12's "initiator type": "fetch" - what Resource Timing reports for
+    // the request when fetch() fetches it.
+    base_request.initiator_type = .fetch;
 
     // Step 13: If init is not empty
     // Step 10: If init["window"] exists and is non-null, then throw a

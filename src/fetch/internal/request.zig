@@ -22,6 +22,41 @@ pub const CspViolation = csp.violation_events.Violation;
 /// The user agent's cookie jar (src/cookiestore). Reached through fetch by
 /// modules that take a request's client but not cookiestore itself.
 pub const CookieJar = cookiestore.CookieJar;
+
+const fetch_timing = @import("fetch_timing.zig");
+
+/// What a request's client hears of the request's timing once its response
+/// is over: the arguments Fetch "fetch response handover" step 4.2's report
+/// timing steps hand Resource Timing's "mark resource timing" (all but the
+/// global, which is the reporter's).
+///
+/// Spec: https://fetch.spec.whatwg.org/#fetch-finale
+pub const TimingReport = struct {
+    /// timingInfo - an opaque timing info when the response's timing allow
+    /// passed flag is not set. BORROWED for the call.
+    timing_info: *const fetch_timing.FetchTimingInfo,
+    /// The request's URL (the first of its URL list). BORROWED.
+    url: []const u8,
+    initiator_type: InitiatorType,
+    /// cacheState: "", "local" or "validated".
+    cache_state: []const u8,
+    /// bodyInfo, its content type minimized as step 4.2.7.3 says. Its strings
+    /// are BORROWED for the call.
+    body_info: fetch_timing.ResponseBodyInfo,
+    /// responseStatus: 0 for a cross-origin-redirected navigation.
+    response_status: u16,
+    /// The response's timing allow passed flag: when unset the timing info
+    /// is opaque, and Resource Timing exposes no transfer size.
+    timing_allow_passed: bool = true,
+};
+
+/// Where a request's timing goes when its response is over (Fetch "report
+/// timing", Resource Timing "mark resource timing"): its client's global.
+/// `report` runs in the fetch's own turn and may only queue what it needs.
+pub const TimingReporter = struct {
+    context: *anyopaque,
+    report: *const fn (context: *anyopaque, timing: *const TimingReport) void,
+};
 const Body = body_mod.Body;
 
 // =============================================================================
@@ -328,6 +363,13 @@ pub const InternalRequest = struct {
     /// client is gone is terminated (async_fetch's `alive`). Null: a request
     /// with no client, whose violations nobody hears.
     csp_violation_reporter: ?CspViolationReporter = null,
+
+    /// Where this request's timing is reported once its response is over
+    /// (Fetch "fetch response handover" step 4.2: its client's global), as
+    /// "populate request from client" takes it from the client. BORROWED,
+    /// with csp_violation_reporter's lifetime: a fetch whose client is gone
+    /// is terminated before it reports. Null: a request with no client.
+    timing_reporter: ?TimingReporter = null,
 
     /// Top-level navigation initiator origin
     top_level_navigation_initiator_origin: ?[]const u8 = null,
@@ -690,6 +732,7 @@ pub const InternalRequest = struct {
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
             .cookie_jar = self.cookie_jar,
             .csp_violation_reporter = self.csp_violation_reporter,
+            .timing_reporter = self.timing_reporter,
             // Cloned below: each request owns its own.
             .policy_container = .client,
             // Copied below when it is an owned URL.

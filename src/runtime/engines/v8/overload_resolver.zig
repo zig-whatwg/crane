@@ -85,6 +85,31 @@ pub fn resolveConstructorOverload(
     return error.NoMatchingOverload;
 }
 
+/// Free what `resolveConstructorOverload` built, once the constructor has
+/// returned: each argument of the variant it chose, as the binding frees a
+/// non-overloaded constructor's (`interface.freeArgument`) - the strings it
+/// copied, the dictionaries it read, the handles an `any` or a buffer source
+/// kept. The impl borrowed them for the call; one that keeps a value takes
+/// its own copy or hold. Nothing freed them before: `new URLPattern(...)`
+/// leaked its input and base URL on every call.
+pub fn freeConstructorOverload(comptime UnionType: type, allocator: std.mem.Allocator, args: UnionType) void {
+    switch (args) {
+        inline else => |payload| {
+            const VariantType = @TypeOf(payload);
+            if (VariantType == void) return;
+            // The shapes buildVariant makes: a struct is one argument per
+            // field, anything else is the one argument.
+            if (@typeInfo(VariantType) == .@"struct") {
+                inline for (@typeInfo(VariantType).@"struct".fields) |field| {
+                    interface_mod.freeArgument(field.type, allocator, @field(payload, field.name));
+                }
+            } else {
+                interface_mod.freeArgument(VariantType, allocator, payload);
+            }
+        },
+    }
+}
+
 /// Argument count result for a variant
 const ArgCounts = struct {
     required: usize,
@@ -191,6 +216,15 @@ fn buildVariant(
 
     // Case 2: Multi-parameter variant (struct with multiple fields)
     var variant_struct: VariantType = undefined;
+    // An argument that fails to convert ends this variant with the arguments
+    // before it converted - a string copied, an `any`'s handle kept - and
+    // they are freed here, before the next variant is tried: kept, every
+    // `new URLPattern(input, baseURL)` that failed its second variant
+    // leaked its input.
+    var converted: usize = 0;
+    errdefer inline for (type_info.@"struct".fields, 0..) |struct_field, i| {
+        if (i < converted) interface_mod.freeArgument(struct_field.type, allocator, @field(variant_struct, struct_field.name));
+    };
 
     // Convert each JavaScript argument to corresponding struct field
     inline for (type_info.@"struct".fields, 0..) |struct_field, i| {
@@ -203,6 +237,7 @@ fn buildVariant(
             v8_arg,
         );
         @field(variant_struct, struct_field.name) = field_value;
+        converted += 1;
     }
 
     // Build union with the populated struct

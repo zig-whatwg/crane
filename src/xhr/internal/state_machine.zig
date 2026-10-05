@@ -278,6 +278,9 @@ pub const XMLHttpRequestState = struct {
             // Borrowed, as the client's: the global the request's CSP
             // violations go to (CSP 2.4.2).
             .csp_violation_reporter = client.csp_violation_reporter,
+            // Borrowed, as the client's: the global the request's resource
+            // timing is marked for (Fetch "report timing").
+            .timing_reporter = client.timing_reporter,
         };
     }
 
