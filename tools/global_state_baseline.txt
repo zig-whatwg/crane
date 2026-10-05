@@ -323,7 +323,6 @@ src/url/blob_url.zig global_blob_store 1 G I/profile decl:52c96a63e119de70
 src/url/public_suffix.zig psl_result_buf 1 TL C decl:6d938526b5bf4769
 src/urlpattern/pcre2_ffi.zig Regex.static_captures 1 TL C decl:0e6fd21dca79378c
 src/webdriver/main.zig main.handler.server_ptr 1 G P-res decl:f033b82c181714a1
-src/webidl/impls/BroadcastChannel.zig channels 1 TL I/profile decl:61a1585a523daad3
 src/webidl/impls/CookieStore.zig listening 1 TL I/profile decl:0e4d49470b43a231
 src/webidl/impls/Element.zig undefined_sentinel 1 G P-const decl:f33e1c60fc8c8315
 src/webidl/impls/EventTarget.zig current_events 1 G R decl:776d6beda41b573f
