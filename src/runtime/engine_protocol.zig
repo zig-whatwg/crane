@@ -177,6 +177,23 @@ pub const ErrorInfo = struct {
     realm: ?Context,
 };
 
+/// A script's position: where `runningScriptLocation` finds the running
+/// script.
+pub const ScriptLocation = struct {
+    /// The script's URL: the `//# sourceURL=` it names itself with, if any
+    /// (eval and Function code have no other), else the URL it was compiled
+    /// with; "" for none. OWNED by the allocator the operation was given.
+    url: []u8,
+    /// 1-based; 0 when unknown.
+    line: u32,
+    /// 1-based, as ErrorEvent.colno counts; 0 when unknown.
+    column: u32,
+
+    pub fn deinit(self: ScriptLocation, allocator: std.mem.Allocator) void {
+        allocator.free(self.url);
+    }
+};
+
 /// HTML "report an exception", as the host supplies it to an operation that
 /// runs script with "rethrow errors" false. The engine calls `report` at the
 /// point the operation's own algorithm reports: WebIDL "invoke a callback
@@ -939,6 +956,17 @@ pub inline fn queueMicrotask(agent: *Agent, steps: RealmSteps, data: ?*anyopaque
 /// BORROWED from `value`.
 pub inline fn extractErrorInformation(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error!ErrorInfo {
     return impl.extractErrorInformation(realm, value, allocator);
+}
+
+/// CSP 2.4.1 step 2: "if the user agent is currently executing script, and
+/// can extract a source file's URL, line number, and column number" - where
+/// `agent`'s running script is: the topmost frame of the agent's execution
+/// context stack that belongs to a script, and the call being made there.
+/// Runs no script. Null when no script is running, or when the engine
+/// cannot say (JavaScriptCore and QuickJS: always). Blink's
+/// SourceLocation::Capture.
+pub inline fn runningScriptLocation(agent: *Agent, allocator: std.mem.Allocator) Error!?ScriptLocation {
+    return impl.runningScriptLocation(agent, allocator);
 }
 
 /// ECMAScript ParseModule. `host_defined` is the host's, handed back to its

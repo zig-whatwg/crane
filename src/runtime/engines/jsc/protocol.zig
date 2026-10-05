@@ -162,6 +162,12 @@ pub fn queueMicrotask(_: *Agent, _: engine.RealmSteps, _: ?*anyopaque) Error!voi
 pub fn extractErrorInformation(_: Context, _: JSValue, _: Allocator) Error!engine.ErrorInfo {
     return error.NotSupported;
 }
+/// The public C API has no stack inspection but JSContextCreateBacktrace,
+/// a formatted string (URL and line, no column) - the route for this later.
+/// Until then a violation carries no source location here.
+pub fn runningScriptLocation(_: *Agent, _: Allocator) Error!?engine.ScriptLocation {
+    return null;
+}
 pub fn parseModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
     return error.NotSupported;
 }

@@ -276,6 +276,10 @@ pub fn extractErrorInformation(realm: Context, value: JSValue, allocator: Alloca
     return protocol_scripts.extractErrorInformation(realm, value, allocator);
 }
 
+pub fn runningScriptLocation(agent: *Agent, allocator: Allocator) Error!?engine.ScriptLocation {
+    return protocol_scripts.runningScriptLocation(agent, allocator);
+}
+
 pub const parseModule = protocol_modules.parseModule;
 pub const parseJSONModule = protocol_modules.parseJSONModule;
 pub const createDefaultExportSyntheticModule = protocol_modules.createDefaultExportSyntheticModule;
