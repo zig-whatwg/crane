@@ -103,6 +103,14 @@ pub const InternalState = struct {
         try self.register();
         try self.activity.stable(generation, stable);
     }
+    fn resumeSelection(self: *InternalState) !void {
+        // Children steps 22–25 resume ONE waiting algorithm. Multiple child
+        // insertions before its stable section cannot advance its pointer twice.
+        // Step 24 can delay document load again, so restore the live registry.
+        try self.register();
+        for (self.activity.microtasks.items) |generation| if (generation == self.load.generation) return;
+        try self.activity.stable(self.load.generation, stable);
+    }
     fn fail(self: *InternalState) void {
         if (self.load.ready != .nothing) {
             self.fatal(.fatal_network);
@@ -371,7 +379,7 @@ fn inserted(node: *dom.NodeBase) void {
         if ((interfaces.Node.get_previousSibling(instance) catch null) == before) setCursor(self, before, instance);
     }
     if (!isSource(instance)) return;
-    if (self.load.network == .empty) self.selectLater() catch self.cancel() else if (self.load.phase == .waiting) self.activity.stable(self.load.generation, stable) catch self.cancel();
+    if (self.load.network == .empty) self.selectLater() catch self.cancel() else if (self.load.phase == .waiting) self.resumeSelection() catch self.cancel();
 }
 fn removed(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
     const instance = dom.instance_bridge.getInstanceTyped(runtime.Instance, node) orelse return;
@@ -538,7 +546,15 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
                 self.activity.stable(task.generation, stable) catch self.cancel();
             }
         },
-        .release_delay => self.finish(task.generation),
+        .release_delay => {
+            // Children step 20 changes only the delay flag. A new source may
+            // have resumed this generation before the queued task runs; it
+            // must not terminate that fetch or remove its live registration.
+            self.load.endLoadDelay(task.generation);
+            self.syncDelay();
+            if (self.load.phase == .waiting and !self.activity.fetching) self.unregister();
+            self.activity.sync();
+        },
         .pause => {
             if (task.event) |event| event.dispatch();
             task.rejectPromises("AbortError");
