@@ -361,7 +361,7 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
 pub fn argHandleIsCopied(comptime T: type) bool {
     return comptime blk: {
         // Dictionaries are walked member by member, recursively.
-        @setEvalBranchQuota(1_000_000);
+        @setEvalBranchQuota(100_000);
         // Scalars decode to a Zig value; the handle is read and done with.
         if (T == void or T == bool) break :blk true;
         if (T == i8 or T == i16 or T == i32 or T == i64 or T == isize) break :blk true;
@@ -449,12 +449,16 @@ fn memberHandleIsSafe(comptime T: type) bool {
     if (argumentHandleIsKeptInValue(T)) return true;
     const info = @typeInfo(T);
     if (info == .optional) return memberHandleIsSafe(info.optional.child);
-    // A sequence member reads each element through its own handle
-    // (v8_Array_Get on the member's array), so no element can alias the
-    // dictionary's handle either: StructuredSerializeOptions' `transfer`
-    // (sequence<object>) kept every postMessage(message, options) dictionary's
+    // A sequence<any> / sequence<object> member reads each element through
+    // its own handle (v8_Array_Get on the member's array), so no element can
+    // alias the dictionary's handle either: StructuredSerializeOptions'
+    // `transfer` kept every postMessage(message, options) dictionary's
     // argument handle - one Global per call (workers2's leaks --atExit).
-    if (info == .pointer and info.pointer.size == .slice) return memberHandleIsSafe(info.pointer.child);
+    // JSValue elements only, with no recursion: walking a sequence member's
+    // element type recursed without bound through self-referential
+    // dictionaries (the compiler ran out of stack); a sequence of copied
+    // elements is already copied (argHandleIsCopied).
+    if (info == .pointer and info.pointer.size == .slice and info.pointer.child == runtime.JSValue) return true;
     return false;
 }
 
