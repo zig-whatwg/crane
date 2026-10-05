@@ -76,6 +76,9 @@ const window_agent_hooks: engine.HostHooks = blk: {
     hooks.loadImportedModule = html.script_execution.module_hooks.loadImportedModule;
     hooks.importMetaUrl = html.script_execution.module_hooks.importMetaUrl;
     hooks.importMetaResolve = html.script_execution.module_hooks.importMetaResolve;
+    hooks.ensureCanCompileStrings = html.code_generation.hooks.ensureCanCompileStrings;
+    hooks.getCodeForEval = html.code_generation.hooks.getCodeForEval;
+    hooks.ensureCanCompileWasmBytes = html.code_generation.hooks.ensureCanCompileWasmBytes;
     break :blk hooks;
 };
 

@@ -182,6 +182,10 @@ pub const microtask_checkpoint = @import("microtask_checkpoint.zig");
 /// unhandledrejection / rejectionhandled events.
 pub const rejected_promises = @import("rejected_promises.zig");
 
+/// HostEnsureCanCompileStrings, HostGetCodeForEval and
+/// HostEnsureCanCompileWasmBytes: CSP over eval, Function and WebAssembly.
+pub const code_generation = @import("code_generation.zig");
+
 /// Script runner for coordinating script scheduling
 pub const script_runner = @import("script_runner.zig");
 

@@ -126,6 +126,8 @@ pub const violations = @import("violations.zig");
 pub const violation_events = @import("violation_events.zig");
 /// §4.2.3 should element's inline type behavior be blocked, per policy.
 pub const inline_check = @import("inline_check.zig");
+/// §4.4.1 and §4.5.1: string and WebAssembly compilation, per policy.
+pub const code_generation = @import("code_generation.zig");
 
 pub const createViolation = violations.createViolation;
 pub const createTrustedTypesPolicyViolation = violations.createTrustedTypesPolicyViolation;
@@ -157,8 +159,6 @@ pub const parseMetaCSP = integration.parseMetaCSP;
 pub const shouldBlockFetch = integration.shouldBlockFetch;
 pub const shouldBlockInlineScript = integration.shouldBlockInlineScript;
 pub const shouldBlockInlineStyle = integration.shouldBlockInlineStyle;
-pub const shouldBlockEval = integration.shouldBlockEval;
-pub const shouldBlockWasmEval = integration.shouldBlockWasmEval;
 pub const FetchDestination = integration.FetchDestination;
 pub const CSPCheckResult = integration.CSPCheckResult;
 pub const InlineContext = integration.InlineContext;

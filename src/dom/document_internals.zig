@@ -627,24 +627,6 @@ pub fn isExternalScriptAllowedByCSP(
     return true;
 }
 
-/// Check if eval() is allowed by CSP.
-pub fn isEvalAllowedByCSP(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return true;
-    const csp_list = &internal.policy_container.csp_list;
-
-    for (csp_list.policies.items) |*policy| {
-        if (policy.disposition != .enforce) continue;
-
-        const directive = csp.fallback.getEffectiveScriptSrc(&policy.directive_set) orelse continue;
-
-        if (!csp.matching.allowsUnsafeEval(&directive.value)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 // =============================================================================
 // Stylesheet Blocking (HTML Standard §14.3.3)
 // =============================================================================
