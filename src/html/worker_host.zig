@@ -2215,7 +2215,15 @@ const worker_hooks: engine.HostHooks = .{
     // at the worker's global scope. A worker agent had neither, so no worker
     // ever heard one.
     .promiseRejectionTracker = rejected_promises.hooks.promiseRejectionTracker,
-    .afterMicrotaskCheckpoint = @import("microtask_checkpoint.zig").afterMicrotaskCheckpoint,
+    .afterMicrotaskCheckpoint = @import("microtask_checkpoint.zig").afterMicrotaskCheckpoint,    // HTML 8.1.6.2 HostEnsureCanCompileStrings, 8.1.6.3 HostGetCodeForEval
+    // and the WebAssembly JS API's HostEnsureCanCompileWasmBytes, as a
+    // window agent's (browser/Browser.zig window_agent_hooks): eval,
+    // Function and WebAssembly compilation in a worker are checked against
+    // its global scope's CSP list, and Trusted Types' default policy runs
+    // over a string first. Without them a worker compiled anything.
+    .ensureCanCompileStrings = code_generation.hooks.ensureCanCompileStrings,
+    .getCodeForEval = code_generation.hooks.getCodeForEval,
+    .ensureCanCompileWasmBytes = code_generation.hooks.ensureCanCompileWasmBytes,
 };
 
 /// A worker's module evaluation promise, waiting to settle. Its host
