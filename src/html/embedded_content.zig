@@ -67,6 +67,7 @@ const dom = @import("dom");
 const html_core = @import("html_core");
 const encoding_parse = @import("encoding_parse.zig");
 const csp = @import("csp");
+const css = @import("css");
 
 const object_resource_type = html_core.navigation.object_resource_type;
 const navigate_steps = html_core.navigation.navigate_steps;
@@ -394,7 +395,7 @@ fn processObject(content: *Content, id: u64) void {
     // still in the stack of open elements of an HTML parser or XML parser,
     // or if the element is not being rendered, then jump to the step below
     // labeled fallback."
-    if (content.parser_open or !isConnected(element) or !documentHasBrowsingContext(element) or hasInactiveAncestor(element)) {
+    if (content.parser_open or !isConnected(element) or !documentHasBrowsingContext(element) or hasInactiveAncestor(element) or !isBeingRendered(element)) {
         return fallback(content);
     }
     // Step 3: "If the data attribute is present and its value is not the
@@ -484,7 +485,7 @@ fn setupEmbed(content: *Content, id: u64) void {
     const element = content.element;
     // "Potentially active": in a document that is fully active, with no
     // ancestor media element or object element not showing its fallback.
-    if (!isConnected(element) or !documentHasBrowsingContext(element) or hasInactiveAncestor(element)) return displayNoPlugin(content);
+    if (!isConnected(element) or !documentHasBrowsingContext(element) or hasInactiveAncestor(element) or !isBeingRendered(element)) return displayNoPlugin(content);
     // Step 2: "If element has a src attribute set".
     const src = attributeValue(element, "src") orelse {
         // Step 3, with a type alone: CSP 6.1.9 first, then no plugin.
@@ -824,6 +825,56 @@ fn hasInactiveAncestor(element: *runtime.Instance) bool {
     return false;
 }
 
+/// HTML "being rendered", as far as Crane can tell without a style cascade:
+/// the element and its ancestors are not hidden by the UA style sheet's
+/// rules Crane can apply - a `head` ancestor, a `hidden` attribute (but
+/// hidden=until-found, which keeps its box) - nor by an inline style
+/// attribute whose display is `none`. An author style sheet's
+/// `display: none` is not seen (stated: no cascade). Blink loads no plugin
+/// and no frame for an object or embed without a layout box.
+fn isBeingRendered(element: *runtime.Instance) bool {
+    var node: ?*runtime.Instance = element;
+    var depth: usize = 0;
+    while (node) |current| : (depth += 1) {
+        if (depth > 512) return true;
+        if (current.stateAs(interfaces.Element.State) != null) {
+            if (current.stateAs(interfaces.HTMLHeadElement.State) != null) return false;
+            if (attributeValue(current, "hidden")) |hidden| {
+                if (!std.ascii.eqlIgnoreCase(hidden, "until-found")) return false;
+            }
+            if (attributeValue(current, "style")) |style| {
+                if (inlineDisplayIsNone(style)) return false;
+            }
+        }
+        node = interfaces.Node.get_parentNode(current) catch return true;
+    }
+    return true;
+}
+
+/// Whether the declarations of an inline style attribute `style` make
+/// `display` `none` - the last `display` declaration, an `!important` one
+/// over any that is not (CSS Cascade's order within one declaration block).
+fn inlineDisplayIsNone(style: []const u8) bool {
+    if (std.ascii.indexOfIgnoreCase(style, "display") == null) return false;
+    const allocator = std.heap.page_allocator;
+    const text = std.mem.concat(allocator, u8, &.{ "x{", style, "}" }) catch return false;
+    defer allocator.free(text);
+    var parsed = css.rules.parseStyleSheetContents(allocator, text) catch return false;
+    defer parsed.deinit();
+    var value: ?[]const u8 = null;
+    var important = false;
+    for (parsed.items) |rule| {
+        for (rule.declarations) |declaration| {
+            if (!std.mem.eql(u8, declaration.name, "display")) continue;
+            if (important and !declaration.important) continue;
+            value = declaration.value;
+            important = declaration.important;
+        }
+    }
+    const v = value orelse return false;
+    return std.ascii.eqlIgnoreCase(std.mem.trim(u8, v, " \t\n\r\x0c"), "none");
+}
+
 /// Whether `object` has a content navigable: one of its node document's
 /// child navigables has it as its container.
 fn showsNavigable(object: *runtime.Instance) bool {
@@ -839,4 +890,15 @@ fn showsNavigable(object: *runtime.Instance) bool {
 fn globalOf(realm: runtime.Context) ?*runtime.Instance {
     const record = realm.getRealm() orelse return null;
     return @ptrCast(@alignCast(record.global_object orelse return null));
+}
+
+test "an inline style's display is none: the last declaration, an important one over the rest" {
+    const testing = std.testing;
+    try testing.expect(inlineDisplayIsNone("display: none"));
+    try testing.expect(inlineDisplayIsNone("color: red; DISPLAY:NONE;"));
+    try testing.expect(!inlineDisplayIsNone("display: none; display: block"));
+    try testing.expect(inlineDisplayIsNone("display: none !important; display: block"));
+    try testing.expect(!inlineDisplayIsNone("width: 0px; height: 0px"));
+    try testing.expect(!inlineDisplayIsNone("display: inline"));
+    try testing.expect(!inlineDisplayIsNone(""));
 }
