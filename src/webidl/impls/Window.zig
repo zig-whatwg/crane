@@ -1336,6 +1336,12 @@ pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // WindowProxy - so its ACTIVE window, which a navigation of the opener
     // replaces; the Window that called open() may be gone from it.
     if (internal.browsing_context.opener) |opener_bc| {
+        // An opener whose traversable was closed - its browsing context
+        // discarded - is no opener: null, as in Blink (Frame::Detach disposes
+        // the OpenedFrameTracker, which clears every openee's opener) and
+        // Gecko (BrowsingContext::GetOpener answers null for a discarded
+        // context). The popup lives on, a top-level traversable of its own.
+        if (opener_bc.is_closed) return runtime.JSValue.jsNull;
         if (opener_bc.getActiveWindow()) |active| {
             return runtime.JSValue.fromInstanceAnyopaque(active);
         }
