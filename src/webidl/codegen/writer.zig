@@ -2798,11 +2798,48 @@ fn writeCEReactionsTable(writer: anytype, functions: *const CEReactionsFunctions
 /// script, which can end the receiver's realm and free its Instance
 /// (codex-ce Q21).
 fn writeCEReactionsBracket(writer: anytype, is_static: bool) !void {
+    try writeCEReactionsBegin(writer, is_static);
+    try writer.writeAll("        defer runtime.CEReactions.end(ce_scope);\n");
+    try writer.writeAll("        \n");
+}
+
+fn writeCEReactionsBegin(writer: anytype, is_static: bool) !void {
     const this_object = if (is_static) "null" else "instance";
     try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
     try writer.print("        const ce_scope = runtime.CEReactions.begin({s});\n", .{this_object});
-    try writer.writeAll("        defer runtime.CEReactions.end(ce_scope);\n");
-    try writer.writeAll("        \n");
+}
+
+/// A [CEReactions] operation whose result is a platform object (codex-ce
+/// Q28): the member computes it, then `end` runs reactions - script - and
+/// only then does the binding convert it, reading its vtable and its realm.
+/// A reaction that ends the result's realm frees it (a detached clone, a
+/// createElement result), and the wrapper an Owned roots does not keep the
+/// Instance. So `end` runs here, explicitly, between reading the result's
+/// slab generation and reading it again: a result freed meanwhile is an
+/// InvalidStateError, never a stale pointer. Stated deviation: Blink returns
+/// the now browsing-context-less object, which Crane cannot until a realm's
+/// teardown waits for the binding calls into it.
+fn writeCEReactionsGuardedCall(writer: anytype, call_prefix: []const u8, impl_name: []const u8, name: []const u8, suffix: []const u8, arguments: []const types.Argument, nullable: bool) !void {
+    try writer.print("        const result = {s}.{s}{s}{s}(instance", .{ impl_name, call_prefix, name, suffix });
+    for (arguments) |arg| {
+        try writer.writeAll(", ");
+        try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+    }
+    try writer.writeAll(") catch |err| {\n");
+    try writer.writeAll("            runtime.CEReactions.end(ce_scope);\n");
+    try writer.writeAll("            return err;\n");
+    try writer.writeAll("        };\n");
+    try writer.writeAll("        // A result the reactions freed (its realm ended) is not returned.\n");
+    if (nullable) {
+        try writer.writeAll("        const result_generation = if (result) |r| runtime.SlabAllocator.generationOf(r) else 0;\n");
+        try writer.writeAll("        runtime.CEReactions.end(ce_scope);\n");
+        try writer.writeAll("        if (result) |r| if (runtime.SlabAllocator.generationOf(r) != result_generation) return error.InvalidStateError;\n");
+    } else {
+        try writer.writeAll("        const result_generation = runtime.SlabAllocator.generationOf(result);\n");
+        try writer.writeAll("        runtime.CEReactions.end(ce_scope);\n");
+        try writer.writeAll("        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;\n");
+    }
+    try writer.writeAll("        return result;\n");
 }
 
 /// Write one operation's delegate, named `call_<name><suffix>`.
@@ -2981,8 +3018,11 @@ fn writeOperationDelegate(
         }
     }
 
+    // A [CEReactions] operation returning a platform object runs `end`
+    // explicitly, around a check of its result (writeCEReactionsGuardedCall).
+    const guards_result = has_ce_reactions and std.mem.eql(u8, return_type, "*runtime.Instance");
     if (has_ce_reactions) {
-        try writeCEReactionsBracket(writer, is_static);
+        if (guards_result) try writeCEReactionsBegin(writer, is_static) else try writeCEReactionsBracket(writer, is_static);
         try ce_functions.add("{s}{s}{s}", .{ if (is_static) "call_static_" else "call_", name, suffix });
     }
 
@@ -3000,21 +3040,25 @@ fn writeOperationDelegate(
     }
 
     // Call impl with matching convention: call_static_<name> for static, call_<name> for instance
-    if (is_static) {
-        try writer.print("        return try {s}.call_static_{s}{s}(instance", .{ impl_name, name, suffix });
+    if (guards_result) {
+        try writeCEReactionsGuardedCall(writer, if (is_static) "call_static_" else "call_", impl_name, name, suffix, op.arguments, is_nullable_return);
     } else {
-        try writer.print("        return try {s}.call_{s}{s}(instance", .{ impl_name, name, suffix });
-    }
+        if (is_static) {
+            try writer.print("        return try {s}.call_static_{s}{s}(instance", .{ impl_name, name, suffix });
+        } else {
+            try writer.print("        return try {s}.call_{s}{s}(instance", .{ impl_name, name, suffix });
+        }
 
-    // Pass arguments
-    // Note: webidl.Opt() parameters are passed directly (not unwrapped)
-    // The impl is responsible for checking .wasPassed() and handling defaults
-    for (op.arguments) |arg| {
-        try writer.writeAll(", ");
-        try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-    }
+        // Pass arguments
+        // Note: webidl.Opt() parameters are passed directly (not unwrapped)
+        // The impl is responsible for checking .wasPassed() and handling defaults
+        for (op.arguments) |arg| {
+            try writer.writeAll(", ");
+            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+        }
 
-    try writer.writeAll(");\n");
+        try writer.writeAll(");\n");
+    }
     if (gated) {
         try writer.writeAll("        } else {\n");
         try writer.writeAll("            return error.NotImplemented;\n");

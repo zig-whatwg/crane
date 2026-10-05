@@ -2090,9 +2090,16 @@ pub const Document = struct {
     pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(DOMString), unused2: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try DocumentImpl.call_open(instance, unused1, unused2);
+        const result = DocumentImpl.call_open(instance, unused1, unused2) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
@@ -2145,11 +2152,17 @@ pub const Document = struct {
     pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
         // [NewObject] - Caller owns the returned object
 
-        return try DocumentImpl.call_createElementNS(instance, namespace, qualifiedName, options);
+        const result = DocumentImpl.call_createElementNS(instance, namespace, qualifiedName, options) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*runtime.Instance {
@@ -2190,11 +2203,17 @@ pub const Document = struct {
     pub fn call_createElement(instance: *runtime.Instance, localName: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
         // [NewObject] - Caller owns the returned object
 
-        return try DocumentImpl.call_createElement(instance, localName, options);
+        const result = DocumentImpl.call_createElement(instance, localName, options) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!runtime.JSValue {
@@ -2275,9 +2294,16 @@ pub const Document = struct {
     pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try DocumentImpl.call_adoptNode(instance, node);
+        const result = DocumentImpl.call_adoptNode(instance, node) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     /// Extended attributes: [CEReactions]
@@ -2368,11 +2394,17 @@ pub const Document = struct {
     pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
         // [NewObject] - Caller owns the returned object
 
-        return try DocumentImpl.call_importNode(instance, node, options);
+        const result = DocumentImpl.call_importNode(instance, node, options) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub const call_replaceChildren = mixins.ParentNode.call_replaceChildren;
