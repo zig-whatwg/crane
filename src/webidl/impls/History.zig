@@ -236,6 +236,10 @@ fn stateValue(history: *runtime.Instance, internal: *InternalState, entry: *join
 pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const bc = activeNavigable(internal) orelse return error.SecurityError;
+    // Delta traverse step 3: "If history's relevant global object's
+    // navigable's allowed to perform a navigation or history update returns
+    // blocked, then return."
+    if (!bc.allowedToNavigateOrUpdateHistory()) return;
     const delta_val: i32 = if (delta.wasPassed()) delta.getValue() else 0;
     if (delta_val == 0) {
         // Step 3: "reload document's node navigable" - its current entry,
@@ -276,6 +280,22 @@ fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
         .is_same_document = false,
         .navigation_api_state = api_state,
     })) return;
+    // "Apply the reload history step" (apply the history step, with
+    // checkForCancelation): beforeunload at the navigable's document and its
+    // descendants', before anything unloads; the navigation below does not
+    // fire it again.
+    const id = bc.id;
+    const top_id = bc.getTop().id;
+    {
+        var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+        defer tree.deinit(bc.allocator);
+        bc.collectDescendants(bc.allocator, &tree) catch return;
+        if (beforeUnloadCanceled(tree.items, bc.allocator)) return;
+    }
+    // The handlers ran script: the navigable - or its traversable, which
+    // owns `history` - may be gone.
+    if (BrowsingContext.byId(id) != bc or bc.orphaned or bc.is_closed) return;
+    if (BrowsingContext.byId(top_id) == null) return;
     const current = history.entryById(entry_id) orelse return;
     // A reload's previousEntry is the entry it reloads.
     @import("dom").navigables.traverseNavigable(@ptrCast(bc), current.id, current.url, current.resource, current.id);
@@ -352,8 +372,7 @@ threadlocal var push_replace_depth: u32 = 0;
 /// limits also stop (navigate-event/replaceState-inside-back-handler-infinite).
 const max_push_replace_depth = 16;
 
-/// HTML "shared history push/replace state steps". Not modelled, stated:
-/// rate limiting (step 3) beyond the nesting limit above.
+/// HTML "shared history push/replace state steps".
 fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, url: webidl.Opt(?runtime.USVString), handling: joint_history.HistoryHandling) !void {
     // Step 3: "Optionally, throw a SecurityError DOMException."
     if (push_replace_depth >= max_push_replace_depth) return error.SecurityError;
@@ -362,7 +381,7 @@ fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, ur
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Step 1: "Let document be history's associated Document. If document is
     // not fully active, then throw a SecurityError DOMException."
-    _ = activeNavigable(internal) orelse return error.SecurityError;
+    const navigable = activeNavigable(internal) orelse return error.SecurityError;
     const window = internal.window orelse return error.SecurityError;
     const document = try interfaces.Window.get_document(window);
     const allocator = internal.allocator;
@@ -393,6 +412,15 @@ fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, ur
                 new_url = parsed;
             }
         }
+    }
+
+    // Step 6: "If history's relevant global object's navigable's allowed to
+    // perform a navigation or history update returns blocked, then return" -
+    // after the state is serialized and the URL parsed, which throw first
+    // (history_pushstate_too_many_calls_ordering.optional.html).
+    if (!navigable.allowedToNavigateOrUpdateHistory()) {
+        serialized.deinit(allocator);
+        return;
     }
 
     // Steps 7-9: "Let continue be the result of firing a push/replace/reload
@@ -512,9 +540,11 @@ fn dropTraversal(context: ?*anyopaque) void {
     task.allocator.destroy(task);
 }
 
-/// A navigable that changes entry in a traversal.
+/// A navigable that changes entry in a traversal - by id: the changes run
+/// script (traverse navigate events, popstate), which can remove a frame
+/// and free its browsing context before the next change is applied.
 const Change = struct {
-    navigable: *BrowsingContext,
+    navigable: u64,
     old_url: []u8,
     /// The entry the navigable is on before the traversal (12.1's
     /// previousEntry).
@@ -530,8 +560,8 @@ const Change = struct {
 /// within its document when the entry shares the document state, else by a
 /// navigation to the entry's URL. A navigable under one that changes
 /// documents is not looked at: it goes with its parent's document.
-/// Not modelled, stated: beforeunload across the traversal (step 5), and
-/// history-action activation for the traversable's navigate event.
+/// Not modelled, stated: history-action activation for the traversable's
+/// navigate event.
 fn runTraversal(context: ?*anyopaque) void {
     const task: *Traversal = @ptrCast(@alignCast(context orelse return));
     const allocator = task.allocator;
@@ -590,7 +620,7 @@ fn runTraversal(context: ?*anyopaque) void {
             target_entry.document != null and target_entry.document == bc.getActiveDocument();
         const old_url = allocator.dupe(u8, current.url) catch return;
         changes.append(allocator, .{
-            .navigable = bc,
+            .navigable = bc.id,
             .old_url = old_url,
             .from_entry = current.id,
             .target_entry = target_entry.id,
@@ -603,25 +633,68 @@ fn runTraversal(context: ?*anyopaque) void {
         if (!same_document) skipped.append(allocator, bc) catch return;
     }
 
+    // "Apply the history step" step 7, with checkForCancelation: "checking
+    // if unloading is canceled" for the navigables the traversal takes to
+    // another document - beforeunload at each one's active document and its
+    // descendants' (`skipped`, parents first) - after the traversable's
+    // navigate event and before the other navigables' (step 12.7). Canceled:
+    // the traversal ends with nothing changed. The navigations below do not
+    // fire it again.
+    if (beforeUnloadCanceled(skipped.items, allocator)) return;
+    // The handlers ran script: the traversable - and its history - may be
+    // gone.
+    if (BrowsingContext.byId(task.top_id) != top) return;
+
     // Step 20: the traversable's current session history step.
     history.current_step = target;
 
     for (changes.items) |change| {
+        // Looked up again for each change: an earlier change's script may
+        // have removed the navigable (a discarded one is closed) - or its
+        // traversable.
+        const navigable = BrowsingContext.byId(change.navigable) orelse continue;
+        if (navigable.orphaned or navigable.is_closed) continue;
+        if (BrowsingContext.byId(task.top_id) != top) return;
         // Step 12.7: a navigable other than the traversable whose entry
         // changes within its origin fires a traverse navigate event (not
         // cancelable).
-        if (change.navigable != top and change.same_origin) {
-            if (change.navigable.getActiveWindow()) |w| {
+        if (navigable != top and change.same_origin) {
+            if (navigable.getActiveWindow()) |w| {
                 _ = @import("dom").navigation_api.fireTraverse(@ptrCast(@alignCast(w)), change.target_entry, .none);
             }
+            // The event's listeners ran script: the traversable - and the
+            // history it owns - may be gone, the navigable too.
+            if (BrowsingContext.byId(task.top_id) != top) return;
+            if (BrowsingContext.byId(change.navigable) != navigable or navigable.orphaned or navigable.is_closed) continue;
         }
         const entry = history.entryById(change.target_entry) orelse continue;
         if (change.same_document) {
-            sameDocumentTraversal(change.navigable, change.old_url, entry);
+            sameDocumentTraversal(navigable, change.old_url, entry);
         } else {
-            @import("dom").navigables.traverseNavigable(@ptrCast(change.navigable), entry.id, entry.url, entry.resource, change.from_entry);
+            @import("dom").navigables.traverseNavigable(@ptrCast(navigable), entry.id, entry.url, entry.resource, change.from_entry);
         }
     }
+}
+
+/// Beforeunload at the active document of each of `contexts`, in order:
+/// whether any was canceled ("checking if unloading is canceled" -
+/// "continue" unless a prompt was shown and the user stayed; none is shown
+/// without sticky activation). The documents are taken before any handler
+/// runs - script can take a frame away - and each is skipped if it went.
+fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: Allocator) bool {
+    const Held = struct { document: *runtime.Instance, generation: u64 };
+    var documents: std.ArrayListUnmanaged(Held) = .empty;
+    defer documents.deinit(allocator);
+    for (contexts) |bc| {
+        const document: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse continue));
+        documents.append(allocator, .{ .document = document, .generation = runtime.SlabAllocator.generationOf(document) }) catch return false;
+    }
+    var canceled = false;
+    for (documents.items) |held| {
+        if (runtime.SlabAllocator.generationOf(held.document) != held.generation) continue;
+        if (@import("dom").document_lifecycle.fireBeforeUnload(held.document).canceled) canceled = true;
+    }
+    return canceled;
 }
 
 /// "Update document for history step application" for a same-document

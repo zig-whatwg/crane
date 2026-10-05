@@ -109,6 +109,7 @@ pub const Implementation = struct {
     /// of the entries it handed out that are gone.
     entries_removed: *const fn (top: *anyopaque) void,
     fire_traverse: *const fn (window: *runtime.Instance, entry_id: u64, user_involvement: UserInvolvement) bool,
+    fire_download_request: *const fn (window: *runtime.Instance, destination_url: []const u8, user_involvement: UserInvolvement, source_element: ?*runtime.Instance, filename: []const u8) bool,
     inform_about_aborting_navigation: *const fn (window: *runtime.Instance) void,
     inform_about_child_navigable_destruction: *const fn (window: *runtime.Instance) void,
     intercept: *const fn (event: *runtime.Instance, options: InterceptOptions) anyerror!void,
@@ -147,6 +148,16 @@ pub fn firePushReplaceReload(window: *runtime.Instance, args: PushReplaceReload)
 pub fn fireTraverse(window: *runtime.Instance, entry_id: u64, user_involvement: UserInvolvement) bool {
     const impl = implementation orelse return true;
     return impl.fire_traverse(window, entry_id, user_involvement);
+}
+
+/// HTML "fire a download request navigate event" at `window`'s navigation
+/// API, for a download of `destination_url` (serialized) that
+/// `source_element` - a hyperlink with a download attribute whose value is
+/// `filename` - asked for: whether the download goes on. URL and filename
+/// BORROWED for the call.
+pub fn fireDownloadRequest(window: *runtime.Instance, destination_url: []const u8, user_involvement: UserInvolvement, source_element: ?*runtime.Instance, filename: []const u8) bool {
+    const impl = implementation orelse return true;
+    return impl.fire_download_request(window, destination_url, user_involvement, source_element, filename);
 }
 
 /// A cross-document push in the traversable whose top-level browsing

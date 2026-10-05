@@ -47,8 +47,17 @@ pub const FetchError = error{
 pub const FetchResult = struct {
     response: *InternalResponse,
     timing_info: FetchTimingInfo,
+    /// The request's referrer as main fetch left it - step 9's "determine
+    /// request's referrer", redone for each redirect - when it is a URL;
+    /// null for "no-referrer" (or "client", which main fetch never leaves).
+    /// HTML "create and initialize a Document object" step 14 sets a
+    /// navigation's new document's referrer from it. Owned, by the
+    /// response's allocator; null unless FetchOptions.report_referrer.
+    referrer: ?[]u8 = null,
 
     pub fn deinit(self: *FetchResult) void {
+        if (self.referrer) |r| self.response.allocator.free(r);
+        self.referrer = null;
         self.response.deinit();
         self.timing_info.deinit();
     }
@@ -65,6 +74,10 @@ pub const FetchOptions = struct {
     use_cors: bool = false,
     /// Cross-origin isolated capability
     cross_origin_isolated_capability: bool = false,
+    /// Hand the request's final referrer back in FetchResult.referrer. Only
+    /// a caller that frees its result with FetchResult.deinit asks: the
+    /// others take the response and timing info apart and would leak it.
+    report_referrer: bool = false,
 };
 
 pub const FetchJob = struct {
@@ -233,7 +246,13 @@ pub const FetchJob = struct {
         self.response = null;
         const timing_info = self.timing_info;
         self.timing_info = FetchTimingInfo.init(self.allocator);
-        return .{ .response = response, .timing_info = timing_info };
+        // Out of memory, the referrer is left out (null): the document gets
+        // the empty string, as for no referrer.
+        const referrer: ?[]u8 = if (!self.options.report_referrer) null else switch (self.request.referrer) {
+            .url => |url| response.allocator.dupe(u8, url) catch null,
+            .no_referrer, .client => null,
+        };
+        return .{ .response = response, .timing_info = timing_info, .referrer = referrer };
     }
 
     /// Main fetch, at the current depth, as far as it can go.
@@ -533,4 +552,80 @@ test "fetch response handover: no initiator type, or a scheme that is not HTTP(S
         try std.testing.expect(try job.start() == .done);
     }
     try std.testing.expectEqual(@as(usize, 0), reports.count);
+}
+
+test "fetch result: the request's referrer as main fetch determined it" {
+    const allocator = std.testing.allocator;
+    // Same origin, the default policy (strict-origin-when-cross-origin): the
+    // referrer stripped for use as a referrer - its fragment gone.
+    {
+        const request = try InternalRequest.init(allocator, "http://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        try request.setReferrerUrl("http://a.test/page?q=1#frag");
+        const job = try FetchJob.create(allocator, request, false, .{ .report_referrer = true });
+        defer job.destroy();
+        try std.testing.expect(try job.start() == .network);
+        try std.testing.expect(try job.resumeNetwork(testAnswer(200)) == .done);
+        var result = job.takeResult();
+        defer result.deinit();
+        try std.testing.expectEqualStrings("http://a.test/page?q=1", result.referrer.?);
+    }
+    // Cross origin, the same policy: the referrer's origin only.
+    {
+        const request = try InternalRequest.init(allocator, "http://b.test/x");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        try request.setReferrerUrl("http://a.test/page?q=1");
+        const job = try FetchJob.create(allocator, request, false, .{ .report_referrer = true });
+        defer job.destroy();
+        try std.testing.expect(try job.start() == .network);
+        try std.testing.expect(try job.resumeNetwork(testAnswer(200)) == .done);
+        var result = job.takeResult();
+        defer result.deinit();
+        try std.testing.expectEqualStrings("http://a.test/", result.referrer.?);
+    }
+    // "no-referrer", and a policy that sends none: no referrer.
+    {
+        const request = try InternalRequest.init(allocator, "http://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        request.setReferrer(.no_referrer);
+        const job = try FetchJob.create(allocator, request, false, .{ .report_referrer = true });
+        defer job.destroy();
+        _ = try job.start();
+        _ = try job.resumeNetwork(testAnswer(200));
+        var result = job.takeResult();
+        defer result.deinit();
+        try std.testing.expect(result.referrer == null);
+    }
+    {
+        const request = try InternalRequest.init(allocator, "http://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        try request.setReferrerUrl("http://a.test/page");
+        request.referrer_policy = .no_referrer;
+        const job = try FetchJob.create(allocator, request, false, .{ .report_referrer = true });
+        defer job.destroy();
+        _ = try job.start();
+        _ = try job.resumeNetwork(testAnswer(200));
+        var result = job.takeResult();
+        defer result.deinit();
+        try std.testing.expect(result.referrer == null);
+    }
+    // Not asked for: none, whatever the request's referrer - the callers that
+    // take a result apart without FetchResult.deinit never see one to free.
+    {
+        const request = try InternalRequest.init(allocator, "http://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        try request.setReferrerUrl("http://a.test/page");
+        const job = try FetchJob.create(allocator, request, false, .{});
+        defer job.destroy();
+        _ = try job.start();
+        _ = try job.resumeNetwork(testAnswer(200));
+        var result = job.takeResult();
+        defer result.deinit();
+        try std.testing.expect(result.referrer == null);
+    }
 }

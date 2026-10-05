@@ -79,6 +79,21 @@ pub fn setEncoding(instance: *runtime.Instance, name: []const u8) !void {
     internal.encoding = new;
 }
 
+/// Set the document's referrer (HTML "the document's referrer", what
+/// document.referrer returns): the serialization of a navigation request's
+/// referrer as main fetch left it ("create and initialize a Document object"
+/// step 14), or of the creator's URL for a new browsing context's initial
+/// about:blank ("create a new browsing context and document" step 19.1). A
+/// copy, owned by the document; the empty string for none.
+pub fn setReferrer(instance: *runtime.Instance, referrer: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Document deinit frees a non-empty referrer: the empty one stays the
+    // static literal it starts as.
+    const new: []const u8 = if (referrer.len == 0) "" else try internal.allocator.dupe(u8, referrer);
+    if (internal.referrer.len > 0) internal.allocator.free(internal.referrer);
+    internal.referrer = new;
+}
+
 /// The name of the document's encoding.
 pub fn getEncoding(instance: *runtime.Instance) ?[]const u8 {
     const internal = getInternal(instance) orelse return null;

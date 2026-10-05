@@ -36,6 +36,7 @@ const navigation_fetch = @import("../navigation/fetch_integration.zig");
 const document_type = @import("../navigation/document_type.zig");
 const navigate_steps = @import("../navigation/navigate_steps.zig");
 const clock = @import("clock");
+const infra = @import("infra");
 const platform_host = @import("host");
 
 /// Error types for iframe integration
@@ -71,6 +72,9 @@ pub const NavigateRequest = struct {
     history_behavior: navigate_steps.HistoryBehavior = .auto,
     /// The navigation's "sourceDocument" (an engine document), or null.
     source_document: ?*anyopaque = null,
+    /// Navigate's "referrerPolicy": "no-referrer" for window.open()'s
+    /// noreferrer; the empty string defers to the policy container's.
+    referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
 };
 
 /// An engine context this integration made for a content navigable it no
@@ -363,6 +367,22 @@ pub const IFrameIntegration = struct {
     /// the commit. Owned until taken.
     next_policy_container: ?@import("fetch").internal.PolicyContainer = null,
 
+    /// The referrer the next document this navigable makes is created with:
+    /// for a fetched response, its request's referrer as main fetch left it
+    /// ("create and initialize a Document object" step 14), and for a new
+    /// browsing context's initial about:blank, its creator's URL ("create a
+    /// new browsing context and document" step 19.1). Set just before the
+    /// document is made - before its parser runs a script - and cleared
+    /// after. Owned. Null: the empty string.
+    next_referrer: ?[]u8 = null,
+
+    /// The `Refresh` header of the response the next document this navigable
+    /// makes is created from, isomorphic decoded ("create and initialize a
+    /// Document object" step 17): run as the shared declarative refresh steps
+    /// once the document exists, before its parser - so the header wins over
+    /// a meta refresh. Set just before the commit and cleared after. Owned.
+    next_refresh: ?[]u8 = null,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -563,6 +583,22 @@ pub const IFrameIntegration = struct {
         const copy: ?[]u8 = if (url) |u| self.allocator.dupe(u8, u) catch null else null;
         if (self.next_about_base_url) |old| self.allocator.free(old);
         self.next_about_base_url = copy;
+    }
+
+    /// The referrer for the next document this navigable makes (a copy), or
+    /// null for none - the empty string.
+    pub fn setNextReferrer(self: *IFrameIntegration, referrer: ?[]const u8) void {
+        const copy: ?[]u8 = if (referrer) |r| self.allocator.dupe(u8, r) catch null else null;
+        if (self.next_referrer) |old| self.allocator.free(old);
+        self.next_referrer = copy;
+    }
+
+    /// The isomorphic decoding of the next document's response's `Refresh`
+    /// header value (a copy made here), or null for none.
+    pub fn setNextRefresh(self: *IFrameIntegration, header_value: ?[]const u8) void {
+        const copy: ?[]u8 = if (header_value) |v| infra.bytes.isomorphicDecodeToUtf8(self.allocator, v) catch null else null;
+        if (self.next_refresh) |old| self.allocator.free(old);
+        self.next_refresh = copy;
     }
 
     /// The policy container for the next document this navigable makes,
@@ -1327,7 +1363,14 @@ pub const IFrameIntegration = struct {
     /// Parse origin from URL (simplified)
     fn parseOriginFromURL(self: *IFrameIntegration, url: []const u8) Origin {
         // Simplified parsing - in real implementation, use full URL parser
-        // For data: and blob: URLs, return opaque origin
+        // URL "origin" for a blob: URL: its path's URL's origin when that is
+        // http(s) - a blob URL is of the origin that made it. (The entry's
+        // environment's origin, step 1, is the same for the URLs
+        // URL.createObjectURL makes.)
+        if (std.mem.startsWith(u8, url, "blob:http://") or std.mem.startsWith(u8, url, "blob:https://")) {
+            return self.parseOriginFromURL(url["blob:".len..]);
+        }
+        // For data: (and any other blob:) URLs, return opaque origin
         if (std.mem.startsWith(u8, url, "data:") or
             std.mem.startsWith(u8, url, "blob:") or
             std.mem.startsWith(u8, url, "javascript:"))

@@ -615,6 +615,7 @@ pub fn installHooks() void {
         .is_unloading = &lifecycleIsUnloading,
         .fire_beforeunload = &lifecycleFireBeforeUnload,
         .unload = &lifecycleUnload,
+        .abort = &lifecycleAbort,
         .destroy = &lifecycleDestroy,
         .set_about_base_url = &lifecycleSetAboutBaseUrl,
         .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
@@ -3999,9 +4000,44 @@ fn becomeInteractive(data: ?*anyopaque) void {
     updateReadiness(@ptrCast(@alignCast(data.?)), ._interactive_);
 }
 
+fn becomeComplete(data: ?*anyopaque) void {
+    updateReadiness(@ptrCast(@alignCast(data.?)), ._complete_);
+}
+
+/// dom.document_lifecycle: HTML "abort" a document (§7.5.6). Step 2 (the
+/// document's fetches) and step 3 (WebDriver BiDi) are not modelled. Step 4:
+/// "If document has an active parser": set its active parser was aborted,
+/// abort that parser, and make document unsalvageable.
+///
+/// Crane parses a frame's document in one synchronous run, so its parser is
+/// "active" exactly while readiness is "loading" - a navigation started by
+/// the document's own script during the parse. The parse runs to its end
+/// (the rest of the markup is still parsed, stated), and lifecycleFinishLoading
+/// then does "abort a parser" step 4 instead of "the end": as in Blink and
+/// Gecko, a document whose load a navigation interrupted never fires load,
+/// and neither does its iframe (navigating-across-documents/
+/// replace-before-load/*).
+fn lifecycleAbort(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    if (internal.ready_state != ._loading_) return;
+    internal.active_parser_was_aborted = true;
+    // "Make document unsalvageable" is left to the unload that follows:
+    // Crane reads an unsalvageable document as unloaded (isShownByItsWindow),
+    // and this one stays its navigable's active document until the
+    // navigation commits. With no bfcache, nothing salvages it either way.
+}
+
 /// dom.document_lifecycle: step 6's task fires DOMContentLoaded; step 9's
 /// completes the load, once step 8 finds nothing delaying it.
 fn lifecycleFinishLoading(document: *runtime.Instance) void {
+    // A parser a navigation aborted (lifecycleAbort) stops without "the
+    // end": HTML "abort a parser" step 4, "Update the current document
+    // readiness to "complete"" - and no DOMContentLoaded, load, pageshow or
+    // load at the container.
+    if (getInternal(document)) |internal| if (internal.active_parser_was_aborted) {
+        engine.runInRealm(document.ctx, becomeComplete, document) catch {};
+        return;
+    };
     // HTML "try to scroll to the fragment" queues its scroll while the parser
     // runs and gives up once it has stopped; Crane parses a document in one
     // run, so that task would always give up. Scroll once parsing is done,

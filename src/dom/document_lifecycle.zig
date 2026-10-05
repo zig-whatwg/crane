@@ -28,6 +28,7 @@ pub const Implementation = struct {
     is_unloading: *const fn (document: *runtime.Instance) bool,
     fire_beforeunload: *const fn (document: *runtime.Instance) BeforeUnloadResult,
     unload: *const fn (document: *runtime.Instance) void,
+    abort: *const fn (document: *runtime.Instance) void,
     destroy: *const fn (document: *runtime.Instance) void,
     set_about_base_url: *const fn (document: *runtime.Instance, url: ?[]const u8) void,
     about_fallback_base_url: *const fn (document: *runtime.Instance) ?[]const u8,
@@ -117,6 +118,15 @@ pub fn unload(document: *runtime.Instance) void {
     impl.unload(document);
 }
 
+/// HTML "abort" `document` (§7.5.6): a parser still running - a navigation
+/// of its navigable began while the page was loading - is aborted, and the
+/// document never fires DOMContentLoaded or load (or load at its container)
+/// and is no longer salvageable.
+pub fn abort(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.abort(document);
+}
+
 /// HTML "destroy" `document` (§7.5.5): it is no longer salvageable and its
 /// browsing context is null - `document.defaultView` answers null from here
 /// on. What "destroy a child navigable" does to the documents of a removed
@@ -184,6 +194,7 @@ test "without an installed implementation nothing is asked of a document" {
     loadDelayMayHaveEnded(&document);
     markInitialAboutBlank(&document);
     unload(&document);
+    abort(&document);
     destroy(&document);
     setAboutBaseUrl(&document, "http://x.test/");
     declarativeRefresh(&document, "0; url=http://x.test/", null);

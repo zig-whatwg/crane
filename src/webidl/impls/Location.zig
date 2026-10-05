@@ -804,6 +804,11 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
     // Step 9: "If navigable's active document's unload counter is greater
     // than 0 ... return."
     if (dom.document_lifecycle.isUnloading(document)) return;
+    // Step 12: "If navigable's allowed to perform a navigation or history
+    // update returns blocked, then ... return."
+    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window))) |navigable| {
+        if (!navigable.allowedToNavigateOrUpdateHistory()) return;
+    }
     const allocator = window.ctx.allocator;
     const document_url = interfaces.Document.get_URL(document) catch return;
     defer document.ctx.allocator.free(document_url);
@@ -1109,18 +1114,37 @@ fn topLevelFragmentNavigation(
     // with a window reads its URL from its realm's record.
     try window.ctx.setDocumentUrl(url);
 
-    // Step 14, "update document for history step application" 6.4.1:
+    // Step 15, "update document for history step application" 6.4.2:
     // "Update the navigation API entries for a same-document navigation
     // given navigation, historyEntry, and historyHandling."
     if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) != null) {
         dom.navigation_api.sameDocumentNavigation(window, if (handling == .push) .push else .replace);
     }
 
+    // 6.4.3: "Fire an event named popstate at document's relevant global
+    // object, using PopStateEvent, with the state attribute initialized to
+    // document's history object's state" - null: 6.3 restored it from the
+    // new entry, whose classic history API state is never carried over.
+    firePopStateNull(window);
+
     // 6.4.5: hashchange, if the fragment changed.
     const old_fragment = navigate_steps.fragmentOf(old_url);
     const new_fragment = navigate_steps.fragmentOf(url);
     const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
     if (!same) queueHashChange(allocator, window, old_url, url);
+}
+
+/// "Update document for history step application" step 6.4.3 for a
+/// fragment navigation's entry: popstate at `window`, its state null.
+fn firePopStateNull(window: *runtime.Instance) void {
+    const event = interfaces.PopStateEvent.call_constructor(
+        window.ctx,
+        runtime.DOMString.initInterned("popstate"),
+        webidl.Opt(dictionaries.PopStateEventInit).passed(.{ .base = .{}, .state = runtime.JSValue.jsNull }),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = dom.fire_event.dispatchTrusted(window, event) catch {};
+    event.releaseIfUnwrapped(generation);
 }
 
 /// BrowsingContext.ensureHistoryEntries's `url_of`.
@@ -1233,12 +1257,26 @@ fn entryDocument() ?*runtime.Instance {
     return interfaces.Window.get_document(window) catch null;
 }
 
+/// The incumbent global object's associated Document: the document of the
+/// window whose realm is the incumbent realm (engine.incumbentRealm). Null
+/// when no script is running, or the incumbent global is no Window.
+fn incumbentDocument() ?*runtime.Instance {
+    const realm = engine.incumbentRealm() orelse return null;
+    const record = realm.getRealm() orelse return null;
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (window.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(window) catch null;
+}
+
 /// HTML "Location-object navigate" this Location's navigable to `url`
 /// (serialized), with `behavior`. Steps 1-2 and 4 are the navigable's
 /// engine's (the navigate callback); step 3 is too, since it reads the
 /// navigable's own record of its document.
 fn locationObjectNavigate(internal: *InternalState, url: []const u8, behavior: navigate_steps.HistoryBehavior) !void {
-    const source = entryDocument();
+    // Step 2: "Let sourceDocument be the incumbent global object's associated
+    // Document" - whose URL the request's referrer is
+    // (multiple-globals/context-for-location*).
+    const source = incumbentDocument();
     const callback = internal.navigate_callback orelse {
         // The top-level page, "navigate"d as far as this engine can.
         const window = internal.window orelse return;
