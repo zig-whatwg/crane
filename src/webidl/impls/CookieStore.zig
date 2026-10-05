@@ -237,12 +237,15 @@ fn scheduleChangeEvent(instance: *runtime.Instance, internal: *InternalState) vo
         .allocator = internal.allocator,
     };
     internal.change_task_queued = true;
+    // A CookieStore's realm is a Window's ([Exposed=(ServiceWorker,Window)],
+    // and no ServiceWorkerGlobalScope realm is made), and a window or frame
+    // realm has its loop and its timers together or neither
+    // (browser/Context.zig takes both from the Browser's loop; a frame
+    // copies its parent's). So there is no timer to fall back to: the only
+    // realm with timers and no loop is a shared worker's.
     if (instance.ctx.getOptionalEventLoop()) |loop| {
         loop.queueTask(.{ .callback = ChangeTask.run, .context = task, .drop = ChangeTask.drop });
         return;
-    }
-    if (instance.ctx.getOptionalTimer()) |timer| {
-        if (timer.setTimeout(0, ChangeTask.run, task) != 0) return;
     }
     // No loop to queue on (a realm built for tests): now.
     ChangeTask.run(task);
