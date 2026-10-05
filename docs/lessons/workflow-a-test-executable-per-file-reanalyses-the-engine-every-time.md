@@ -13,6 +13,7 @@
 | wall | 6,432 s | 1,239 s |
 | CPU (user+sys) | 6,923 s | 1,505 s |
 | peak RSS | 10.0 GB | 10.1 GB |
+| local cache after | 21 GB | 4.0 GB |
 
 Sharing one process exposed three tests that assumed they were first: one needed a per-thread context manager of its own (`AlreadyInitialized`), one asserted no isolate was entered while earlier files' isolates sat beneath its own, and one set a V8 flag after V8 had started (a fatal `!IsFrozen()` CHECK).
 
