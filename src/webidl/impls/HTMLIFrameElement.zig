@@ -174,6 +174,7 @@ pub fn installHooks() void {
         .traverse_navigable = &traverseNavigable,
         .find_by_name = &frameWindowByName,
         .create_browsing_context_and_document = &createBrowsingContextAndDocument,
+        .process_frame_attributes = &processFrameAttributes,
     });
 }
 
@@ -3063,10 +3064,37 @@ fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
     return false;
 }
 
-/// HTML "navigate an iframe or frame" (§4.8.5).
+/// HTML "navigate an iframe or frame" (§4.8.5) for an iframe element.
 fn navigateIframeOrFrame(element: *runtime.Instance, url: []const u8, srcdoc: ?[]const u8, initial_insertion: bool) void {
     const internal = getInternal(element) orelse return;
-    const integration = internal.integration;
+    navigateContainer(element, internal.integration, url, srcdoc, initial_insertion);
+}
+
+/// dom.navigables: HTML "process the frame attributes" (16.3.2) for the
+/// frame element `element`, whose content navigable is `integration`.
+fn processFrameAttributes(element: *runtime.Instance, integration: *IFrameIntegration, initial_insertion: bool) void {
+    if (integration.state == .discarded or integration.browsing_context == null) return;
+    // Step 1: "Let url be the result of running the shared attribute
+    // processing steps for iframe and frame elements given element and
+    // initialInsertion." Step 2: "If url is null, then return."
+    const url = sharedAttributeProcessingSteps(element) orelse return;
+    defer element.ctx.allocator.free(url);
+    // Step 3: "If url matches about:blank and initialInsertion is true: fire
+    // an event named load at element" - the frame keeps its initial
+    // about:blank document, and with the event its navigable no longer
+    // delays its node document's load.
+    if (navigate_steps.matchesAboutBlank(url) and initial_insertion) {
+        dom_module.navigables.containerLoadEventSteps(element, integration);
+        return;
+    }
+    // Step 4: "Navigate an iframe or frame given element, url, the empty
+    // string, null, and initialInsertion."
+    navigateContainer(element, integration, url, null, initial_insertion);
+}
+
+/// HTML "navigate an iframe or frame" (§4.8.5) for `element`, an iframe or
+/// frame element whose content navigable is `integration`.
+fn navigateContainer(element: *runtime.Instance, integration: *IFrameIntegration, url: []const u8, srcdoc: ?[]const u8, initial_insertion: bool) void {
     // Step 1: "Let historyHandling be "auto"."
     var behavior: navigate_steps.HistoryBehavior = .auto;
     // Step 2: "If element's content navigable's active document is not
