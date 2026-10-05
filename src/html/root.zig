@@ -196,11 +196,6 @@ pub const WorkerType = workers.WorkerType;
 pub const WorkerOptions = workers.WorkerOptions;
 pub const WorkerState = workers.WorkerState;
 pub const WorkerError = workers.WorkerError;
-pub const WorkerAgent = workers.WorkerAgent;
-pub const DedicatedWorker = workers.DedicatedWorker;
-pub const SharedWorker = workers.SharedWorker;
-pub const SharedWorkerConnection = workers.SharedWorkerConnection;
-pub const SharedWorkerManager = workers.SharedWorkerManager;
 pub const WorkerLocation = workers.WorkerLocation;
 pub const WorkerNavigator = workers.WorkerNavigator;
 

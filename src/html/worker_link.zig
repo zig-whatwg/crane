@@ -61,6 +61,12 @@ pub const WorkerLink = struct {
     /// for as long as the worker may post (`TaskSink.addSource`).
     owner_sink: *TaskSink,
 
+    /// The realm of the Worker object - the worker's owner - as an opaque
+    /// key: "terminate a worker" for every worker a realm owns when that
+    /// realm ends (`WorkerRegistry.terminateOwnedByRealm`). Compared, never
+    /// dereferenced; set by the owner before the thread starts.
+    owner_realm: ?*const anyopaque = null,
+
     /// Protects `thread`.
     thread_lock: std.Io.Mutex = .init,
     /// The worker's thread, until someone joins it (`join`): its owner, at
@@ -88,11 +94,14 @@ pub const WorkerLink = struct {
         return self;
     }
 
-    /// Give a reference back; the last one frees the link. Its thread must
-    /// have been joined by then.
+    /// Give a reference back; the last one frees the link. A thread no one
+    /// joined - its owner and its registry let it go without joining, which
+    /// only a worker with no Browser does - is detached: it has posted its
+    /// end, so it is at its last instructions.
     pub fn release(self: *WorkerLink) void {
         if (self.refs.fetchSub(1, .acq_rel) != 1) return;
-        std.debug.assert(self.thread == null);
+        if (self.thread) |thread| thread.detach();
+        self.thread = null;
         std.debug.assert(self.agent == null);
         if (self.state.load(.acquire) != .ended) {
             // A worker that never started (its thread was never spawned):
@@ -153,7 +162,11 @@ pub const WorkerLink = struct {
     /// moved the worker to closing (false: it was already closing or ended).
     pub fn terminate(self: *WorkerLink) bool {
         const moved = self.requestClose();
-        {
+        // Only the call that moved the worker to closing aborts its script:
+        // a worker already closing - close() in its own script, or an earlier
+        // terminate - is past its last task, and an abort requested now would
+        // land in its teardown.
+        if (moved) {
             std.Io.Threaded.mutexLock(&self.agent_lock);
             defer std.Io.Threaded.mutexUnlock(&self.agent_lock);
             if (self.agent) |agent| {

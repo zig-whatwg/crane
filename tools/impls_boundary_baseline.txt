@@ -630,10 +630,6 @@ src/webidl/impls/Window.zig Screen.init 1
 src/webidl/impls/Window.zig Storage.initWithStorage 2
 src/webidl/impls/WindowEventHandlers.zig EventTarget.eventHandler 1
 src/webidl/impls/WindowEventHandlers.zig EventTarget.setEventHandler 1
-src/webidl/impls/Worker.zig EventTarget.dispatchTrusted 2
-src/webidl/impls/Worker.zig EventTarget.eventHandler 3
-src/webidl/impls/Worker.zig EventTarget.init 1
-src/webidl/impls/Worker.zig EventTarget.setEventHandler 3
 src/webidl/impls/WorkerGlobalScope.zig EventTarget.deinit 2
 src/webidl/impls/WorkerGlobalScope.zig EventTarget.eventHandler 1
 src/webidl/impls/WorkerGlobalScope.zig EventTarget.init 1

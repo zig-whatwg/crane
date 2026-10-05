@@ -55,6 +55,10 @@ const TestHost = struct {
     close_at_start: bool = false,
     /// A timer to arm that will never fire.
     owned_timer: ?*TimerPayload = null,
+    /// Queue a host microtask, then terminate the worker from its own start:
+    /// the termination is pending, so the agent's end drops the microtask.
+    microtask_then_terminate: bool = false,
+    microtask_ran: std.atomic.Value(bool) = .init(false),
 
     agent: ?*engine.Agent = null,
     realm: ?runtime.Context = null,
@@ -89,7 +93,16 @@ const TestHost = struct {
         }
         if (self.script != null) thread.loop.eventLoop().queueTask(.{ .callback = runScript, .context = self });
         if (self.close_at_start) _ = thread.link.requestClose();
+        if (self.microtask_then_terminate) {
+            thread.loop.eventLoop().queueMicrotask(.{ .callback = markMicrotaskRan, .context = self });
+            _ = thread.link.terminate();
+        }
         return true;
+    }
+
+    fn markMicrotaskRan(data: ?*anyopaque) void {
+        const self: *TestHost = @ptrCast(@alignCast(data.?));
+        self.microtask_ran.store(true, .release);
     }
 
     fn runScript(data: ?*anyopaque) void {
@@ -129,7 +142,7 @@ const TestOwner = struct {
         self.ended.store(true, .release);
     }
 
-    fn onDrop(data: ?*anyopaque) void {
+    fn onDrop(data: ?*anyopaque, _: *WorkerLink) void {
         const self: *TestOwner = @ptrCast(@alignCast(data.?));
         self.dropped.store(true, .release);
     }
@@ -340,4 +353,24 @@ test "the Browser's end terminates every worker and joins every thread" {
         registry.unregister(link);
         link.release();
     }
+}
+
+test "a microtask a terminated worker's agent never ran is freed with the worker's loop" {
+    if (comptime engine.capabilities.script_abort == .unsupported) return error.SkipZigTest;
+    startProcess();
+    // The loop's own allocations, counted: what it leaks shows here.
+    var counted: std.heap.DebugAllocator(.{}) = .init;
+    const loop_allocator = counted.allocator();
+    {
+        const owner_sink = try TaskSink.create(loop_allocator);
+        defer owner_sink.release();
+        const link = try WorkerLink.create(loop_allocator, owner_sink);
+        defer link.release();
+        var host: TestHost = .{ .microtask_then_terminate = true };
+        var owner: TestOwner = .{};
+        try WorkerThread.spawn(loop_allocator, link, host.host(), owner.owner(), null);
+        try testing.expect(spinUntil(owner_sink, &owner.ended, 10_000));
+        try testing.expect(!host.microtask_ran.load(.acquire));
+    }
+    try testing.expect(counted.deinit() == .ok);
 }
