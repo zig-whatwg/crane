@@ -236,6 +236,10 @@ fn stateValue(history: *runtime.Instance, internal: *InternalState, entry: *join
 pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const bc = activeNavigable(internal) orelse return error.SecurityError;
+    // Delta traverse step 3: "If history's relevant global object's
+    // navigable's allowed to perform a navigation or history update returns
+    // blocked, then return."
+    if (!bc.allowedToNavigateOrUpdateHistory()) return;
     const delta_val: i32 = if (delta.wasPassed()) delta.getValue() else 0;
     if (delta_val == 0) {
         // Step 3: "reload document's node navigable" - its current entry,
@@ -352,8 +356,7 @@ threadlocal var push_replace_depth: u32 = 0;
 /// limits also stop (navigate-event/replaceState-inside-back-handler-infinite).
 const max_push_replace_depth = 16;
 
-/// HTML "shared history push/replace state steps". Not modelled, stated:
-/// rate limiting (step 3) beyond the nesting limit above.
+/// HTML "shared history push/replace state steps".
 fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, url: webidl.Opt(?runtime.USVString), handling: joint_history.HistoryHandling) !void {
     // Step 3: "Optionally, throw a SecurityError DOMException."
     if (push_replace_depth >= max_push_replace_depth) return error.SecurityError;
@@ -362,7 +365,7 @@ fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, ur
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Step 1: "Let document be history's associated Document. If document is
     // not fully active, then throw a SecurityError DOMException."
-    _ = activeNavigable(internal) orelse return error.SecurityError;
+    const navigable = activeNavigable(internal) orelse return error.SecurityError;
     const window = internal.window orelse return error.SecurityError;
     const document = try interfaces.Window.get_document(window);
     const allocator = internal.allocator;
@@ -393,6 +396,15 @@ fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, ur
                 new_url = parsed;
             }
         }
+    }
+
+    // Step 6: "If history's relevant global object's navigable's allowed to
+    // perform a navigation or history update returns blocked, then return" -
+    // after the state is serialized and the URL parsed, which throw first
+    // (history_pushstate_too_many_calls_ordering.optional.html).
+    if (!navigable.allowedToNavigateOrUpdateHistory()) {
+        serialized.deinit(allocator);
+        return;
     }
 
     // Steps 7-9: "Let continue be the result of firing a push/replace/reload

@@ -804,6 +804,11 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
     // Step 9: "If navigable's active document's unload counter is greater
     // than 0 ... return."
     if (dom.document_lifecycle.isUnloading(document)) return;
+    // Step 12: "If navigable's allowed to perform a navigation or history
+    // update returns blocked, then ... return."
+    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window))) |navigable| {
+        if (!navigable.allowedToNavigateOrUpdateHistory()) return;
+    }
     const allocator = window.ctx.allocator;
     const document_url = interfaces.Document.get_URL(document) catch return;
     defer document.ctx.allocator.free(document_url);

@@ -27,6 +27,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 const cookiestore = @import("cookiestore");
+const clock = @import("clock");
 
 // Import Origin type from window module
 const Origin = @import("window_proxy.zig").Origin;
@@ -387,6 +388,18 @@ pub const BrowsingContext = struct {
     /// (see `jointHistory`). Owned.
     joint_history: ?*JointHistory = null,
 
+    /// "Allowed to perform a navigation or history update"'s window: when
+    /// it began (monotonic ns) and how many navigations and history updates
+    /// it has counted (see `allowedToNavigateOrUpdateHistory`).
+    navigation_rate_window_start: u64 = 0,
+    navigation_rate_count: u32 = 0,
+
+    /// How many navigations and history updates a navigable may perform in
+    /// one window of `navigation_rate_window` - Blink's NavigationRateLimiter
+    /// (kStateUpdateLimit, 200 per 10 seconds).
+    pub const navigation_rate_limit: u32 = 200;
+    pub const navigation_rate_window: u64 = 10 * std.time.ns_per_s;
+
     /// Create a new browsing context
     pub fn init(allocator: Allocator) !*BrowsingContext {
         const ctx = try allocator.create(BrowsingContext);
@@ -636,6 +649,29 @@ pub const BrowsingContext = struct {
         while (index < out.items.len and out.items.len < 1024) : (index += 1) {
             for (out.items[index].children.items) |child| try out.append(allocator, child);
         }
+    }
+
+    /// HTML "allowed to perform a navigation or history update", the
+    /// navigable's implementation-defined algorithm ("this can return
+    /// blocked if invoked too many times within a certain timespan"): true
+    /// (allowed) for the first `navigation_rate_limit` calls of a window,
+    /// false (blocked) after, until `navigation_rate_window` has passed since
+    /// the window began, when a new one begins. Every call counts, as in
+    /// Blink's NavigationRateLimiter::CanProceed. Asked by navigate (step
+    /// 12), the shared history push/replace state steps (step 6) and delta
+    /// traverse (step 3).
+    pub fn allowedToNavigateOrUpdateHistory(self: *BrowsingContext) bool {
+        return self.allowedToNavigateOrUpdateHistoryAt(@intCast(@max(0, clock.monotonicNanos())));
+    }
+
+    /// `allowedToNavigateOrUpdateHistory` at `now` (monotonic ns).
+    pub fn allowedToNavigateOrUpdateHistoryAt(self: *BrowsingContext, now: u64) bool {
+        if (self.navigation_rate_count == 0 or now -| self.navigation_rate_window_start >= navigation_rate_window) {
+            self.navigation_rate_window_start = now;
+            self.navigation_rate_count = 0;
+        }
+        self.navigation_rate_count +|= 1;
+        return self.navigation_rate_count <= navigation_rate_limit;
     }
 
     /// Check if this browsing context is a top-level browsing context (§7.1)

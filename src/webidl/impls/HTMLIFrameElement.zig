@@ -1084,6 +1084,14 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         if (document_lifecycle.isUnloading(doc)) return;
     }
 
+    // Step 12: "If navigable's allowed to perform a navigation or history
+    // update returns blocked, then ... return." Not for the navigations the
+    // engine starts itself - an element's insertion, a traversal, the
+    // browser's UI - which Blink's limiter does not count either.
+    if (!options.initial_insertion and options.traversal_entry == 0 and options.user_involvement != .browser_ui) {
+        if (!browsing_context.allowedToNavigateOrUpdateHistory()) return;
+    }
+
     // The navigable's session history has its current entry before anything
     // changes ("initialize the navigable").
     _ = browsing_context.ensureHistoryEntries(&history_documents.infoOf) catch {};
