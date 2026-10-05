@@ -19,6 +19,7 @@ const NodeImpl = @import("Node.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
 const form_associated = @import("html").form_associated;
 const dom = @import("dom");
+const log = std.log.scoped(.textarea);
 
 pub const State = HTMLTextAreaElement.State;
 
@@ -192,6 +193,16 @@ pub fn init(
     const HTMLElementImpl = @import("HTMLElement.zig");
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
+
+    // A new textarea at this address: an entry already under it is a dead
+    // textarea's that a teardown missed. `StateMap` fills lazily, so left in
+    // place it would be taken for this one's - a raw value nobody gave it
+    // (docs/lessons/architecture-an-address-keyed-entry-a-teardown-misses-is-inherited.md).
+    if (StateMap.remove(instance)) |stale| {
+        var dead = stale;
+        dead.deinit();
+        log.err("stale HTMLTextAreaElement state at a reissued address: a teardown missed it", .{});
+    }
 
     // No state is recorded here on purpose: `StateMap` fills in lazily on the
     // first assignment, so an element the parser created and script never

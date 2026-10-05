@@ -341,6 +341,7 @@ pub fn clamp(comptime T: type, value: anytype) T {
 pub fn initializeRuntime(allocator: std.mem.Allocator) void {
     SlabAllocator.init(allocator);
     ArenaAllocator.init(allocator);
+    @import("webidl").utils.beginRegistryRuntime(); // a new arena: the registries' entries from before it are gone
     // Initialize internal state registry with provided allocator
     // This prevents memory fragmentation from using page_allocator
     internal_state.initRegistry(allocator);

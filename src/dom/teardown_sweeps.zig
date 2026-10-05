@@ -8,7 +8,7 @@
 //! process start: its installHooks) and cleanup runs every installed sweep; cleanup never imports
 //! the type.
 //!
-//! lint-impls: hook for HTMLInputElement, HTMLTextAreaElement, ProcessingInstruction
+//! lint-impls: hook for HTMLInputElement, HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction
 
 const std = @import("std");
 const process_start = @import("process_start.zig");

@@ -14,6 +14,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLOptionElement = interfaces.HTMLOptionElement;
+const log = std.log.scoped(.option);
 
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
@@ -89,7 +90,19 @@ const StateMap = struct {
         if (ensure().fetchRemove(@intFromPtr(instance))) |kv| return kv.value;
         return null;
     }
+
+    /// Forget every entry. The states own nothing heap-allocated.
+    fn sweep() void {
+        if (map) |*m| m.clearRetainingCapacity();
+    }
 };
+
+/// dom.teardown_sweeps: the options no teardown reached - nodes no exit
+/// frees - leave the map with the browser, rather than as stale entries a new
+/// option of the next browser could be born under.
+fn cleanupAllRemainingInternal() void {
+    StateMap.sweep();
+}
 
 /// https://html.spec.whatwg.org/multipage/form-elements.html#concept-option-selectedness
 ///
@@ -140,6 +153,7 @@ pub fn installHooks() void {
     // The select element's reset algorithm is this file's, as the rest of
     // the selection model is: installed before any option exists.
     @import("dom").form_controls.install(.{ .is = &isSelectElement, .reset = &resetSelect });
+    @import("dom").teardown_sweeps.install(&cleanupAllRemainingInternal);
 }
 
 /// Initialize instance (creates the instance)
@@ -155,6 +169,14 @@ pub fn init(
     const HTMLElementImpl = @import("HTMLElement.zig");
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
+
+    // A new option at this address: an entry already under it is a dead
+    // option's that a teardown missed. `StateMap` fills lazily, so left in
+    // place it would be taken for this one's - a selectedness nobody set
+    // (docs/lessons/architecture-an-address-keyed-entry-a-teardown-misses-is-inherited.md).
+    if (StateMap.remove(instance) != null) {
+        log.err("stale HTMLOptionElement state at a reissued address: a teardown missed it", .{});
+    }
 
     // No state is recorded here on purpose: `StateMap` fills in lazily on the
     // first assignment, so an element the parser created and script never
