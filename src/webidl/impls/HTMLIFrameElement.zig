@@ -405,7 +405,6 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
     giveReferrer(document_instance, browsing_ctx_ptr);
-    giveRefresh(document_instance, browsing_ctx_ptr);
     // HTML "create a new browsing context and document" step 15: the initial
     // about:blank document's type is "html" and its content type
     // "text/html". Set before the elements below are created, which it makes
@@ -532,7 +531,6 @@ fn parseHtmlForIframe(
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
     giveReferrer(document_instance, browsing_ctx_ptr);
-    giveRefresh(document_instance, browsing_ctx_ptr);
 
     const DocumentImpl = @import("Document.zig");
     if (window_instance) |window_inst| {
@@ -543,6 +541,9 @@ fn parseHtmlForIframe(
     } else {
         log.debug("[parseHtmlForIframe] BC={*} WARNING: No active window, document {*} will NOT be linked!", .{ browsing_ctx_ptr, document_instance });
     }
+    // Step 17, once the document is its window's - its URL, which the
+    // header's URL is parsed against, is the navigation's from then on.
+    giveRefresh(document_instance, browsing_ctx_ptr);
 
     // The encoding sniffing algorithm's step 6: the container document's
     // encoding, when it is same origin with the new document.
