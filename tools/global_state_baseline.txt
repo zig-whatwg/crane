@@ -185,6 +185,8 @@ src/html/script_execution.zig parser_script_loader 1 TL C decl:da637648594fc612
 src/html/script_execution.zig script_fetches 1 TL R decl:b358738a91fcb3d0
 src/html/style_sheet_loading.zig loads 1 TL R decl:30a96afe84f33aff
 src/html/style_sheet_loading.zig next_id 1 TL I/engine decl:e78eed1e4659a6b5
+src/html/web_locks/lock_managers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
+src/html/web_locks/lock_objects.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/html/window/browsing_context.zig live 1 TL I/engine decl:4eb3c63ce8391a0c
 src/html/window/browsing_context.zig next_context_id 1 G I/engine decl:e78eed1e4659a6b5
 src/html/window/browsing_context.zig next_group_id 1 G I/engine decl:e78eed1e4659a6b5
