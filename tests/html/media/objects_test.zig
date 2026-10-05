@@ -125,3 +125,32 @@ test "source URL retains its last-change document base until src changes again" 
     try interfaces.HTMLSourceElement.set_src(source, "movie.webm");
     try testing.expectEqualStrings("https://new.test/elsewhere/movie.webm", hooks.sourceURL(source).?);
 }
+
+test "an unread track element creates no orphan TextTrack allocation" {
+    start();
+    defer runtime.deinitializeRuntime();
+    var ctx = try runtime.ContextData.init(testing.allocator, .{});
+    defer ctx.deinit();
+    const element = try interfaces.HTMLTrackElement.init(testing.allocator, &ctx);
+    defer interfaces.HTMLTrackElement.deinit(element);
+    try testing.expectEqual(@as(u16, 0), try interfaces.HTMLTrackElement.get_readyState(element));
+}
+
+test "the first track getter seeds attributes set before lazy creation" {
+    start();
+    defer runtime.deinitializeRuntime();
+    var ctx = try runtime.ContextData.init(testing.allocator, .{});
+    defer ctx.deinit();
+    const element = try interfaces.HTMLTrackElement.init(testing.allocator, &ctx);
+    defer interfaces.HTMLTrackElement.deinit(element);
+    try dom.node_creation.setElementNames(element, "http://www.w3.org/1999/xhtml", "track");
+    try interfaces.HTMLTrackElement.set_kind(element, .initInterned("captions"));
+    try interfaces.HTMLTrackElement.set_label(element, .initInterned("before"));
+    const child = try interfaces.HTMLTrackElement.get_track(element);
+    defer interfaces.TextTrack.deinit(child); // The engine-free fixture owns it.
+    var label = try interfaces.TextTrack.get_label(child);
+    defer label.deinit(testing.allocator);
+    try testing.expectEqualStrings("before", label.asSlice());
+    try testing.expect((try interfaces.TextTrack.get_kind(child)) == ._captions_);
+    try testing.expectEqual(child, try interfaces.HTMLTrackElement.get_track(element));
+}

@@ -4035,7 +4035,7 @@ fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
     // in order as soon as possible are empty" - script_execution says when a
     // script leaves them (loadDelayMayHaveEnded). Then step 8.
     const scripts_pending = internal.scripts.scripts_to_execute_asap.items.len > 0 or internal.scripts.scripts_to_execute_in_order_asap.items.len > 0;
-    if (scripts_pending or @import("dom").content_navigables.delaysLoadEvent(document) or @import("dom").style_sheet_owners.delaysLoadEvent(document)) {
+    if (scripts_pending or @import("dom").content_navigables.delaysLoadEvent(document) or @import("dom").style_sheet_owners.delaysLoadEvent(document) or @import("dom").media_elements.mediaDelaysLoadEvent(document)) {
         internal.load_waiting_on_delay = true;
         return;
     }

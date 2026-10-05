@@ -1,5 +1,5 @@
 //! HTML's media owner steps that have no IDL member. Installed at process start.
-//! lint-impls: hook for MediaError, TextTrack, HTMLTrackElement, HTMLSourceElement, HTMLMediaElement
+//! lint-impls: hook for MediaError, TextTrack, TextTrackList, HTMLTrackElement, HTMLSourceElement, HTMLMediaElement
 const std = @import("std");
 const runtime = @import("runtime");
 const process_start = @import("process_start.zig");
@@ -20,12 +20,22 @@ const CreateError = *const fn (runtime.Context, ErrorCode) anyerror!*runtime.Ins
 const ModeChanged = *const fn (*runtime.Instance, Mode, Mode) void;
 const SourceURL = *const fn (*runtime.Instance) ?[]const u8;
 const DelaysLoad = *const fn (*runtime.Instance) bool;
+const ParentChanged = *const fn (*runtime.Instance, ?*runtime.Instance, ?*runtime.Instance) void;
+const TrackModeChanged = *const fn (*runtime.Instance) void;
+pub const ListOperations = struct {
+    create: *const fn (runtime.Context) anyerror!*runtime.Instance,
+    append: *const fn (*runtime.Instance, *runtime.Instance) anyerror!void,
+    remove: *const fn (*runtime.Instance, *runtime.Instance) void,
+};
 pub const Implementation = struct {
     create_error: ?CreateError = null,
     track: ?TrackOperations = null,
     mode_changed: ?ModeChanged = null,
     source_url: ?SourceURL = null,
     delays_load: ?DelaysLoad = null,
+    list: ?ListOperations = null,
+    parent_changed: ?ParentChanged = null,
+    track_mode_changed: ?TrackModeChanged = null,
 };
 // process-wide: hook table written only by its owners at process start (B0); immutable while Browsers run, comptime in B9
 var implementation: ?Implementation = null;
@@ -47,8 +57,34 @@ pub fn installTrackElement(changed: ModeChanged) void {
 pub fn installSourceElement(url: SourceURL) void {
     installing().source_url = url;
 }
-pub fn installMediaElement(delays_load: DelaysLoad) void {
-    installing().delays_load = delays_load;
+pub fn installMediaElement(delays_load: DelaysLoad, parent_changed: ParentChanged, mode_changed: TrackModeChanged) void {
+    const table = installing();
+    table.delays_load = delays_load;
+    table.parent_changed = parent_changed;
+    table.track_mode_changed = mode_changed;
+}
+pub fn installTextTrackList(operations: ListOperations) void {
+    installing().list = operations;
+}
+pub fn createTextTrackList(ctx: runtime.Context) !*runtime.Instance {
+    const list = (implementation orelse return error.NotSupported).list orelse return error.NotSupported;
+    return list.create(ctx);
+}
+pub fn appendTextTrack(object: *runtime.Instance, track: *runtime.Instance) !void {
+    const list = (implementation orelse return error.NotSupported).list orelse return error.NotSupported;
+    return list.append(object, track);
+}
+pub fn removeTextTrack(object: *runtime.Instance, track: *runtime.Instance) void {
+    const list = (implementation orelse return).list orelse return;
+    list.remove(object, track);
+}
+pub fn trackElementParentChanged(element: *runtime.Instance, old_parent: ?*runtime.Instance, new_parent: ?*runtime.Instance) void {
+    const changed = (implementation orelse return).parent_changed orelse return;
+    changed(element, old_parent, new_parent);
+}
+pub fn textTrackModeChanged(media: *runtime.Instance) void {
+    const changed = (implementation orelse return).track_mode_changed orelse return;
+    changed(media);
 }
 
 pub fn createError(ctx: runtime.Context, code: ErrorCode) !*runtime.Instance {
@@ -110,4 +146,9 @@ test "uninstalled media hooks define every fallback without accessing an instanc
     trackModeChanged(&instance, .disabled, .hidden);
     try std.testing.expect(sourceURL(&instance) == null);
     try std.testing.expect(!mediaDelaysLoadEvent(&instance));
+    try std.testing.expectError(error.NotSupported, createTextTrackList(&ctx));
+    try std.testing.expectError(error.NotSupported, appendTextTrack(&instance, &instance));
+    removeTextTrack(&instance, &instance);
+    trackElementParentChanged(&instance, null, null);
+    textTrackModeChanged(&instance);
 }
