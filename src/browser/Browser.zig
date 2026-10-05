@@ -244,6 +244,15 @@ pub const Browser = struct {
     /// This destroys the V8 isolate and all associated contexts.
     /// All storage is flushed to disk before cleanup.
     pub fn deinit(self: *Browser) void {
+        // Every worker thread of this Browser ends first - terminated, then
+        // joined - before the page's teardown and before the runtime's
+        // allocators go: the slab and arena every platform object comes from
+        // must outlive every thread (workers design 2.4). What the workers
+        // posted to this loop since is dropped with it.
+        if (self.scope.existing(@import("html").WorkerRegistry)) |registry| {
+            registry.terminateAll();
+            registry.joinAll();
+        }
         // The workers on this loop end first. A worker's end is a timer on
         // this loop, armed when its Worker object lets go; the page's
         // teardown below would arm it, and event_loop.deinit would drop it
