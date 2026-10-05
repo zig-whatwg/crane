@@ -187,6 +187,9 @@ areas = ["html/browsers/origin/", "html/browsers/the-window-object/"]
 progress = [
   "75bda94c8a (merged 3998de390) - Location members' same origin-domain checks (SecurityError), src/html/origin_domain.zig",
   "c5e5b6f1f3 (merged aa6406b5b) - policy containers on Documents and workers; CSP (fetch checks, hashes, violation events, frame-ancestors), Referrer Policy and Upgrade Insecure Requests delivered and enforced",
+  "3ddeba9cbc (merged b410f65587) - CSP enforcement 1: inline checks for <style>, style attributes and event handler attributes, report-sample, and string compilation (eval, Function, wasm) through the engine's code-generation host hooks (cspenforce lane)",
+  "a5a5e38ead (merged 369506887a) - CSP enforcement 2: javascript: URL navigations under 4.2.4 with Trusted Types, string timers checked at the call (as all three engines), violations carry the running script's location, requestIdleCallback in reused Windows (csp2 lane)",
+  "79a43f2163 (merged 5669503a7b) - Mixed Content: upgrade, request and response blocking per the Editor's Draft, inherited prohibition, per-hop redirect checks, WebSocket handshakes with UIR (Codex)",
 ]
 
   [[infra.items]]
