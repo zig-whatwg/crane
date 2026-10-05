@@ -1335,6 +1335,16 @@ fn runBeforeUnload(context: ?*anyopaque) void {
             endLoadDelay(again.integration);
             return;
         }
+        // Step 24.3: "Queue a global task ... to abort a document and its
+        // descendants given navigable's active document." Deviation, stated:
+        // done now, not from a task - Crane parses a document in one run, so a
+        // task would always find its parser finished; done now, it stops the
+        // load of a document whose own script started this navigation while
+        // it was being parsed, as browsers do (replace-before-load/*).
+        for (documents.items) |entry| {
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            document_lifecycle.abort(entry.document);
+        }
     }
     startFetch(navigationById(id) orelse return);
 }
