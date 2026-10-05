@@ -501,11 +501,17 @@ pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: dictionarie
 pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(dictionaries.NavigationNavigateOptions)) anyerror!dictionaries.NavigationResult {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const opts: ?dictionaries.NavigationNavigateOptions = if (options.was_passed) options.value else null;
-    const scope = scopeOf(instance, internal) orelse return earlyError(instance, "InvalidStateError", "The document is not fully active.");
+    // Step 4's document - "this's relevant global object's associated
+    // Document" - whether or not it is fully active: steps 1-7 run first
+    // (navigate-rejection-order-*-detached.html: a detached frame's
+    // navigate() with an unparsable URL or unserializable state reports
+    // that, not InvalidStateError).
+    const window = windowOf(instance, internal) orelse return earlyError(instance, "InvalidStateError", "The document is not fully active.");
+    const document = interfaces.Window.get_document(window) catch return earlyError(instance, "InvalidStateError", "The document is not fully active.");
 
     // Step 1: "Let urlRecord be the result of parsing a URL given url,
     // relative to this's relevant settings object." Failure: SyntaxError.
-    const url_record = parseRelative(scope.document, url, internal.allocator) catch
+    const url_record = parseRelative(document, url, internal.allocator) catch
         return earlyError(instance, "SyntaxError", "The URL could not be parsed.");
     defer internal.allocator.free(url_record);
 
@@ -523,7 +529,7 @@ pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, option
         ._push_ => .push,
         ._replace_ => .replace,
     } else .auto;
-    if (behavior == .push and dom.document_lifecycle.isInitialAboutBlank(scope.document)) {
+    if (behavior == .push and dom.document_lifecycle.isInitialAboutBlank(document)) {
         return earlyError(instance, "NotSupportedError", "A push is not possible here.");
     }
 
