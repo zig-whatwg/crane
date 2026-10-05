@@ -280,12 +280,12 @@ src/runtime/engines/v8/v8_wrapper.cpp g_next_context_id 1 C++G P-const decl:0803
 src/runtime/engines/v8/v8_wrapper.cpp g_obj_src 1 C++G D decl:a77999f16fffafe4
 src/runtime/engines/v8/v8_wrapper.cpp g_platform 1 C++G P-res decl:04332a53a4ac320c
 src/runtime/engines/v8/v8_wrapper.cpp g_promise_reject_callback 1 C++G I/engine decl:71cfa251892f06c3
-src/runtime/engines/v8/v8_wrapper.cpp g_protocol_code_generation 1 C++G P-res decl:399f490c0d76ef53
+src/runtime/engines/v8/v8_wrapper.cpp g_protocol_code_generation 1 C++G P-res decl:c54965ebf81c39d6
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_dynamic_import 1 C++G H decl:d2b81a848e9fb100
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_import_meta_resolve 1 C++G H decl:c9afcd8df74f9f36
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_import_meta_url 1 C++G H decl:70ca9288052ee146
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_promise_reject 1 C++G H decl:d0a937e41815c8d2
-src/runtime/engines/v8/v8_wrapper.cpp g_protocol_wasm_code_generation 1 C++G P-res decl:c68296efdda570c5
+src/runtime/engines/v8/v8_wrapper.cpp g_protocol_wasm_code_generation 1 C++G P-res decl:26a45e5240a188b5
 src/runtime/engines/v8/v8_wrapper.cpp g_shadow_realm_callback 1 C++G I/engine decl:d1d37d7f3e839786
 src/runtime/engines/v8/v8_wrapper.cpp g_site_count 1 C++G D decl:c4af8dddffd39994
 src/runtime/engines/v8/v8_wrapper.cpp g_site_pc 1 C++G D decl:cccefce67abe09da
@@ -363,4 +363,5 @@ src/webidl/types/buffer_sources.zig engine_buffer 1 G P-const decl:9bc1d032c76bb
 src/webidl/types/dictionaries.zig mock_data 1 G X decl:f33e1c60fc8c8315
 src/webidl/utils/registry.zig InstanceRegistry.guard 1 G I/engine decl:0492ce83193eb819
 src/webidl/utils/registry.zig InstanceRegistry.map 1 G I/engine decl:59165264326ba34d
+src/webidl/utils/registry.zig runtime_epoch 1 G P-res decl:1dfcee87d8da8735
 src/websocket/connection.zig handshake_gate 1 TL I/profile decl:f0ae7878d15d1ca1
