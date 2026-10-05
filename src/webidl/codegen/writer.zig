@@ -2715,13 +2715,6 @@ fn writeSingleOperation(
     return writeOperationDelegate(writer, impl_name, op, type_registry, "", false);
 }
 
-/// Write one operation's delegate, named `call_<name><suffix>`.
-///
-/// `gated`: the impl may not provide this function yet - true for the
-/// overloads after the first, which impls grow into one at a time. The
-/// delegate then compiles either way and answers `error.NotImplemented` until
-/// the impl declares it; the `overloads` table records which is which, so the
-/// binding never picks an overload the impl lacks.
 /// HTML 4.13.6 [CEReactions]: "Push a new element queue onto this object's
 /// relevant agent's custom element reactions stack", run the member's steps,
 /// then pop it and invoke its reactions - so the bracket names "this object",
@@ -2735,6 +2728,13 @@ fn writeCEReactionsBracket(writer: anytype, is_static: bool) !void {
     try writer.writeAll("        \n");
 }
 
+/// Write one operation's delegate, named `call_<name><suffix>`.
+///
+/// `gated`: the impl may not provide this function yet - true for the
+/// overloads after the first, which impls grow into one at a time. The
+/// delegate then compiles either way and answers `error.NotImplemented` until
+/// the impl declares it; the `overloads` table records which is which, so the
+/// binding never picks an overload the impl lacks.
 fn writeOperationDelegate(
     writer: anytype,
     impl_name: []const u8,
