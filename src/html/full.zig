@@ -211,6 +211,8 @@ pub const hyperlink_auditing = @import("hyperlink_auditing.zig");
 /// A link or style element's style sheet load, with its critical
 /// subresources, and a link's preload.
 pub const style_sheet_loading = @import("style_sheet_loading.zig");
+// Media owner tasks, events and incremental resource fetching.
+pub const media_runtime = @import("media/runtime.zig");
 
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing

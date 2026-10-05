@@ -42,7 +42,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for length
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0;
+}
+
+/// HTML text track API: the cue at a supported index. No cue format is
+/// implemented yet (Q10), so this empty list has no supported indices.
+pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = index;
+    return error.IndexSizeError;
 }
 
 /// Operation: getCueById

@@ -1,61 +1,57 @@
-//! Implementation for TrackEvent interface
-
+//! HTML TrackEvent: Event construction and a traced nullable track attribute.
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const TrackEvent = interfaces.TrackEvent;
-
-pub const State = TrackEvent.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
+const construction = @import("dom").event_construction;
+const same_object = @import("same_object.zig");
+pub const State = interfaces.TrackEvent.State;
+pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    track: ?*runtime.Instance = null,
+    edge: same_object.Traced = .{ .slot = .{ .name = "track" } },
+};
+pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
+    const instance = try interfaces.Event.initWithState(allocator, StateType, vtable, ctx);
+    instance.getState(State).own._internal = null;
+    errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+    const data = try allocator.create(InternalState);
+    data.* = .{ .allocator = allocator };
+    instance.getState(State).own._internal = data;
     return instance;
 }
-
-/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |data| {
+        state.own._internal = null;
+        data.edge.release(instance);
+        data.allocator.destroy(data);
+    }
+    interfaces.Event.deinit(instance);
 }
-
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.TrackEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &TrackEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = @"type";
-    _ = eventInitDict;
-    // TODO: Implement constructor logic with parameters
-
+pub fn call_constructor(ctx: runtime.Context, event_type: runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.TrackEventInit)) !*runtime.Instance {
+    const instance = try interfaces.TrackEvent.init(ctx.allocator, ctx);
+    errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+    const dictionary = if (eventInitDict.wasPassed()) eventInitDict.value else dictionaries.TrackEventInit{ .base = .{} };
+    // DOM inner event creation steps, including inherited EventInit flags.
+    try construction.innerEventCreationSteps(instance, event_type, construction.eventInitFrom(dictionary.base));
+    if (dictionary.track) |value| {
+        const track = switch (value) {
+            .instance => |object| object,
+            .null, .undefined => return instance,
+            else => engine.convertToPlatformObject(ctx, value) orelse return error.TypeError,
+        };
+        const name = track.vtable.name;
+        if (!std.mem.eql(u8, name, "TextTrack") and !std.mem.eql(u8, name, "AudioTrack") and !std.mem.eql(u8, name, "VideoTrack")) return error.TypeError;
+        const data = instance.getState(State).own._internal.?;
+        data.track = track;
+        data.edge.hold(instance, track);
+    }
     return instance;
 }
-
-/// Getter for track
 pub fn get_track(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    const data = instance.getState(State).own._internal.?;
+    return if (data.track) |track| .{ .instance = track } else null;
 }

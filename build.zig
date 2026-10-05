@@ -2265,6 +2265,7 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("interfaces", interfaces_mod);
     html_mod.addImport("impls", impls_mod);
     html_mod.addImport("runtime", runtime_mod);
+    html_mod.addImport("platform", platform_mod);
     // WebIDL types needed by custom_elements.zig and upgrade.zig
     html_mod.addImport("webidl", webidl_mod);
     // Dependencies for script_execution.zig, script_runner.zig, event_utils.zig
@@ -2741,6 +2742,8 @@ pub fn build(b: *std.Build) void {
             // For tests that make platform objects with no Browser: the hooks
             // (interfaces.process_hooks.startHooksForTest).
             .{ .name = "interfaces", .module = interfaces_mod },
+            // Media owner-hook tests reach only the public DOM seam.
+            .{ .name = "dom", .module = dom_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
