@@ -100,6 +100,17 @@ pub fn Reaction(comptime runtime: type, comptime engine: type) type {
             return if (owned.callback) |*function| function else null;
         }
 
+        /// Borrow the wrapped document values captured at enqueue time. A
+        /// document's realm can end while the adopted element's realm lives;
+        /// retaining its wrapper does not preserve the native Instance.
+        pub fn adoptedValues(self: *const Self) ?[2]runtime.JSValue {
+            const owned = self.owned orelse return null;
+            return .{
+                (owned.old_document orelse return null).value,
+                (owned.new_document orelse return null).value,
+            };
+        }
+
         pub fn deinit(self: *Self) void {
             const owned = self.owned orelse return;
             self.owned = null;

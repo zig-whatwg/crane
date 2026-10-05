@@ -25,7 +25,12 @@ const Engine = struct {
     };
     pub fn retainValue(context: Runtime.Context, value: Runtime.JSValue) !Owned {
         context.retained += 1;
-        return .{ .value = value, .counts = context };
+        // A wrapped platform value remains a JS value after the native
+        // Instance ends; model the wrapper by its independent identity.
+        return .{ .value = switch (value) {
+            .instance => |instance| .{ .integer = instance.id },
+            else => value,
+        }, .counts = context };
     }
 };
 const Reaction = @import("html_core").custom_element_reaction.Reaction(Runtime, Engine);
@@ -65,6 +70,26 @@ test "CE reaction data: adoption holds both document arguments until dropped" {
     } });
     try testing.expectEqual(@as(usize, 3), counts.retained);
     try testing.expectEqual(@as(usize, 0), counts.released);
+    reaction.deinit();
+    try testing.expectEqual(counts.retained, counts.released);
+}
+
+test "CE reaction data: adoption invokes the retained values after document instances retire" {
+    var counts = Counts{};
+    const callback = Engine.CallbackFunction{ .function = .{ .value = .{ .integer = 1 } }, .context = &counts };
+    const old = try testing.allocator.create(Runtime.Instance);
+    const new = try testing.allocator.create(Runtime.Instance);
+    old.* = .{ .id = 7 };
+    new.* = .{ .id = 8 };
+    var reaction = try Reaction.initCallback(testing.allocator, &counts, callback, .adopted, .{ .adopted = .{
+        .old_document = old,
+        .new_document = new,
+    } });
+    testing.allocator.destroy(old);
+    testing.allocator.destroy(new);
+    const values = reaction.adoptedValues().?;
+    try testing.expectEqual(@as(u32, 7), values[0].integer);
+    try testing.expectEqual(@as(u32, 8), values[1].integer);
     reaction.deinit();
     try testing.expectEqual(counts.retained, counts.released);
 }
