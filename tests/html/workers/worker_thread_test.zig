@@ -55,10 +55,12 @@ const TestHost = struct {
     close_at_start: bool = false,
     /// A timer to arm that will never fire.
     owned_timer: ?*TimerPayload = null,
-    /// Queue a host microtask, then terminate the worker from its own start:
-    /// the termination is pending, so the agent's end drops the microtask.
-    microtask_then_terminate: bool = false,
+    /// Define `queueHost()` in the realm: it queues a host microtask through
+    /// the worker's loop, behind whatever the script queued before.
+    define_queue_host: bool = false,
     microtask_ran: std.atomic.Value(bool) = .init(false),
+    event_loop: ?runtime.EventLoop = null,
+    queue_host: runtime.BuiltinFunction = undefined,
 
     agent: ?*engine.Agent = null,
     realm: ?runtime.Context = null,
@@ -91,13 +93,20 @@ const TestHost = struct {
         if (self.owned_timer) |payload| {
             _ = thread.loop.timerInterface().setTimeoutOwned(60_000, TimerPayload.fire, payload, TimerPayload.drop);
         }
+        if (self.define_queue_host) {
+            self.event_loop = thread.loop.eventLoop();
+            self.queue_host = .{ .steps = queueHostSteps, .data = self };
+            engine.defineBuiltinFunction(made.realm, "queueHost", 0, &self.queue_host) catch return false;
+        }
         if (self.script != null) thread.loop.eventLoop().queueTask(.{ .callback = runScript, .context = self });
         if (self.close_at_start) _ = thread.link.requestClose();
-        if (self.microtask_then_terminate) {
-            thread.loop.eventLoop().queueMicrotask(.{ .callback = markMicrotaskRan, .context = self });
-            _ = thread.link.terminate();
-        }
         return true;
+    }
+
+    fn queueHostSteps(data: ?*anyopaque, _: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
+        const self: *TestHost = @ptrCast(@alignCast(data.?));
+        self.event_loop.?.queueMicrotask(.{ .callback = markMicrotaskRan, .context = self });
+        return runtime.JSValue.jsUndefined;
     }
 
     fn markMicrotaskRan(data: ?*anyopaque) void {
@@ -116,6 +125,7 @@ const TestHost = struct {
         const self: *TestHost = @ptrCast(@alignCast(data.?));
         if (self.realm) |realm| engine.destroyWorkerRealm(realm, null, null);
         self.realm = null;
+
         self.realm_ended.store(true, .release);
     }
 
@@ -366,9 +376,18 @@ test "a microtask a terminated worker's agent never ran is freed with the worker
         defer owner_sink.release();
         const link = try WorkerLink.create(loop_allocator, owner_sink);
         defer link.release();
-        var host: TestHost = .{ .microtask_then_terminate = true };
+        // A script microtask spins in the checkpoint after the script, with
+        // the host microtask behind it; terminated there, V8 clears the rest
+        // of the queue unrun (MicrotaskQueue::RunMicrotasks).
+        var host: TestHost = .{
+            .script = "queueMicrotask(() => { for (;;) {} }); queueHost();",
+            .define_queue_host = true,
+        };
         var owner: TestOwner = .{};
         try WorkerThread.spawn(loop_allocator, link, host.host(), owner.owner(), null);
+        try testing.expect(waitFor(&host.started, 10_000));
+        @import("clock").sleep(50 * std.time.ns_per_ms);
+        _ = link.terminate();
         try testing.expect(spinUntil(owner_sink, &owner.ended, 10_000));
         try testing.expect(!host.microtask_ran.load(.acquire));
     }
