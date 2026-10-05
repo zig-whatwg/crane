@@ -1125,7 +1125,20 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // ends any earlier one.
     const id = next_navigation_id;
     next_navigation_id += 1;
-    setOngoingNavigation(integration, .{ .id = id });
+    if (options.traversal_entry != 0) {
+        // A traversal's (or reload's) navigation: "apply the history step"
+        // sets the navigable's ongoing navigation itself - not through "set
+        // the ongoing navigation", so the navigation API is not informed
+        // about aborting navigation. The traverse or reload navigate event
+        // that led here, and its API method tracker, stay ongoing: a
+        // cross-document traversal's promises never settle
+        // (navigation-methods/return-value/reload.html, reload-no-args.html).
+        switch (integration.ongoing_navigation) {
+            .id => |old| endNavigation(old),
+            else => {},
+        }
+        integration.ongoing_navigation = .{ .id = id };
+    } else setOngoingNavigation(integration, .{ .id = id });
 
     const record = allocator.create(Navigation) catch return;
     record.* = .{
@@ -1240,7 +1253,11 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // (unloading-documents/beforeunload-synchronous.html, prompt/001.html,
     // navigation-api/navigation-methods/return-value/*-beforeunload.html:
     // the beforeunload handler has run when location.href= or navigate()
-    // returns).
+    // returns). A traversal's navigation (and a reload's) has had its
+    // beforeunload already: "apply the history step" checks it for every
+    // navigable the traversal takes to another document, before their
+    // navigate events (History's runTraversal and reload).
+    if (options.traversal_entry != 0) return startFetch(navigationById(id) orelse return);
     runBeforeUnload(@ptrFromInt(id));
 }
 
