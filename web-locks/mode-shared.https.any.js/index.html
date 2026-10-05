@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../web-locks/"><code>web-<wbr>locks/</code></a></li><li aria-current="page"><code>mode-<wbr>shared.<wbr>https.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>mode-<wbr>shared.<wbr>https.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="web-locks/mode-shared.https.any.js">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 4</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>4</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">4</span><span class="fg-of"> / 4</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-d701ec00fc</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/d701ec00fc"><code>d701ec00fc</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-23ca91febb</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/23ca91febb"><code>23ca91febb</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-locks/mode-shared.https.any.js"><code>web-<wbr>locks/<wbr>mode-<wbr>shared.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,17 +34,17 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/web-locks/mode-shared.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
+<h3 class="run-head"><code>/web-locks/mode-shared.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-6398e968"><details><summary><span class="mark">FAIL</span><span class="sub-name">Lock requests are granted in order</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;request&#39;)&quot;</pre></details><a class="self" href="#s-6398e968" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e2e8f0de"><details><summary><span class="mark">FAIL</span><span class="sub-name">Shared locks are not exclusive</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;request&#39;)&quot;</pre></details><a class="self" href="#s-e2e8f0de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6398e968"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Lock requests are granted in order</span></div><a class="self" href="#s-6398e968" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e2e8f0de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Shared locks are not exclusive</span></div><a class="self" href="#s-e2e8f0de" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/web-locks/mode-shared.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
+<h3 class="run-head"><code>/web-locks/mode-shared.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-ac2ba1aa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Lock requests are granted in order</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;request&#39;)&quot;</pre></details><a class="self" href="#s-ac2ba1aa" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-66666c68"><details><summary><span class="mark">FAIL</span><span class="sub-name">Shared locks are not exclusive</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;request&#39;)&quot;</pre></details><a class="self" href="#s-66666c68" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ac2ba1aa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Lock requests are granted in order</span></div><a class="self" href="#s-ac2ba1aa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-66666c68"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Shared locks are not exclusive</span></div><a class="self" href="#s-66666c68" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
