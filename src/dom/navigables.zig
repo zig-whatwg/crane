@@ -37,6 +37,9 @@ const document_lifecycle = @import("document_lifecycle.zig");
 const document_fetches = @import("document_fetches.zig");
 const window_documents = @import("window_documents.zig");
 const instance_bridge = @import("instance_bridge.zig");
+const fire_event = @import("fire_event.zig");
+const webidl = @import("webidl");
+const dictionaries = @import("dictionaries");
 const NodeBase = @import("node_base.zig").NodeBase;
 
 const BrowsingContext = html_core.BrowsingContext;
@@ -194,11 +197,42 @@ fn isContainerName(name: []const u8) bool {
 pub fn createChildNavigable(container: *runtime.Instance, integration: *IFrameIntegration) bool {
     const impl = implementation orelse return false;
     if (!impl.create_browsing_context_and_document(container, integration)) return false;
-    // Step 12: "Append the following session history traversal steps to
-    // traversable: ... Insert historyEntry into the navigable's session
-    // history entries".
-    if (integration.browsing_context) |bc| _ = bc.ensureHistoryEntries(&historyDocumentInfo) catch {};
+    if (integration.browsing_context) |bc| {
+        placeInTreeOrder(bc, container);
+        // Step 12: "Append the following session history traversal steps to
+        // traversable: ... Insert historyEntry into the navigable's session
+        // history entries".
+        _ = bc.ensureHistoryEntries(&historyDocumentInfo) catch {};
+    }
     return true;
+}
+
+/// A document's document-tree child navigables are in its containers' tree
+/// order ("the document-tree child navigables": its navigable containers'
+/// content navigables, in tree order), which window.length and window[i]
+/// read through the parent's child list. A navigable is made when its
+/// container asks - an iframe at its insertion, an object or embed once its
+/// fetch is done - so a new child is moved from the end of the list to its
+/// container's place among its siblings' containers. In place: the list
+/// keeps its length.
+fn placeInTreeOrder(child: *BrowsingContext, container: *runtime.Instance) void {
+    const parent = child.parent orelse return;
+    const items = parent.children.items;
+    const from = std.mem.indexOfScalar(*BrowsingContext, items, child) orelse return;
+    var to: usize = from;
+    for (items, 0..) |sibling, i| {
+        if (i >= from) break;
+        const other: *runtime.Instance = @ptrCast(@alignCast(sibling.container orelse continue));
+        const position = interfaces.Node.call_compareDocumentPosition(container, other) catch continue;
+        // `other` follows `container` in tree order: `child` goes before it.
+        if (position & interfaces.Node.get_DOCUMENT_POSITION_FOLLOWING() != 0) {
+            to = i;
+            break;
+        }
+    }
+    if (to == from) return;
+    std.mem.copyBackwards(*BrowsingContext, items[to + 1 .. from + 1], items[to..from]);
+    items[to] = child;
 }
 
 /// BrowsingContext.ensureHistoryEntries's `info_of`: a document's URL and
@@ -482,6 +516,56 @@ pub fn contentDocument(integration: *IFrameIntegration, accessor_origin: Origin)
     const document = activeDocumentOf(integration) orelse return null;
     if (!integration.isContentDocumentAccessible(accessor_origin)) return null;
     return document;
+}
+
+/// A navigable container's kind - its local name, which "create navigation
+/// params by fetching" step 10 makes the navigation request's destination
+/// and, for a navigation its container document started, its initiator
+/// type.
+pub const ContainerKind = enum { iframe, frame, object, embed };
+
+/// The kind of navigable container `container` is; null for an element that
+/// is none.
+pub fn containerKind(container: *runtime.Instance) ?ContainerKind {
+    if (container.stateAs(interfaces.HTMLIFrameElement.State) != null) return .iframe;
+    if (container.stateAs(interfaces.HTMLObjectElement.State) != null) return .object;
+    if (container.stateAs(interfaces.HTMLEmbedElement.State) != null) return .embed;
+    if (container.stateAs(interfaces.HTMLFrameElement.State) != null) return .frame;
+    return null;
+}
+
+/// HTML "completely finish loading" step 5 for a navigable container that is
+/// not an iframe - an object or embed element: "queue an element task on the
+/// DOM manipulation task source given container to fire an event named load
+/// at container" (the caller is that task) - and with that its navigable's
+/// navigation no longer delays its node document's load event. As for an
+/// iframe's load event steps, the delay ends before the event and the
+/// document hears of it after: a load handler that navigates the navigable
+/// again delays the document further.
+pub fn containerLoadEventSteps(container: *runtime.Instance, integration: *IFrameIntegration) void {
+    const was_delaying = integration.delaying_load;
+    integration.delaying_load = false;
+    const generation = runtime.SlabAllocator.generationOf(container);
+    fireSimpleEvent(container, "load");
+    // The handlers may have taken the element away.
+    if (!was_delaying or runtime.SlabAllocator.generationOf(container) != generation) return;
+    const document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return;
+    document_lifecycle.loadDelayMayHaveEnded(document);
+}
+
+/// DOM "fire an event" named `event_type` at `target`: an Event made in its
+/// relevant realm, not bubbling, not cancelable, trusted.
+pub fn fireSimpleEvent(target: *runtime.Instance, event_type: []const u8) void {
+    const event = interfaces.Event.call_constructor(
+        target.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = false, .cancelable = false, .composed = false }),
+    ) catch return;
+    // Not `defer deinit`: a listener can keep the event, and its wrapper
+    // then owns it.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    _ = fire_event.dispatchTrusted(target, event) catch {};
 }
 
 /// Parse a serialized origin ("http://host:port", "null") into an Origin:

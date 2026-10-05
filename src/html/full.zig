@@ -208,6 +208,10 @@ pub const hyperlink_auditing = @import("hyperlink_auditing.zig");
 /// subresources, and a link's preload.
 pub const style_sheet_loading = @import("style_sheet_loading.zig");
 
+/// What an object or embed element represents, and its fetch, events and
+/// child navigable (HTML 4.8.6, 4.8.7).
+pub const embedded_content = @import("embedded_content.zig");
+
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing
 pub const scripted_parser = @import("scripted_parser.zig");

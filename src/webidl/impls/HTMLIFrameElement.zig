@@ -1267,8 +1267,19 @@ fn startFetch(record: *Navigation) void {
 
     const scheme = navigate_steps.schemeOf(url);
     if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https")) {
+        // "Create navigation params by fetching" step 10.2: the request's
+        // destination is the navigable's container's local name.
+        const container_kind: ?dom_module.navigables.ContainerKind = if (record.integration.iframe_element) |element_ptr|
+            dom_module.navigables.containerKind(@ptrCast(@alignCast(element_ptr))) orelse .iframe
+        else
+            null;
         const request = navigation_fetch.navigationRequest(allocator, url, .{
-            .destination = if (record.integration.iframe_element != null) .iframe else .document,
+            .destination = if (container_kind) |kind| switch (kind) {
+                .iframe => .iframe,
+                .frame => .frame,
+                .object => .object,
+                .embed => .embed,
+            } else .document,
             .mode = .navigate,
             .redirect = .follow,
             // "Create navigation params by fetching" step 3: a POST
@@ -1302,7 +1313,14 @@ fn startFetch(record: *Navigation) void {
                 const container: *runtime.Instance = @ptrCast(@alignCast(element_ptr));
                 if (container.ctx == source.global.ctx) {
                     record.timing_reporter = dom_module.performance_timeline.GuardedTimingReporter.forGlobal(source.global);
-                    request.initiator_type = .iframe;
+                    // Step 10.3: "set request's initiator type to navigable's
+                    // container's local name".
+                    request.initiator_type = switch (container_kind orelse .iframe) {
+                        .iframe => .iframe,
+                        .frame => .frame,
+                        .object => .object,
+                        .embed => .embed,
+                    };
                     // The record's own reporter, at its fixed address.
                     if (record.timing_reporter) |*reporter| request.timing_reporter = reporter.reporter();
                 }
@@ -2026,7 +2044,7 @@ fn loadEventStepsIfNothingWill(integration: *IFrameIntegration) void {
     const readiness = interfaces.Document.get_readyState(document) catch return;
     if (readiness != ._loading_) return;
     const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return endLoadDelay(integration)));
-    runIframeLoadEventSteps(element);
+    if (!contentNavigableLoadEventSteps(element)) endLoadDelay(integration);
 }
 
 /// "Unload a document and its descendants": its child navigables' documents
@@ -2465,12 +2483,28 @@ fn iframesDelayLoadEvent(document: *runtime.Instance) bool {
     return false;
 }
 
-/// dom.content_navigables: `container`'s load event steps, when it is an
-/// iframe.
+/// dom.content_navigables: `container`'s load event steps - an iframe's
+/// "iframe load event steps", and for any other container with a content
+/// navigable (an object or embed element) "completely finish loading" step
+/// 5's load event, which ends its navigation's delay on its node document
+/// (dom.navigables.containerLoadEventSteps). False for an element that has
+/// no content navigable; its caller fires the load event itself.
 fn contentNavigableLoadEventSteps(container: *runtime.Instance) bool {
-    if (container.stateAs(State) == null) return false;
-    runIframeLoadEventSteps(container);
+    if (container.stateAs(State) != null) {
+        runIframeLoadEventSteps(container);
+        return true;
+    }
+    const integration = integrationOfContainer(container) orelse return false;
+    dom_module.navigables.containerLoadEventSteps(container, integration);
     return true;
+}
+
+/// The live content navigable whose container is `container`.
+fn integrationOfContainer(container: *runtime.Instance) ?*IFrameIntegration {
+    for (live_navigables.items) |integration| {
+        if (integration.iframe_element == @as(?*anyopaque, @ptrCast(container))) return integration;
+    }
+    return null;
 }
 
 /// dom.content_navigables: HTML "stop loading" the content navigable whose
