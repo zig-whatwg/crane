@@ -425,7 +425,7 @@ pub fn argHandleIsCopied(comptime T: type) bool {
                 // (AuctionAdConfig.componentAuctions,
                 // HIDCollectionInfo.children) is as safe as the rest of
                 // the dictionary; walking it would recurse forever.
-                if (comptime isSelfMember(field.type, T)) continue;
+                if (isSelfMember(field.type, T)) continue;
                 if (!memberHandleIsSafe(field.type)) break :blk false;
             }
             break :blk true;
