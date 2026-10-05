@@ -35,6 +35,23 @@ test "a dictionary whose member is a sequence of member-safe elements is copied"
     try std.testing.expect(copied(struct { names: ?[]const runtime.DOMString = null, objects: []const runtime.JSValue = &.{} }));
 }
 
+test "a dictionary with a sequence of itself is walked once: the rest of its members decide" {
+    // AuctionAdConfig.componentAuctions, HIDCollectionInfo.children. Once a
+    // sequence<any> member let the walk go on past the members before it, the
+    // self-reference recursed forever (the bindings stopped compiling).
+    const Tree = struct {
+        name: ?runtime.DOMString = null,
+        data: ?[]const runtime.JSValue = null,
+        children: ?[]const @This() = null,
+    };
+    try std.testing.expect(copied(Tree));
+    const UnsafeTree = struct {
+        children: ?[]const @This() = null,
+        raw: ?*anyopaque = null,
+    };
+    try std.testing.expect(!copied(UnsafeTree));
+}
+
 test "a sequence of unknown pointers still keeps the dictionary's handle" {
     // The default stays the safe one: an element type nothing names.
     try std.testing.expect(!copied(struct { items: ?[]const *anyopaque = null }));
