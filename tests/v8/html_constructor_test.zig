@@ -147,7 +147,11 @@ const Page = struct {
     /// `source`'s completion value, as a string; nothing reported.
     fn eval(self: Page, source: []const u8) ![]u8 {
         var reports: Reports = .{};
-        const result = try protocol.evaluateClassicScriptToString(self.realm, .{ .utf8 = source }, "", null, std.testing.allocator, reports.reporter());
+        const result = protocol.evaluateClassicScriptToString(self.realm, .{ .utf8 = source }, "", null, std.testing.allocator, reports.reporter()) catch |err| {
+            std.debug.print("evaluating failed ({s}, {d} reported): {s}\n", .{ @errorName(err), reports.count, source });
+            return err;
+        };
+        errdefer std.testing.allocator.free(result);
         try std.testing.expectEqual(@as(usize, 0), reports.count);
         return result;
     }
@@ -314,6 +318,8 @@ test "the legacy factory functions are their own constructors: Image, Audio and 
     // here that outcome is their own TypeError.)
     const sources = .{ "new Image()", "new Audio()", "new Option()", "class I extends Image {}; new I()" };
     var outcomes: [sources.len][]u8 = undefined;
+    var made: usize = 0;
+    defer for (outcomes[0..made]) |o| std.testing.allocator.free(o);
     var host: Host = .{};
     {
         const page = try Page.open(&Host.hooks, &host);
@@ -321,9 +327,9 @@ test "the legacy factory functions are their own constructors: Image, Audio and 
         defer host.deinit();
         inline for (sources, 0..) |source, i| {
             outcomes[i] = try page.eval("try { const o = " ++ source ++ "; o.constructor.name } catch (e) { e.constructor.name }");
+            made = i + 1;
         }
     }
-    defer for (outcomes) |o| std.testing.allocator.free(o);
     try std.testing.expectEqual(@as(usize, 0), host.calls);
 
     const no_hooks: protocol.HostHooks = .{};
