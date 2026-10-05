@@ -169,7 +169,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         .inside_end = @ptrCast(inside_end),
         // "Run a worker" step 3, should the steps run one: the unsafe worker
         // creation time.
-        .creation_time_ms = @as(f64, @floatFromInt(@import("clock").wallNanos())) / std.time.ns_per_ms,
+        .creation_time_ns = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime()),
     });
 
     return instance;

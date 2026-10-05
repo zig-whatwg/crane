@@ -254,6 +254,11 @@ pub const ScopeSettings = struct {
     /// settings object hands to every request it makes. BORROWED from the
     /// host, which owns it for as long as the worker lives.
     policy_container: ?*const fetch_mod.internal.PolicyContainer = null,
+    /// The settings object's time origin (HR-Time): "run a worker" step 3's
+    /// unsafe worker creation time, a monotonic moment in nanoseconds, not
+    /// yet coarsened (dom.global_settings `time_origin`). Null when the host
+    /// recorded none.
+    time_origin_ns: ?i64 = null,
 };
 
 /// The settings for a global scope created in the realm whose runtime
@@ -266,6 +271,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .name = if (wctx.shared) |shared| shared.name else wctx.name,
         .cookie_jar = wctx.cookie_jar,
         .policy_container = &wctx.policy_container,
+        .time_origin_ns = wctx.time_origin_ns,
     };
 }
 
@@ -667,10 +673,11 @@ pub const WorkerHost = struct {
     /// discards it ("run a worker" step 17: disentangle the worker's ports).
     inside_end: ?*port_channels.End = null,
 
-    /// The worker's creation time in milliseconds since the epoch ("run a
-    /// worker" step 3), its global scope's time origin; null when the host
-    /// has none (a test's: now, when its global scope is made).
-    time_origin_ms: ?f64 = null,
+    /// The worker's creation time ("run a worker" step 3, the unsafe worker
+    /// creation time: hr_time's monotonic clock, in nanoseconds), its global
+    /// scope's time origin; null when the host has none (a test's: now, when
+    /// its Performance is made).
+    time_origin_ns: ?i64 = null,
 
     /// The worker object that ran the worker - a dedicated worker's Worker,
     /// a shared worker's first SharedWorker - as its owner's tasks find it:
@@ -782,7 +789,7 @@ pub const WorkerHost = struct {
             .link = thread.link,
             .owner_worker = start.owner_worker,
             .cookie_jar = start.cookie_jar,
-            .time_origin_ms = start.time_origin_ms,
+            .time_origin_ns = start.time_origin_ns,
         };
         thread_host.host = self;
         hosts.append(std.heap.page_allocator, self) catch {};
@@ -1036,6 +1043,9 @@ pub const WorkerHost = struct {
         // done() for the WPT harness: testharness.js defines its own, which
         // replaces this one when it loads.
         try engine.defineBuiltinFunction(realm, "done", 0, &self.builtins[4]);
+        // `performance` is the global scope's own Performance (the
+        // WindowOrWorkerGlobalScope member, through WorkerGlobalScope's
+        // settings), its time origin `time_origin_ns`.
 
         // Set up GLOBAL object for WPT tests
         // This is required by testharness.js to detect the execution context
@@ -1073,35 +1083,6 @@ pub const WorkerHost = struct {
             \\  };
             \\})();
         );
-
-        // Only performance still needs a bootstrap fallback: WorkerGlobalScope
-        // has no native performance getter. Its crypto and indexedDB accessors
-        // already supply native objects (WebIDL 3.7.6); never shadow them.
-        // Its time origin is the worker's creation time ("run a worker" step
-        // 3, the unsafe worker creation time - taken by the Worker
-        // constructor, before the worker's thread starts) when the host has
-        // it, else now.
-        var origin_buffer: [64]u8 = undefined;
-        const time_origin: []const u8 = if (self.time_origin_ms) |ms|
-            std.fmt.bufPrint(&origin_buffer, "{d}", .{ms}) catch "Date.now()"
-        else
-            "Date.now()";
-        const performance_setup = try std.fmt.allocPrint(self.allocator,
-            \\(function() {{
-            \\  function define(name, value) {{
-            \\    Object.defineProperty(globalThis, name, {{ value: value, writable: true, enumerable: true, configurable: true }});
-            \\  }}
-            \\  // Performance API - https://w3c.github.io/hr-time/
-            \\  var timeOrigin = {s};
-            \\  define('performance', {{
-            \\    timeOrigin: timeOrigin,
-            \\    now: function() {{ return Date.now() - timeOrigin; }},
-            \\    toJSON: function() {{ return {{ timeOrigin: this.timeOrigin }}; }}
-            \\  }});
-            \\}})();
-        , .{time_origin});
-        defer self.allocator.free(performance_setup);
-        try self.runSetupScript(performance_setup);
     }
 
     /// `createWorkerRealm`'s `on_realm`: the realm exists, and its global
@@ -1808,11 +1789,11 @@ pub const SharedWorkerRequest = struct {
     /// port - a MessagePort of the worker's realm. OWNED: the manager takes
     /// it whatever happens, including when this returns an error.
     inside_end: *anyopaque,
-    /// "Run a worker" step 3, the unsafe worker creation time, in
-    /// milliseconds since the epoch - taken by the constructor, as a
+    /// "Run a worker" step 3, the unsafe worker creation time (hr_time's
+    /// monotonic clock, nanoseconds) - taken by the constructor, as a
     /// Worker's is: a worker these steps run takes it as its global scope's
     /// time origin.
-    creation_time_ms: ?f64 = null,
+    creation_time_ns: ?i64 = null,
 };
 
 /// The SharedWorker constructor's step 11: "enqueue the following steps to
@@ -1845,7 +1826,7 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
         .credentials = request.credentials,
         .extended_lifetime = request.extended_lifetime,
         .inside_end = request.inside_end,
-        .creation_time_ms = request.creation_time_ms,
+        .creation_time_ns = request.creation_time_ns,
         .allocator = allocator,
     };
     // A loop that will not run the task drops it: `drop` frees it.
@@ -1931,7 +1912,7 @@ const SharedConnect = struct {
     extended_lifetime: bool,
     /// Null once a worker's loop has taken it.
     inside_end: ?*anyopaque,
-    creation_time_ms: ?f64,
+    creation_time_ns: ?i64,
     /// The SharedWorker's pending activity has passed to an `error` task, or
     /// to the start of the worker these steps ran.
     hold_passed: bool = false,
@@ -2043,7 +2024,7 @@ const SharedConnect = struct {
             .inside_end = null,
             // 3. The unsafe worker creation time: the global scope's time
             // origin.
-            .time_origin_ms = self.creation_time_ms,
+            .time_origin_ns = self.creation_time_ns,
         };
         defer if (start.policy_container) |*container| container.deinit();
         defer if (start.shared) |*shared| shared.deinit(allocator);
@@ -2642,9 +2623,9 @@ pub const WorkerStart = struct {
     /// The implicit port: the end of the Worker's channel that its global
     /// scope receives on. Taken on success.
     inside_end: ?*port_channels.End,
-    /// "Run a worker" step 3, the unsafe worker creation time, in
-    /// milliseconds since the epoch: the global scope's time origin.
-    time_origin_ms: ?f64 = null,
+    /// "Run a worker" step 3, the unsafe worker creation time (hr_time's
+    /// monotonic clock, nanoseconds): the global scope's time origin.
+    time_origin_ns: ?i64 = null,
     /// A shared worker's constructor key, type and credentials ("run a
     /// worker" step 10); null for a dedicated worker. Taken on success.
     shared: ?SharedScope = null,
@@ -2740,7 +2721,7 @@ const ThreadHost = struct {
         browser_scope: ?*runtime.BrowserScope,
         owner_worker: OwnerWorker,
         inside_end: ?*port_channels.End,
-        time_origin_ms: ?f64,
+        time_origin_ns: ?i64,
         shared: ?SharedScope,
     };
 
@@ -2764,7 +2745,7 @@ const ThreadHost = struct {
                 .browser_scope = start.owner_realm.browser_scope,
                 .owner_worker = start.owner_worker,
                 .inside_end = start.inside_end,
-                .time_origin_ms = start.time_origin_ms,
+                .time_origin_ns = start.time_origin_ns,
                 .shared = start.shared,
             },
         };

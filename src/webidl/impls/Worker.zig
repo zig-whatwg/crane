@@ -283,9 +283,10 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // wrapper takes the hold then.
     keepPendingActivity(instance);
 
-    // "Run a worker" step 3: the unsafe worker creation time - the worker
-    // global scope's time origin.
-    const creation_time_ms = @as(f64, @floatFromInt(@import("clock").wallNanos())) / std.time.ns_per_ms;
+    // "Run a worker" step 3: the unsafe worker creation time - the unsafe
+    // shared current time, hr_time's monotonic clock (a Window's time origin
+    // is taken from the same clock) - the worker global scope's time origin.
+    const creation_time_ns: i64 = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime());
 
     // 9. "Run a worker" in parallel. Its fetch happens here, before the
     // constructor returns - a blob URL revoked right after `new Worker(url)`
@@ -326,7 +327,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
             .steps = &owner_steps,
         },
         .inside_end = inside_end,
-        .time_origin_ms = creation_time_ms,
+        .time_origin_ns = creation_time_ns,
     };
     defer if (start.policy_container) |*container| container.deinit();
     internal.link = worker_host.startDedicatedWorker(ctx.allocator, &start) catch |err| {
