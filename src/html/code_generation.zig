@@ -21,6 +21,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const csp = @import("csp");
 const dom = @import("dom");
+const report_exception = @import("report_exception.zig");
 
 const trusted_types = dom.trusted_types;
 
@@ -99,6 +100,60 @@ pub fn ensureCSPDoesNotBlockStringCompilation(global: *runtime.Instance, code_st
     const policies = trusted_types.cspListOf(global) orelse return .allowed;
     return csp.code_generation.ensureDoesNotBlockStringCompilation(policies, code_string, dom.csp_violations.reporterFor(global));
 }
+
+/// HTML timer initialization step 10.8.2, for a timer whose handler is the
+/// string `handler`, run in `realm`, whose global is `global`: "Perform
+/// EnsureCSPDoesNotBlockStringCompilation(realm, « », handler, handler,
+/// timer, « », handler). If this throws an exception, catch it, report it
+/// for global, and abort these steps." True when the handler may be
+/// compiled; false when it is blocked, after its EvalError is reported for
+/// `global` (or when the EvalError cannot be made, and nothing is).
+///
+/// The check runs when the timer fires, as the spec says. Chrome, Firefox
+/// and Safari check when setTimeout() is called instead, return 0 and
+/// report nothing to script (unsafe-eval/eval-scripts-setTimeout-blocked
+/// asserts that 0).
+pub fn ensureTimerHandlerMayCompile(realm: runtime.Context, global: *runtime.Instance, handler: []const u8) bool {
+    if (ensureCSPDoesNotBlockStringCompilation(global, handler, .timer, false) == .allowed) return true;
+    // CSP 4.4.1 step 6: "If result is "Blocked", throw an EvalError
+    // exception" - caught by the timer's task and reported for the global.
+    // An engine that cannot make one (V8's API has no Exception::EvalError:
+    // its adapter answers NotSupported) still has it reported, as the
+    // message alone - the ErrorEvent's error is null.
+    const exception = engine.createSimpleException(realm, .EvalError, eval_blocked_message) catch |err| switch (err) {
+        error.NotSupported => {
+            const message_only: runtime.ErrorInfo = .{
+                .message = "Uncaught EvalError: " ++ eval_blocked_message,
+                .filename = "",
+                .lineno = 0,
+                .colno = 0,
+                .error_value = null,
+            };
+            _ = report_exception.reportErrorInfo(global, &message_only, .{});
+            return false;
+        },
+        else => return false,
+    };
+    defer exception.release();
+    const allocator = global.ctx.allocator;
+    // "Report an exception" step 2: extract error information.
+    const info = engine.extractErrorInformation(realm, exception.borrow(), allocator) catch return false;
+    defer allocator.free(info.message);
+    defer allocator.free(info.filename);
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = info.error_value,
+    };
+    _ = report_exception.reportErrorInfo(global, &extracted, .{});
+    return false;
+}
+
+/// The message of the EvalError a blocked string compilation throws - V8's
+/// own for eval.
+const eval_blocked_message = "Code generation from strings disallowed for this context";
 
 /// CSP 4.4.1 steps 2.4.1-2.4.3: "Set sourceString to the result of executing
 /// the get trusted type compliant string algorithm, with TrustedScript,

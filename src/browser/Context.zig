@@ -538,6 +538,21 @@ fn runTimerSteps(opaque_data: ?*anyopaque) void {
         // URL, which is also where its errors are reported from - and run it.
         .string => |source| {
             const window = realmWindow(data.realm) orelse return;
+            // Step 10.8.2: "Perform EnsureCSPDoesNotBlockStringCompilation
+            // (realm, « », handler, handler, timer, « », handler)" - a
+            // blocked handler's EvalError reported for the global - "and
+            // abort these steps": step 10.10's repeat among them, so an
+            // interval runs no more (it leaves the map as a cancelled one
+            // does).
+            {
+                const allocator = window.ctx.allocator;
+                const text = engine.convertToDOMString(data.realm, source, allocator) catch return;
+                defer allocator.free(text);
+                if (!html_mod.code_generation.ensureTimerHandlerMayCompile(data.realm, window, text)) {
+                    data.cancelled = true;
+                    return;
+                }
+            }
             const base_url = apiBaseUrl(data.realm, window);
             defer base_url.deinit();
             engine.runClassicScript(data.realm, .{ .string = source }, base_url.url, null, windowReporter(data.realm)) catch |err| switch (err) {
