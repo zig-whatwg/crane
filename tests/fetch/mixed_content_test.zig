@@ -49,8 +49,6 @@ test "mixed content: upgradeable destinations preserve URL components and normal
         .{ "http://example.test:80/a", "https://example.test/a" },
         .{ "http://example.test:8443/a", "https://example.test:8443/a" },
         .{ "http://user:pass@example.test:443/a", "https://user:pass@example.test:443/a" },
-        // Mixed Content 4.1 has no IP-literal exclusion (Q4).
-        .{ "http://192.0.2.1/a", "https://192.0.2.1/a" },
     };
     for ([_]fetch.internal.Destination{ .image, .audio, .video }) |destination| {
         for (cases) |case| {
@@ -66,7 +64,7 @@ test "mixed content: upgradeable destinations preserve URL components and normal
     }
 }
 
-test "mixed content: CORS and imageset requests are not autoupgraded" {
+test "mixed content: CORS media is autoupgraded" {
     const allocator = std.testing.allocator;
     for ([_]fetch.internal.Destination{ .image, .audio, .video }) |destination| {
         const request = try Request.init(allocator, "http://example.test/resource");
@@ -75,9 +73,30 @@ test "mixed content: CORS and imageset requests are not autoupgraded" {
         request.mode = .cors;
         request.prohibits_mixed_security_contexts = true;
         try mixed.upgradeRequest(request);
-        try std.testing.expectEqualStrings("http://example.test/resource", request.currentUrl());
+        // Editor's Draft 4.1 has no CORS exclusion (corrected Q12).
+        try std.testing.expectEqualStrings("https://example.test/resource", request.currentUrl());
+        try std.testing.expect(!try mixed.shouldBlockRequest(request));
+    }
+}
+
+test "mixed content: IP-address hosts are not autoupgraded" {
+    const allocator = std.testing.allocator;
+    const urls = [_][]const u8{ "http://192.0.2.1/image", "http://0xc0000201/image", "http://[2001:db8::1]/image" };
+    for (urls) |url| {
+        const request = try Request.init(allocator, url);
+        defer request.deinit();
+        request.destination = .image;
+        request.mode = .no_cors;
+        request.prohibits_mixed_security_contexts = true;
+        // Editor's Draft 4.1 step 1.2 checks the parsed host's type.
+        try mixed.upgradeRequest(request);
+        try std.testing.expectEqualStrings(url, request.currentUrl());
         try std.testing.expect(try mixed.shouldBlockRequest(request));
     }
+}
+
+test "mixed content: imageset requests are not autoupgraded" {
+    const allocator = std.testing.allocator;
     const image = try Request.init(allocator, "http://example.test/image");
     defer image.deinit();
     image.destination = .image;
