@@ -62,7 +62,8 @@ pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.
 
 /// HTML [CEReactions]: the functions that run a custom element reactions
 /// bracket - the binding dispatches each in a catch scope, where
-/// engine.takePendingException can take what the member leaves pending.
+/// engine.withPendingExceptionSetAside sets aside what the member leaves
+/// pending.
 pub const ce_reactions = .{
     "call_before",
     "call_replaceWith",

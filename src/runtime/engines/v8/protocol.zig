@@ -354,20 +354,26 @@ pub fn throwValue(realm: Context, value: JSValue) Error!void {
 
 pub const completionOf = @import("protocol_completion.zig").completionOf;
 
-/// What the innermost binding catch scope holds (v8_wrapper.cpp,
-/// "Binding catch scopes"): V8 hands a thrown exception only to a TryCatch
-/// registered before the throw, so the binding dispatches every
-/// [CEReactions] member in one, and this takes from it.
-pub fn takePendingException(realm: Context) Error!?Owned {
-    const entered = try enter(realm);
-    defer entered.leave();
-    var thrown: ?*ffi.Value = null;
-    switch (ffi.v8_TakeBindingCaughtException(entered.isolate, &thrown)) {
-        1 => return support.owned(thrown orelse return error.OperationFailed),
-        0 => return null,
+/// The innermost binding catch scope's exception set aside around `steps`
+/// (v8_wrapper.cpp, "Binding catch scopes"): V8 hands a thrown exception only
+/// to a TryCatch made before the throw, so the binding dispatches every
+/// [CEReactions] member in one, and this sets aside and restores what it
+/// holds.
+pub fn withPendingExceptionSetAside(agent: *Agent, steps: *const fn (data: ?*anyopaque) void, data: ?*anyopaque) Error!void {
+    const Trampoline = struct {
+        steps: *const fn (data: ?*anyopaque) void,
+        data: ?*anyopaque,
+        fn call(raw: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            self.steps(self.data);
+        }
+    };
+    var trampoline: Trampoline = .{ .steps = steps, .data = data };
+    switch (ffi.v8_WithBindingExceptionSetAside(isolateOf(agent), Trampoline.call, &trampoline)) {
+        0 => return,
         // Pending outside any binding catch scope: V8 cannot reach it.
         -1 => return error.NotSupported,
-        // Terminating: nothing to take, and nothing may run.
+        // Terminating: nothing may run.
         else => return error.ExceptionPending,
     }
 }

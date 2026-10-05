@@ -21,19 +21,20 @@ pub const Instance = @import("instance.zig").Instance;
 /// for a static member (the agent is then the current realm's) - and returns
 /// what `end` needs, captured while the receiver is certainly alive. `end`
 /// pops the queue and invokes its reactions from that alone: it dereferences
-/// neither the receiver nor any realm that may have ended while the member
-/// ran script (removing an iframe ends its realm and frees its Instances), so
-/// whatever it needs is captured by `begin` with the agent's lifetime, or
-/// re-resolved at `end` from the calling script's realm
-/// (`engine.currentRealm()`, alive while its script is on the stack) - the
-/// realm `engine.takePendingException` is given, never the receiver's.
-/// Stubs for now: the custom element reactions stack replaces them, and its
-/// `Scope`; a null scope is the zero-cost path.
+/// neither the receiver nor any realm, any of which can end while the member
+/// runs script (removing an iframe ends its realm and frees its Instances) -
+/// the reactions run under `engine.withPendingExceptionSetAside(scope.agent,
+/// ...)`, which needs only the agent. Stubs for now: the custom element
+/// reactions stack replaces them, and its `Scope`.
 pub const CEReactions = struct {
-    /// What `begin` captured for `end`.
+    /// What `begin` captured for `end`, all of agent lifetime.
     pub const Scope = struct {
-        /// The agent's custom element reactions state; null: nothing to do at
-        /// `end` (no state, no definitions).
+        /// The engine agent the bracket's reactions run in.
+        agent: ?*Agent = null,
+        /// The agent's custom element reactions state. Null only when the
+        /// agent has none - the zero-cost path; an agent with state but no
+        /// definitions still counts the bracket's depth, so a
+        /// customElements.define inside an open bracket balances.
         agent_state: ?*anyopaque = null,
     };
 

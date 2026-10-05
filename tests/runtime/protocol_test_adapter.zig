@@ -260,9 +260,10 @@ pub fn throwValue(_: Context, _: JSValue) Error!void {
 pub fn completionOf(_: Context, _: *const fn (data: ?*anyopaque) Error!void, _: ?*anyopaque) Error!?Owned {
     return error.NotSupported;
 }
-/// No engine: nothing is ever pending (throwValue is NotSupported).
-pub fn takePendingException(_: Context) Error!?Owned {
-    return null;
+/// No engine: nothing is ever pending (throwValue is NotSupported); the
+/// steps run.
+pub fn withPendingExceptionSetAside(_: *engine.Agent, steps: *const fn (data: ?*anyopaque) void, data: ?*anyopaque) Error!void {
+    steps(data);
 }
 pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {
     return error.NotSupported;

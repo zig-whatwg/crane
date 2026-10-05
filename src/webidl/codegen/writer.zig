@@ -2754,16 +2754,17 @@ pub const CEReactionsFunctions = struct {
 
 /// HTML 4.13.6 [CEReactions]: the table of the functions that run a bracket,
 /// keyed like `promise_returning`. The binding dispatches each in a catch
-/// scope, so `engine.takePendingException` can take what the member leaves
-/// pending (V8 hands an exception only to a TryCatch made before the throw -
-/// Blink's CEReactionsScope holds one the same way):
+/// scope, so `engine.withPendingExceptionSetAside` can set aside what the
+/// member leaves pending (V8 hands an exception only to a TryCatch made
+/// before the throw - Blink's CEReactionsScope holds one the same way):
 ///
 ///     pub const ce_reactions = .{ "call_setter", "set_id" };
 fn writeCEReactionsTable(writer: anytype, functions: *const CEReactionsFunctions) !void {
     if (functions.names.items.len == 0) return;
     try writer.writeAll("    /// HTML [CEReactions]: the functions that run a custom element reactions\n");
     try writer.writeAll("    /// bracket - the binding dispatches each in a catch scope, where\n");
-    try writer.writeAll("    /// engine.takePendingException can take what the member leaves pending.\n");
+    try writer.writeAll("    /// engine.withPendingExceptionSetAside sets aside what the member leaves\n");
+    try writer.writeAll("    /// pending.\n");
     try writer.writeAll("    pub const ce_reactions = .{\n");
     for (functions.names.items) |name| try writer.print("        \"{s}\",\n", .{name});
     try writer.writeAll("    };\n\n");

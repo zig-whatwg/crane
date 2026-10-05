@@ -1944,7 +1944,7 @@ bool v8_RunCatching(Isolate* isolate, void (*body)(void*), void* data, Global<Va
 }
 
 // ============================================================================
-// Binding catch scopes (HTML 4.13.6 [CEReactions]; engine.takePendingException)
+// Binding catch scopes (HTML 4.13.6 [CEReactions]; engine.withPendingExceptionSetAside)
 // ============================================================================
 //
 // V8 hands an exception thrown inside an API callback only to a v8::TryCatch
@@ -1954,8 +1954,9 @@ bool v8_RunCatching(Isolate* isolate, void (*body)(void*), void* data, Global<Va
 // (PrepareForExecutionScope -> clear_internal_exception). So a [CEReactions]
 // member's dispatch runs in a catch scope, as Blink's CEReactionsScope holds
 // a v8::TryCatch member for its life (ce_reactions_scope.cc): what the member
-// leaves pending is held by the scope's TryCatch, takePendingException takes
-// it from the innermost scope, and on exit a caught exception is rethrown -
+// leaves pending is held by the scope's TryCatch, withPendingExceptionSetAside
+// sets it aside around the reactions and makes it pending there again, and on
+// exit a caught exception is rethrown -
 // what script sees is unchanged.
 //
 // The innermost scope is kept in the isolate's data slot 3 (a scope saves the
@@ -1975,23 +1976,38 @@ void v8_RunInBindingCatchScope(Isolate* isolate, void (*body)(void*), void* data
     if (try_catch.HasCaught()) try_catch.ReThrow();
 }
 
-/// engine.takePendingException on V8. 1: taken - `*exception` is a new
-/// Global the caller owns, and nothing is pending. 0: nothing is pending.
+/// engine.withPendingExceptionSetAside on V8: run `steps(data)` with what the
+/// innermost binding catch scope holds set aside, then make it pending again
+/// in that same scope (ThrowException inside its still-active TryCatch, which
+/// catches it again; the dispatch's exit ReThrow()s it as before). The steps
+/// run under a TryCatch of their own, so whatever they leave pending is
+/// cleared, never restored in the operation's place. 0: the steps ran.
 /// -1: an exception is pending that no binding catch scope holds - V8 cannot
-/// reach it, and it stays pending. -2: the isolate is terminating; nothing
-/// can be taken, and the termination stays in flight.
-int v8_TakeBindingCaughtException(Isolate* isolate, Global<Value>** exception) {
-    *exception = nullptr;
+/// reach it; the steps did not run and it stays pending. -2: the isolate is
+/// terminating; the steps did not run.
+int v8_WithBindingExceptionSetAside(Isolate* isolate, void (*steps)(void*), void* data) {
+    Isolate::Scope isolate_scope(isolate);
+    HandleScope handle_scope(isolate);
+    if (isolate->IsExecutionTerminating()) return -2;
     TryCatch* scope = static_cast<TryCatch*>(isolate->GetData(kBindingCatchScopeSlot));
+    Local<Value> saved;
     if (scope && scope->HasCaught()) {
         if (scope->HasTerminated()) return -2;
-        HandleScope handle_scope(isolate);
-        *exception = trackHandle(new Global<Value>(isolate, scope->Exception()));
+        saved = scope->Exception();
         scope->Reset();
-        return 1;
+    } else if (isolate->HasPendingException()) {
+        return -1;
     }
-    if (isolate->IsExecutionTerminating()) return -2;
-    return isolate->HasPendingException() ? -1 : 0;
+    {
+        TryCatch steps_guard(isolate);
+        steps(data);
+        if (steps_guard.HasCaught() && steps_guard.HasTerminated()) {
+            steps_guard.ReThrow();
+            return -2;
+        }
+    }
+    if (!saved.IsEmpty()) isolate->ThrowException(saved);
+    return 0;
 }
 
 /// Call `function` with `recv` (null = undefined) under a TryCatch and return

@@ -54,7 +54,8 @@ pub fn set_popoverTargetAction(instance: *runtime.Instance, value: DOMString) an
 
 /// HTML [CEReactions]: the functions that run a custom element reactions
 /// bracket - the binding dispatches each in a catch scope, where
-/// engine.takePendingException can take what the member leaves pending.
+/// engine.withPendingExceptionSetAside sets aside what the member leaves
+/// pending.
 pub const ce_reactions = .{
     "set_popoverTargetElement",
     "set_popoverTargetAction",

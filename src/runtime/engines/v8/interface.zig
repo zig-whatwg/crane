@@ -947,7 +947,7 @@ pub fn dispatchRunsCEReactions(comptime Interface: type, comptime zig_name: []co
 
 /// Run `body(info)` in a binding catch scope (v8_wrapper.cpp, "Binding catch
 /// scopes"): the dispatch of a [CEReactions] member, so what its steps leave
-/// pending is held where engine.takePendingException can take it - V8 hands a
+/// pending is held where engine.withPendingExceptionSetAside can set it aside - V8 hands a
 /// thrown exception only to a TryCatch made before the throw. Blink's
 /// CEReactionsScope holds a v8::TryCatch for its life the same way
 /// (third_party/blink/renderer/core/html/custom/ce_reactions_scope.cc). A
@@ -3678,7 +3678,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
 
                 /// A [CEReactions] operation is dispatched in a binding catch
-                /// scope (engine.takePendingException).
+                /// scope (engine.withPendingExceptionSetAside).
                 fn scoped(info: *const v8.FunctionCallbackInfo) void {
                     if (comptime dispatchRunsCEReactions(Interface, zig_name)) return inBindingCatchScope(info, body);
                     body(info);
@@ -7876,7 +7876,7 @@ pub fn V8Interface(comptime Interface: type) type {
             _ = iface_name; // Used only for uniqueness of instantiation
             return struct {
                 /// A [CEReactions] attribute's setter is dispatched in a
-                /// binding catch scope (engine.takePendingException).
+                /// binding catch scope (engine.withPendingExceptionSetAside).
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
                     if (comptime runsCEReactions(Interface, setter_name_param)) return inBindingCatchScope(info, body);
                     body(info);
@@ -8431,7 +8431,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
 
                 /// A [CEReactions] operation is dispatched in a binding catch
-                /// scope (engine.takePendingException).
+                /// scope (engine.withPendingExceptionSetAside).
                 fn scoped(info: *const v8.FunctionCallbackInfo) void {
                     if (comptime runsCEReactions(Interface, zig_name)) return inBindingCatchScope(info, body);
                     body(info);

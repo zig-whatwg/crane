@@ -1687,7 +1687,8 @@ pub const HTMLElement = struct {
 
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where
-    /// engine.takePendingException can take what the member leaves pending.
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
     pub const ce_reactions = .{
         "set_title",
         "set_lang",

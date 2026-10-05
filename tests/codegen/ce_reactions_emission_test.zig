@@ -151,7 +151,7 @@ test "a non-inherited mixin's [CEReactions] member brackets in its includer's de
 
 // ---------------------------------------------------------------------------
 // The `ce_reactions` table: the functions the binding dispatches in a catch
-// scope (engine.takePendingException). It is recorded where each bracket is
+// scope (engine.withPendingExceptionSetAside). It is recorded where each bracket is
 // written, so it lists every function that brackets and nothing else - plus
 // an inherited mixin member's alias, whose mixin module brackets it.
 // ---------------------------------------------------------------------------

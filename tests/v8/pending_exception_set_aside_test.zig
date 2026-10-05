@@ -1,6 +1,7 @@
-//! engine.takePendingException, as V8 implements it, through the real
-//! binding: a [CEReactions] member's dispatch runs in a binding catch scope,
-//! and what the member's steps leave pending is taken from it.
+//! engine.withPendingExceptionSetAside, as V8 implements it, through the real
+//! binding: a [CEReactions] member's dispatch runs in a binding catch scope;
+//! what the member's steps leave pending is set aside while the bracket's end
+//! runs the reactions, then made pending again in that same scope.
 //!
 //! HTML 4.13.6 [CEReactions]: "2. Run the originally-specified steps for this
 //! construct, catching any exceptions. ... 4. Invoke custom element reactions
@@ -8,14 +9,15 @@
 //! rethrow exception." V8 hands an exception only to a TryCatch made before
 //! the throw, and its next Function::Call clears a pending one silently - so
 //! the reactions `end` invokes would swallow the member's exception unless the
-//! dispatch holds a TryCatch, as Blink's CEReactionsScope does.
+//! dispatch holds a TryCatch, as Blink's CEReactionsScope does. The operation
+//! is agent-scoped: `end` holds no realm (any can end while the member runs)
+//! and no exception value crosses the seam.
 //!
 //! The probe below is a generated interface's shape: static operations (the
-//! binding's StaticMethodCallback - no instance to make), one listed in
-//! `ce_reactions` and one not, each running a bracket whose `end` does what
-//! the custom element reactions stack's will: when a reaction is queued,
-//! take the pending exception, invoke the reaction (it reports its own
-//! exception), rethrow what was taken.
+//! binding's StaticMethodCallback - no instance to make), listed in
+//! `ce_reactions` or not, each running a bracket whose `end` does what the
+//! custom element reactions stack's will: when a reaction is queued, run it
+//! with the pending exception set aside (it reports its own exception).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -28,13 +30,11 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var realm_once: ?runtime.Context = null;
 
-/// What the probe's last bracket saw: takePendingException's answer.
-const Take = enum { not_called, taken, nothing, not_supported, terminating, failed };
-var last_take: Take = .not_called;
+/// What the probe's last bracket saw.
+const Outcome = enum { not_called, ran, not_supported, terminating, failed };
+var last_outcome: Outcome = .not_called;
 /// The reaction's exception, as the reporter was handed it (OWNED).
 var reported: ?engine.Owned = null;
-/// The value `swallow` took (OWNED).
-var swallowed: ?engine.Owned = null;
 
 /// One isolate and realm for the file, registered with the context manager
 /// as a page's is, the probe installed as a global; V8 is never torn down.
@@ -49,6 +49,7 @@ fn realm() !runtime.Context {
     ffi.v8_Context_Enter(context);
     v8.context_manager.init(std.heap.page_allocator) catch {};
     const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+    r.agent = @ptrCast(i);
     runtime.SlabAllocator.init(std.heap.page_allocator);
     runtime.ArenaAllocator.init(std.heap.page_allocator);
     v8.V8Interface(Probe).registerGlobal(i, context, Probe.Meta.name);
@@ -91,9 +92,7 @@ fn exposeOwned(name: []const u8, value: ?engine.Owned) !void {
 fn clearKept() void {
     if (reported) |r| r.release();
     reported = null;
-    if (swallowed) |s| s.release();
-    swallowed = null;
-    last_take = .not_called;
+    last_outcome = .not_called;
 }
 
 fn report(_: ?*anyopaque, info: *const engine.ErrorInfo) void {
@@ -102,50 +101,67 @@ fn report(_: ?*anyopaque, info: *const engine.ErrorInfo) void {
 }
 
 /// A custom element reactions bracket, as `runtime.CEReactions` will be: an
-/// element queue of at most one reaction here.
+/// element queue of at most one reaction here, and the agent `begin`
+/// captured.
 const Bracket = struct {
+    agent: ?*engine.Agent,
     reaction: ?engine.CallbackFunction = null,
+    /// The reaction's steps also leave an exception pending - which the
+    /// operation must clear, not restore in the member's place.
+    leaky: bool = false,
 
-    fn enqueue(self: *Bracket, r: runtime.Context, reaction: runtime.JSValue) !void {
+    fn begin() Bracket {
+        const r = engine.currentRealm() orelse return .{ .agent = null };
+        return .{ .agent = r.agent };
+    }
+
+    fn enqueue(self: *Bracket, reaction: runtime.JSValue) !void {
+        const r = engine.currentRealm() orelse return error.NoRealm;
         if (engine.typeOf(r, reaction) != .object) return;
         self.reaction = .{ .function = try engine.retainValue(r, reaction), .context = null };
     }
+
+    const Run = struct {
+        reaction: *const engine.CallbackFunction,
+        leaky: bool,
+
+        fn steps(data: ?*anyopaque) void {
+            const self: *Run = @ptrCast(@alignCast(data.?));
+            last_outcome = .ran;
+            const r = engine.currentRealm() orelse return;
+            // Each reaction reports its own exception.
+            const completion = engine.invokeCallbackFunction(r, self.reaction, .undefined, &.{}, .{ .report = .{ .report = report } }) catch null;
+            if (completion) |c| switch (c) {
+                .normal, .throw => |v| v.release(),
+            };
+            if (self.leaky) engine.throwValue(r, runtime.JSValue.fromNumber(99)) catch {};
+        }
+    };
 
     fn end(self: *Bracket) void {
         // An empty queue makes no engine call.
         const reaction = self.reaction orelse return;
         defer reaction.release();
-        const r = engine.currentRealm() orelse return;
-        const pending = engine.takePendingException(r) catch |err| {
-            last_take = switch (err) {
-                // Pending and out of reach: run no script - the reaction would
-                // go to the backup element queue (dropped here).
+        const agent = self.agent orelse return;
+        var run: Run = .{ .reaction = &reaction, .leaky = self.leaky };
+        engine.withPendingExceptionSetAside(agent, Run.steps, &run) catch |err| {
+            last_outcome = switch (err) {
+                // Pending and out of reach: no script runs - the reaction
+                // would go to the backup element queue (dropped here).
                 error.NotSupported => .not_supported,
                 error.ExceptionPending => .terminating,
                 else => .failed,
             };
-            return;
         };
-        last_take = if (pending != null) .taken else .nothing;
-        // Each reaction reports its own exception.
-        const completion = engine.invokeCallbackFunction(r, &reaction, .undefined, &.{}, .{ .report = .{ .report = report } }) catch null;
-        if (completion) |c| switch (c) {
-            .normal, .throw => |v| v.release(),
-        };
-        // 5. If an exception was thrown by the original steps, rethrow it.
-        if (pending) |p| {
-            defer p.release();
-            engine.throwValue(r, p.borrow()) catch {};
-        }
     }
 };
 
-/// The steps both probes run in their bracket: queue `reaction` when it is
-/// a function, then throw `thrown` unless it is undefined, else return 42.
-fn mutateSteps(instance: *runtime.Instance, bracket: *Bracket, thrown: runtime.JSValue, reaction: runtime.JSValue) anyerror!i32 {
-    const r = engine.currentRealm() orelse instance.ctx;
-    try bracket.enqueue(r, reaction);
+/// The steps every probe runs in its bracket: queue `reaction` when it is a
+/// function, then throw `thrown` unless it is undefined, else return 42.
+fn mutateSteps(bracket: *Bracket, thrown: runtime.JSValue, reaction: runtime.JSValue) anyerror!i32 {
+    try bracket.enqueue(reaction);
     if (thrown == .undefined) return 42;
+    const r = engine.currentRealm() orelse return error.NoRealm;
     try engine.throwValue(r, thrown);
     return error.ExceptionPending;
 }
@@ -164,10 +180,10 @@ const Probe = struct {
         pub const methods = .{};
         pub const static_methods = .{
             .{ "mutate", "call_static_mutate", 2 },
+            .{ "mutateLeaky", "call_static_mutateLeaky", 2 },
             .{ "mutateUnscoped", "call_static_mutateUnscoped", 2 },
-            .{ "swallow", "call_static_swallow", 1 },
         };
-        pub const own_methods = .{ "mutate", "mutateUnscoped", "swallow" };
+        pub const own_methods = .{ "mutate", "mutateLeaky", "mutateUnscoped" };
         pub const inherited_methods = .{};
         pub const eager_properties = .{};
         pub const lazy_properties = .{};
@@ -180,32 +196,32 @@ const Probe = struct {
     /// that the binding dispatches in a catch scope. `mutateUnscoped`
     /// brackets too but is left out - a [CEReactions] member reached without
     /// a scope, as one called from Zig is.
-    pub const ce_reactions = .{ "call_static_mutate", "call_static_swallow" };
+    pub const ce_reactions = .{ "call_static_mutate", "call_static_mutateLeaky" };
 
     pub fn call_static_mutate(instance: *runtime.Instance, thrown: runtime.JSValue, reaction: runtime.JSValue) anyerror!i32 {
-        var bracket: Bracket = .{};
+        _ = instance;
+        var bracket = Bracket.begin();
         defer bracket.end();
-        return mutateSteps(instance, &bracket, thrown, reaction);
+        return mutateSteps(&bracket, thrown, reaction);
+    }
+
+    pub fn call_static_mutateLeaky(instance: *runtime.Instance, thrown: runtime.JSValue, reaction: runtime.JSValue) anyerror!i32 {
+        _ = instance;
+        var bracket = Bracket.begin();
+        bracket.leaky = true;
+        defer bracket.end();
+        return mutateSteps(&bracket, thrown, reaction);
     }
 
     pub fn call_static_mutateUnscoped(instance: *runtime.Instance, thrown: runtime.JSValue, reaction: runtime.JSValue) anyerror!i32 {
-        var bracket: Bracket = .{};
+        _ = instance;
+        var bracket = Bracket.begin();
         defer bracket.end();
-        return mutateSteps(instance, &bracket, thrown, reaction);
-    }
-
-    /// Throw `thrown` the way an impl does, take it back, and return
-    /// normally: if anything were still pending, script would see it.
-    pub fn call_static_swallow(instance: *runtime.Instance, thrown: runtime.JSValue) anyerror!i32 {
-        const r = engine.currentRealm() orelse instance.ctx;
-        try engine.throwValue(r, thrown);
-        if (swallowed) |s| s.release();
-        swallowed = try engine.takePendingException(r);
-        return if (swallowed != null) 7 else 0;
+        return mutateSteps(&bracket, thrown, reaction);
     }
 };
 
-test "a member's throw survives its reactions: script catches the original value, and the reactions ran" {
+test "a member's throw survives its reactions: set aside, the reaction runs, the same value is pending again in the scope" {
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -216,7 +232,7 @@ test "a member's throw survives its reactions: script catches the original value
         \\  catch (e) { return e === err && ran === 1 ? 1 : 0; }
         \\})()
     ));
-    try std.testing.expectEqual(Take.taken, last_take);
+    try std.testing.expectEqual(Outcome.ran, last_outcome);
 }
 
 test "a primitive thrown by the member comes back as itself" {
@@ -229,10 +245,9 @@ test "a primitive thrown by the member comes back as itself" {
         \\  catch (e) { return e === 17 && ran === 1 ? 1 : 0; }
         \\})()
     ));
-    try std.testing.expectEqual(Take.taken, last_take);
 }
 
-test "nothing pending is null: the reactions run and the member's result stands" {
+test "nothing pending: the reactions run and the member's result stands" {
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -242,7 +257,7 @@ test "nothing pending is null: the reactions run and the member's result stands"
         \\  return v === 42 && ran === 1 ? 1 : 0;
         \\})()
     ));
-    try std.testing.expectEqual(Take.nothing, last_take);
+    try std.testing.expectEqual(Outcome.ran, last_outcome);
 }
 
 test "a reaction's throw is reported, and the member's result stands" {
@@ -254,12 +269,29 @@ test "a reaction's throw is reported, and the member's result stands" {
         \\  return BceCEReactionsProbe.mutate(undefined, () => { throw reactionError; });
         \\})()
     ));
-    try std.testing.expectEqual(Take.nothing, last_take);
     try exposeOwned("reported", reported);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("globalThis.reported === globalThis.reactionError ? 1 : 0"));
 }
 
-test "nested: a reaction's member that throws is taken and rethrown at its own level, then reported" {
+test "steps that leave an exception pending: it is cleared, never restored in the member's place" {
+    _ = try realm();
+    defer clearKept();
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\(() => {
+        \\  const err = new Error("member");
+        \\  try { BceCEReactionsProbe.mutateLeaky(err, () => {}); return -1; }
+        \\  catch (e) { return e === err ? 1 : 0; }
+        \\})()
+    ));
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\(() => {
+        \\  try { return BceCEReactionsProbe.mutateLeaky(undefined, () => {}) === 42 ? 1 : 0; }
+        \\  catch (e) { return -1; }
+        \\})()
+    ));
+}
+
+test "nested: a reaction's member that throws is set aside and rethrown at its own level, then reported" {
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -282,21 +314,7 @@ test "nested: a reaction's member that throws is taken and rethrown at its own l
     try std.testing.expectEqual(@as(i32, 1), try evalInt("globalThis.reported === globalThis.innerError ? 1 : 0"));
 }
 
-test "a taken exception is no longer pending: the member returns normally" {
-    _ = try realm();
-    defer clearKept();
-    try std.testing.expectEqual(@as(i32, 1), try evalInt(
-        \\(() => {
-        \\  globalThis.swallowError = new Error("swallowed");
-        \\  try { return BceCEReactionsProbe.swallow(swallowError) === 7 ? 1 : 0; }
-        \\  catch (e) { return -1; }
-        \\})()
-    ));
-    try exposeOwned("taken", swallowed);
-    try std.testing.expectEqual(@as(i32, 1), try evalInt("globalThis.taken === globalThis.swallowError ? 1 : 0"));
-}
-
-test "outside a binding catch scope a pending exception is NotSupported, stays pending, and no script runs" {
+test "outside a binding catch scope a pending exception is NotSupported: the steps do not run, and it stays pending" {
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -307,14 +325,19 @@ test "outside a binding catch scope a pending exception is NotSupported, stays p
         \\  catch (e) { return e === err && ran === 0 ? 1 : 0; }
         \\})()
     ));
-    try std.testing.expectEqual(Take.not_supported, last_take);
+    try std.testing.expectEqual(Outcome.not_supported, last_outcome);
 }
 
-test "outside a scope with nothing pending is null" {
+test "outside a scope with nothing pending, the steps run" {
     _ = try realm();
     defer clearKept();
-    try std.testing.expectEqual(@as(i32, 42), try evalInt("BceCEReactionsProbe.mutateUnscoped(undefined, () => {})"));
-    try std.testing.expectEqual(Take.nothing, last_take);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\(() => {
+        \\  let ran = 0;
+        \\  return BceCEReactionsProbe.mutateUnscoped(undefined, () => { ran++; }) === 42 && ran === 1 ? 1 : 0;
+        \\})()
+    ));
+    try std.testing.expectEqual(Outcome.ran, last_outcome);
 }
 
 test "the binding finds a member's bracket in its interface's ce_reactions table" {
