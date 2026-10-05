@@ -1777,6 +1777,8 @@ fn generateInterfaceFile(
         async_iterable_member, // Async iterable declaration if present
         own_overload_ops.items, // Every overload, for each method's `length`
     );
+    // HTML 3.2.3: an [HTMLConstructor] constructor's steps are HTML's.
+    try writer.writeHTMLConstructor(w, own_constructors.items);
 
     // NOTE: Deduplication now happens BEFORE writeMetadata (above)
     // This ensures the Meta.properties, Meta.eager_properties etc. don't have duplicates

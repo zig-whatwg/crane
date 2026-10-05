@@ -36,6 +36,7 @@ pub const capabilities: engine.Capabilities = .{
     .diagnostic_counters = .unsupported,
     .script_abort = .unsupported,
     .code_generation_checks = .unsupported,
+    .html_constructor = .unsupported,
 };
 
 /// No engine behind it.
@@ -182,6 +183,10 @@ pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 
 // 4.4 Invoking callbacks
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+    return error.NotSupported;
+}
+/// No engine: nothing to construct.
+pub fn constructCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: []const JSValue) Error!engine.Completion {
     return error.NotSupported;
 }
 pub fn callUserObjectOperation(_: Context, _: *const engine.CallbackInterface, _: []const u8, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {

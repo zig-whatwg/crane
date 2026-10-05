@@ -60,6 +60,10 @@ pub const capabilities: engine.Capabilities = .{
     // WebAssembly compilation compiles: CSP's 'unsafe-eval' and
     // 'wasm-unsafe-eval', and Trusted Types' eval sink, go unenforced.
     .code_generation_checks = .unsupported,
+    // A JSObjectCallAsConstructorCallback is handed no NewTarget, so
+    // `super()` from a custom element class cannot reach the host: custom
+    // element construction is unavailable until the C API offers it.
+    .html_constructor = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.
@@ -191,6 +195,15 @@ pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 
 // 4.4 Invoking callbacks
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+    return error.NotSupported;
+}
+/// WebIDL "construct a callback function". Linked: JSObjectIsConstructor
+/// (false is a TypeError of the realm, the throw completion), then, in the
+/// function's context with the callback context pushed as the incumbent,
+/// JSObjectCallAsConstructor(ctx, F, argc, argv, &exception) - a non-null
+/// `exception` is the throw completion, else the result is the normal one
+/// (JSValueProtect'ed as the Owned).
+pub fn constructCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: []const JSValue) Error!engine.Completion {
     return error.NotSupported;
 }
 pub fn callUserObjectOperation(_: Context, _: *const engine.CallbackInterface, _: []const u8, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
