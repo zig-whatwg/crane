@@ -35,6 +35,8 @@ pub const Implementation = struct {
     declarative_refresh: *const fn (document: *runtime.Instance, input: []const u8, meta: ?*runtime.Instance) void,
     set_iframe_load_in_progress: *const fn (document: *runtime.Instance, in_progress: bool) void,
     is_iframe_load_muted: *const fn (document: *runtime.Instance) bool,
+    delay_load_event: *const fn (document: *runtime.Instance) void,
+    undelay_load_event: *const fn (document: *runtime.Instance) void,
 };
 
 /// The "steps to fire beforeunload" result that navigation reads: whether the
@@ -182,6 +184,26 @@ pub fn isIframeLoadMuted(document: *runtime.Instance) bool {
     return impl.is_iframe_load_muted(document);
 }
 
+/// HTML "delay the load event": `document`'s load event - "the end" step 8 -
+/// waits until a matching `undelayLoadEvent`. For work that has no other
+/// term in step 8: an object element's fetch and the task that processes it
+/// (4.8.7), say. Blink's Document::IncrementLoadEventDelayCount. Every
+/// delay must be undelayed on every path its work can end by - done,
+/// failed, the element removed, the document unloaded - or the document
+/// never loads; a holder keeps the document and its slab generation, and
+/// skips the undelay of a document that is gone.
+pub fn delayLoadEvent(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.delay_load_event(document);
+}
+
+/// The end of one `delayLoadEvent`: if nothing else delays `document`'s load
+/// event, "the end" goes on (Blink's DecrementLoadEventDelayCount).
+pub fn undelayLoadEvent(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.undelay_load_event(document);
+}
+
 test "without an installed implementation nothing is asked of a document" {
     const std = @import("std");
     const saved = implementation;
@@ -192,6 +214,8 @@ test "without an installed implementation nothing is asked of a document" {
     parsingStopped(&document);
     finishLoading(&document);
     loadDelayMayHaveEnded(&document);
+    delayLoadEvent(&document);
+    undelayLoadEvent(&document);
     markInitialAboutBlank(&document);
     unload(&document);
     abort(&document);
