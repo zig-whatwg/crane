@@ -187,6 +187,30 @@ fn commitLink(w: W, sha: ?[]const u8) Error!void {
     try w.writeAll("</code></a>");
 }
 
+/// A generation's range of commits, linked to GitHub's comparison of the two.
+fn rangeLink(w: W, since: []const u8, head: []const u8) Error!void {
+    try w.writeAll("<a href=\"" ++ links.crane ++ "/compare/");
+    try html.href(w, since);
+    try w.writeAll("...");
+    try html.href(w, head);
+    try w.writeAll("\"><code>");
+    try html.text(w, since);
+    try w.writeAll("</code>&hellip;<code>");
+    try html.text(w, head);
+    try w.writeAll("</code></a>");
+}
+
+/// The branches merged in a generation's range: `<code>a</code>, <code>b</code>`,
+/// or with " and " before the last when `prose`.
+fn landedList(w: W, landed: []const []const u8, prose: bool) Error!void {
+    for (landed, 0..) |name, i| {
+        if (i > 0) try w.writeAll(if (prose and i == landed.len - 1) (if (landed.len > 2) ", and " else " and ") else ", ");
+        try w.writeAll("<code>");
+        try html.text(w, name);
+        try w.writeAll("</code>");
+    }
+}
+
 fn sourceUrl(w: W, site: *const Site, p: []const u8) Error!void {
     if (std.mem.eql(u8, site.wpt.kind, "upstream")) {
         try w.writeAll(links.wpt_upstream ++ "/blob/");
@@ -591,7 +615,18 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
     try html.longDate(w, g.at);
     try w.writeAll("</p>\n<dl class=\"head-meta\">\n<div><dt>This version</dt><dd>");
     try w.print("Generation {d}, recorded at Crane ", .{g.n});
-    try commitLink(w, g.head);
+    if (g.since.len > 0) {
+        try rangeLink(w, g.since, g.head);
+        if (g.commits == 0) {
+            try w.print(": no new commits since generation {d}", .{g.since_n});
+        } else {
+            try w.print(": {d} commit{s} since generation {d}", .{ g.commits, if (g.commits == 1) "" else "s", g.since_n });
+            if (g.landed.len > 0) {
+                try w.writeAll(", merging ");
+                try landedList(w, g.landed, true);
+            }
+        }
+    } else try commitLink(w, g.head);
     try w.writeAll("</dd></div>\n<div><dt>Runs</dt><dd>");
     try writeRuns(w, site);
     try w.writeAll("</dd></div>\n<div><dt>WPT revision</dt><dd>");
@@ -899,6 +934,19 @@ fn writeGenRow(w: W, g: Generation) Error!void {
         try html.text(w, g.head);
         try w.writeAll("\"");
     }
+    if (g.since.len > 0) {
+        try w.writeAll(" data-since=\"");
+        try html.text(w, g.since);
+        try w.print("\" data-commits=\"{d}\"", .{g.commits});
+        if (g.landed.len > 0) {
+            try w.writeAll(" data-landed=\"");
+            for (g.landed, 0..) |name, i| {
+                if (i > 0) try w.writeByte(' ');
+                try html.text(w, name);
+            }
+            try w.writeAll("\"");
+        }
+    }
     try w.print(" data-pass=\"{d}\" data-total=\"{d}\"", .{ g.passing(), g.subTotal() });
     if (g.subs) |sb| {
         try w.print(" data-fail=\"{d}\" data-timeout=\"{d}\" data-notrun=\"{d}\"", .{ sb.failed, sb.timed_out, sb.notrun });
@@ -913,7 +961,14 @@ fn writeGenRow(w: W, g: Generation) Error!void {
     try w.print("><td>{d}</td><td>", .{g.n});
     try html.shortDateY(w, g.at);
     try w.writeAll("</td><td>");
-    if (known_head) {
+    if (g.since.len > 0) {
+        try rangeLink(w, g.since, g.head);
+        if (g.landed.len > 0) {
+            try w.writeAll("<span class=\"landed\">merged ");
+            try landedList(w, g.landed, false);
+            try w.writeAll("</span>");
+        }
+    } else if (known_head) {
         try w.writeAll("<code>");
         try html.text(w, g.head);
         try w.writeAll("</code>");

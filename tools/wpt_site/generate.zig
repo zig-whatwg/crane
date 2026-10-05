@@ -47,7 +47,81 @@ pub const Inputs = struct {
     /// Where the site is published, with a trailing slash: the social tags
     /// need absolute URLs.
     site_url: []const u8 = default_site_url,
+    /// The Crane commits between consecutive generations (main asks git;
+    /// see rangePairs). A generation with none shows its head alone.
+    ranges: []const Range = &.{},
 };
+
+/// The Crane commits from one generation's head to the next's:
+/// `git log --first-parent since..head`.
+pub const Range = struct {
+    since: []const u8,
+    head: []const u8,
+    commits: u32,
+    /// The branches merged among them, oldest first ("lane/serializable").
+    landed: []const []const u8,
+};
+
+pub const RangePair = struct { since: []const u8, head: []const u8 };
+
+fn knownHead(head: []const u8) bool {
+    return head.len > 0 and !std.mem.eql(u8, head, "?");
+}
+
+/// The ranges to ask git for: each generation with a recorded head, paired
+/// with the previous generation that has one. A generation measured at the
+/// same commit as the one before it pairs with it too (no commits).
+pub fn rangePairs(arena: Allocator, history_json: []const u8) ![]const RangePair {
+    const history = try std.json.parseFromSliceLeaky(History, arena, history_json, parse_options);
+    var pairs: std.ArrayList(RangePair) = .empty;
+    var prev: ?[]const u8 = null;
+    for (history.generations) |g| {
+        if (!knownHead(g.head)) continue;
+        if (prev) |p| try pairs.append(arena, .{ .since = p, .head = g.head });
+        prev = g.head;
+    }
+    return pairs.items;
+}
+
+/// The branch a merge commit's subject names: "Merge lane/x (sha): ..." and
+/// git's own "Merge branch 'x'" / "Merge remote-tracking branch 'x'".
+pub fn mergeName(subject: []const u8) ?[]const u8 {
+    const prefix = "Merge ";
+    if (!std.mem.startsWith(u8, subject, prefix)) return null;
+    var rest = subject[prefix.len..];
+    for ([_][]const u8{ "remote-tracking branch ", "branch " }) |p| {
+        if (std.mem.startsWith(u8, rest, p)) {
+            rest = rest[p.len..];
+            break;
+        }
+    }
+    if (rest.len > 0 and rest[0] == '\'') {
+        const end = std.mem.indexOfScalar(u8, rest[1..], '\'') orelse return null;
+        return if (end == 0) null else rest[1 .. 1 + end];
+    }
+    const end = std.mem.indexOfAny(u8, rest, " (:") orelse rest.len;
+    return if (end == 0) null else rest[0..end];
+}
+
+/// A Range from `git log --first-parent --format=%H%x09%P%x09%s since..head`
+/// (newest first): every line a commit, a line with two parents a merge.
+pub fn parseRange(arena: Allocator, since: []const u8, head: []const u8, log: []const u8) !Range {
+    var commits: u32 = 0;
+    var landed: std.ArrayList([]const u8) = .empty;
+    var lines = std.mem.splitScalar(u8, log, '\n');
+    while (lines.next()) |line| {
+        if (line.len == 0) continue;
+        commits += 1;
+        var fields = std.mem.splitScalar(u8, line, '\t');
+        const hash = fields.next() orelse continue;
+        const parents = fields.next() orelse continue;
+        const subject = fields.rest();
+        if (std.mem.indexOfScalar(u8, std.mem.trim(u8, parents, " "), ' ') == null) continue;
+        try landed.append(arena, mergeName(subject) orelse hash[0..@min(hash.len, 10)]);
+    }
+    std.mem.reverse([]const u8, landed.items);
+    return .{ .since = since, .head = head, .commits = commits, .landed = landed.items };
+}
 
 pub const Summary = struct {
     files: usize = 0,
@@ -454,6 +528,22 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
 
     const state = try std.json.parseFromSliceLeaky(std.json.ArrayHashMap(Record), arena, in.state_json, parse_options);
     const history = try std.json.parseFromSliceLeaky(History, arena, in.history_json, parse_options);
+    const generations = try arena.dupe(Generation, history.generations);
+    {
+        var prev: ?*const Generation = null;
+        for (generations) |*g| {
+            if (!knownHead(g.head)) continue;
+            if (prev) |p| for (in.ranges) |r| {
+                if (!std.mem.eql(u8, r.since, p.head) or !std.mem.eql(u8, r.head, g.head)) continue;
+                g.since = r.since;
+                g.since_n = p.n;
+                g.commits = r.commits;
+                g.landed = r.landed;
+                break;
+            };
+            prev = g;
+        }
+    }
     const worklist = try parseWorklist(arena, in.worklist_text);
     const journals = try listJournals(arena, io, in.results);
 
@@ -573,7 +663,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         .dirs = &dirs,
         .suites = dirs.getPtr("").?.dirs,
         .runs = &runs,
-        .history = history.generations,
+        .history = generations,
         .wpt = in.wpt,
         .worklist_name = in.worklist_name,
         .detail_files = summary.detail_files,
@@ -740,7 +830,22 @@ pub fn main(init: std.process.Init) !void {
     var out = try cwd.createDirPathOpen(io, out_path, .{ .open_options = .{ .iterate = true } });
     defer out.close(io);
 
+    // Each generation's range of Crane commits, from git (the repository is the
+    // working directory). A range git cannot answer is left out: that
+    // generation shows its head alone.
+    var ranges: std.ArrayList(Range) = .empty;
+    for (try rangePairs(arena, history)) |pair| {
+        if (std.mem.eql(u8, pair.since, pair.head)) {
+            try ranges.append(arena, .{ .since = pair.since, .head = pair.head, .commits = 0, .landed = &.{} });
+            continue;
+        }
+        const span = try std.fmt.allocPrint(arena, "{s}..{s}", .{ pair.since, pair.head });
+        const log = capture(arena, io, ".", &.{ "git", "log", "--first-parent", "--format=%H%x09%P%x09%s", span }) orelse continue;
+        try ranges.append(arena, try parseRange(arena, pair.since, pair.head, log));
+    }
+
     const summary = try generate(init.gpa, io, .{
+        .ranges = ranges.items,
         .state_json = state,
         .history_json = history,
         .worklist_text = worklist,
@@ -1226,4 +1331,79 @@ test "site: index.html opens its body with the direction contract" {
     try testing.expect(std.mem.startsWith(u8, rest, "<!--\nTHESIS: "));
     try expectHas(rest, "seed a0daf20c");
     try expectHas(rest, "FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md\n-->");
+}
+
+test "range: a merge's subject names the branch it merged" {
+    try testing.expectEqualStrings("lane/serializable", mergeName("Merge lane/serializable (d6a770df64): [Serializable] platform objects").?);
+    try testing.expectEqualStrings("infra/test-aggregation", mergeName("Merge infra/test-aggregation (f476a8c834): one test executable").?);
+    try testing.expectEqualStrings("lane/x", mergeName("Merge branch 'lane/x' into main").?);
+    try testing.expectEqualStrings("origin/main", mergeName("Merge remote-tracking branch 'origin/main' into crane-upstream").?);
+    try testing.expectEqualStrings("fix/retire-oom", mergeName("Merge fix/retire-oom").?);
+    try testing.expect(mergeName("chore: codex-indexeddb's Crane tests (gitlink)") == null);
+    try testing.expect(mergeName("Merge ") == null);
+}
+
+test "range: a first-parent log gives the commits and the merges among them" {
+    const a = testing.allocator;
+    var arena_state: std.heap.ArenaAllocator = .init(a);
+    defer arena_state.deinit();
+    const log =
+        "2794798eb585e639bd487e4fae1a504c155164c8\t422aac9b30aa\tchore: codex-indexeddb's Crane tests (gitlink)\n" ++
+        "422aac9b30aa0000000000000000000000000000\t35a00e7ec4aa 4af556288eaa\tMerge lane/codex-indexeddb (4af556288e, Codex): IndexedDB\n" ++
+        "35a00e7ec4aa0000000000000000000000000000\t0c414f3cadaa\tchore: serializable's Crane tests\n" ++
+        "0c414f3cadaa0000000000000000000000000000\tab6f5d58d4aa d6a770df64aa\tMerge lane/serializable (d6a770df64): [Serializable]\n" ++
+        "e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0\tab6f5d58d4aa 1111111111aa\tMerge\n";
+    const r = try parseRange(arena_state.allocator(), "70f48f5704", "2794798eb5", log);
+    try testing.expectEqualStrings("70f48f5704", r.since);
+    try testing.expectEqualStrings("2794798eb5", r.head);
+    try testing.expectEqual(@as(u32, 5), r.commits);
+    // Oldest first, as they landed; a merge whose subject names no branch is its commit.
+    try testing.expectEqual(@as(usize, 3), r.landed.len);
+    try testing.expectEqualStrings("e0e0e0e0e0", r.landed[0]);
+    try testing.expectEqualStrings("lane/serializable", r.landed[1]);
+    try testing.expectEqualStrings("lane/codex-indexeddb", r.landed[2]);
+    // No commits: an empty log.
+    const none = try parseRange(arena_state.allocator(), "a", "b", "");
+    try testing.expectEqual(@as(u32, 0), none.commits);
+    try testing.expectEqual(@as(usize, 0), none.landed.len);
+}
+
+test "range: consecutive generations with known heads are the ranges to ask git for" {
+    const a = testing.allocator;
+    var arena_state: std.heap.ArenaAllocator = .init(a);
+    defer arena_state.deinit();
+    const pairs = try rangePairs(arena_state.allocator(), fixture_history_next);
+    // Generation 1's head is not recorded, so generation 2 has no range.
+    try testing.expectEqual(@as(usize, 1), pairs.len);
+    try testing.expectEqualStrings("5c8dd64da", pairs[0].since);
+    try testing.expectEqualStrings("6d9ee75eb", pairs[0].head);
+}
+
+test "site: a generation names the commits since the previous one, and the merges among them" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const st = try f.state(gpa);
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, "ranged", .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    const landed = [_][]const u8{ "lane/a", "lane/b" };
+    _ = try generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history_next,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+        .ranges = &.{.{ .since = "5c8dd64da", .head = "6d9ee75eb", .commits = 3, .landed = &landed }},
+    }, out);
+    const index = try readOut(gpa, &f, "ranged/index.html");
+    defer gpa.free(index);
+    // The headline's version: the range, linked to its comparison, and what merged in it.
+    try expectHas(index, "Generation 3, recorded at Crane <a href=\"https://github.com/zig-whatwg/crane/compare/5c8dd64da...6d9ee75eb\"><code>5c8dd64da</code>&hellip;<code>6d9ee75eb</code></a>: 3 commits since generation 2, merging <code>lane/a</code> and <code>lane/b</code>");
+    // Its row carries the range for the chart, and says it in words.
+    try expectHas(index, "data-head=\"6d9ee75eb\" data-since=\"5c8dd64da\" data-commits=\"3\" data-landed=\"lane/a lane/b\"");
+    try expectHas(index, "<td><a href=\"https://github.com/zig-whatwg/crane/compare/5c8dd64da...6d9ee75eb\"><code>5c8dd64da</code>&hellip;<code>6d9ee75eb</code></a><span class=\"landed\">merged <code>lane/a</code>, <code>lane/b</code></span></td>");
+    // A generation with no range keeps its single commit.
+    try expectHas(index, "<td><code>5c8dd64da</code></td>");
 }
