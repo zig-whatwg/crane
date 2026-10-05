@@ -40,6 +40,9 @@ pub const capabilities: engine.Capabilities = .{
     .diagnostic_counters = .unsupported,
     .script_abort = .unsupported,
     .code_generation_checks = .unsupported,
+    // No engine linked. Linked, it can be native: a JS_CFUNC_constructor
+    // function receives new.target as this_val.
+    .html_constructor = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.
@@ -167,6 +170,13 @@ pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 
 // 4.4 Invoking callbacks
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
+    return error.NotSupported;
+}
+/// WebIDL "construct a callback function". Linked: JS_IsConstructor (false
+/// is a TypeError of the realm, the throw completion), then
+/// JS_CallConstructor(ctx, F, argc, argv) in the function's realm - an
+/// exception result is the throw completion, its value from JS_GetException.
+pub fn constructCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: []const JSValue) Error!engine.Completion {
     return error.NotSupported;
 }
 pub fn callUserObjectOperation(_: Context, _: *const engine.CallbackInterface, _: []const u8, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {

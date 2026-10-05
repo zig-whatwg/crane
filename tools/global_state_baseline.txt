@@ -357,4 +357,5 @@ src/webidl/types/buffer_sources.zig engine_buffer 1 G P-const decl:9bc1d032c76bb
 src/webidl/types/dictionaries.zig mock_data 1 G X decl:f33e1c60fc8c8315
 src/webidl/utils/registry.zig InstanceRegistry.guard 1 G I/engine decl:0492ce83193eb819
 src/webidl/utils/registry.zig InstanceRegistry.map 1 G I/engine decl:59165264326ba34d
+src/webidl/utils/registry.zig runtime_epoch 1 G P-res decl:1dfcee87d8da8735
 src/websocket/connection.zig handshake_gate 1 TL I/profile decl:f0ae7878d15d1ca1

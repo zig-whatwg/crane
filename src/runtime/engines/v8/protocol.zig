@@ -73,6 +73,8 @@ pub const capabilities: engine.Capabilities = .{
     // Isolate::SetModifyCodeGenerationFromStringsCallback and
     // SetAllowWasmCodeGenerationCallback (protocol_agents.zig).
     .code_generation_checks = .native,
+    // The construct callback sees NewTarget (FunctionCallbackInfo::NewTarget).
+    .html_constructor = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
@@ -295,6 +297,7 @@ pub const releaseModuleRecord = protocol_modules.releaseModuleRecord;
 
 const protocol_callbacks = @import("protocol_callbacks.zig");
 pub const invokeCallbackFunction = protocol_callbacks.invokeCallbackFunction;
+pub const constructCallbackFunction = protocol_callbacks.constructCallbackFunction;
 pub const callUserObjectOperation = protocol_callbacks.callUserObjectOperation;
 
 /// In `realm`'s agent: a realm that cannot be entered reads nothing.

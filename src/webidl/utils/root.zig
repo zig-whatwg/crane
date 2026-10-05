@@ -31,6 +31,9 @@
 //! ```
 
 pub const InstanceRegistry = @import("registry.zig").InstanceRegistry;
+/// A runtime begins: the registries' entries from before it are an earlier
+/// runtime's, whose arena is gone (registry.zig `runtime_epoch`).
+pub const beginRegistryRuntime = @import("registry.zig").beginRuntime;
 /// When to rehash a long-lived address-keyed side table (see tombstones.zig).
 pub const tombstones = @import("tombstones.zig");
 pub const InternalStateAccessor = @import("internal_state.zig").InternalStateAccessor;

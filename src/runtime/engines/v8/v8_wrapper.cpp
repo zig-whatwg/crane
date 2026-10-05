@@ -12951,6 +12951,58 @@ Global<Value>* v8_Function_CallCatchingWithSite(
     return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked()));
 }
 
+/// ECMAScript Construct(`function`, `argv`) in `context` - newTarget the
+/// function itself (Function::NewInstance) - under a TryCatch, as
+/// v8_Function_CallCatchingWithSite calls: the result with `*threw` false, or
+/// the thrown value with `*threw` true and `*site` where it was thrown. Null
+/// (with `*threw` true) only when `function` is not a constructor or the
+/// isolate is terminating. Every non-null result is a new Global the caller
+/// owns. WebIDL "construct a callback function" steps 10-11.
+Global<Value>* v8_Function_ConstructCatchingWithSite(
+    Global<Context>* context,
+    Global<Value>* function,
+    int argc,
+    Global<Value>** argv,
+    bool* threw,
+    V8ErrorInfo** site
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    *threw = true;
+    *site = nullptr;
+
+    if (!context || !function || function->IsEmpty()) return nullptr;
+    Local<Value> fn_value = function->Get(isolate);
+    if (!fn_value->IsObject() || !fn_value.As<Object>()->IsConstructor()) return nullptr;
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+
+    std::vector<Local<Value>> local_argv;
+    local_argv.reserve(argc > 0 ? argc : 0);
+    for (int i = 0; i < argc; i++) {
+        local_argv.push_back(argv[i] ? argv[i]->Get(isolate) : Undefined(isolate).As<Value>());
+    }
+
+    TryCatch try_catch(isolate);
+    try_catch.SetCaptureMessage(true);
+    // A constructor is callable (IsConstructor implies IsCallable), so it is
+    // a Function to V8 - a callable Proxy included.
+    MaybeLocal<Object> maybe_result = fn_value.As<Function>()->NewInstance(
+        ctx, argc, local_argv.empty() ? nullptr : local_argv.data());
+
+    if (try_catch.HasCaught()) {
+        if (!try_catch.CanContinue()) return nullptr;
+        Global<Value>* thrown = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+        *site = errorInfoAtThrowSite(isolate, ctx, try_catch);
+        return thrown;
+    }
+    if (maybe_result.IsEmpty()) return nullptr;
+
+    *threw = false;
+    return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked().As<Value>()));
+}
+
 /// v8_Object_GetCatching, and on a throw `*site` is where it was thrown, as
 /// v8_Function_CallCatchingWithSite has it.
 Global<Value>* v8_Object_GetCatchingWithSite(

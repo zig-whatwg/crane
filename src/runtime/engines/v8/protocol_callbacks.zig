@@ -303,6 +303,85 @@ pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFu
     return finish(try body.result, entered.context(), callback_realm.realm, behavior);
 }
 
+/// WebIDL "construct a callback function" (3.12), `realm` as for
+/// invokeCallbackFunction: the constructed object, or what was thrown -
+/// always handed back (the algorithm's step 13.3 throws it; the caller does).
+pub fn constructCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, args: []const JSValue) Error!Completion {
+    const entered = try support.enter(realm);
+    defer entered.leave();
+
+    // 1. Let completion be an uninitialized variable.
+    // 2. Let F be the JavaScript object corresponding to callable.
+    // 3. If IsConstructor(F) is false, throw a TypeError exception. (A
+    //    callback of a realm the collector took is empty: nothing to
+    //    construct either.)
+    const function = support.handleOf(callback.function.value) orelse return notAConstructor(entered);
+    if (ffi.v8_Global_IsEmpty(function) or !ffi.v8_Value_IsConstructor(function)) return notAConstructor(entered);
+
+    // 4. Let realm be F's associated realm.
+    // 5. Let relevant settings be realm's settings object.
+    // 6. Let stored settings be callable's callback context.
+    // 7. Prepare to run script with relevant settings.
+    const callback_realm = try CallbackRealm.enter(function, entered);
+    var in_callback_realm = true;
+    defer if (in_callback_realm) callback_realm.leave();
+
+    var js_args: Arguments = .{};
+    defer js_args.release();
+
+    var body: struct {
+        isolate: *ffi.Isolate,
+        context: *ffi.Context,
+        function: *ffi.Value,
+        args: []const JSValue,
+        js_args: *Arguments,
+        result: Error!Raw = error.OperationFailed,
+        pub fn run(self: *@This()) void {
+            // 9. Let jsArgs be the result of converting args to a JavaScript
+            //    arguments list.
+            self.js_args.convert(self.isolate, self.context, self.args) catch |err| {
+                self.result = err;
+                return;
+            };
+            // 10. Let callResult be Completion(Construct(F, jsArgs)).
+            // 11. If callResult is an abrupt completion, set completion to
+            //     callResult.
+            // 12. Set completion to callResult.[[Value]] (its conversion to
+            //     the return type is the caller's).
+            self.result = constructRaw(self.context, self.function, self.js_args.slice());
+        }
+    } = .{ .isolate = entered.isolate, .context = callback_realm.context, .function = function, .args = args, .js_args = &js_args };
+    // 8. Prepare to run a callback with stored settings; 13.1. clean up after
+    //    running a callback with stored settings.
+    withCallbackContext(entered.isolate, callback.context, &body);
+    // 13.2. Clean up after running script with relevant settings.
+    callback_realm.leave();
+    in_callback_realm = false;
+    // 13.3. If completion is an abrupt completion, throw completion.[[Value]]
+    //       - handed back, for the caller to throw. 13.4. Return completion.
+    return finish(try body.result, entered.context(), callback_realm.realm, .rethrow);
+}
+
+/// Step 3's TypeError, made in the entered realm before any script runs.
+fn notAConstructor(entered: support.Entered) Error!Completion {
+    const exception = try support.newTypeError(entered.isolate, entered.context(), "The callback is not a constructor");
+    return .{ .throw = support.owned(exception) };
+}
+
+/// Construct(`function`, `args`) in `context`, its completion caught - with
+/// where it was thrown, as `callRaw` has it.
+fn constructRaw(context: *ffi.Context, function: *ffi.Value, args: []const *ffi.Value) Error!Raw {
+    var threw = false;
+    var site: ?*ffi.V8ErrorInfo = null;
+    const result = ffi.v8_Function_ConstructCatchingWithSite(context, function, @intCast(args.len), if (args.len == 0) null else args.ptr, &threw, &site);
+    // A terminating isolate has no value to hand back.
+    const value = result orelse {
+        ffi.v8_FreeErrorInfo(site);
+        return error.OperationFailed;
+    };
+    return if (threw) .{ .thrown = .{ .value = value, .site = site } } else .{ .normal = value };
+}
+
 /// WebIDL "call a user object's operation" (3.11), `realm` as for
 /// invokeCallbackFunction.
 pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackInterface, operation: []const u8, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!Completion {

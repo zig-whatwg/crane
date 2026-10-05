@@ -35,6 +35,29 @@
 const std = @import("std");
 const TombstoneGuard = @import("tombstones.zig").TombstoneGuard;
 
+const log = std.log.scoped(.instance_registry);
+
+/// The runtime the registries' entries belong to: `beginRuntime` starts a new
+/// one and every registration records the one it was made in. The arena that
+/// holds a registry's blocks is re-made with the runtime - Browser.init runs
+/// runtime.initializeRuntime and Browser.deinit its end - while the maps are
+/// the process's, so an entry from an earlier runtime points into memory that
+/// is gone: it is forgotten, never read and never freed.
+///
+/// This assumes ONE runtime - one Browser - alive in the process at a time, as
+/// the process-wide arena and slab re-made per Browser already do: a second
+/// Browser on another thread would begin a runtime that makes the first's
+/// entries look stale. Per-Browser registries are instances work
+/// (docs/instances.md).
+// process-wide: the runtime the process-wide registry maps' entries belong to - one runtime (one Browser) per process at a time, as the arena and slab assume.
+var runtime_epoch: u64 = 0;
+
+/// A runtime begins (runtime.initializeRuntime): every entry registered
+/// before now belongs to an earlier one.
+pub fn beginRuntime() void {
+    runtime_epoch +%= 1;
+}
+
 /// Generic instance registry that maps pointer addresses to internal state.
 ///
 /// This is a comptime-generated type that provides lazy-initialized registry
@@ -62,11 +85,19 @@ pub fn InstanceRegistry(comptime T: type) type {
             /// `remove` must be able to free without knowing the arena's type.
             owner: ?*anyopaque = null,
             free_fn: ?*const fn (*anyopaque, *T) void = null,
+            /// The runtime it was registered in (`runtime_epoch`). An entry of
+            /// an earlier runtime is never read: its block went with that
+            /// runtime's arena.
+            epoch: u64,
 
             fn release(self: Slot) void {
                 const owner = self.owner orelse return;
                 const f = self.free_fn orelse return;
                 f(owner, self.ptr);
+            }
+
+            fn current(self: Slot) bool {
+                return self.epoch == runtime_epoch;
             }
         };
 
@@ -94,7 +125,37 @@ pub fn InstanceRegistry(comptime T: type) type {
         pub fn get(instance: anytype) ?*T {
             const m = ensure();
             const entry = m.get(@intFromPtr(instance)) orelse return null;
+            // An earlier runtime's: its block is gone, and it is not this
+            // instance's.
+            if (!entry.current()) return null;
             return entry.ptr;
+        }
+
+        /// Take out the entry under `key` before an instance registers there,
+        /// and free it if it is this runtime's. Returns whether it was.
+        ///
+        /// Every registration happens once, in its instance's init, so an
+        /// entry already under the key is a DEAD instance's: the slab reissued
+        /// the address after a teardown that never reached this registry. Left
+        /// in place it was overwritten and what it owned leaked - or, where a
+        /// type fills its state lazily, the new instance took it for its own
+        /// (docs/lessons/architecture-an-address-keyed-entry-a-teardown-misses-is-inherited.md).
+        /// Its own deinit frees it, as the browser's end would have. An entry
+        /// of an earlier runtime is only forgotten: its block went with that
+        /// runtime's arena.
+        fn dropStale(m: *std.AutoHashMap(usize, Slot), key: usize) bool {
+            const kv = m.fetchRemove(key) orelse return false;
+            guard.noteRemoval(m);
+            if (!kv.value.current()) return false;
+            if (@hasDecl(T, "deinit")) kv.value.ptr.deinit();
+            kv.value.release();
+            return true;
+        }
+
+        /// `dropStale`, saying so: a teardown missed this registry. An error,
+        /// so a unit test that meets one fails and a runner's log counts it.
+        fn reportStale(m: *std.AutoHashMap(usize, Slot), key: usize) void {
+            if (dropStale(m, key)) log.err("stale {s} at a reissued address: a teardown missed it", .{@typeName(T)});
         }
 
         /// Register internal state for an instance.
@@ -106,8 +167,9 @@ pub fn InstanceRegistry(comptime T: type) type {
         /// the only way a discarded node's internal state comes back.
         pub fn set(instance: anytype, internal: *T) !void {
             const m = ensure();
+            reportStale(m, @intFromPtr(instance));
             guard.beforeInsert(m);
-            try m.put(@intFromPtr(instance), .{ .ptr = internal });
+            try m.put(@intFromPtr(instance), .{ .ptr = internal, .epoch = runtime_epoch });
         }
 
         /// Allocate internal state from `arena` and register it, with the registry
@@ -126,6 +188,7 @@ pub fn InstanceRegistry(comptime T: type) type {
         pub fn createIn(instance: anytype, arena: anytype) !*T {
             const Arena = @typeInfo(@TypeOf(arena)).pointer.child;
 
+            reportStale(ensure(), @intFromPtr(instance));
             const internal = try arena.create(T);
             errdefer arena.destroy(T, internal);
 
@@ -142,6 +205,7 @@ pub fn InstanceRegistry(comptime T: type) type {
                 .ptr = internal,
                 .owner = @ptrCast(arena),
                 .free_fn = thunk,
+                .epoch = runtime_epoch,
             });
             return internal;
         }
@@ -153,6 +217,8 @@ pub fn InstanceRegistry(comptime T: type) type {
             const m = ensure();
             if (m.fetchRemove(@intFromPtr(instance))) |kv| {
                 guard.noteRemoval(m);
+                // An earlier runtime's block went with its arena.
+                if (!kv.value.current()) return;
                 // Returns the block only if the registry allocated it. A
                 // caller-owned block freed here would be a double free; an owned
                 // block left here is the 904 bytes per element this exists to stop.
@@ -164,7 +230,8 @@ pub fn InstanceRegistry(comptime T: type) type {
         /// Accepts any pointer type - uses the pointer address as the key.
         pub fn contains(instance: anytype) bool {
             const m = ensure();
-            return m.contains(@intFromPtr(instance));
+            const entry = m.get(@intFromPtr(instance)) orelse return false;
+            return entry.current();
         }
 
         /// Get the number of registered instances.
@@ -189,7 +256,9 @@ pub fn InstanceRegistry(comptime T: type) type {
         /// Iterate over all registered internal states.
         /// Useful for cleanup operations.
         ///
-        /// Yields `*Slot`, so callers reach the state through `.ptr`.
+        /// Yields `*Slot`, so callers reach the state through `.ptr` - every
+        /// entry, an earlier runtime's too, whose block is gone: check
+        /// `.current()` before reading one.
         pub fn valueIterator() ?std.AutoHashMap(usize, Slot).ValueIterator {
             if (map) |m| {
                 return m.valueIterator();
@@ -214,6 +283,8 @@ pub fn InstanceRegistry(comptime T: type) type {
             if (map) |*m| {
                 var iter = m.valueIterator();
                 while (iter.next()) |slot| {
+                    // An earlier runtime's block went with its arena.
+                    if (!slot.current()) continue;
                     if (@hasDecl(T, "deinit")) {
                         slot.ptr.deinit();
                     }
@@ -237,8 +308,10 @@ pub fn InstanceRegistry(comptime T: type) type {
         pub const Iterator = struct {
             inner: std.AutoHashMap(usize, Slot).Iterator,
 
+            /// This runtime's entries only: an earlier runtime's block is gone.
             pub fn next(self: *Iterator) ?Entry {
-                if (self.inner.next()) |kv| {
+                while (self.inner.next()) |kv| {
+                    if (!kv.value_ptr.current()) continue;
                     return Entry{
                         .instance = @ptrFromInt(kv.key_ptr.*),
                         .internal = kv.value_ptr.ptr,
@@ -351,4 +424,66 @@ test "InstanceRegistry - clear" {
     try std.testing.expectEqual(@as(usize, 0), TestRegistry.count());
     try std.testing.expectEqual(@as(?*TestState, null), TestRegistry.get(&dummy1));
     try std.testing.expectEqual(@as(?*TestState, null), TestRegistry.get(&dummy2));
+}
+
+/// An arena for the tests below, as `createIn` duck-types one: blocks from
+/// std.testing.allocator, zeroed like ArenaAllocator.createRaw's.
+const TestArena = struct {
+    pub fn create(_: *TestArena, comptime U: type) !*U {
+        const block = try std.testing.allocator.create(U);
+        block.* = std.mem.zeroes(U);
+        return block;
+    }
+
+    pub fn destroy(_: *TestArena, comptime U: type, block: *U) void {
+        std.testing.allocator.destroy(block);
+    }
+};
+
+/// A state that owns memory, as an element's inline style or dirty value does.
+const OwningState = struct {
+    bytes: ?[]u8,
+
+    pub fn deinit(self: *OwningState) void {
+        if (self.bytes) |bytes| std.testing.allocator.free(bytes);
+        self.bytes = null;
+    }
+};
+
+test "InstanceRegistry - an entry this runtime left at a reissued address is freed, never inherited" {
+    const TestRegistry = InstanceRegistry(OwningState);
+    defer TestRegistry.deinitRegistry();
+    var arena = TestArena{};
+    var address: u8 = 0;
+
+    const dead = try TestRegistry.createIn(&address, &arena);
+    dead.bytes = try std.testing.allocator.dupe(u8, "the dead instance's");
+    // Its instance died and its teardown never reached this registry; the
+    // slab reissues the address. What it owned and its block are freed
+    // (std.testing.allocator fails the test otherwise) - by its own deinit.
+    try std.testing.expect(TestRegistry.dropStale(TestRegistry.ensure(), @intFromPtr(&address)));
+    const born = try TestRegistry.createIn(&address, &arena);
+    try std.testing.expect(born.bytes == null);
+    TestRegistry.remove(&address);
+}
+
+test "InstanceRegistry - an earlier runtime's entry is never read, freed or reported" {
+    const saved_epoch = runtime_epoch;
+    defer runtime_epoch = saved_epoch;
+    const TestRegistry = InstanceRegistry(OwningState);
+    defer TestRegistry.deinitRegistry();
+    var arena = TestArena{};
+    var address: u8 = 0;
+
+    const earlier = try TestRegistry.createIn(&address, &arena);
+    beginRuntime();
+    // Its block went with its runtime's arena: nothing answers it.
+    try std.testing.expectEqual(@as(?*OwningState, null), TestRegistry.get(&address));
+    try std.testing.expect(!TestRegistry.contains(&address));
+    var entries = TestRegistry.iterator().?;
+    try std.testing.expect(entries.next() == null);
+    // A registration over it forgets it without touching it.
+    try std.testing.expect(!TestRegistry.dropStale(TestRegistry.ensure(), @intFromPtr(&address)));
+    // The test's arena outlives the "runtime": its block is the test's to free.
+    arena.destroy(OwningState, earlier);
 }

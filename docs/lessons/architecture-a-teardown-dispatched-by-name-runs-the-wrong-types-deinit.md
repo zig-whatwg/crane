@@ -1,5 +1,7 @@
 # Architecture: A teardown dispatched by name runs the wrong type's deinit
 
+**Status** (2026-10-05, leaks3): the general fix landed. `deinitNodeByType` dispatches every element through `instance.vtable.deinit` - the function `onObjectFreed` runs - and completes a deinit that does not reach Node's as an Element; the per-type branches (SVG script, script, iframe, the media four, object, embed) are gone. The audit: the 74 element interfaces a tree can hold all chain to Node. What the old dispatch left behind, and why it leaked only in some processes: [architecture-an-address-keyed-entry-a-teardown-misses-is-inherited](architecture-an-address-keyed-entry-a-teardown-misses-is-inherited.md).
+
 **Date**: 2026-09-30
 **Lesson**: `Node.deinitNodeByType` chose an element's teardown by its local name: "script" went to HTMLScriptElement's deinit, "iframe" to HTMLIFrameElement's, everything else to Element's. An SVG `<script>` has HTML's local name and not its interface, so its own deinit never ran and its script element state leaked with every page that had one.
 

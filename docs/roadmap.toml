@@ -45,6 +45,7 @@ progress = [
   "875a0db20 - a destroyed frame releases its own handles (context, Window constructor, intrinsics, global); variadic arguments released",
   "7b265eb8f - the event handler map owns its values: 40 frame files leave 21 live contexts, not 102",
   "0af9d3df0, 005e85fac, 1e0711be0, 483783b0a, 677e88983 (merged 58ddcc8b5) - realms2: a removed frame's realm ends when nothing reachable holds it - traceChild never makes the owner's wrapper, torn-down nodes' wrappers weak, callback handles tagged with their realm and weakened at detach, Pin only for pending activity, retired realms end outside GC",
+  "f5f883ce91 (merged 3e1c853902) - leaks3: every element torn down through its own vtable deinit (the GC's path), teardown marked first, address-keyed registries free a dead instance's entry at the address's next birth and carry their arena's runtime epoch (leaks lane)",
 ]
 
   [[infra.items]]
