@@ -1121,13 +1121,13 @@ pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFu
 /// rethrow (`throwValue`) or report.
 ///
 /// A constructed platform object comes back as its wrapper, a `.handle`:
-/// `convertToPlatformObject` reads its instance. That *Instance does not root
-/// the wrapper; the Owned does, until it is released. An impl that returns
-/// the *Instance (a custom element constructed here) calls
-/// `keepPlatformObjectAlive` before releasing the Owned, and ends that hold
-/// once its caller has the value: between the impl's return and the binding
-/// wrapping its result, a [CEReactions] end can run script, and so a
-/// collection.
+/// `convertToPlatformObject` reads its instance. An *Instance result does not
+/// root a wrapper. An impl that holds an element's wrapper only through the
+/// Owned keeps that Owned (or another hold of its own) until its caller has
+/// the value: between the impl's return and the binding wrapping the result,
+/// a [CEReactions] end can run script, and so a collection.
+/// `keepPlatformObjectAlive` is one per-instance flag shared by every owner
+/// (pending activity), so it cannot carry a second, independent reason.
 pub inline fn constructCallbackFunction(realm: Context, callback: *const CallbackFunction, args: []const JSValue) Error!Completion {
     return impl.constructCallbackFunction(realm, callback, args);
 }
