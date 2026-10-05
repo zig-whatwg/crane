@@ -2281,6 +2281,17 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_ObjectTemplate_SetImmutableProto(instance_tmpl);
             }
 
+            // Trusted Types: a TrustedScript is code-like (TC39 Dynamic Code
+            // Brand Checks, [[HostDefinedIsCodeLike]]), so `eval(ts)` and
+            // `new Function(ts)` reach HostEnsureCanCompileStrings with
+            // isCodeLike true and CSP 4.4.1 step 2 skips the Trusted Types
+            // check for it. Without it, Function(trustedScript) under
+            // require-trusted-types-for is checked as a string and blocked
+            // when there is no default policy.
+            if (comptime std.mem.eql(u8, interface_name, "TrustedScript")) {
+                v8.v8_ObjectTemplate_SetCodeLike(instance_tmpl);
+            }
+
             // HTMLAllCollection has [[IsHTMLDDA]] internal slot per ECMA-262
             // This makes it "undetectable" - typeof returns "undefined", coerces to false
             // V8 requires undetectable objects to have a call-as-function handler

@@ -381,6 +381,11 @@ pub extern fn v8_ObjectTemplate_SetImmutableProto(self: *ObjectTemplate) void;
 /// Spec: https://tc39.es/ecma262/#sec-IsHTMLDDA-internal-slot
 pub extern fn v8_ObjectTemplate_MarkAsUndetectable(self: *ObjectTemplate) void;
 
+/// Mark the template's instances code-like ([[HostDefinedIsCodeLike]], TC39
+/// Dynamic Code Brand Checks): eval/Function hand them to the code generation
+/// callback as code (is_code_like). TrustedScript's instances are.
+pub extern fn v8_ObjectTemplate_SetCodeLike(self: *ObjectTemplate) void;
+
 /// Set a call-as-function handler on an ObjectTemplate.
 /// This allows instances to be called like functions.
 /// Required for objects marked as undetectable (like document.all).
