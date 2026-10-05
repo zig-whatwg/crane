@@ -6610,6 +6610,19 @@ void v8_ObjectTemplate_MarkAsUndetectable(Global<ObjectTemplate>* tpl) {
     local_tpl->MarkAsUndetectable();
 }
 
+// Mark an ObjectTemplate's instances as "code-like" (TC39 Dynamic Code Brand
+// Checks, [[HostDefinedIsCodeLike]]): eval and the Function constructors then
+// pass them to the host's code generation check as code (V8's is_code_like),
+// not as strings. Used for TrustedScript (Trusted Types: a TrustedScript is
+// code-like, so CSP's EnsureCSPDoesNotBlockStringCompilation skips its
+// Trusted Types check for it).
+void v8_ObjectTemplate_SetCodeLike(Global<ObjectTemplate>* tpl) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    local_tpl->SetCodeLike();
+}
+
 // ObjectTemplate - set call-as-function handler
 // This allows instances to be called like functions.
 // Required for objects marked as undetectable (like document.all).
