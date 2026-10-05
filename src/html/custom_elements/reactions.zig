@@ -54,6 +54,10 @@ pub fn Reactions(comptime Element: type, comptime Payload: type) type {
             self.depth += 1;
         }
 
+        pub fn hasCurrentQueue(self: *const Self) bool {
+            return self.depth != 0 and self.frames.len != 0 and self.frames.get(self.frames.len - 1).?.depth == self.depth;
+        }
+
         /// [CEReactions] step 3: pop before invoking, even on abrupt completion.
         /// No pointer into the frames or pending map survives a script call.
         pub fn end(self: *Self, context: anytype, comptime invoke: anytype) void {
@@ -107,6 +111,13 @@ pub fn Reactions(comptime Element: type, comptime Payload: type) type {
                 const element = self.backup.get(index).?;
                 self.invokeElement(element, context, invoke);
             }
+            self.backup.clear();
+            self.processing_backup = false;
+        }
+
+        /// The owner could not schedule the microtask; no callback owns it.
+        pub fn cancelBackup(self: *Self) void {
+            for (self.backup.toSlice()) |element| self.clearElement(element);
             self.backup.clear();
             self.processing_backup = false;
         }

@@ -41,7 +41,7 @@ const custom_elements = @import("custom_elements.zig");
 // NOT from root.zig (html_core module).
 const impls = @import("impls");
 const CustomElementRegistryImpl = impls.CustomElementRegistry;
-const CustomElementDefinition = CustomElementRegistryImpl.CustomElementDefinition;
+const CustomElementDefinition = custom_elements.CustomElementDefinition;
 
 /// Custom element state enumeration
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#custom-element-state

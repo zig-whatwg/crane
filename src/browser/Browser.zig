@@ -290,6 +290,8 @@ pub const Browser = struct {
         }
 
         if (self.agent) |agent| {
+            // Release queued handles while the agent exists; AgentHost outlives it.
+            self.agent_host.custom_elements.releasePending();
             // IMPORTANT: Clean up orphaned DOM nodes BEFORE the agent ends!
             // DOM node internal states may use the agent's allocator, which
             // its end frees. We must clean them up while allocators are valid.

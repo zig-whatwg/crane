@@ -54,13 +54,7 @@ var undefined_sentinel: u8 = 0;
 
 /// Custom element state per HTML spec
 /// Spec: https://html.spec.whatwg.org/#custom-element-state
-pub const CustomElementState = enum {
-    undefined,
-    failed,
-    uncustomized,
-    precustomized,
-    custom,
-};
+pub const CustomElementState = dom.custom_elements.State;
 
 // ==========================================================================
 // Inline Attribute Storage Optimization
@@ -140,6 +134,7 @@ pub const InternalState = struct {
 
     /// Custom element state per HTML spec
     custom_element_state: CustomElementState = .undefined,
+    custom_element_definition: ?*dom.custom_elements.Definition = null,
 
     /// "is" value for customized built-in elements
     is_value: ?runtime.DOMString = null,
@@ -197,6 +192,7 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        if (self.custom_element_definition) |definition| definition.deinit();
         if (self.namespace_uri) |*ns| {
             ns.deinit(self.allocator);
         }
@@ -549,6 +545,45 @@ pub fn installHooks() void {
     });
     // The parsers' "create an element" sets names through `dom.node_creation`.
     dom.node_creation.installElement(.{ .set_names = &setNamesHook });
+    dom.custom_elements.installElement(.{
+        .get = &customElementData,
+        .initialize = &initializeCustomElement,
+        .set_state = &setCustomElementState,
+        .set_definition = &setCustomElementDefinition,
+    });
+}
+
+fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementData {
+    const internal = getInternal(instance) orelse return null;
+    return .{
+        .state = internal.custom_element_state,
+        .definition = internal.custom_element_definition,
+        .is_value = if (internal.is_value) |value| value.asSlice() else null,
+    };
+}
+
+fn initializeCustomElement(instance: *runtime.Instance, prefix: ?[]const u8, is_value: ?[]const u8, state: CustomElementState) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    var owned_is = if (is_value) |value| try runtime.DOMString.initDupe(internal.allocator, value) else null;
+    errdefer if (owned_is) |*value| value.deinit(internal.allocator);
+    const owned_prefix = if (prefix) |value| try runtime.DOMString.initDupe(internal.allocator, value) else null;
+    if (internal.prefix) |*value| value.deinit(internal.allocator);
+    internal.prefix = owned_prefix;
+    if (internal.is_value) |*value| value.deinit(internal.allocator);
+    internal.is_value = owned_is;
+    internal.custom_element_state = state;
+}
+
+fn setCustomElementState(instance: *runtime.Instance, state: CustomElementState) void {
+    const internal = getInternal(instance) orelse return;
+    internal.custom_element_state = state;
+}
+
+fn setCustomElementDefinition(instance: *runtime.Instance, definition: ?*dom.custom_elements.Definition) void {
+    const internal = getInternal(instance) orelse return;
+    const old = internal.custom_element_definition;
+    internal.custom_element_definition = if (definition) |value| value.retain() else null;
+    if (old) |value| value.deinit();
 }
 
 /// Initialize instance (creates the instance)
@@ -1384,9 +1419,11 @@ fn handleAttributeChanges(
     // Step 2: "If element is custom, then enqueue a custom element callback
     // reaction with element, callback name "attributeChangedCallback", and
     // « attribute's local name, oldValue, newValue, attribute's namespace »."
-    // TODO(custom-elements): nothing moves an element's custom element state
-    // past "undefined" yet, so no element is custom and there is no
-    // definition to consult. Enqueue here once upgrades set the state.
+    if (getInternal(instance)) |internal| {
+        if (internal.custom_element_state == .custom) dom.custom_elements.enqueueCallback(instance, .attribute_changed, .{
+            .attribute_changed = .{ .local_name = local_name, .old_value = old_value, .new_value = new_value, .namespace = namespace },
+        });
+    }
 
     // Step 3: "Run the attribute change steps with element, attribute's local
     // name, oldValue, newValue, and attribute's namespace."

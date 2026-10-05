@@ -40,101 +40,7 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Custom element definition per HTML spec
-/// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#custom-element-definition
-pub const CustomElementDefinition = struct {
-    /// The custom element's name (valid custom element name)
-    name: []const u8,
-
-    /// The local name (equals name for autonomous, equals extends for customized built-in)
-    local_name: []const u8,
-
-    /// The constructor: define()'s argument, taken over from the binding.
-    /// OWNED, released with the definition.
-    constructor: engine.CallbackFunction,
-
-    /// Observed attributes list (for attributeChangedCallback). OWNED.
-    observed_attributes: []const []const u8,
-
-    /// Lifecycle callbacks
-    lifecycle_callbacks: LifecycleCallbacks,
-
-    /// Whether this is a form-associated custom element
-    form_associated: bool,
-
-    /// Whether attachInternals() is disabled
-    disable_internals: bool,
-
-    /// Whether attachShadow() is disabled
-    disable_shadow: bool,
-
-    /// The construction stack (for upgrade algorithm)
-    /// Each entry is either an element or the already-constructed marker
-    construction_stack: std.ArrayListUnmanaged(ConstructionStackEntry) = .empty,
-
-    allocator: Allocator,
-
-    pub const ConstructionStackEntry = union(enum) {
-        element: *runtime.Instance,
-        already_constructed: void,
-    };
-
-    /// "lifecycle callbacks": a map from the names below to a Web IDL
-    /// Function callback value or null. Each value is a hold of the
-    /// definition's own (OWNED), released with it.
-    pub const LifecycleCallbacks = struct {
-        connectedCallback: ?engine.Owned = null,
-        disconnectedCallback: ?engine.Owned = null,
-        adoptedCallback: ?engine.Owned = null,
-        connectedMoveCallback: ?engine.Owned = null,
-        attributeChangedCallback: ?engine.Owned = null,
-        formAssociatedCallback: ?engine.Owned = null,
-        formResetCallback: ?engine.Owned = null,
-        formDisabledCallback: ?engine.Owned = null,
-        formStateRestoreCallback: ?engine.Owned = null,
-
-        /// Release every callback held.
-        pub fn deinit(self: *LifecycleCallbacks, allocator: Allocator) void {
-            _ = allocator;
-            inline for (std.meta.fields(LifecycleCallbacks)) |field| {
-                if (@field(self, field.name)) |callback| callback.release();
-                @field(self, field.name) = null;
-            }
-        }
-    };
-
-    /// A definition holding `constructor` (taken: released with it).
-    pub fn init(allocator: Allocator, name: []const u8, local_name: []const u8, constructor: engine.CallbackFunction) !*CustomElementDefinition {
-        const def = try allocator.create(CustomElementDefinition);
-        errdefer allocator.destroy(def);
-        const owned_name = try allocator.dupe(u8, name);
-        errdefer allocator.free(owned_name);
-
-        def.* = .{
-            .name = owned_name,
-            .local_name = try allocator.dupe(u8, local_name),
-            .constructor = constructor,
-            .observed_attributes = &.{},
-            .lifecycle_callbacks = .{},
-            .form_associated = false,
-            .disable_internals = false,
-            .disable_shadow = false,
-            .allocator = allocator,
-        };
-
-        return def;
-    }
-
-    pub fn deinit(self: *CustomElementDefinition) void {
-        self.allocator.free(self.name);
-        self.allocator.free(self.local_name);
-        freeStrings(self.allocator, self.observed_attributes);
-        self.construction_stack.deinit(self.allocator);
-        self.lifecycle_callbacks.deinit(self.allocator);
-        self.constructor.release();
-        self.allocator.destroy(self);
-    }
-};
+pub const CustomElementDefinition = @import("html_core").custom_element_definition.Definition(runtime, engine);
 
 /// Free a list of strings and the list.
 fn freeStrings(allocator: Allocator, strings: []const []const u8) void {
@@ -373,6 +279,11 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
 
     // Step 16: "Append definition to this's custom element definition set."
     try internal.addDefinition(def);
+    def.registry = instance;
+    if (@import("html").custom_elements.stateForRealm(instance.ctx)) |agent_state| {
+        def.agent_definition_count = &agent_state.definition_count;
+        agent_state.definition_count += 1;
+    }
 
     // Steps 17-18: "upgrade particular elements within a document". Upgrade
     // constructs each candidate through the definition's constructor, which
@@ -462,7 +373,7 @@ fn readDefinitionSteps(realm: runtime.Context, allocator: Allocator, constructor
 /// not undefined, then set lifecycleCallbacks[callbackName] to the result of
 /// converting callbackValue to the Web IDL Function callback type" - which
 /// throws a TypeError for a value that is not callable. OWNED, or null.
-fn functionProperty(realm: runtime.Context, object: runtime.JSValue, property: []const u8) anyerror!?engine.Owned {
+fn functionProperty(realm: runtime.Context, object: runtime.JSValue, property: []const u8) anyerror!?engine.CallbackFunction {
     const value = try engine.getProperty(realm, object, property);
     if (engine.typeOf(realm, value.value) == .undefined) {
         value.release();
@@ -472,7 +383,7 @@ fn functionProperty(realm: runtime.Context, object: runtime.JSValue, property: [
         value.release();
         return error.TypeError;
     }
-    return value;
+    return .{ .function = value, .context = engine.incumbentRealm() };
 }
 
 /// "Let iterable be ? Get(constructor, property). If iterable is not

@@ -6,17 +6,20 @@ pub const AgentHost = struct {
     indexeddb_cleanup: dom.indexeddb.CleanupList,
     event_sources: @import("eventsource").Registry(*anyopaque, *anyopaque),
     media_elements: @import("media/root.zig").Registry(*anyopaque, *anyopaque),
+    custom_elements: dom.custom_elements.AgentState,
 
     pub fn init(allocator: std.mem.Allocator) AgentHost {
         return .{
             .indexeddb_cleanup = dom.indexeddb.CleanupList.init(allocator),
             .event_sources = @import("eventsource").Registry(*anyopaque, *anyopaque).init(allocator),
             .media_elements = @import("media/root.zig").Registry(*anyopaque, *anyopaque).init(allocator),
+            .custom_elements = dom.custom_elements.AgentState.init(allocator),
         };
     }
     pub fn deinit(self: *AgentHost) void {
         self.indexeddb_cleanup.deinit();
         self.event_sources.deinit();
         self.media_elements.deinit();
+        self.custom_elements.deinit();
     }
 };

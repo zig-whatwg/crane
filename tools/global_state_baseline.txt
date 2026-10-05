@@ -34,6 +34,7 @@ src/dom/crypto_keys.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/cssom.zig rule_lists 1 TL I/engine decl:aee1b21ecd071830
 src/dom/cssom.zig rule_objects 1 TL I/engine decl:2ff910def65b901b
 src/dom/cssom.zig sheets 1 TL I/engine decl:d5da0433784f149e
+src/dom/custom_elements.zig implementation 1 G P-res decl:89dd82c5fbd26c9f
 src/dom/document_activity.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_browsing_context.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_fetches.zig cancelers 1 G H decl:b261b480b9e2e550
@@ -159,8 +160,6 @@ src/fetch/network/curl_backend.zig share_mutexes 1 G I/profile decl:3da8106419fc
 src/fetch/network/curl_backend.zig unlock_call_count 1 G D decl:3796f88280404836
 src/fetch/network/scheduler.zig thread_scheduler 1 TL I/profile decl:0f3c8da331a0bfbd
 src/file/root.zig global_blob_store 1 G I/profile decl:00bd87a143de0674
-src/html/custom_elements.zig element_reaction_queues 1 TL R decl:c14869b1afcc24a6
-src/html/custom_elements.zig reactions_stack 1 TL A decl:c303c403a1a67bea
 src/html/editing/executor.zig document_states 1 G R decl:3e3e1a8064593da4
 src/html/editing/executor.zig getOrCreateEditorState.new_state.Static.editor_state 1 G R decl:8eaedec687f8b9fc
 src/html/embedder_scripts.zig registered 1 TL I/engine decl:985bda748b35fe88
@@ -212,6 +211,7 @@ src/platform/timer_backend.zig custom_backend 1 TL H decl:3d002d161da743ae
 src/platform/timer_backend.zig default_backend_allocator 1 TL A decl:72369f58d4c42d35
 src/platform/timer_backend.zig default_backend_instance 1 TL A decl:0bf910b86e57773a
 src/runtime/arena_allocator.zig ArenaAllocator.global 1 G I/engine decl:a580f2e51b09cfeb
+src/runtime/ce_reactions.zig hooks 1 G P-res decl:af7149130290d354
 src/runtime/cleanup_coordinator.zig active_coordinator 1 TL C decl:30416084c34bdb90
 src/runtime/engines/v8/callback_registry.zig live 1 TL I/engine decl:cb121b88af7eecfc
 src/runtime/engines/v8/context_manager.zig accessor_stack 1 TL A decl:d586ff12546cc78f
@@ -280,12 +280,12 @@ src/runtime/engines/v8/v8_wrapper.cpp g_next_context_id 1 C++G P-const decl:0803
 src/runtime/engines/v8/v8_wrapper.cpp g_obj_src 1 C++G D decl:a77999f16fffafe4
 src/runtime/engines/v8/v8_wrapper.cpp g_platform 1 C++G P-res decl:04332a53a4ac320c
 src/runtime/engines/v8/v8_wrapper.cpp g_promise_reject_callback 1 C++G I/engine decl:71cfa251892f06c3
-src/runtime/engines/v8/v8_wrapper.cpp g_protocol_code_generation 1 C++G P-res decl:399f490c0d76ef53
+src/runtime/engines/v8/v8_wrapper.cpp g_protocol_code_generation 1 C++G P-res decl:c54965ebf81c39d6
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_dynamic_import 1 C++G H decl:d2b81a848e9fb100
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_import_meta_resolve 1 C++G H decl:c9afcd8df74f9f36
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_import_meta_url 1 C++G H decl:70ca9288052ee146
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_promise_reject 1 C++G H decl:d0a937e41815c8d2
-src/runtime/engines/v8/v8_wrapper.cpp g_protocol_wasm_code_generation 1 C++G P-res decl:c68296efdda570c5
+src/runtime/engines/v8/v8_wrapper.cpp g_protocol_wasm_code_generation 1 C++G P-res decl:26a45e5240a188b5
 src/runtime/engines/v8/v8_wrapper.cpp g_shadow_realm_callback 1 C++G I/engine decl:d1d37d7f3e839786
 src/runtime/engines/v8/v8_wrapper.cpp g_site_count 1 C++G D decl:c4af8dddffd39994
 src/runtime/engines/v8/v8_wrapper.cpp g_site_pc 1 C++G D decl:cccefce67abe09da

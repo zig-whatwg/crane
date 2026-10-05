@@ -41,7 +41,6 @@ src/dom/mutation_observer_algorithms.zig MutationObserver.invokeCallback 3
 src/dom/mutation_observer_algorithms.zig MutationObserver.queueNotifyMicrotask 3
 src/dom/mutation_observer_algorithms.zig MutationRecord.create 1
 src/dom/mutation_observer_algorithms.zig NodeList.get_length 2
-src/html/custom_elements.zig CustomElementRegistry.CustomElementDefinition 1
 src/html/dom_tree_adapter.zig Document.createHTMLElement 1
 src/html/dom_tree_adapter.zig DocumentType.getInternal 1
 src/html/dom_tree_adapter.zig Element.setLocalName 1
@@ -56,7 +55,6 @@ src/html/event_utils.zig Event.setDispatchFlag 2
 src/html/event_utils.zig Event.setEventPhase 2
 src/html/event_utils.zig Event.setIsTrusted 1
 src/html/event_utils.zig Event.setTarget 1
-src/html/upgrade.zig CustomElementRegistry.CustomElementDefinition 1
 src/html/upgrade.zig CustomElementRegistry.lookUpCustomElementDefinition 2
 src/platform/layout_backend.zig Node.getInternalState 1
 src/platform/layout_backend.zig Node.getTextContentInternal 1
