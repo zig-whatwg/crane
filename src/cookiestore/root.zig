@@ -131,6 +131,8 @@ pub const parseDate = http_integration.parseDate;
 pub const StoreOptions = http_integration.StoreOptions;
 pub const StoreResult = http_integration.StoreResult;
 pub const RequestUrl = http_integration.RequestUrl;
+pub const webdriverAssociatedCookies = http_integration.webdriverAssociatedCookies;
+pub const webdriverDeleteCookies = http_integration.webdriverDeleteCookies;
 pub const processSetCookieHeaders = http_integration.processSetCookieHeaders;
 
 test {
