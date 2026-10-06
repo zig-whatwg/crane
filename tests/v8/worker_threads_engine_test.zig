@@ -17,6 +17,8 @@
 //! while the other is still running.
 
 const std = @import("std");
+/// Every worker realm has an event loop; this test drives none.
+const inline_task_loop = @import("inline_task_loop.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -82,6 +84,7 @@ const Agent = struct {
             const made = try v8.worker_realm.createWorkerRealm(agent, .{
                 .url = "http://web-platform.test:8000/workers/w.js",
                 .timer = null,
+                .event_loop = inline_task_loop.eventLoop(),
                 .allocator = std.heap.page_allocator,
             });
             // Crane's Intl is installed only on window realms today; a

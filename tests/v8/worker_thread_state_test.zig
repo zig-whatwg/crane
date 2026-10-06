@@ -21,6 +21,8 @@
 //! worker thread here makes and ends its own agent, as a worker does.
 
 const std = @import("std");
+/// Every worker realm has an event loop; this test drives none.
+const inline_task_loop = @import("inline_task_loop.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const c = std.c;
@@ -108,6 +110,7 @@ fn workerSteps() !void {
     const made = try engine.createWorkerRealm(agent, &.{
         .url = "http://web-platform.test:8000/workers/w.js",
         .timer = null,
+        .event_loop = inline_task_loop.eventLoop(),
         .allocator = allocator,
     });
     defer engine.destroyWorkerRealm(made.realm, null, null);

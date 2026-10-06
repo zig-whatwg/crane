@@ -160,8 +160,10 @@ the caller's.
   thread of its own with no other agent entered there, so that agent is its
   thread's host agent (`AgentRecord.host_agent`), and its end takes the
   thread's engine state down with it. A worker realm records its own event
-  loop (`WorkerRealmOptions.event_loop`) as a window realm does; the engine
-  stores it and never runs it.
+  loop (`WorkerRealmOptions.event_loop`, required: every worker - dedicated
+  and shared - runs its own loop on its own thread, so no worker realm is
+  without one) as a window realm does; the engine stores it and never runs
+  it.
 
 ## 4. Capabilities
 

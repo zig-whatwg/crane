@@ -10,6 +10,8 @@
 //! isolate entered that it entered.
 
 const std = @import("std");
+/// Every worker realm has an event loop; this test drives none.
+const inline_task_loop = @import("inline_task_loop.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -274,6 +276,7 @@ test "code generation checks: a frame's realm and a worker's realm of a hooked a
     const worker = try protocol.createWorkerRealm(worker_agent, &.{
         .url = "https://example.test/worker.js",
         .timer = null,
+        .event_loop = inline_task_loop.eventLoop(),
         .allocator = std.heap.page_allocator,
     });
     defer protocol.destroyWorkerRealm(worker.realm, null, null);

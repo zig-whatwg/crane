@@ -8,6 +8,8 @@
 //! event listener threw in a worker found no global to report to.
 
 const std = @import("std");
+/// Every worker realm has an event loop; this test drives none.
+const inline_task_loop = @import("inline_task_loop.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const protocol = @import("engine");
@@ -27,6 +29,7 @@ fn workerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
     return v8.worker_realm.createWorkerRealm(agent, .{
         .url = "http://web-platform.test:8000/workers/w.js",
         .timer = null,
+        .event_loop = inline_task_loop.eventLoop(),
         .allocator = std.heap.page_allocator,
     });
 }
@@ -35,6 +38,7 @@ fn sharedWorkerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
     return v8.worker_realm.createWorkerRealm(agent, .{
         .url = "http://web-platform.test:8000/workers/shared.js",
         .timer = null,
+        .event_loop = inline_task_loop.eventLoop(),
         .global = .shared,
         .allocator = std.heap.page_allocator,
     });
