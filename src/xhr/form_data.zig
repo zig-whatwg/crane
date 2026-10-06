@@ -184,10 +184,14 @@ pub const FormData = struct {
         blob_instance: *anyopaque,
         filename: ?[]const u8,
     ) !void {
+        const owned_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(owned_name);
+        const owned_filename = if (filename) |f| try self.allocator.dupe(u8, f) else null;
+        errdefer if (owned_filename) |f| self.allocator.free(f);
         const entry = FormDataEntry{
-            .name = try self.allocator.dupe(u8, name),
+            .name = owned_name,
             .value = .{ .blob_instance = blob_instance },
-            .filename = if (filename) |f| try self.allocator.dupe(u8, f) else null,
+            .filename = owned_filename,
         };
         try self.entries.append(self.allocator, entry);
     }
