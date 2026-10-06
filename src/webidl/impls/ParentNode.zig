@@ -681,6 +681,7 @@ fn matchesPseudoClass(
 
         // HTML 4.13.7.5: match the identifier against the element's states set.
         .State => |name| @import("dom").custom_elements.matchesState(element, name),
+        .Defined => @import("dom").custom_elements.isDefined(element),
         .Enabled => if (@import("dom").custom_elements.disabledState(element)) |disabled| !disabled else false,
         .Disabled => @import("dom").custom_elements.disabledState(element) orelse false,
         .Valid => @import("dom").custom_elements.validationState(element) == .valid,

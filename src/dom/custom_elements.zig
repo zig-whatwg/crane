@@ -159,6 +159,12 @@ pub fn disabledState(element: *runtime.Instance) ?bool {
 pub fn setCustomStatesTarget(states: *runtime.Instance, target: *runtime.Instance) !void {
     return (implementation.custom_states orelse return error.InvalidStateError).set_target(states, target);
 }
+/// DOM's defined-element definition and HTML 4.16.3: registry association
+/// does not affect whether an uncustomized or custom element is defined.
+pub fn isDefined(element: *runtime.Instance) bool {
+    const data = get(element) orelse return false;
+    return data.state == .uncustomized or data.state == .custom;
+}
 /// HTML :state() reads the target's states without materializing internals.
 pub fn matchesState(element: *runtime.Instance, name: []const u8) bool {
     const internals = attachedInternals(element) orelse return false;

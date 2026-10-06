@@ -437,6 +437,7 @@ pub const Matcher = struct {
             // DOM's own documents and elements, which this matcher (over
             // ElementWithBase) does not see; ParentNode's matcher answers them.
             .Target => false,
+            .Defined => if (instanceOf(element)) |object| dom.custom_elements.isDefined(@ptrCast(@alignCast(object))) else false,
             .State => |name| blk: {
                 const object = dom.instance_bridge.getInstance(&element.base) orelse break :blk false;
                 break :blk dom.custom_elements.matchesState(@ptrCast(@alignCast(object)), name);
