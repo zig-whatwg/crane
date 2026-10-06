@@ -13,7 +13,7 @@ const runtime = @import("runtime");
 
 /// The loop, for `WorkerRealmOptions.event_loop`.
 pub fn eventLoop() runtime.EventLoop {
-    return .{ .ptr = @constCast(@ptrCast(&anchor)), .vtable = &vtable };
+    return .{ .ptr = @ptrCast(@constCast(&anchor)), .vtable = &vtable };
 }
 
 /// What `ptr` points at: nothing is read through it.
