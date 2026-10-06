@@ -4,10 +4,12 @@ Status: design (2026-10-01). Batch B0 built (2026-10-02): `zig build lint-global
 `crane.Process` (src/browser/process.zig) with every src/dom hook written once at start-up.
 B1 started (2026-10-04, workers lane 1B): `runtime.BrowserScope` (src/runtime/browser_scope.zig),
 owned by each Browser and carried by every realm as `ContextData.browser_scope` (frames copy their
-parent's, a worker realm its creator's), with one supplement so far - `html.WorkerRegistry`, the
-Browser's live workers. B1's allocators and registries join it as supplements. Workers 1B-ii
-(2026-10-05): every dedicated worker runs its agent, realm and event loop on a thread of its own
-(src/html/worker_thread.zig); shared workers stay on their creator's thread until workers batch 2.
+parent's, a worker realm its creator's), with its supplements - `html.WorkerRegistry`, the
+Browser's live workers; the BroadcastChannel registry; `html.SharedWorkerManager`, HTML's shared
+worker manager with each shared worker's owner set. B1's allocators and registries join it as
+supplements. Workers 1B-ii (2026-10-05): every dedicated worker runs its agent, realm and event loop
+on a thread of its own (src/html/worker_thread.zig); workers batch 2 (2026-10-05): every shared
+worker does too, and every worker realm has its own event loop.
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.
