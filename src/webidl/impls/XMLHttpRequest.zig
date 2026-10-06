@@ -1339,6 +1339,8 @@ const PendingFetch = struct {
             _ = live_pending.swapRemove(i);
             break;
         }
+        // Its capacity goes with its last entry: a worker thread that ends leaves none of it.
+        if (live_pending.items.len == 0) live_pending.clearAndFree(std.heap.c_allocator);
         self.releasePipe();
         self.keep_alive.release();
         self.disarmTimeout();
