@@ -118,6 +118,9 @@ fn parsePartHeaders(allocator: Allocator, headers: []const u8) !PartInfo {
     var name: ?[]const u8 = null;
     var filename: ?[]const u8 = null;
     var content_type: ?[]const u8 = null;
+    errdefer if (name) |value| allocator.free(value);
+    errdefer if (filename) |value| allocator.free(value);
+    errdefer if (content_type) |value| allocator.free(value);
 
     // Split headers by CRLF
     var lines = std.mem.splitSequence(u8, headers, "\r\n");
@@ -130,16 +133,22 @@ fn parsePartHeaders(allocator: Allocator, headers: []const u8) !PartInfo {
             const header_value = std.mem.trim(u8, line[20..], " ");
             const parsed = try parseContentDisposition(header_value);
             if (parsed.name) |n| {
-                name = try allocator.dupe(u8, n);
+                const owned = try allocator.dupe(u8, n);
+                if (name) |previous| allocator.free(previous);
+                name = owned;
             }
             if (parsed.filename) |f| {
-                filename = try allocator.dupe(u8, f);
+                const owned = try allocator.dupe(u8, f);
+                if (filename) |previous| allocator.free(previous);
+                filename = owned;
             }
         }
         // Parse Content-Type header
         else if (std.mem.startsWith(u8, line, "Content-Type:")) {
             const header_value = std.mem.trim(u8, line[13..], " ");
-            content_type = try allocator.dupe(u8, header_value);
+            const owned = try allocator.dupe(u8, header_value);
+            if (content_type) |previous| allocator.free(previous);
+            content_type = owned;
         }
     }
 
@@ -236,38 +245,21 @@ pub fn parseMultipartFormData(
         const headers = part[0..headers_end];
         const part_body = part[headers_end + 4 ..]; // Skip \r\n\r\n
 
-        // Parse headers
-        const info = try parsePartHeaders(allocator, headers);
+        var entry = blk: {
+            const info = try parsePartHeaders(allocator, headers);
+            errdefer allocator.free(info.name);
+            errdefer if (info.filename) |value| allocator.free(value);
+            defer if (info.content_type) |value| allocator.free(value);
 
-        // Create entry based on whether it's a file or string
-        const entry = if (info.filename != null) blk: {
-            // File entry - create File from bytes
-            const file = try allocator.create(form_data.File);
-            file.* = .{
-                .data = try allocator.dupe(u8, part_body),
-                .allocator = allocator,
-            };
-
-            // Free content_type (we don't store it in the File struct)
-            if (info.content_type) |ct| allocator.free(ct);
-
-            break :blk FormDataEntry{
-                .name = info.name,
-                .value = .{ .file = file },
-                .filename = info.filename,
-            };
-        } else blk: {
-            // String entry
-            // Free content_type since we don't use it for strings
-            if (info.content_type) |ct| allocator.free(ct);
-
-            break :blk FormDataEntry{
-                .name = info.name,
-                .value = .{ .string = try allocator.dupe(u8, part_body) },
-                .filename = null,
-            };
+            // Fetch formData(), step 2 multipart branch, step 1: keep the
+            // file's bytes and Content-Type until its owner constructs File.
+            const value: FormDataEntryValue = if (info.filename != null)
+                .{ .file = try form_data.File.init(allocator, part_body, info.content_type) }
+            else
+                .{ .string = try allocator.dupe(u8, part_body) };
+            break :blk FormDataEntry{ .name = info.name, .value = value, .filename = info.filename };
         };
-
+        errdefer entry.deinit(allocator);
         try entries.append(allocator, entry);
 
         // Move to next part (skip the boundary we found)
