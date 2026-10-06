@@ -283,9 +283,10 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // wrapper takes the hold then.
     keepPendingActivity(instance);
 
-    // "Run a worker" step 3: the unsafe worker creation time - the worker
-    // global scope's time origin.
-    const creation_time_ms = @as(f64, @floatFromInt(@import("clock").wallNanos())) / std.time.ns_per_ms;
+    // "Run a worker" step 3: the unsafe worker creation time - the unsafe
+    // shared current time, hr_time's monotonic clock (a Window's time origin
+    // is taken from the same clock) - the worker global scope's time origin.
+    const creation_time_ns: i64 = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime());
 
     // 9. "Run a worker" in parallel. Its fetch happens here, before the
     // constructor returns - a blob URL revoked right after `new Worker(url)`
@@ -309,7 +310,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     };
     defer fetched.deinit();
 
-    var start: worker_host.DedicatedWorkerStart = .{
+    var start: worker_host.WorkerStart = .{
         .source = fetched.source,
         .script_url = fetched.final_url,
         .worker_type = worker_type,
@@ -326,7 +327,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
             .steps = &owner_steps,
         },
         .inside_end = inside_end,
-        .time_origin_ms = creation_time_ms,
+        .time_origin_ns = creation_time_ns,
     };
     defer if (start.policy_container) |*container| container.deinit();
     internal.link = worker_host.startDedicatedWorker(ctx.allocator, &start) catch |err| {
@@ -620,26 +621,19 @@ fn releaseWhenIdle(worker: *runtime.Instance) void {
 /// "Run a worker" onComplete step 1, from the constructor: the worker never
 /// runs, and `error` is fired at it from "a global task on the DOM
 /// manipulation task source" of its realm. Its pending activity ends with
-/// that task. On the realm's own event loop when it has one - the queue the
-/// fetch's CSP violation report went to first (securitypolicyviolation
-/// before `error`, as the worker-src tests count); a shared worker's realm,
-/// which has none, posts to its loop's inbox.
+/// that task. On the realm's own event loop - a window's, or a worker's own
+/// for a nested worker - the queue the fetch's CSP violation report went to
+/// first (securitypolicyviolation before `error`, as the worker-src tests
+/// count). A bare realm with none (a unit test's) fires nothing.
 fn queueStartFailure(instance: *runtime.Instance) void {
+    const loop = instance.ctx.getOptionalEventLoop() orelse return releasePendingActivity(instance);
     const task = instance.ctx.allocator.create(StartFailure) catch return releasePendingActivity(instance);
     task.* = .{
         .instance = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
         .allocator = instance.ctx.allocator,
     };
-    if (instance.ctx.getOptionalEventLoop()) |loop| {
-        loop.queueTask(.{ .callback = StartFailure.run, .context = task, .drop = StartFailure.drop });
-        return;
-    }
-    const sink = instance.ctx.task_sink orelse {
-        task.allocator.destroy(task);
-        return releasePendingActivity(instance);
-    };
-    _ = sink.post(.{ .run = StartFailure.run, .drop = StartFailure.drop, .data = task });
+    loop.queueTask(.{ .callback = StartFailure.run, .context = task, .drop = StartFailure.drop });
 }
 
 const StartFailure = struct {

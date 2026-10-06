@@ -121,18 +121,15 @@ const Task = struct {
     job: ?Job = null,
 
     fn queue(self: *Task, callback: *const fn (?*anyopaque) void) void {
+        // The realm's event loop - a window's, or a worker's own (every worker
+        // runs its own loop on its own thread), whose end drops the task
+        // through `Task.drop`.
         if (self.realm.getOptionalEventLoop()) |loop| {
             loop.queueTask(.{ .callback = callback, .context = self, .drop = Task.drop });
             return;
         }
-        // Workers currently ride timers. If the worker ends before this fires,
-        // native_timer.deinit drops no user_data and the payload leaks (also
-        // FileReader/CookieStore/fetch_body). The queued host fix supplies a
-        // runtime.EventLoop with Task.drop and gives native_timer a drop hook.
-        if (self.realm.getOptionalTimer()) |timer| {
-            if (timer.setTimeout(0, callback, self) != 0) return;
-        }
-        // A realm without either queue must still settle, as FileReader does.
+        // A bare realm with no event loop (a unit test's) must still settle,
+        // as FileReader does.
         callback(self);
     }
 

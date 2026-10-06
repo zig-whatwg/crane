@@ -375,9 +375,8 @@ const FetchCall = struct {
 
     /// Fetch has its response: queue the fetch task that runs
     /// processResponse (step 12) - a global task on the networking task
-    /// source, given relevantRealm's global object. A window's realm has
-    /// an event loop. A worker's has none of its own and runs its tasks
-    /// as timers on the page's, so its task is one; a realm with neither
+    /// source, given relevantRealm's global object, on its event loop (a
+    /// window's, or a worker's own). A bare realm with none (a unit test's)
     /// is in the event loop's network step already, a task boundary, and
     /// settles now.
     fn done(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
@@ -389,9 +388,6 @@ const FetchCall = struct {
         if (self.ctx.getOptionalEventLoop()) |loop| {
             loop.queueTask(.{ .callback = settle, .context = self, .drop = drop });
             return;
-        }
-        if (self.ctx.getOptionalTimer()) |timer| {
-            if (timer.setTimeout(0, settle, self) != 0) return;
         }
         settle(self);
     }

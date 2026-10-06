@@ -453,19 +453,13 @@ fn queueViolationTask(global: *runtime.Instance, violation: *const Violation) !v
         }
     }
 
-    // 3. "Queue a task": on the global's event loop. A worker's realm has
-    // none of its own and runs its tasks as timers on the page's.
+    // 3. "Queue a task": on the global's event loop - a window's, or a
+    // worker's own (every worker runs its own loop on its own thread).
     if (global.ctx.getOptionalEventLoop()) |loop| {
         loop.queueTask(.{ .callback = ViolationTask.run, .context = task, .drop = ViolationTask.drop });
         return;
     }
-    if (global.ctx.getOptionalTimer()) |timer| {
-        // Known leak window (the Q14 class): a timer that never fires - its
-        // worker torn down first - never frees its task; the queued
-        // worker-event-loop fix covers it.
-        if (timer.setTimeout(0, ViolationTask.run, task) != 0) return;
-    }
-    // Neither: the realm is in its event loop's step already, a task
-    // boundary - fire now.
+    // None (a bare realm, a unit test's): the realm is in its event loop's
+    // step already, a task boundary - fire now.
     ViolationTask.run(task);
 }

@@ -267,8 +267,10 @@ pub const WorkerRealmOptions = struct {
     /// The host's event loop for the realm - the worker's own, on the
     /// worker's thread - recorded in the realm for host algorithms that
     /// queue tasks (streams, Blob, fetch). The engine stores it and never
-    /// runs it. Null for a realm whose tasks run on another loop's timers.
-    event_loop: ?@import("event_loop").EventLoop = null,
+    /// runs it. Required: every worker runs its own loop, so no worker realm
+    /// is without one (a realm whose tasks ran as another loop's timers was
+    /// a shared worker's, before shared workers had threads of their own).
+    event_loop: @import("event_loop").EventLoop,
     /// What ends a task in the realm (see ContextData.end_of_task).
     end_of_task: ?*const fn (realm: *ContextData) void = null,
     /// Called once the realm exists and before its global object is made, so
