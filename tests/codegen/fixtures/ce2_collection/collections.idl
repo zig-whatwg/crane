@@ -1,0 +1,12 @@
+interface Item {};
+interface BaseCollection {
+  readonly attribute unsigned long length;
+  getter Item? item(unsigned long index);
+};
+interface ChildCollection : BaseCollection {
+  getter Item? namedItem(DOMString name);
+};
+interface OverrideCollection : BaseCollection {
+  readonly attribute unsigned long length;
+  getter Item? item(unsigned long index);
+};

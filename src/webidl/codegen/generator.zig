@@ -1576,6 +1576,16 @@ fn generateInterfaceFile(
 
     for (interface.members) |member| {
         switch (member.type) {
+            .setlike => {
+                // Keep the unmigrated interfaces byte-for-byte stable. Their
+                // old parser placeholder emitted only the empty constants
+                // heading; their owners can opt in with their implementations.
+                if (!std.mem.eql(u8, interface.name, "CustomStateSet")) try own_constants.append(allocator, .{
+                    .name = "_skipped",
+                    .idlType = .{ .type = "void" },
+                    .value = .null,
+                });
+            },
             .attribute => if (member.attribute) |attr| {
                 try own_attrs.append(allocator, attr);
             },
@@ -1878,6 +1888,12 @@ fn generateInterfaceFile(
         .reflect_on_element = if (ir) |ir_ptr| reflectsOnElement(ir_ptr, interface.name) else false,
         .model = ir,
     });
+    // HTMLOptionsCollection's existing generated indexed setter has no
+    // implementation yet. Its owner must land that operation before the
+    // inherited getter makes the adapter install indexed access (row 9).
+    if (base_info.is_interface and !std.mem.eql(u8, interface.name, "HTMLOptionsCollection")) {
+        try writeInheritedIndexedMembers(w, base_info.inheritance.?, all_ops.items, own_ops.items, all_attrs.items, own_attrs.items);
+    }
 
     // Generate iterable support if interface has iterable declaration
     if (iterable_member) |iterable| {
@@ -1901,6 +1917,28 @@ fn generateInterfaceFile(
 
     // Flush writer
     try w.flush();
+}
+
+/// WebIDL 2.5.6.1 / 3.9: the derived-most indexed getter applies to the
+/// platform object itself. Prototype inheritance alone does not publish the
+/// generated declarations an adapter needs to install its exotic operations.
+fn writeInheritedIndexedMembers(w: *std.Io.Writer, parent: []const u8, all_ops: []const types.Operation, own_ops: []const types.Operation, all_attrs: []const types.Attribute, own_attrs: []const types.Attribute) !void {
+    var indexed = false;
+    for (all_ops) |op| {
+        if (op.special != .getter or op.arguments.len != 1 or !std.mem.eql(u8, op.arguments[0].idlType.type, "unsigned long")) continue;
+        indexed = true;
+        const name = op.name orelse "getter";
+        const own = for (own_ops) |candidate| {
+            if (std.mem.eql(u8, candidate.name orelse "getter", name)) break true;
+        } else false;
+        if (!own) try w.print("    pub const call_{s} = {s}.call_{s};\n\n", .{ name, parent, name });
+    }
+    if (!indexed) return;
+    for (own_attrs) |attr| if (std.mem.eql(u8, attr.name, "length")) return;
+    for (all_attrs) |attr| if (std.mem.eql(u8, attr.name, "length")) {
+        try w.print("    pub const get_length = {s}.get_length;\n\n", .{parent});
+        return;
+    };
 }
 
 /// Generate Zig code for all interfaces in a WebIDL file (.idl or .json)

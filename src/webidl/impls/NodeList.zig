@@ -49,6 +49,8 @@ pub const ImplError = error{
 
 /// Type of live collection filter
 pub const LiveCollectionType = enum {
+    labels,
+    named_controls,
     /// Match all direct children (for Node.childNodes)
     children,
     /// Match elements by tag name (for getElementsByTagName)
@@ -73,6 +75,9 @@ pub const InternalState = struct {
 
     /// For live NodeLists, the root node to query from
     root: ?*runtime.Instance = null,
+    labels_root_generation: u64 = 0,
+    labels_root_traced: bool = false,
+    control_name: ?[]const u8 = null,
 
     /// Type of live collection (determines what nodes match)
     live_type: LiveCollectionType = .children,
@@ -94,6 +99,7 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         self.nodes.deinit();
+        if (self.control_name) |name| self.allocator.free(name);
         // Note: filter_name and filter_namespace are slices into
         // other owned memory, don't free them here
     }
@@ -110,7 +116,42 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls fill a static list they created (an element's labels).
-    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes });
+    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .labels = &makeLabels, .named_controls = &makeNamedControls });
+}
+
+fn makeNamedControls(list: *runtime.Instance, collection: *runtime.Instance, name: []const u8) !void {
+    const internal = getInternal(list) orelse return error.InvalidState;
+    internal.control_name = try internal.allocator.dupe(u8, name);
+    // The same retained root mechanism serves a collection as a labels target.
+    try makeLabels(list, collection);
+    internal.live_type = .named_controls;
+}
+
+fn namedControlAt(internal: *InternalState, wanted: ?u32, count: *u32) ?*runtime.Instance {
+    const collection = internal.root orelse return null;
+    if (runtime.SlabAllocator.generationOf(collection) != internal.labels_root_generation or runtime.instance_lifecycle.isCleanedUp(collection)) return null;
+    const name = internal.control_name orelse return null;
+    const length = interfaces.HTMLCollection.get_length(collection) catch return null;
+    var index: u32 = 0;
+    while (index < length) : (index += 1) {
+        const element = (interfaces.HTMLCollection.call_item(collection, index) catch null) orelse continue;
+        if (!@import("html").form_associated.hasControlName(element, name)) continue;
+        if (wanted) |target| if (count.* == target) return element;
+        count.* += 1;
+    }
+    return null;
+}
+
+fn makeLabels(list: *runtime.Instance, element: *runtime.Instance) !void {
+    const internal = getInternal(list) orelse return error.InvalidState;
+    internal.is_live = true;
+    internal.live_type = .labels;
+    internal.root = element;
+    internal.labels_root_generation = runtime.SlabAllocator.generationOf(element);
+    if (list.ctx.hasEngine()) {
+        @import("engine").traceChild(list, element, .{ .name = "labelsTarget" });
+        internal.labels_root_traced = true;
+    }
 }
 
 /// Initialize instance (creates the instance)
@@ -124,7 +165,7 @@ pub fn init(
     errdefer runtime.Instance.deinit(instance);
 
     // Initialize internal state
-    const state = instance.getState(StateType);
+    const state = instance.getState(State);
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
@@ -146,6 +187,7 @@ fn setStaticNodes(list: *runtime.Instance, nodes: []const *runtime.Instance) any
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        if (internal.labels_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "labelsTarget" });
         internal.deinit();
 
         // Return the block itself, not just what it points to.
@@ -289,6 +331,17 @@ fn getLiveLength(internal: *InternalState) u32 {
     const NodeImpl = @import("Node.zig");
 
     switch (internal.live_type) {
+        .named_controls => {
+            var count: u32 = 0;
+            _ = namedControlAt(internal, null, &count);
+            return count;
+        },
+        .labels => {
+            if (runtime.SlabAllocator.generationOf(root) != internal.labels_root_generation or runtime.instance_lifecycle.isCleanedUp(root)) return 0;
+            const labels = @import("html").form_associated.labelsOf(internal.allocator, root) catch return 0;
+            defer internal.allocator.free(labels);
+            return @intCast(labels.len);
+        },
         .children => {
             // Count direct children using Node's helper
             return NodeImpl.getChildCount(root);
@@ -307,6 +360,16 @@ fn getLiveItem(internal: *InternalState, index: u32) ?*runtime.Instance {
     const NodeImpl = @import("Node.zig");
 
     switch (internal.live_type) {
+        .named_controls => {
+            var count: u32 = 0;
+            return namedControlAt(internal, index, &count);
+        },
+        .labels => {
+            if (runtime.SlabAllocator.generationOf(root) != internal.labels_root_generation or runtime.instance_lifecycle.isCleanedUp(root)) return null;
+            const labels = @import("html").form_associated.labelsOf(internal.allocator, root) catch return null;
+            defer internal.allocator.free(labels);
+            return if (index < labels.len) labels[index] else null;
+        },
         .children => {
             // Walk children to find the nth one
             var child = NodeImpl.getFirstChild(root);

@@ -764,4 +764,8 @@ pub const CSSFontFaceDescriptors = struct {
         .{ "set_subscriptSizeOverride", 0b1 },
         .{ "set_subscript_size_override", 0b1 },
     };
+
+    pub const call_item = CSSStyleDeclaration.call_item;
+
+    pub const get_length = CSSStyleDeclaration.get_length;
 };

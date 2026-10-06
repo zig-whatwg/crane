@@ -215,6 +215,11 @@ pub const Iterable = struct {
     extAttrs: []ExtendedAttribute = &.{},
 };
 
+pub const Setlike = struct {
+    value_type: IDLType,
+    readonly: bool = false,
+};
+
 /// WebIDL async iterable declaration (async_iterable<T>)
 pub const AsyncIterable = struct {
     /// Key type (for pair async iterables) or value type (for value async iterables)
@@ -242,6 +247,7 @@ pub const Member = struct {
     constructor: ?Constructor = null,
     iterable: ?Iterable = null,
     async_iterable: ?AsyncIterable = null,
+    setlike: ?Setlike = null,
 
     /// Get as attribute (returns null if not an attribute)
     pub fn asAttribute(self: Member) ?Attribute {
@@ -282,6 +288,7 @@ pub const MemberType = enum {
     constructor,
     iterable,
     async_iterable,
+    setlike,
 };
 
 /// WebIDL attribute definition

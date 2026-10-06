@@ -599,14 +599,22 @@ pub const Parser = struct {
             // Handle "async iterable" (two tokens, not async_iterable keyword)
             try self.advance(); // consume "async"
             return try self.parseAsyncIterable(ext_attrs.items);
-        } else if (self.current_token.type == .keyword_maplike or
-            self.current_token.type == .keyword_setlike or
-            (self.current_token.type == .keyword_readonly and
-                (self.peek_token.type == .keyword_maplike or self.peek_token.type == .keyword_setlike)))
+        } else if (self.current_token.type == .keyword_setlike or
+            (self.current_token.type == .keyword_readonly and self.peek_token.type == .keyword_setlike))
         {
-            // Skip maplike/setlike declarations for now
-            // Handle both: setlike<T> and readonly setlike<T>
-            // TODO: Implement maplike/setlike support
+            const readonly = self.current_token.type == .keyword_readonly;
+            if (readonly) try self.advance();
+            try self.expect(.keyword_setlike);
+            try self.expect(.left_angle);
+            const value_type = try self.parseType();
+            try self.expect(.right_angle);
+            try self.expect(.semicolon);
+            return .{ .type = .setlike, .setlike = .{ .value_type = value_type, .readonly = readonly } };
+        } else if (self.current_token.type == .keyword_maplike or
+            (self.current_token.type == .keyword_readonly and
+                self.peek_token.type == .keyword_maplike))
+        {
+            // Maplike declarations remain a separate codegen feature.
             while (self.current_token.type != .semicolon and self.current_token.type != .eof) {
                 try self.advance();
             }
@@ -1634,6 +1642,7 @@ pub const Parser = struct {
                 }
                 self.allocator.free(async_iter.extAttrs);
             },
+            .setlike => if (member.setlike) |*set| self.freeIDLType(&set.value_type),
         }
     }
 
