@@ -23,6 +23,7 @@ pub const reportThrown = driver.reportThrown;
 pub const pushConstructor = driver.pushConstructor;
 pub const activeRegistry = driver.activeRegistry;
 pub const hasDefinitions = driver.hasDefinitions;
+pub const States = @import("custom_elements/states.zig").States;
 
 /// Element reaction queue
 /// Each custom element has its own queue of pending reactions
