@@ -24,10 +24,7 @@ pub fn tryToUpgrade(element: *runtime.Instance) void {
     // Try-to-upgrade has no state filter: reinserting a precustomized
     // element queues it so a nested scope invokes its earlier callbacks.
     // Only upgradeElement step 1 rejects an already-started upgrade.
-    const document = (interfaces.Node.get_ownerDocument(element) catch return) orelse return;
-    // Element-level scoped registry association belongs to the scoped-registry
-    // batch. For global registries the element uses its document's registry.
-    const registry = interfaces.Document.get_customElementRegistry(document) catch return;
+    const registry = interfaces.Element.get_customElementRegistry(element) catch return;
     tryUpgradeInRegistry(element, registry) catch {};
 }
 
@@ -83,7 +80,8 @@ pub fn upgradeElement(element: *runtime.Instance, definition: *ce.Definition) !?
         },
         .normal => |value| value.release(),
     }
-    // Step 11 (form-associated callbacks) belongs to the form-associated batch.
+    // Step 11: reset the form owner and enqueue form/disabled reactions.
+    if (definition.form_associated) ce.refreshFormAfterUpgrade(element);
     // Step 12: only a successful construction makes the element custom.
     ce.setState(element, .custom);
     return null;
@@ -138,8 +136,7 @@ pub fn upgradeSubtree(root: *runtime.Instance, registry: *runtime.Instance) !voi
     for (candidates.toSlice()) |node| {
         if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
         const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse continue));
-        const document = (try interfaces.Node.get_ownerDocument(element)) orelse continue;
-        if (try interfaces.Document.get_customElementRegistry(document) != registry) continue;
+        if (try interfaces.Element.get_customElementRegistry(element) != registry) continue;
         try tryUpgradeInRegistry(element, registry);
     }
 }
@@ -152,8 +149,8 @@ pub fn enqueueCandidates(registry: *runtime.Instance, document: *runtime.Instanc
     for (candidates.toSlice()) |node| {
         if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
         const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse continue));
-        // With scoped registries deferred, a matching lookup also checks HTML
-        // namespace, local name and (for a customized built-in) its is value.
+        if (try interfaces.Element.get_customElementRegistry(element) != registry) continue;
+        // The lookup also checks HTML namespace, local name and is value.
         if (try definitionFor(element, registry) == definition) try driver.enqueueUpgrade(element, definition);
     }
 }

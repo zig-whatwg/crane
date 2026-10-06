@@ -126,6 +126,7 @@ pub fn parseFragment(
     const tokenizer = try allocator.create(Tokenizer);
     errdefer allocator.destroy(tokenizer);
     tokenizer.* = Tokenizer.init(allocator, input);
+    errdefer tokenizer.deinit();
 
     // Step 6: Set tokenizer state based on context element
     const context_name = context_element.local_name orelse "";
@@ -162,6 +163,9 @@ pub fn parseFragment(
     errdefer allocator.destroy(tree_builder);
     tree_builder.* = try TreeBuilder.init(allocator, tokenizer);
     errdefer tree_builder.deinit();
+    // HTML fragment parsing step 9: the adjusted current node is this context
+    // while only the synthetic html root is on the stack of open elements.
+    tree_builder.fragment_context = @constCast(context_element);
 
     // Set scripting flag
     tree_builder.scripting_enabled = options.scripting_enabled;

@@ -45,7 +45,7 @@ pub const NodeSteps = struct {
     /// Free `node`, which was created and never inserted, and its subtree.
     destroy_uninserted: *const fn (node: *runtime.Instance) void,
     /// DOM clone-a-node, with an explicit document and optional parent.
-    clone: *const fn (*runtime.Instance, ?*runtime.Instance, bool, ?*runtime.Instance) anyerror!*runtime.Instance,
+    clone: *const fn (*runtime.Instance, ?*runtime.Instance, bool, ?*runtime.Instance, ?*runtime.Instance) anyerror!*runtime.Instance,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -92,7 +92,11 @@ pub fn destroyUninserted(node: *runtime.Instance) void {
 }
 
 pub fn clone(node: *runtime.Instance, document: ?*runtime.Instance, subtree: bool, parent: ?*runtime.Instance) !*runtime.Instance {
-    return (node_steps orelse return error.InvalidStateError).clone(node, document, subtree, parent);
+    return cloneWithRegistry(node, document, subtree, parent, null);
+}
+
+pub fn cloneWithRegistry(node: *runtime.Instance, document: ?*runtime.Instance, subtree: bool, parent: ?*runtime.Instance, fallback_registry: ?*runtime.Instance) !*runtime.Instance {
+    return (node_steps orelse return error.InvalidStateError).clone(node, document, subtree, parent, fallback_registry);
 }
 
 test "without installed steps nothing is set or freed" {

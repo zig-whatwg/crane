@@ -103,6 +103,7 @@ pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) !void 
 pub fn runChildrenChangedSteps(parent: anytype) void {
     // Cast to *NodeBase for callbacks (all DOM types have Node fields duplicated)
     const parent_node: *NodeBase = @ptrCast(parent);
+    if (instance_bridge.getInstance(parent_node)) |object| custom_elements.formTreeChanged(@ptrCast(@alignCast(object)));
 
     // Call all registered callbacks
     if (children_changed_callbacks) |*callbacks| {
@@ -1140,7 +1141,7 @@ pub fn appendChildren(
 
     // Step 7: Run insertion steps for all inserted nodes and their descendants
     // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
-    if (hasInsertionStepsCallbacks()) {
+    if (hasInsertionStepsCallbacks() or (parent.is_connected and hasCustomElementDefinitions(parent))) {
         for (children) |child| {
             // Get all shadow-including inclusive descendants in tree order
             var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
@@ -1159,6 +1160,7 @@ pub fn appendChildren(
             // Run insertion steps for each shadow-including inclusive descendant
             for (descendants.toSlice()) |inclusive_descendant| {
                 runInsertionSteps(inclusive_descendant);
+                runCustomElementInsertionSteps(inclusive_descendant);
             }
         }
     }
@@ -1293,7 +1295,7 @@ pub fn insertChildrenBefore(
 
     // Run insertion steps for all inserted nodes
     // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
-    if (hasInsertionStepsCallbacks()) {
+    if (hasInsertionStepsCallbacks() or (parent.is_connected and hasCustomElementDefinitions(parent))) {
         for (children) |child| {
             var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
                 parent.allocator,
@@ -1309,6 +1311,7 @@ pub fn insertChildrenBefore(
 
             for (descendants.toSlice()) |inclusive_descendant| {
                 runInsertionSteps(inclusive_descendant);
+                runCustomElementInsertionSteps(inclusive_descendant);
             }
         }
     }
@@ -1633,6 +1636,7 @@ pub fn remove(
     // Update is_connected for the removed node and all its descendants
     // A removed node is no longer connected to the document tree
     setConnectedRecursive(node, false);
+    if (instance_bridge.getInstance(@ptrCast(node))) |object| custom_elements.formTreeChanged(@ptrCast(@alignCast(object)));
 
     // Step 8-10: Shadow DOM slot assignment
     // TODO: Implement when shadow DOM is fully integrated
@@ -2436,9 +2440,22 @@ fn hasCustomElementDefinitions(node: anytype) bool {
 }
 
 fn runCustomElementInsertionSteps(node: *NodeBase) void {
-    if (!node.is_connected or node.node_type != ELEMENT_NODE) return;
+    if (!node.is_connected) return;
     const object = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(object));
+    const registry = if (node.node_type == ELEMENT_NODE)
+        interfaces.Element.get_customElementRegistry(instance) catch null
+    else if (instance.stateAs(interfaces.ShadowRoot.State) != null)
+        interfaces.ShadowRoot.get_customElementRegistry(instance) catch null
+    else
+        null;
+    // DOM insert 7.7.3.1 / 7.7.4: a scoped registry remembers this document.
+    if (registry) |value| {
+        if (custom_elements.isScoped(value)) {
+            if (interfaces.Node.get_ownerDocument(instance) catch null) |document| custom_elements.associateDocument(value, document) catch {};
+        }
+    }
+    if (node.node_type != ELEMENT_NODE or registry == null) return;
     const data = custom_elements.get(instance) orelse return;
     if (data.state == .custom) {
         custom_elements.enqueueCallback(instance, .connected, .none);
@@ -2515,6 +2532,28 @@ pub fn adopt(
                 if (instance_bridge.getInstance(desc)) |desc_opaque| {
                     const desc_instance: *runtime.Instance = @ptrCast(@alignCast(desc_opaque));
                     node_document.set(desc_instance, doc_instance) catch {};
+                    // DOM adopt 3.2–3.3: scoped associations survive; global
+                    // associations follow the new document's effective global.
+                    const target_registry = interfaces.Document.get_customElementRegistry(doc_instance) catch null;
+                    if (desc_instance.stateAs(interfaces.ShadowRoot.State) != null) {
+                        const old_registry = interfaces.ShadowRoot.get_customElementRegistry(desc_instance) catch null;
+                        const replace_registry = if (old_registry) |value| !custom_elements.isScoped(value) else !custom_elements.shadowKeepsRegistryNull(desc_instance);
+                        if (replace_registry) custom_elements.setShadowRegistry(desc_instance, custom_elements.effectiveGlobal(target_registry)) catch {};
+                    } else if (desc.node_type == ELEMENT_NODE) {
+                        const old_registry = interfaces.Element.get_customElementRegistry(desc_instance) catch null;
+                        if (old_registry == null or !custom_elements.isScoped(old_registry.?)) {
+                            var registry = target_registry;
+                            if (old_registry == null) {
+                                if (desc.parent_node) |parent| {
+                                    if (instance_bridge.getInstance(parent)) |parent_opaque| {
+                                        const parent_instance: *runtime.Instance = @ptrCast(@alignCast(parent_opaque));
+                                        if (parent.node_type == ELEMENT_NODE) registry = interfaces.Element.get_customElementRegistry(parent_instance) catch null else if (parent_instance.stateAs(interfaces.ShadowRoot.State) != null) registry = interfaces.ShadowRoot.get_customElementRegistry(parent_instance) catch null;
+                                    }
+                                }
+                            }
+                            custom_elements.setElementRegistry(desc_instance, custom_elements.effectiveGlobal(registry)) catch {};
+                        } else custom_elements.associateDocument(old_registry.?, doc_instance) catch {};
+                    }
                 }
             }
 
@@ -2595,7 +2634,15 @@ test "a callback registered twice runs once" {
 
     try registerChildrenChangedCallback(&Counter.childrenChanged);
     try registerChildrenChangedCallback(&Counter.childrenChanged);
-    var parent: NodeBase = undefined;
+    var parent: NodeBase = .{
+        .allocator = std.testing.allocator,
+        .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
+        .node_name = "#document-fragment",
+        .child_nodes = infra.List(*NodeBase).init(std.testing.allocator),
+        .registered_observers = infra.List(RegisteredObserver).init(std.testing.allocator),
+    };
+    defer parent.child_nodes.deinit();
+    defer parent.registered_observers.deinit();
     runChildrenChangedSteps(&parent);
     try std.testing.expectEqual(@as(usize, 1), Counter.calls);
 }

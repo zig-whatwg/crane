@@ -37,12 +37,12 @@ pub fn construct(_: ?*anyopaque, realm: runtime.Context, new_target: runtime.JSV
         .local_name = definition.local_name,
         .namespace = creation.html_namespace,
         .is_value = if (autonomous) null else definition.name,
+        .registry = .{ .explicit = registry },
     }, .custom, if (autonomous) .autonomous else .appropriate) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         else => error.OperationFailed,
     };
-    // Step 9.6's scoped registry association is deferred. The definition is
-    // independently retained by the element, even after its registry dies.
+    // Step 9.6 associates the registry; the element also retains its definition.
     ce.setDefinition(element, definition);
     return .{ .created = element };
 }

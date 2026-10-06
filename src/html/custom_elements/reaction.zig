@@ -36,6 +36,9 @@ pub fn Reaction(comptime runtime: type, comptime engine: type) type {
             none: void,
             attribute_changed: AttributeChangedArgs,
             adopted: AdoptedArgs,
+            form_associated: ?*runtime.Instance,
+            form_disabled: bool,
+            form_state_restore: struct { state: runtime.JSValue, mode: enum { restore, autocomplete } },
         };
 
         const OwnedData = struct {
@@ -45,12 +48,14 @@ pub fn Reaction(comptime runtime: type, comptime engine: type) type {
             args: CallbackArgs = .none,
             old_document: ?engine.Owned = null,
             new_document: ?engine.Owned = null,
+            form_value: ?engine.Owned = null,
 
             fn deinit(self: *OwnedData) void {
                 if (self.callback) |callback| callback.release();
                 if (self.definition) |definition| definition.deinit();
                 if (self.old_document) |document| document.release();
                 if (self.new_document) |document| document.release();
+                if (self.form_value) |value| value.release();
                 if (self.args == .attribute_changed) {
                     const args = self.args.attribute_changed;
                     self.allocator.free(args.local_name);
@@ -86,6 +91,17 @@ pub fn Reaction(comptime runtime: type, comptime engine: type) type {
                     owned.args = args;
                 },
                 .attribute_changed => |attribute| owned.args = .{ .attribute_changed = try copyAttributeArgs(allocator, attribute) },
+                .form_associated => |form| {
+                    // Null has no engine-owned payload. A non-null owner is
+                    // captured as a wrapper before native adoption/teardown.
+                    if (form) |object| owned.form_value = try engine.retainValue(realm, .{ .instance = object });
+                    owned.args = args;
+                },
+                .form_disabled => owned.args = args,
+                .form_state_restore => |restore| {
+                    owned.form_value = try engine.retainValue(realm, restore.state);
+                    owned.args = args;
+                },
             }
             return .{
                 .reaction_type = .callback,
@@ -109,6 +125,11 @@ pub fn Reaction(comptime runtime: type, comptime engine: type) type {
                 (owned.old_document orelse return null).value,
                 (owned.new_document orelse return null).value,
             };
+        }
+
+        pub fn formValue(self: *const Self) runtime.JSValue {
+            const owned = self.owned orelse return .null;
+            return if (owned.form_value) |value| value.value else .null;
         }
 
         pub fn deinit(self: *Self) void {

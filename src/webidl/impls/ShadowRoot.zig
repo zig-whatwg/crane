@@ -64,6 +64,7 @@ pub const InternalState = struct {
 
     /// Custom element registry (from DocumentOrShadowRoot mixin)
     custom_element_registry: ?*runtime.Instance,
+    registry_edge: @import("dom").custom_elements.RegistryAssociation = .{},
 
     /// Fullscreen element (from DocumentOrShadowRoot mixin)
     fullscreen_element: ?*runtime.Instance,
@@ -149,6 +150,13 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    @import("dom").custom_elements.installShadow(.{
+        .set_registry = &setCustomElementRegistry,
+        .create = &createForHost,
+        .clone_flags = &cloneFlags,
+        .available_to_internals = &isAvailableToElementInternals,
+        .keeps_registry_null = &keepsRegistryNull,
+    });
     // A host's teardown reaches its shadow root through this hook.
     @import("dom").shadow_hosts.install(.{ .host_destroyed = &hostDestroyed });
 }
@@ -192,6 +200,7 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*@import("Node.zig").Intern
 pub fn deinit(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
     if (Registry.get(instance)) |internal| {
+        internal.registry_edge.release(instance);
         internal.deinit();
         internal.allocator.destroy(internal);
     }
@@ -203,6 +212,36 @@ pub fn deinit(instance: *runtime.Instance) void {
     // that behind. Node.deinit's lifecycle guard makes a second call a no-op.
     interfaces.DocumentFragment.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+}
+
+fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (registry) |value| if (try interfaces.Node.get_ownerDocument(instance)) |document| {
+        try @import("dom").custom_elements.associateDocument(value, document);
+    };
+    internal.registry_edge.set(instance, registry);
+    internal.custom_element_registry = registry;
+}
+
+fn createForHost(host: *runtime.Instance, options: dictionaries.ShadowRootInit, registry: ?*runtime.Instance) !*runtime.Instance {
+    const shadow = try create(host.ctx.allocator, host.ctx, host, options.mode, options.delegatesFocus orelse false, options.slotAssignment orelse ._named_, options.clonable orelse false, options.serializable orelse false);
+    errdefer @import("dom").node_creation.destroyUninserted(shadow);
+    // Attach-a-shadow-root steps 9 and 14.
+    const state = @import("dom").custom_elements.get(host);
+    setAvailableToElementInternals(shadow, if (state) |value| value.state == .precustomized or value.state == .custom else false);
+    try setCustomElementRegistry(shadow, registry);
+    return shadow;
+}
+
+fn cloneFlags(source: *runtime.Instance, copy: *runtime.Instance) void {
+    const from = getInternal(source) orelse return;
+    const to = getInternal(copy) orelse return;
+    to.declarative_flag = from.declarative_flag;
+    to.keep_custom_element_registry_null = from.keep_custom_element_registry_null;
+}
+
+fn keepsRegistryNull(instance: *runtime.Instance) bool {
+    return (getInternal(instance) orelse return false).keep_custom_element_registry_null;
 }
 
 // ============================================================================
@@ -336,9 +375,14 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     const allocator = instance.ctx.allocator;
     const compliant = try @import("dom").trusted_types.compliantStringFor(allocator, .html, instance, value, "ShadowRoot innerHTML");
     defer allocator.free(compliant);
-    // TODO: steps 2-3 - the fragment parsing algorithm with this's host as
-    // the context, then replace all within this.
-    return error.NotImplemented;
+    // Steps 2–3: parse with this registry and the host's tokenizer context,
+    // then replace all as a single DOM mutation.
+    const dom = @import("dom");
+    const fragment = try @import("html").custom_elements.parseFragment(instance, compliant);
+    defer dom.node_creation.destroyUninserted(fragment);
+    const fragment_base = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
+    const shadow_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;
+    try dom.mutation.replaceAll(@as(?*dom.NodeBase, fragment_base), shadow_base);
 }
 
 // ============================================================================

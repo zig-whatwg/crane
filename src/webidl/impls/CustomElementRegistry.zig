@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const dom_names = @import("dom").names;
+const dom = @import("dom");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const engine = @import("engine");
@@ -42,6 +43,18 @@ pub const ImplError = error{
 
 pub const CustomElementDefinition = @import("html_core").custom_element_definition.Definition(runtime, engine);
 
+/// The HTML document set is weak, as in Blink's AssociatedDocumentSet. A
+/// recycled slab address must not turn an old document into a new candidate.
+const ScopedDocument = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+
+    fn isLive(self: ScopedDocument) bool {
+        return runtime.SlabAllocator.generationOf(self.instance) == self.generation and
+            !runtime.instance_lifecycle.isCleanedUp(self.instance);
+    }
+};
+
 /// Free a list of strings and the list.
 fn freeStrings(allocator: Allocator, strings: []const []const u8) void {
     for (strings) |string| allocator.free(string);
@@ -56,7 +69,7 @@ pub const InternalState = struct {
     is_scoped: bool = false,
 
     /// Set of documents using this scoped registry
-    scoped_document_set: std.ArrayListUnmanaged(*runtime.Instance) = .empty,
+    scoped_document_set: std.ArrayListUnmanaged(ScopedDocument) = .empty,
 
     /// Custom element definitions (name -> definition)
     definitions: std.StringHashMapUnmanaged(*CustomElementDefinition) = .empty,
@@ -127,7 +140,6 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 
 /// Immutable owner hooks, installed before any Browser or worker starts.
 pub fn installHooks() void {
-    const dom = @import("dom");
     const html = @import("html");
     dom.process_start.assertInstalling();
     runtime.CEReactions.install(.{ .begin = html.custom_elements.begin, .end = html.custom_elements.end });
@@ -139,8 +151,34 @@ pub fn installHooks() void {
         .try_upgrade = html.upgrade.tryToUpgrade,
         .enqueue_callback = html.custom_elements.callbackFromMutation,
         .cancel_element = html.custom_elements.cancelElement,
+        .is_scoped = &isScoped,
+        .associate_document = &associateDocument,
+        .form_tree_changed = html.custom_elements.formTreeChanged,
     });
     dom.unloading_cleanup.install(html.custom_elements.clearRealm);
+}
+
+fn isScoped(registry: *runtime.Instance) bool {
+    return (getInternal(registry) orelse return false).is_scoped;
+}
+
+fn associateDocument(registry: *runtime.Instance, document: *runtime.Instance) !void {
+    const internal = getInternal(registry) orelse return error.InvalidStateError;
+    if (!internal.is_scoped) return;
+    var i: usize = 0;
+    while (i < internal.scoped_document_set.items.len) {
+        const entry = internal.scoped_document_set.items[i];
+        if (!entry.isLive()) {
+            _ = internal.scoped_document_set.orderedRemove(i);
+            continue;
+        }
+        if (entry.instance == document) return;
+        i += 1;
+    }
+    try internal.scoped_document_set.append(internal.allocator, .{
+        .instance = document,
+        .generation = runtime.SlabAllocator.generationOf(document),
+    });
 }
 
 fn definitionForConstructor(registry: *runtime.Instance, realm: runtime.Context, constructor: runtime.JSValue) ?*CustomElementDefinition {
@@ -307,11 +345,18 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     if (@import("html").custom_elements.stateForRealm(instance.ctx)) |agent_state| {
         def.agent_definition_count = &agent_state.definition_count;
         agent_state.definition_count += 1;
+        if (def.form_associated) {
+            def.agent_form_definition_count = &agent_state.form_definition_count;
+            agent_state.form_definition_count += 1;
+        }
     }
 
     // Steps 17–18: enqueue matching candidates in shadow-including tree order.
-    // Scoped document sets belong to the scoped-registry follow-up batch.
-    if (!internal.is_scoped) {
+    if (internal.is_scoped) {
+        for (internal.scoped_document_set.items) |document| {
+            if (document.isLive()) try @import("html").upgrade.enqueueCandidates(instance, document.instance, def);
+        }
+    } else {
         if (realm.getRealm()) |record| {
             if (record.global_object) |global| {
                 const window: *runtime.Instance = @ptrCast(@alignCast(global));
@@ -511,6 +556,8 @@ pub fn call_getName(instance: *runtime.Instance, constructor_data: callbacks.Cus
 ///
 /// Tries to upgrade all shadow-including inclusive descendant elements of root.
 pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
+    // WebIDL interface conversion precedes the HTML tree algorithm.
+    if (root.stateAs(interfaces.Node.State) == null) return error.TypeError;
     _ = getInternal(instance) orelse return error.InvalidStateError;
     try @import("html").upgrade.upgradeSubtree(root, instance);
 }
@@ -520,20 +567,39 @@ pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) anyerr
 ///
 /// Associates this registry with elements in the subtree.
 pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
+    if (root.stateAs(interfaces.Node.State) == null) return error.TypeError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = root;
-
-    // Step 1: If this is not scoped and either root is Document or root's document's
-    //         registry is not this, throw NotSupportedError
-    if (!internal.is_scoped) {
-        // TODO: Check if root is Document or if root's node document's registry != this
-        return error.NotSupportedError;
+    const is_document = root.stateAs(interfaces.Document.State) != null;
+    const document = if (is_document) root else (try interfaces.Node.get_ownerDocument(root)) orelse return error.InvalidStateError;
+    // Step 1: a global registry may only initialize roots in its own document.
+    if (!internal.is_scoped and (is_document or try interfaces.Document.get_customElementRegistry(document) != instance)) return error.NotSupportedError;
+    // Steps 2–3: set only a null root association; never replace a registry.
+    if (is_document) {
+        if (try interfaces.Document.get_customElementRegistry(root) == null) try dom.custom_elements.setDocumentRegistry(root, instance);
+    } else if (root.stateAs(interfaces.ShadowRoot.State) != null) {
+        if (try interfaces.ShadowRoot.get_customElementRegistry(root) == null) try dom.custom_elements.setShadowRegistry(root, instance);
     }
-
-    // Steps 2-4: Set custom element registry for elements in subtree
-    // TODO: Implement proper initialization logic
-
-    // For now, this is a no-op placeholder
+    // Step 4 uses inclusive descendants in LIGHT tree order. Shadow trees
+    // keep their own association and require their own initialize() call.
+    const base = dom.instance_bridge.getNodeBase(root) orelse return;
+    var current: ?*dom.NodeBase = base;
+    while (current) |node| {
+        if (node.node_type == dom.NodeBase.ELEMENT_NODE) {
+            if (dom.instance_bridge.getInstance(node)) |object| {
+                const element: *runtime.Instance = @ptrCast(@alignCast(object));
+                if (try interfaces.Element.get_customElementRegistry(element) == null) try dom.custom_elements.setElementRegistry(element, instance);
+                if (try interfaces.Element.get_customElementRegistry(element) == instance) dom.custom_elements.tryUpgrade(element);
+            }
+        }
+        current = if (node.first_child) |child| child else next: {
+            var ancestor = node;
+            while (ancestor != base) {
+                if (ancestor.next_sibling) |sibling| break :next sibling;
+                ancestor = ancestor.parent_node orelse break;
+            }
+            break :next null;
+        };
+    }
 }
 
 /// Operation: whenDefined(name)
