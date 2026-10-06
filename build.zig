@@ -1264,6 +1264,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     dictionaries_mod.addImport("runtime", runtime_mod);
+    dictionaries_mod.addImport("webidl", webidl_mod);
 
     // ========================================================================
     // WEBIDL ENUMS MODULE

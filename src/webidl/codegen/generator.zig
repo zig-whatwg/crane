@@ -2880,6 +2880,12 @@ pub fn generateDictionary(
     // Write imports
     // NOTE: v8 import removed - use runtime.JSValue instead of v8.JSValue
     try w.writeAll("const runtime = @import(\"runtime\");\n");
+    // Staged presence conversion: this nullable member's owner distinguishes
+    // absent from null (DOM attachShadow steps 1–2). Opt's existing converter
+    // reads each member once and preserves both cases without an adapter fork.
+    if (std.mem.eql(u8, dictionary.name, "ShadowRootInit")) {
+        try w.writeAll("const webidl = @import(\"webidl\");\n");
+    }
     if (needs_typedefs) {
         try w.writeAll("const typedefs = @import(\"typedefs\");\n");
     }
@@ -2926,14 +2932,20 @@ pub fn generateDictionary(
 
         // Dictionary members are optional by default unless required
         const is_required = member.required;
-        if (!is_required) {
+        const keep_presence = !is_required and member.idlType.nullable and
+            std.mem.eql(u8, dictionary.name, "ShadowRootInit") and std.mem.eql(u8, member.name, "customElementRegistry");
+        if (keep_presence) {
+            try w.writeAll("webidl.Opt(?");
+        } else if (!is_required) {
             try w.writeAll("?");
         }
 
         try writeDictionaryMemberType(allocator, w, member.idlType, &ir.type_registry);
 
         // Default value
-        if (!is_required) {
+        if (keep_presence) {
+            try w.writeAll(") = .notPassed()");
+        } else if (!is_required) {
             try w.writeAll(" = null");
         }
 

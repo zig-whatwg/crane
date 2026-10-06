@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const enums = @import("enums");
 
 pub const ShadowRootInit = struct {
@@ -11,5 +12,5 @@ pub const ShadowRootInit = struct {
     slotAssignment: ?enums.SlotAssignmentMode = null,
     clonable: ?bool = null,
     serializable: ?bool = null,
-    customElementRegistry: ?*runtime.Instance = null,
+    customElementRegistry: webidl.Opt(?*runtime.Instance) = .notPassed(),
 };
