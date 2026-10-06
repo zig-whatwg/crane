@@ -25,26 +25,29 @@
 <dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>9</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-23ca91febb</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/23ca91febb"><code>23ca91febb</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/form-associated/form-disabled-callback.html"><code>custom-<wbr>elements/<wbr>form-<wbr>associated/<wbr>form-<wbr>disabled-<wbr>callback.<wbr>html</code></a></dd></div>
 </dl>
+<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">NotSupportedError: This feature is not yet implemented</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
+<h3 class="run-head"><code>/custom-elements/form-associated/form-disabled-callback.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>1</b> / 10</span></h3>
+<pre class="msg harness-msg">NotSupportedError: This feature is not yet implemented</pre>
 <ol class="subtests">
 <li class="sub s-fail" id="s-e6b4b64d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Adding/removing disabled content attribute</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-e6b4b64d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-2f57bd46"><details><summary><span class="mark">FAIL</span><span class="sub-name">Relationship with FIELDSET</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-2f57bd46" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e8652bf9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">A disabled form-associated custom element should not provide an entry for it</span></div><a class="self" href="#s-e8652bf9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-424197e6"><details><summary><span class="mark">FAIL</span><span class="sub-name">A disabled form-associated custom element should not submit an entry for it</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-424197e6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-0b9e307b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Disabled attribute affects focus-capability</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-0b9e307b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-be30706f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upgrading an element with disabled content attribute</span></summary><pre class="msg">container.firstChild.disabledHistory is not a function</pre></details><a class="self" href="#s-be30706f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e52b152d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Toggling &quot;disabled&quot; attribute on a custom element inside disabled &lt;fieldset&gt; does not trigger a callback</span></summary><pre class="msg">control.disabledHistory is not a function</pre></details><a class="self" href="#s-e52b152d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-80b98053"><details><summary><span class="mark">FAIL</span><span class="sub-name">Toggling &quot;disabled&quot; attribute on a &lt;fieldset&gt; does not trigger a callback on disabled custom element descendant</span></summary><pre class="msg">container.querySelector(...).disabledHistory is not a function</pre></details><a class="self" href="#s-80b98053" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be30706f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upgrading an element with disabled content attribute</span></summary><pre class="msg">assert_array_equals: value is undefined, expected array</pre></details><a class="self" href="#s-be30706f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e52b152d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Toggling &quot;disabled&quot; attribute on a custom element inside disabled &lt;fieldset&gt; does not trigger a callback</span></summary><pre class="msg">assert_array_equals: value is undefined, expected array</pre></details><a class="self" href="#s-e52b152d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-80b98053"><details><summary><span class="mark">FAIL</span><span class="sub-name">Toggling &quot;disabled&quot; attribute on a &lt;fieldset&gt; does not trigger a callback on disabled custom element descendant</span></summary><pre class="msg">assert_array_equals: value is undefined, expected array</pre></details><a class="self" href="#s-80b98053" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-faef6ee8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Callback triggered during a clone/append operation, with disabled state provided by ancestor</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;cloneNode&#39;)</pre></details><a class="self" href="#s-faef6ee8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d3130b68"><details><summary><span class="mark">FAIL</span><span class="sub-name">Callback triggered during a clone operation, with disabled state provided by ancestor</span></summary><pre class="msg">container.querySelector(...).disabledHistory is not a function</pre></details><a class="self" href="#s-d3130b68" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d3130b68"><details><summary><span class="mark">FAIL</span><span class="sub-name">Callback triggered during a clone operation, with disabled state provided by ancestor</span></summary><pre class="msg">assert_array_equals: value is undefined, expected array</pre></details><a class="self" href="#s-d3130b68" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

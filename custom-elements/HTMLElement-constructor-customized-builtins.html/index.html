@@ -26,7 +26,7 @@
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-23ca91febb</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/23ca91febb"><code>23ca91febb</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/HTMLElement-constructor-customized-builtins.html"><code>custom-<wbr>elements/<wbr>HTMLElement-<wbr>constructor-<wbr>customized-<wbr>builtins.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,8 +35,8 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-86067ddc"><details><summary><span class="mark">FAIL</span><span class="sub-name">HTMLElement constructor must not get .prototype until it finishes its extends sanity checks, calling proxy constructor directly</span></summary><pre class="msg">assert_throws_js: Should not be able to construct an HTMLElement named &#39;button&#39; function &quot;function () { new countingProxy() }&quot; did not throw</pre></details><a class="self" href="#s-86067ddc" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-74028608"><details><summary><span class="mark">FAIL</span><span class="sub-name">HTMLElement constructor must not get .prototype until it finishes its extends sanity checks, calling via Reflect</span></summary><pre class="msg">assert_throws_js: Should not be able to construct an HTMLElement named &#39;button&#39; function &quot;function () { Reflect.construct(HTMLElement, [], countingProxy) }&quot; did not throw</pre></details><a class="self" href="#s-74028608" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-86067ddc"><details><summary><span class="mark">FAIL</span><span class="sub-name">HTMLElement constructor must not get .prototype until it finishes its extends sanity checks, calling proxy constructor directly</span></summary><pre class="msg">assert_equals: Should never have gotten .prototype expected 0 but got 1</pre></details><a class="self" href="#s-86067ddc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-74028608"><details><summary><span class="mark">FAIL</span><span class="sub-name">HTMLElement constructor must not get .prototype until it finishes its extends sanity checks, calling via Reflect</span></summary><pre class="msg">assert_equals: Should never have gotten .prototype expected 0 but got 1</pre></details><a class="self" href="#s-74028608" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

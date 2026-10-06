@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../dom/"><code>dom/</code></a></li><li><a href="../../../../dom/nodes/"><code>nodes/</code></a></li><li><a href="../../../../dom/nodes/insertion-removing-steps/"><code>insertion-<wbr>removing-<wbr>steps/</code></a></li><li aria-current="page"><code>frame-<wbr>post-<wbr>connection-<wbr>steps.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>frame-<wbr>post-<wbr>connection-<wbr>steps.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="dom/nodes/insertion-removing-steps/frame-post-connection-steps.html">
-<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 4</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 4</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-23ca91febb</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/23ca91febb"><code>23ca91febb</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/nodes/insertion-removing-steps/frame-post-connection-steps.html"><code>dom/<wbr>nodes/<wbr>insertion-<wbr>removing-<wbr>steps/<wbr>frame-<wbr>post-<wbr>connection-<wbr>steps.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -37,7 +37,7 @@
 <ol class="subtests">
 <li class="sub s-fail" id="s-9773d713"><details><summary><span class="mark">FAIL</span><span class="sub-name">A script before frame and iframe elements observes post-connection order</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-9773d713" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-9912534c"><details><summary><span class="mark">FAIL</span><span class="sub-name">A script after frame and iframe elements observes post-connection order</span></summary><pre class="msg">assert_equals: The frame window is created in post-connection order expected object &quot;[object Window]&quot; but got null</pre></details><a class="self" href="#s-9912534c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0b5cd875"><details><summary><span class="mark">FAIL</span><span class="sub-name">Both frames and iframes create a child window when connected inside a shadow tree</span></summary><pre class="msg">InvalidStateError</pre></details><a class="self" href="#s-0b5cd875" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0b5cd875"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Both frames and iframes create a child window when connected inside a shadow tree</span></div><a class="self" href="#s-0b5cd875" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-577f619d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Neither frames nor iframes create a child window in a document without a browsing context</span></div><a class="self" href="#s-577f619d" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>

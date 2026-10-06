@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../hr-time/"><code>hr-<wbr>time/</code></a></li><li aria-current="page"><code>idlharness.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idlharness.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="hr-time/idlharness.any.js">
-<p class="figures-main"><span class="fg-pass">51</span><span class="fg-of"> / 58</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>7</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">57</span><span class="fg-of"> / 58</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-23ca91febb</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/23ca91febb"><code>23ca91febb</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/hr-time/idlharness.any.js"><code>hr-<wbr>time/<wbr>idlharness.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -68,7 +68,7 @@
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/hr-time/idlharness.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>23</b> / 29</span></h3>
+<h3 class="run-head"><code>/hr-time/idlharness.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>29</b> / 29</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-27b76dff"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">idl_test setup</span></div><a class="self" href="#s-27b76dff" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-1b28b2ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">idl_test validation</span></div><a class="self" href="#s-1b28b2ca" aria-label="Link to this subtest">&para;</a></li>
@@ -91,14 +91,14 @@
 <li class="sub s-pass" id="s-8e8c9d54"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Performance interface: operation now()</span></div><a class="self" href="#s-8e8c9d54" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3c67575e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Performance interface: attribute timeOrigin</span></div><a class="self" href="#s-3c67575e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-71895be7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Performance interface: operation toJSON()</span></div><a class="self" href="#s-71895be7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-20087c42"><details><summary><span class="mark">FAIL</span><span class="sub-name">Performance must be primary interface of performance</span></summary><pre class="msg">assert_equals: performance&#39;s prototype is not Performance.prototype expected object &quot;[object Performance]&quot; but got object &quot;[object Object]&quot;</pre></details><a class="self" href="#s-20087c42" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-56944b68"><details><summary><span class="mark">FAIL</span><span class="sub-name">Stringification of performance</span></summary><pre class="msg">assert_class_string: class string of performance expected &quot;[object Performance]&quot; but got &quot;[object Object]&quot;</pre></details><a class="self" href="#s-56944b68" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-435aee45"><details><summary><span class="mark">FAIL</span><span class="sub-name">Performance interface: performance must inherit property &quot;now()&quot; with the proper type</span></summary><pre class="msg">assert_inherits: property &quot;now&quot; found on object expected in prototype chain</pre></details><a class="self" href="#s-435aee45" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3b2084f5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Performance interface: performance must inherit property &quot;timeOrigin&quot; with the proper type</span></summary><pre class="msg">assert_inherits: property &quot;timeOrigin&quot; found on object expected in prototype chain</pre></details><a class="self" href="#s-3b2084f5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6cff58b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Performance interface: performance must inherit property &quot;toJSON()&quot; with the proper type</span></summary><pre class="msg">assert_inherits: property &quot;toJSON&quot; found on object expected in prototype chain</pre></details><a class="self" href="#s-6cff58b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-20087c42"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Performance must be primary interface of performance</span></div><a class="self" href="#s-20087c42" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-56944b68"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Stringification of performance</span></div><a class="self" href="#s-56944b68" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-435aee45"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Performance interface: performance must inherit property &quot;now()&quot; with the proper type</span></div><a class="self" href="#s-435aee45" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3b2084f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Performance interface: performance must inherit property &quot;timeOrigin&quot; with the proper type</span></div><a class="self" href="#s-3b2084f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6cff58b5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Performance interface: performance must inherit property &quot;toJSON()&quot; with the proper type</span></div><a class="self" href="#s-6cff58b5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-933e6d56"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Performance interface: default toJSON operation on performance</span></div><a class="self" href="#s-933e6d56" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-da01de1f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WorkerGlobalScope interface: attribute performance</span></div><a class="self" href="#s-da01de1f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-72a95ce3"><details><summary><span class="mark">FAIL</span><span class="sub-name">WorkerGlobalScope interface: self must inherit property &quot;performance&quot; with the proper type</span></summary><pre class="msg">assert_inherits: property &quot;performance&quot; found on object expected in prototype chain</pre></details><a class="self" href="#s-72a95ce3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-72a95ce3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WorkerGlobalScope interface: self must inherit property &quot;performance&quot; with the proper type</span></div><a class="self" href="#s-72a95ce3" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

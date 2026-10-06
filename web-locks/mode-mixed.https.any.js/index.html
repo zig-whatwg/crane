@@ -21,34 +21,32 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../web-locks/"><code>web-<wbr>locks/</code></a></li><li aria-current="page"><code>mode-<wbr>mixed.<wbr>https.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>mode-<wbr>mixed.<wbr>https.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="web-locks/mode-mixed.https.any.js">
-<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 6</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>2</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 6</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-23ca91febb</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/23ca91febb"><code>23ca91febb</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-locks/mode-mixed.https.any.js"><code>web-<wbr>locks/<wbr>mode-<wbr>mixed.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
-<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">Timeout while running cleanup for test named &quot;Releasing exclusive lock grants multiple shared locks&quot;.</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/web-locks/mode-mixed.https.any.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>1</b> / 3</span></h3>
-<pre class="msg harness-msg">Timeout while running cleanup for test named &quot;Releasing exclusive lock grants multiple shared locks&quot;.</pre>
+<h3 class="run-head"><code>/web-locks/mode-mixed.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-3fa53400"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Lock requests are granted in order</span></div><a class="self" href="#s-3fa53400" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4bbd985a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Releasing exclusive lock grants multiple shared locks</span></summary><pre class="msg">assert_equals: An exclusive lock is held expected 1 but got 4</pre></details><a class="self" href="#s-4bbd985a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-notrun" id="s-8269001f"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An exclusive lock between shared locks</span></div><a class="self" href="#s-8269001f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4bbd985a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Releasing exclusive lock grants multiple shared locks</span></div><a class="self" href="#s-4bbd985a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8269001f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">An exclusive lock between shared locks</span></div><a class="self" href="#s-8269001f" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/web-locks/mode-mixed.https.any.worker.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>1</b> / 3</span></h3>
+<h3 class="run-head"><code>/web-locks/mode-mixed.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-8d039498"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Lock requests are granted in order</span></div><a class="self" href="#s-8d039498" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-timeout" id="s-5638a92f"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Releasing exclusive lock grants multiple shared locks</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-5638a92f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-notrun" id="s-d0b7d7a8"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">An exclusive lock between shared locks</span></div><a class="self" href="#s-d0b7d7a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5638a92f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Releasing exclusive lock grants multiple shared locks</span></div><a class="self" href="#s-5638a92f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d0b7d7a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">An exclusive lock between shared locks</span></div><a class="self" href="#s-d0b7d7a8" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

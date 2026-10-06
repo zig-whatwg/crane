@@ -21,26 +21,29 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li aria-current="page"><code>element-<wbr>internals-<wbr>shadowroot.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>element-<wbr>internals-<wbr>shadowroot.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/element-internals-shadowroot.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>7</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>6</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-23ca91febb</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/23ca91febb"><code>23ca91febb</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/element-internals-shadowroot.html"><code>custom-<wbr>elements/<wbr>element-<wbr>internals-<wbr>shadowroot.<wbr>html</code></a></dd></div>
 </dl>
+<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">NotSupportedError: This feature is not yet implemented</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
+<h3 class="run-head"><code>/custom-elements/element-internals-shadowroot.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>1</b> / 7</span></h3>
+<pre class="msg harness-msg">NotSupportedError: This feature is not yet implemented</pre>
 <ol class="subtests">
 <li class="sub s-fail" id="s-bf57dcd3"><details><summary><span class="mark">FAIL</span><span class="sub-name">ElementInternals.shadowRoot allows access to open shadow root</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-bf57dcd3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-c5b1f470"><details><summary><span class="mark">FAIL</span><span class="sub-name">ElementInternals.shadowRoot allows access to closed shadow root</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-c5b1f470" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-a6d2ea0a"><details><summary><span class="mark">FAIL</span><span class="sub-name">ElementInternals cannot be called before constructor, upgrade case</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-a6d2ea0a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-61bd7731"><details><summary><span class="mark">FAIL</span><span class="sub-name">ElementInternals *can* be called after constructor, upgrade case</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-61bd7731" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-61bd7731"><details><summary><span class="mark">FAIL</span><span class="sub-name">ElementInternals *can* be called after constructor, upgrade case</span></summary><pre class="msg">NotSupportedError</pre></details><a class="self" href="#s-61bd7731" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-0ab08911"><details><summary><span class="mark">FAIL</span><span class="sub-name">ElementInternals cannot be called after constructor calls it, create case</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-0ab08911" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-dbf70446"><details><summary><span class="mark">FAIL</span><span class="sub-name">ElementInternals disabled by disabledFeatures</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-dbf70446" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dbf70446"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ElementInternals disabled by disabledFeatures</span></div><a class="self" href="#s-dbf70446" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-207b5bde"><details><summary><span class="mark">FAIL</span><span class="sub-name">ElementInternals.shadowRoot doesn&#39;t reveal pre-attached closed shadowRoot</span></summary><pre class="msg">assert_true: Failed to construct - test failed expected true got false</pre></details><a class="self" href="#s-207b5bde" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>

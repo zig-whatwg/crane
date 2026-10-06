@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li aria-current="page"><code>Document-<wbr>createElement-<wbr>customized-<wbr>builtins.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>Document-<wbr>createElement-<wbr>customized-<wbr>builtins.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/Document-createElement-customized-builtins.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 4</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>4</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3</span><span class="fg-of"> / 4</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-23ca91febb</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/23ca91febb"><code>23ca91febb</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/Document-createElement-customized-builtins.html"><code>custom-<wbr>elements/<wbr>Document-<wbr>createElement-<wbr>customized-<wbr>builtins.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,10 +35,10 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-3b1b5880"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.createElement must create an instance of autonomous custom elements when it has is attribute</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-3b1b5880" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5cd95656"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.createElement()&#39;s second argument is to be ignored when it&#39;s a string</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-5cd95656" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-86df2435"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.createElement must report an exception thrown by a custom built-in element constructor</span></summary><pre class="msg">Cannot read properties of null (reading &#39;name&#39;)</pre></details><a class="self" href="#s-86df2435" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5a3c49e1"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.createElement with unknown &quot;is&quot; value should create &quot;undefined&quot; state element</span></summary><pre class="msg">assert_true: Undefined element is upgraded on connecting to a document expected true got false</pre></details><a class="self" href="#s-5a3c49e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3b1b5880"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.createElement must create an instance of autonomous custom elements when it has is attribute</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-3b1b5880" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5cd95656"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">document.createElement()&#39;s second argument is to be ignored when it&#39;s a string</span></div><a class="self" href="#s-5cd95656" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-86df2435"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">document.createElement must report an exception thrown by a custom built-in element constructor</span></div><a class="self" href="#s-86df2435" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5a3c49e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">document.createElement with unknown &quot;is&quot; value should create &quot;undefined&quot; state element</span></div><a class="self" href="#s-5a3c49e1" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

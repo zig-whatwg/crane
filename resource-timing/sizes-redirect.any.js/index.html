@@ -21,15 +21,14 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../resource-timing/"><code>resource-<wbr>timing/</code></a></li><li aria-current="page"><code>sizes-<wbr>redirect.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>sizes-<wbr>redirect.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="resource-timing/sizes-redirect.any.js">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 1</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 2</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-23ca91febb</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/23ca91febb"><code>23ca91febb</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/resource-timing/sizes-redirect.any.js"><code>resource-<wbr>timing/<wbr>sizes-<wbr>redirect.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
-<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">TypeError: performance.clearResourceTimings is not a function</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
@@ -41,9 +40,10 @@
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/resource-timing/sizes-redirect.any.worker.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><span class="quiet">none reported</span></span></h3>
-<pre class="msg harness-msg">TypeError: performance.clearResourceTimings is not a function</pre>
-<p class="omitted">No subtests were reported.</p>
+<h3 class="run-head"><code>/resource-timing/sizes-redirect.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-45ee7cec"><details><summary><span class="mark">FAIL</span><span class="sub-name">PerformanceResourceTiming sizes Fetch with redirect test</span></summary><pre class="msg">assert_equals: decodedBodySize expected 4 but got 0</pre></details><a class="self" href="#s-45ee7cec" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </section>
 <footer class="foot">

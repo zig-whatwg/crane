@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li><a href="../../../custom-elements/upgrading/"><code>upgrading/</code></a></li><li aria-current="page"><code>upgrading-<wbr>parser-<wbr>created-<wbr>element.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>upgrading-<wbr>parser-<wbr>created-<wbr>element.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/upgrading/upgrading-parser-created-element.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 6</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>6</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 6</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-23ca91febb</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/23ca91febb"><code>23ca91febb</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/upgrading/upgrading-parser-created-element.html"><code>custom-<wbr>elements/<wbr>upgrading/<wbr>upgrading-<wbr>parser-<wbr>created-<wbr>element.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,12 +35,12 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-c2bdf580"><details><summary><span class="mark">FAIL</span><span class="sub-name">Element.prototype.createElement must add an unresolved custom element to the upgrade candidates map</span></summary><pre class="msg">assert_true: Calling customElements.define must upgrade existing custom elements expected true got false</pre></details><a class="self" href="#s-c2bdf580" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4d861b88"><details><summary><span class="mark">FAIL</span><span class="sub-name">HTMLElement constructor must throw an TypeError when the top of the construction stack is marked AlreadyConstructed due to a custom element constructor constructing itself after super() call</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;name&#39;)</pre></details><a class="self" href="#s-4d861b88" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-724ff530"><details><summary><span class="mark">FAIL</span><span class="sub-name">HTMLElement constructor must throw an TypeError when the top of the construction stack is marked AlreadyConstructed due to a custom element constructor constructing itself before super() call</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;name&#39;)</pre></details><a class="self" href="#s-724ff530" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-615b1641"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upgrading a custom element must throw an TypeError when the returned element is not SameValue as the upgraded element</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;name&#39;)</pre></details><a class="self" href="#s-615b1641" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1a4ed3bf"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upgrading a custom element whose constructor returns a Text node must throw</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;name&#39;)</pre></details><a class="self" href="#s-1a4ed3bf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e0167658"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upgrading a custom element whose constructor returns an Element must throw</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;name&#39;)</pre></details><a class="self" href="#s-e0167658" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c2bdf580"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Element.prototype.createElement must add an unresolved custom element to the upgrade candidates map</span></div><a class="self" href="#s-c2bdf580" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4d861b88"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">HTMLElement constructor must throw an TypeError when the top of the construction stack is marked AlreadyConstructed due to a custom element constructor constructing itself after super() call</span></div><a class="self" href="#s-4d861b88" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-724ff530"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">HTMLElement constructor must throw an TypeError when the top of the construction stack is marked AlreadyConstructed due to a custom element constructor constructing itself before super() call</span></div><a class="self" href="#s-724ff530" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-615b1641"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upgrading a custom element must throw an TypeError when the returned element is not SameValue as the upgraded element</span></div><a class="self" href="#s-615b1641" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1a4ed3bf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upgrading a custom element whose constructor returns a Text node must throw</span></div><a class="self" href="#s-1a4ed3bf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e0167658"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upgrading a custom element whose constructor returns an Element must throw</span></div><a class="self" href="#s-e0167658" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
