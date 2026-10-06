@@ -459,28 +459,25 @@ pub const DomTreeAdapter = struct {
     fn createElementNode(self: *DomTreeAdapter, tree_node: *TreeNode) !*runtime.Instance {
         const local_name = tree_node.local_name orelse return error.InvalidStateError;
 
-        // Check if this is an HTML element (most common case)
         const is_html = tree_node.namespace == .html;
-
-        // Create the appropriate element type using HTML element factory
-        // This ensures HTMLIFrameElement is created for "iframe", HTMLDivElement for "div", etc.
-        const element = if (is_html)
-            try createHTMLElement(self.allocator, self.ctx, local_name)
-        else
-            try createForeignElement(self.allocator, self.ctx, tree_node.namespace, local_name);
-
-        // Set up the element (local name, namespace, attributes). Its node
-        // type is Element.init's, HTML or not. DOM "create an element" sets
-        // the namespace and local name, which no IDL member does.
         const ns_uri: []const u8 = switch (tree_node.namespace) {
             .html => "http://www.w3.org/1999/xhtml",
             .mathml => "http://www.w3.org/1998/Math/MathML",
             .svg => "http://www.w3.org/2000/svg",
         };
-        dom.node_creation.setElementNames(element, ns_uri, local_name) catch {};
-
-        // Set owner document
-        node_document.set(element, self.document) catch {};
+        const parser_ce = @import("custom_elements/parser.zig");
+        const is_value = parser_ce.isValue(tree_node);
+        // This adapter is the incremental full-document parser, including
+        // document.write. Fragment conversion uses HTMLParser's explicit bit.
+        const scope = try parser_ce.Scope.begin(self.document, local_name, ns_uri, is_value, false);
+        defer scope.end();
+        const element = try @import("custom_elements/creation.zig").create(.{
+            .document = self.document,
+            .local_name = local_name,
+            .namespace = ns_uri,
+            .is_value = is_value,
+            .synchronous = scope.synchronous,
+        });
 
         // A script element - HTML's, or an SVG script, whose insertion and
         // children-changed steps wait for its end tag too - is

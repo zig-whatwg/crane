@@ -9,6 +9,10 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+
+- [Cancelled reaction queues need stable element identities](architecture-cancelled-reaction-queues-need-stable-element-identities.md) - Cancel by stable identity so a reused slab address cannot inherit queued work.
+- [An activity bit cannot own two independent holds](architecture-an-activity-bit-cannot-own-two-independent-holds.md) - Root constructor returns independently across reactions and binding conversion; prove the exact GC window.
+- [Reaction scopes capture the agent before script](architecture-reaction-scopes-capture-the-agent-before-script.md) - Capture scope ownership before script can retire its receiver or realm.
 - [Local vs Global at the FFI seam](architecture-local-vs-global-at-the-ffi-seam.md) - Every `v8_*` call returning a pointer allocates.
 - [InstanceRegistry.createIn destabilises the DOM](architecture-instanceregistry-createin-destabilises-the-dom.md) - A recycled address plus a recycled block is two aliasing bugs, not one.
 - [A module cannot be test-linked if it is its own dependency](architecture-a-module-cannot-be-test-linked-if-it-is-its-own.md) - "It has no V8 link" and "it is red" are different states.
@@ -211,6 +215,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A callback can end its own environment](architecture-a-callback-can-end-its-own-environment.md) - Before freeing per-environment records at the environment's end, ask which of them a task is in the middle of using: any callback the task invokes can end the environment re-entrantly. Mark the record as the task's before the script runs, and let the end skip it.
 
 ### Spec Compliance
+
+- [An enqueue step is not an execution guard](spec-compliance-an-enqueue-step-is-not-an-execution-guard.md) - Queue membership has observable effects; preserve the spec's placement of state guards.
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
 - ["Prepare the script element" had no insertion-steps caller](spec-compliance-prepare-the-script-element-had-no-insertion.md) - When a directory of tests all hang on the same idiom, look for the algorithm that idiom triggers and ask who calls it.
 - [Tree construction never received an EOF token](spec-compliance-tree-construction-never-received-an-eof-token.md) - "The loop ended" and "the parser finished" are different claims.
@@ -291,6 +297,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+
+- [An uninstalled hook does not exercise its active path](testing-an-uninstalled-hook-does-not-exercise-its-active-path.md) - Test an installed host's adapter branch as well as the legacy path.
+- [Newly reached leaks need a control without the new feature](testing-newly-reached-leaks-need-a-control-without-the-new-feature.md) - Pair the same operation without the new feature to distinguish reachability from introduction.
+- [A blocking-file headline can hide large subtest regressions](testing-a-blocking-file-headline-can-hide-large-subtest-regressions.md) - Review every lost passing count and preserve conversion semantics when replacing call paths.
 - [Regression-check handle changes with timers, not DOM](testing-regression-check-handle-changes-with-timers-not.md) - Pick the regression suite that exercises the lifetime you changed, not the one that touches the same file.
 - [`--parallel` can manufacture ERROR results; confirm a surprising number serially](testing-parallel-can-manufacture-error-results-confirm-a.md) - An aggregate can move for reasons that have nothing to do with the change; a per-file transition table cannot.
 - [One file can hang the runner past its own per-file ceiling](testing-one-file-can-hang-the-runner-past-its-own-per.md) - A sweep's progress is what it has WRITTEN, not whether it is running.

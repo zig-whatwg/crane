@@ -297,7 +297,12 @@ around one would hand-patch shared files."""
 done_when = "Every item below is in the generator or the binding layer, not worked around in impls."
 progress = [
   "5dbae790e - WebAssembly left to V8 (namespaceIsEngineProvided)",
+  "078a1c73b0 - custom-element reactions owned by AgentHost, creation and upgrade hooks shared by DOM and parser paths, and constructor return holds across callbacks; scoped registries, form association and cross-realm constructor fallback remain follow-ups",
 ]
+
+  [[infra.items]]
+  name = "[CEReactions] scopes and backup queues owned by the agent, with DOM and parser creation/upgrade hooks"
+  status = "done"
 
   [[infra.items]]
   name = "Operation overload resolution"

@@ -16,6 +16,8 @@ pub const Implementation = struct {
     /// Bind `window` to `global` (the engine's handle, BORROWED until the
     /// realm ends).
     bind: *const fn (window: *runtime.Instance, global: *anyopaque) void,
+    /// Set the Window's associated document during document initialization.
+    set_document: *const fn (window: *runtime.Instance, document: *runtime.Instance) void,
 };
 
 var implementation: ?Implementation = null;
@@ -30,4 +32,8 @@ pub fn install(impl: Implementation) void {
 pub fn bind(window: *runtime.Instance, global: *anyopaque) void {
     const impl = implementation orelse return;
     impl.bind(window, global);
+}
+
+pub fn setDocument(window: *runtime.Instance, document: *runtime.Instance) void {
+    (implementation orelse return).set_document(window, document);
 }

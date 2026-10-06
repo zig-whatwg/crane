@@ -79,6 +79,7 @@ const window_agent_hooks: engine.HostHooks = blk: {
     hooks.ensureCanCompileStrings = html.code_generation.hooks.ensureCanCompileStrings;
     hooks.getCodeForEval = html.code_generation.hooks.getCodeForEval;
     hooks.ensureCanCompileWasmBytes = html.code_generation.hooks.ensureCanCompileWasmBytes;
+    if (engine.capabilities.html_constructor != .unsupported) hooks.htmlConstructor = html.custom_element_constructor.construct;
     break :blk hooks;
 };
 
@@ -280,6 +281,8 @@ pub const Browser = struct {
         }
 
         if (self.agent) |agent| {
+            // Release queued handles while the agent exists; AgentHost outlives it.
+            self.agent_host.custom_elements.releasePending();
             // IMPORTANT: Clean up orphaned DOM nodes BEFORE the agent ends!
             // DOM node internal states may use the agent's allocator, which
             // its end frees. We must clean them up while allocators are valid.

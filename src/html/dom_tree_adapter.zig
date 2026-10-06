@@ -65,8 +65,6 @@ const document_internals = dom.document_internals;
 // Import impls only for internal state access (Golden Rule #12 exception - to be migrated)
 const impls = @import("impls");
 const NodeImpl = impls.Node;
-const ElementImpl = impls.Element;
-const DocumentImpl = impls.Document;
 const DocumentTypeImpl = impls.DocumentType;
 const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
 
@@ -359,39 +357,20 @@ pub const DomTreeAdapter = struct {
     ///   input.__proto__.__proto__ === HTMLElement.prototype (which has focus/blur)
     fn createElementNode(self: *DomTreeAdapter, tree_node: *TreeNode) DomTreeAdapterError!*runtime.Instance {
         const local_name = tree_node.local_name orelse return DomTreeAdapterError.InvalidNode;
-        const is_html_namespace = tree_node.namespace == .html;
-
-        // Create the appropriate element type using the element factory
-        // For HTML namespace elements, use createHTMLElement which returns the
-        // correct element subclass (HTMLInputElement, HTMLDivElement, etc.)
-        // For other namespaces (SVG, MathML), use generic Element
-        const element = if (is_html_namespace)
-            DocumentImpl.createHTMLElement(self.allocator, self.ctx, local_name) catch return DomTreeAdapterError.OutOfMemory
-        else
-            parser_script_execution.createForeignElement(self.allocator, self.ctx, tree_node.namespace, local_name) catch return DomTreeAdapterError.OutOfMemory;
-
-        // Set node type
-        NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE) catch {
+        const namespace = namespaceToUri(tree_node.namespace);
+        const parser_ce = @import("custom_elements/parser.zig");
+        const is_value = parser_ce.isValue(tree_node);
+        // Full-document parser: execute_scripts is not a fragment flag.
+        const scope = parser_ce.Scope.begin(self.document, local_name, namespace, is_value, false) catch
             return DomTreeAdapterError.DomOperationFailed;
-        };
-
-        // Set local name
-        ElementImpl.setLocalName(element, local_name) catch {
-            return DomTreeAdapterError.DomOperationFailed;
-        };
-
-        // Set namespace
-        const ns = namespaceToUri(tree_node.namespace);
-        if (ns) |ns_uri| {
-            ElementImpl.setNamespaceURI(element, ns_uri) catch {
-                return DomTreeAdapterError.DomOperationFailed;
-            };
-        }
-
-        // Set owner document
-        node_document.set(element, self.document) catch {
-            return DomTreeAdapterError.DomOperationFailed;
-        };
+        defer scope.end();
+        const element = @import("custom_elements/creation.zig").create(.{
+            .document = self.document,
+            .local_name = local_name,
+            .namespace = namespace,
+            .is_value = is_value,
+            .synchronous = scope.synchronous,
+        }) catch return DomTreeAdapterError.DomOperationFailed;
 
         // A script element - HTML's, or an SVG script - is parser-inserted.
         if (std.mem.eql(u8, local_name, "script")) dom.script_elements.markParserInserted(element, self.document);

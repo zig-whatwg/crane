@@ -24,31 +24,9 @@ pub const Instance = @import("instance.zig").Instance;
 /// neither the receiver nor any realm, any of which can end while the member
 /// runs script (removing an iframe ends its realm and frees its Instances) -
 /// the reactions run under `engine.withPendingExceptionSetAside(scope.agent,
-/// ...)`, which needs only the agent. Stubs for now: the custom element
-/// reactions stack replaces them, and its `Scope`.
-pub const CEReactions = struct {
-    /// What `begin` captured for `end`, all of agent lifetime.
-    pub const Scope = struct {
-        /// The engine agent the bracket's reactions run in.
-        agent: ?*Agent = null,
-        /// The agent's custom element reactions state. Null only when the
-        /// agent has none - the zero-cost path; an agent with state but no
-        /// definitions still counts the bracket's depth, so a
-        /// customElements.define inside an open bracket balances.
-        agent_state: ?*anyopaque = null,
-    };
-
-    pub fn begin(this_object: ?*Instance) Scope {
-        _ = this_object;
-        // TODO: Implement Custom Element reaction queue
-        return .{};
-    }
-
-    pub fn end(scope: Scope) void {
-        _ = scope;
-        // TODO: Invoke queued Custom Element callbacks
-    }
-};
+/// ...)`, which needs only the agent. The HTML owner installs the steps once
+/// at process start; the runtime tier only carries their agent-owned scope.
+pub const CEReactions = @import("ce_reactions.zig");
 pub const VTable = @import("instance.zig").VTable;
 pub const MethodMap = @import("instance.zig").MethodMap;
 pub const Method = @import("instance.zig").Method;

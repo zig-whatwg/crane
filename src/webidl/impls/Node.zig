@@ -157,7 +157,7 @@ pub fn installHooks() void {
     dom_module.node_document.install(.{ .set = &setNodeDocumentHook });
     // And a parser's DOM adapter frees a node it made and never inserted
     // through `dom.node_creation`, as the tree teardown frees a child.
-    dom_module.node_creation.installNode(.{ .destroy_uninserted = &deinitNodeByType });
+    dom_module.node_creation.installNode(.{ .destroy_uninserted = &deinitNodeByType, .clone = &cloneANode });
 }
 
 /// Initialize instance (creates the instance)
@@ -1190,7 +1190,7 @@ pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) an
     // for a document is itself.
     const deep = if (subtree.was_passed) subtree.value else false;
     const document = if (internal.node_type == NodeType.DOCUMENT_NODE) instance else internal.owner_document;
-    return cloneANode(instance, document, deep, null);
+    return dom_module.node_creation.clone(instance, document, deep, null);
 }
 
 /// DOM "clone a node", given node, document, subtree and parent. The
@@ -1332,31 +1332,24 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
             var prefix_owned = try interfaces.Element.get_prefix(node);
             defer if (prefix_owned) |*pfx| pfx.deinit(instance_allocator);
 
-            const namespace = namespace_owned;
-            const local_name = local_name_owned;
-            const prefix = prefix_owned;
-
-            // The spec clones from local name + prefix, NOT from tagName:
-            // tagName is ASCII-uppercased for HTML elements, so using it here
-            // would clone <div> as an element whose local name is "DIV".
-            var qualified_buf: ?[]u8 = null;
-            defer if (qualified_buf) |b| instance_allocator.free(b);
-            const qualified_name = if (if (prefix) |p| (if (p.asSlice().len > 0) p else null) else null) |p| blk: {
-                const joined = try std.fmt.allocPrint(
-                    instance_allocator,
-                    "{s}:{s}",
-                    .{ p.asSlice(), local_name.asSlice() },
-                );
-                qualified_buf = joined;
-                break :blk runtime.DOMString.initInterned(joined);
-            } else local_name;
-
-            const copy = try interfaces.Document.call_createElementNS(
-                owner,
-                namespace,
-                qualified_name,
-                webidl.Opt(runtime.JSValue).notPassed(),
-            );
+            // Clone-single-node steps 1.1–1.2: use the internal is value,
+            // independently of any is attribute, and enqueue an asynchronous
+            // upgrade. Attributes and descendants are copied before it runs.
+            const custom = dom_module.custom_elements.get(node);
+            // Step 1.1 copies the namespace prefix, which is null when absent.
+            // The legacy getter returns an empty string for that case; preserve
+            // the old createElementNS caller's empty-to-null normalization.
+            const prefix = if (prefix_owned) |value|
+                (if (value.asSlice().len != 0) value.asSlice() else null)
+            else
+                null;
+            const copy = try dom_module.custom_elements.create(.{
+                .document = owner,
+                .local_name = local_name_owned.asSlice(),
+                .namespace = if (namespace_owned) |value| value.asSlice() else null,
+                .prefix = prefix,
+                .is_value = if (custom) |value| value.is_value else null,
+            });
             errdefer runtime.Instance.deinit(copy);
 
             // Step 3: "For each attribute of node's attribute list: let

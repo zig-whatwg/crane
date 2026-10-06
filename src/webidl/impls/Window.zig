@@ -452,7 +452,7 @@ pub fn installHooks() void {
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
     // A frame's host binds the Window to the global its realm made here.
-    @import("dom").window_globals.install(.{ .bind = &setBoundV8Global });
+    @import("dom").window_globals.install(.{ .bind = &setBoundV8Global, .set_document = &setDocument });
     // A hyperlink's or form's target that names no frame: the popups this
     // window keeps, or a new one (the rules for choosing a navigable).
     @import("dom").auxiliary_navigables.installTopLevelChooser(.{ .choose = &chooseTopLevelTraversable });

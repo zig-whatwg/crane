@@ -30,7 +30,6 @@ const impls = @import("impls");
 // Threadlocal state cleanup modules
 const dom_mod = @import("dom");
 const html_mod = @import("html");
-const custom_elements = html_mod.custom_elements;
 const mutation_observer_algorithms = dom_mod.mutation_observer_algorithms;
 const instance_lifecycle = runtime.instance_lifecycle;
 
@@ -1452,7 +1451,6 @@ pub const Context = struct {
         // timeouts in sequential test execution.
 
         // Clean up custom elements threadlocal state (reactions_stack, element_reaction_queues)
-        custom_elements.deinitThreadLocalState();
 
         // Clean up mutation observer threadlocal state (global_agent)
         mutation_observer_algorithms.resetAgent();

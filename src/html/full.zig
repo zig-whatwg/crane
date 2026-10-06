@@ -91,6 +91,9 @@ pub const documentClose = core.documentClose;
 pub const autofill = @import("autofill.zig");
 pub const form_associated = @import("form_associated.zig");
 pub const custom_elements = @import("custom_elements.zig");
+pub const custom_element_creation = @import("custom_elements/creation.zig");
+pub const custom_element_constructor = @import("custom_elements/constructor.zig");
+pub const custom_element_parser = @import("custom_elements/parser.zig");
 pub const upgrade = @import("upgrade.zig");
 
 // Structured Clone (§2.7)
