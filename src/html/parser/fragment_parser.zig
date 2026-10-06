@@ -278,9 +278,9 @@ fn resetInsertionModeForContextWithAncestors(context: *const TreeNode, ancestors
     } else if (std.mem.eql(u8, name, "frameset")) {
         return .in_frameset;
     } else if (std.mem.eql(u8, name, "html")) {
-        // Fragment case: use in_body
-        // (Full spec checks for head element, but fragment always has one)
-        return .in_body;
+        // Reset insertion mode step 14.1: a new fragment parser's head
+        // element pointer is null, so html context starts before head.
+        return .before_head;
     }
 
     // Default: in_body

@@ -3264,6 +3264,12 @@ pub const TreeBuilder = struct {
             .end_tag => |tag| {
                 const name = tag.getTagName();
                 if (std.mem.eql(u8, name, "html")) {
+                    // HTML 13.2.6.4.17: ignore </html> in the fragment case.
+                    // Later comments still belong to the synthetic html root.
+                    if (self.fragment_context != null) {
+                        self.reportError(.invalid_first_character_of_tag_name);
+                        return;
+                    }
                     self.insertion_mode = .after_after_body;
                 } else {
                     self.reportError(.invalid_first_character_of_tag_name);
