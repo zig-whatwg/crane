@@ -185,3 +185,52 @@ test "with no list to arm, an extended lifetime's orphan is closed at once" {
     try testing.expectEqual(@as(usize, 1), manager.removeOwner(&document_a, null));
     try testing.expect(!link.runsTasks());
 }
+
+test "two threads: the window thread connects and drops owners while a worker thread's realm ends ask the manager" {
+    // The manager's steps run on the Browser's window thread; every realm's
+    // end - a worker's on its own thread - asks it to drop that realm from
+    // the owner sets (sharedWorkerOwnerGone). Its mutex makes both safe; a
+    // list mutated from two threads without it loses entries or crashes.
+    const sink = try runtime.TaskSink.create(testing.allocator);
+    defer sink.release();
+    var manager = SharedWorkerManager.init(testing.allocator);
+    defer manager.deinit();
+
+    const Worker = struct {
+        manager: *SharedWorkerManager,
+        stop: std.atomic.Value(bool) = .init(false),
+        asked: usize = 0,
+
+        fn run(self: *@This()) void {
+            var worker_realm: u8 = 0;
+            while (!self.stop.load(.acquire)) {
+                // A worker realm owns no shared worker: nothing closes.
+                std.debug.assert(self.manager.removeOwner(&worker_realm, null) == 0);
+                _ = self.manager.count();
+                self.asked += 1;
+            }
+        }
+    };
+    var worker: Worker = .{ .manager = &manager };
+    const thread = try std.Thread.spawn(.{}, Worker.run, .{&worker});
+
+    var documents: [8]u8 = undefined;
+    var round: usize = 0;
+    while (round < 2000) : (round += 1) {
+        const link = try makeLink(sink);
+        defer link.release();
+        var round_key = key;
+        var name_buffer: [16]u8 = undefined;
+        round_key.name = try std.fmt.bufPrint(&name_buffer, "w{d}", .{round % 4});
+        try manager.add(round_key, classic, link, &host_data, &documents[round % documents.len]);
+        if ((try manager.connect(round_key, classic, &documents[(round + 1) % documents.len]))) |found| found.link.release();
+        _ = manager.removeOwner(&documents[round % documents.len], null);
+        _ = manager.removeOwner(&documents[(round + 1) % documents.len], null);
+        try testing.expect(!link.runsTasks());
+        manager.remove(link);
+    }
+    worker.stop.store(true, .release);
+    thread.join();
+    try testing.expectEqual(@as(usize, 0), manager.count());
+    try testing.expect(worker.asked > 0);
+}
