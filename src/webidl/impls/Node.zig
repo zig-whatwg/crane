@@ -1336,11 +1336,18 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
             // independently of any is attribute, and enqueue an asynchronous
             // upgrade. Attributes and descendants are copied before it runs.
             const custom = dom_module.custom_elements.get(node);
+            // Step 1.1 copies the namespace prefix, which is null when absent.
+            // The legacy getter returns an empty string for that case; preserve
+            // the old createElementNS caller's empty-to-null normalization.
+            const prefix = if (prefix_owned) |value|
+                (if (value.asSlice().len != 0) value.asSlice() else null)
+            else
+                null;
             const copy = try dom_module.custom_elements.create(.{
                 .document = owner,
                 .local_name = local_name_owned.asSlice(),
                 .namespace = if (namespace_owned) |value| value.asSlice() else null,
-                .prefix = if (prefix_owned) |value| value.asSlice() else null,
+                .prefix = prefix,
                 .is_value = if (custom) |value| value.is_value else null,
             });
             errdefer runtime.Instance.deinit(copy);
