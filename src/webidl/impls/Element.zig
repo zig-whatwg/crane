@@ -1893,15 +1893,8 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
 }
 
 /// Setter for outerHTML
-/// DOM Parsing §3.2 - Replaces the element with parsed HTML
+/// HTML §8.5.5 - Replaces the element with a parsed fragment.
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#the-outerhtml-property
-///
-/// Steps:
-/// 1. Let parent be this element's parent
-/// 2. If parent is null, return
-/// 3. If parent is a Document, throw a NoModificationAllowedError
-/// 4. Parse the string using the HTML fragment parsing algorithm with parent as context
-/// 5. Replace this element with the parsed nodes
 pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // HTML outerHTML setter step 1: "Let compliantString be the result of
@@ -1910,48 +1903,48 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     // outerHTML", and "script"."
     const compliant = try dom.trusted_types.compliantStringFor(internal.allocator, .html, instance, value, "Element outerHTML");
     defer internal.allocator.free(compliant);
-    const html_string: []const u8 = compliant;
 
-    // Step 1-2: Get parent, return if null
-    const parent = NodeImpl.getParent(instance) orelse return;
-
-    // Step 3: Check if parent is a Document (not allowed)
-    const parent_type = NodeImpl.getNodeType(parent) orelse return error.InvalidStateError;
-    if (parent_type == NodeImpl.NodeType.DOCUMENT_NODE) {
-        return error.HierarchyRequestError;
+    // Steps 2–4: only a detached element is a no-op; a Document parent is
+    // specifically NoModificationAllowedError, not HierarchyRequestError.
+    const parent = (try interfaces.Node.get_parentNode(instance)) orelse return;
+    const parent_type = try interfaces.Node.get_nodeType(parent);
+    if (parent_type == interfaces.Node.get_DOCUMENT_NODE()) {
+        return error.NoModificationAllowedError;
     }
 
-    // Import HTMLParser for fragment parsing
-    const HTMLParser = @import("html").dom_parser;
+    // Step 5: a fragment is not a parsing context element. Create the
+    // specified HTML body in this's node document, then reclaim it when the
+    // parse finishes (Gecko Element::SetOuterHTML uses the same context).
+    var temporary_body: ?*runtime.Instance = null;
+    defer if (temporary_body) |body| dom.node_creation.destroyUninserted(body);
+    const context = if (parent_type == interfaces.Node.get_DOCUMENT_FRAGMENT_NODE()) blk: {
+        const document = (try interfaces.Node.get_ownerDocument(instance)) orelse return error.InvalidStateError;
+        const body = try interfaces.Document.call_createElementNS(
+            document,
+            runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"),
+            runtime.DOMString.initInterned("body"),
+            webidl.Opt(runtime.JSValue).notPassed(),
+        );
+        temporary_body = body;
+        break :blk body;
+    } else parent;
 
-    // Step 4: Parse the HTML fragment using parent as context
-    const fragment = HTMLParser.parseFragment(
+    // Step 6: parse with the adjusted parent as context.
+    const fragment = @import("html").dom_parser.parseFragment(
         internal.allocator,
         instance.ctx,
-        html_string,
-        parent,
+        compliant,
+        context,
     ) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.NotSupportedError,
     };
+    defer dom.node_creation.destroyUninserted(fragment);
 
-    // Step 5: Replace this element with the parsed nodes
-    // Insert all children from fragment before this element, then remove this element
-    var fragment_child = NodeImpl.getFirstChild(fragment);
-    while (fragment_child) |fc| {
-        const next = NodeImpl.getNextSibling(fc);
-        // Remove from fragment
-        _ = interfaces.Node.call_removeChild(fragment, fc) catch break;
-        // Insert before this element
-        _ = interfaces.Node.call_insertBefore(parent, fc, instance) catch break;
-        fragment_child = next;
-    }
-
-    // Remove this element from parent
-    _ = interfaces.Node.call_removeChild(parent, instance) catch {};
-
-    // Clean up the fragment
-    dom.node_creation.destroyUninserted(fragment);
+    // Step 7: one replacement, including its single child-list mutation
+    // record. Use this's actual parent after parsing, not the fictional body.
+    const actual_parent = (try interfaces.Node.get_parentNode(instance)) orelse return error.NotFoundError;
+    _ = try interfaces.Node.call_replaceChild(actual_parent, fragment, instance);
 }
 
 /// Setter for scrollTop

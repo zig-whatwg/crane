@@ -1288,20 +1288,23 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
         NodeType.COMMENT_NODE,
         NodeType.PROCESSING_INSTRUCTION_NODE,
         => {
-            const src_data = CharacterDataImpl.getData(node) orelse "";
-            const data_str = runtime.DOMString.initInterned(src_data);
+            // Clone a single node step 4 / create a node step 2: the copy is
+            // created in the destination node document's relevant realm.
+            const copy_ctx = if (document orelse node_internal.owner_document) |owner| owner.ctx else node.ctx;
+            var data_str = try interfaces.CharacterData.get_data(node);
+            defer data_str.deinit(node.ctx.allocator);
 
             const copy = switch (node_internal.node_type) {
                 NodeType.TEXT_NODE => try interfaces.Text.call_constructor(
-                    node.ctx,
+                    copy_ctx,
                     webidl.Opt(runtime.DOMString).passed(data_str),
                 ),
                 NodeType.COMMENT_NODE => try interfaces.Comment.call_constructor(
-                    node.ctx,
+                    copy_ctx,
                     webidl.Opt(runtime.DOMString).passed(data_str),
                 ),
                 NodeType.CDATA_SECTION_NODE => blk: {
-                    const cdata = try interfaces.CDATASection.init(allocator, node.ctx);
+                    const cdata = try interfaces.CDATASection.init(copy_ctx.allocator, copy_ctx);
                     errdefer runtime.Instance.deinit(cdata);
                     try setNodeType(cdata, NodeType.CDATA_SECTION_NODE);
                     try interfaces.CharacterData.set_data(cdata, data_str);

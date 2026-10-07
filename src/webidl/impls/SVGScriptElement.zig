@@ -50,6 +50,21 @@ pub fn installHooks() void {
     // dom.script_elements, and a connected one prepares on insertion and on
     // children changing: installed before any SVG script exists.
     dom_module.script_elements.installSvg(.{ .flags = &flagsOf });
+    dom_module.cloning_steps.install(&cloningSteps);
+}
+
+/// DOM clone-a-node step 3. SVG does not specify this extension, but all
+/// three engines copy already-started and WPT requires it for inert imports:
+/// WebKit SVGScriptElement::cloneElementWithoutAttributesAndChildren,
+/// Blink SVGScriptElement::CloneWithoutAttributesAndChildren, and
+/// Gecko SVGScriptElement::Clone. Their copies are not parser-inserted.
+/// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/svg/SVGScriptElement.cpp
+/// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/svg/svg_script_element.cc
+/// https://github.com/mozilla-firefox/firefox/blob/main/dom/svg/SVGScriptElement.cpp
+fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, _: bool) anyerror!void {
+    const source = flagsOf(node) orelse return;
+    const target = flagsOf(copy) orelse return;
+    target.already_started = source.already_started;
 }
 
 /// Initialize instance, through the chain SVGElement -> Element -> Node ->

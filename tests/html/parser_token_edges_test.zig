@@ -72,3 +72,12 @@ test "br end tags become attribute-free HTML start tags after foreign breakout" 
         try std.testing.expectEqualStrings("tail", result.children[index + 1].text_content.toSlice());
     }
 }
+
+test "character insertion retains the replacement behavior for non-scalar input" {
+    // The UTF-8 tree representation has always replaced a lone surrogate in
+    // appendChar. Coalescing/foster parenting must not turn that input into a
+    // process abort (javascript: URL response bodies exercise this path).
+    try expectFragment("div", "\xed\xb8\x8d" ++ "A", "\xef\xbf\xbd" ++ "A");
+    try expectFragment("div", "x\xed\xa0\x80" ++ "y", "x\xef\xbf\xbd" ++ "y");
+    try expectFragment("div", "<table>\xed\xb8\x8d<tr><td>x", "\xef\xbf\xbdtable[tbody[tr[td[x]]]]");
+}

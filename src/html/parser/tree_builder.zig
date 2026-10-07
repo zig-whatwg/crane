@@ -3807,7 +3807,11 @@ pub const TreeBuilder = struct {
     /// Insert a character.
     fn insertCharacter(self: *TreeBuilder, char: u21) !void {
         var bytes: [4]u8 = undefined;
-        const len = std.unicode.utf8Encode(char, &bytes) catch unreachable;
+        // Keep appendChar's non-scalar replacement behavior when inserting at
+        // the adjusted location. InputStream reports surrogate parse errors,
+        // but they are recoverable input, not an unreachable engine state.
+        const len = std.unicode.utf8Encode(char, &bytes) catch
+            return self.insertTextRun("\xef\xbf\xbd");
         try self.insertTextRun(bytes[0..len]);
     }
 
