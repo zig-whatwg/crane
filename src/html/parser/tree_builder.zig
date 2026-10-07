@@ -577,6 +577,9 @@ pub const TreeBuilder = struct {
     /// The text node the parser has been appending to without telling the DOM
     /// adapter yet - see `flushPendingText`.
     pending_text: ?*TreeNode = null,
+    /// HTML in-body pre/listing/textarea: inspect exactly the next token.
+    /// This survives an input suspension, but not an intervening comment/tag.
+    skip_next_lf: bool = false,
     detached_nodes: ?*TreeNode = null,
     dom_adapter_on_inserted: ?*const fn (InsertionLocation, *TreeNode, ?*anyopaque) void = null,
     dom_adapter_on_removed: ?*const fn (*TreeNode, ?*anyopaque) void = null,
@@ -910,6 +913,13 @@ pub const TreeBuilder = struct {
 
     /// Process a single token.
     pub fn processToken(self: *TreeBuilder, token: Token) Allocator.Error!void {
+        // In-body pre/listing step 3 and textarea step 2. Text runs never
+        // contain LF; a character reference that emits LF is still a token
+        // to ignore. Fragment contexts alone do not set this flag.
+        if (self.skip_next_lf) {
+            self.skip_next_lf = false;
+            if (token == .character and token.character == 0x000A) return;
+        }
         // Tree construction dispatcher
         // HTML Standard §13.2.6: Check if we should use foreign content rules
         const use_foreign = self.shouldUseForeignContent(token);
@@ -2172,6 +2182,18 @@ pub const TreeBuilder = struct {
             (std.mem.eql(u8, name, "noscript") and self.scripting_enabled))
         {
             try self.parseGenericRawText(tag);
+        } else if (std.mem.eql(u8, name, "pre") or std.mem.eql(u8, name, "listing")) {
+            // In-body pre/listing, steps 1–4.
+            try self.closePElementIfInButtonScope();
+            _ = try self.insertHtmlElement(tag);
+            self.skip_next_lf = true;
+            self.frameset_ok = false;
+        } else if (std.mem.eql(u8, name, "textarea")) {
+            // In-body textarea, steps 1–6. The generic helper supplies the
+            // element, RCDATA state and original/text insertion modes.
+            try self.parseGenericRCDATA(tag);
+            self.skip_next_lf = true;
+            self.frameset_ok = false;
         } else if (isSpecialBlockElement(name)) {
             try self.closePElementIfInButtonScope();
             _ = try self.insertHtmlElement(tag);
@@ -2250,6 +2272,14 @@ pub const TreeBuilder = struct {
 
         if (std.mem.eql(u8, name, "template")) {
             try self.handleInHeadMode(Token{ .end_tag = tag });
+        } else if (std.mem.eql(u8, name, "br")) {
+            // In-body br end tag: parse error, discard attributes, then run
+            // the br start-tag steps (also reached after foreign breakout).
+            self.reportError(.invalid_first_character_of_tag_name);
+            var start = TagToken.init(self.allocator, false);
+            defer start.deinit();
+            for ("br") |byte| try start.appendToTagName(byte);
+            try self.handleInBodyStartTag(start);
         } else if (std.mem.eql(u8, name, "form")) {
             if (!self.parsingTemplateContents()) {
                 // "In body", form end tag, steps 1–6. Remove only the form
