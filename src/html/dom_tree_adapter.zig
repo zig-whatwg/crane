@@ -74,6 +74,7 @@ const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
 const webidl = @import("webidl");
 const node_document = @import("dom").node_document;
 const parser_script_execution = @import("parser_script_execution.zig");
+const parser_mutation = @import("parser_dom_mutation.zig");
 
 /// Error type for DOM tree adapter operations
 pub const DomTreeAdapterError = error{
@@ -145,8 +146,24 @@ pub const DomTreeAdapter = struct {
             onTextContentChangedCallback,
         );
         tree_builder.setDomAdapterAttributeCallback(onAttributeAddedCallback);
+        tree_builder.setDomAdapterTreeMutationCallbacks(onInsertedCallback, onRemovedCallback, onChildrenMovedCallback);
         tree_builder.setDomAdapterModeCallback(onModeSetCallback);
         tree_builder.setDomAdapterPoppedCallback(onElementPoppedCallback);
+    }
+
+    fn onInsertedCallback(location: TreeBuilder.InsertionLocation, child: *TreeNode, context: ?*anyopaque) void {
+        const self: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+        _ = parser_mutation.insert(self, location, child) catch false;
+    }
+
+    fn onRemovedCallback(node: *TreeNode, context: ?*anyopaque) void {
+        const self: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+        self.onNodeRemoved(node) catch {};
+    }
+
+    fn onChildrenMovedCallback(source: *TreeNode, destination: *TreeNode, context: ?*anyopaque) void {
+        const self: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+        parser_mutation.moveChildren(self, source, destination) catch {};
     }
 
     /// The document mode the parser set: the Document takes it.
@@ -235,7 +252,8 @@ pub const DomTreeAdapter = struct {
     /// @param child The child TreeNode being appended
     pub fn onChildAppended(self: *DomTreeAdapter, parent: *TreeNode, child: *TreeNode) DomTreeAdapterError!void {
         // Get or create DOM nodes for both
-        const parent_dom = try self.ensureDomNode(parent);
+        const parent_node = try self.ensureDomNode(parent);
+        const parent_dom = dom.template_contents.insertionTarget(parent_node) catch return DomTreeAdapterError.DomOperationFailed;
         const child_dom = try self.ensureDomNode(child);
 
         // Append child to parent using DOM interface (Golden Rule #12)

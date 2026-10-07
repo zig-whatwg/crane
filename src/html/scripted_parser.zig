@@ -291,6 +291,11 @@ pub fn parseHTMLWithScripting(
         &parser_scripts.domAdapterOnTextContentChanged,
     );
     tree_builder.setDomAdapterAttributeCallback(&parser_scripts.domAdapterOnAttributeAdded);
+    tree_builder.setDomAdapterTreeMutationCallbacks(
+        &parser_scripts.domAdapterOnInserted,
+        &parser_scripts.domAdapterOnRemoved,
+        &parser_scripts.domAdapterOnChildrenMoved,
+    );
     // The document's mode: the "initial" insertion mode sets it on the
     // Document as it parses the DOCTYPE, where script can already read it -
     // except in an iframe srcdoc document, whose URL matches about:srcdoc.
