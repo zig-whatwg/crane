@@ -16,9 +16,8 @@ const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
-/// The only way setting a node document can fail: the node has no Node state,
-/// which is also what a missing implementation means - no node has been made.
-pub const Error = error{InvalidStateError};
+/// Assigning the document establishes template contents, which can allocate.
+pub const Error = error{ InvalidStateError, OutOfMemory };
 
 /// What the Node impl supplies.
 pub const Implementation = struct {

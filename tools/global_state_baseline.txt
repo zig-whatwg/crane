@@ -97,9 +97,7 @@ src/dom/navigation_objects.zig destinations 1 G H decl:4fedc576fbcc13d4
 src/dom/navigation_objects.zig events 1 G H decl:b041813066c19aff
 src/dom/navigation_objects.zig page_swap_events 1 G H decl:e075515ab1e0b142
 src/dom/navigation_objects.zig transitions 1 G H decl:365b6c641253d43a
-src/dom/node_creation.zig document_type_steps 1 G H decl:e046080046099de2
-src/dom/node_creation.zig element_steps 1 G H decl:73357b3acc1ccab4
-src/dom/node_creation.zig node_steps 1 G H decl:bb9a0de5733f91ea
+src/dom/node_creation.zig node_steps 1 G H decl:4dad5b7413d7153c
 src/dom/node_document.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/node_lists.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/observer_registrations.zig implementation 1 G H decl:9c737e7125e9c3d4
@@ -120,6 +118,7 @@ src/dom/target_element.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/teardown_sweeps.zig count 1 G H decl:3796f88280404836
 src/dom/teardown_sweeps.zig sweeps 1 G H decl:1e82f37f23c768cf
 src/dom/teardown_sweeps.zig test_sweeps 1 G X decl:3796f88280404836
+src/dom/template_contents.zig hooks 1 G P-res decl:4dad5b7413d7153c
 src/dom/token_lists.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/top_level_navigation.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/traversal.zig node_iterator 1 G H decl:d977cb3dc433f236

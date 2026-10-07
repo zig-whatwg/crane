@@ -157,7 +157,11 @@ pub fn installHooks() void {
     dom_module.node_document.install(.{ .set = &setNodeDocumentHook });
     // And a parser's DOM adapter frees a node it made and never inserted
     // through `dom.node_creation`, as the tree teardown frees a child.
-    dom_module.node_creation.installNode(.{ .destroy_uninserted = &deinitNodeByType });
+    dom_module.node_creation.installNode(.{
+        .destroy_uninserted = &deinitNodeByType,
+        .clone = &cloneANode,
+        .set_type = &setNodeType,
+    });
 }
 
 /// Initialize instance (creates the instance)
@@ -380,6 +384,25 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
     // tree's anyway (wrapper_cache treeOwns); a root - the parser's adapter
     // frees one through dom.node_creation.destroyUninserted - was not.
     if (!runtime.instance_lifecycle.markCleanupStarted(instance)) return;
+
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    const ctx = instance.ctx;
+    defer {
+        // A tree owns its unwrapped descendants, and nobody will finalize
+        // their storage after this cleanup. A wrapped node leaves that half
+        // to its wrapper's finalizer, like the root passed to onObjectFreed.
+        // During realm teardown the cache can be iterating freed entries:
+        // leave its storage phase alone instead of asking hasWrapper then.
+        // A deferred finalizer may have run while resources were released;
+        // its old generation must never free a slot that has since moved on.
+        if (runtime.SlabAllocator.generationOf(instance) == generation and
+            runtime.instance_lifecycle.isCleanedUp(instance) and
+            (!ctx.hasEngine() or
+                (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(instance))))
+        {
+            runtime.gc.releaseStorage(instance);
+        }
+    }
 
     // Its wrapper must not free it again (engine.platformObjectDestroyed).
     engine.platformObjectDestroyed(instance);
@@ -1927,7 +1950,11 @@ pub fn setNamespaceURI(instance: *runtime.Instance, uri: ?runtime.DOMString) !vo
 /// `dom.node_document`'s implementation: the same step, with the declared
 /// error set a function pointer needs.
 fn setNodeDocumentHook(node: *runtime.Instance, document: ?*runtime.Instance) dom_module.node_document.Error!void {
-    return setOwnerDocument(node, document);
+    try setOwnerDocument(node, document);
+    if (document != null) dom_module.template_contents.establish(node) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.InvalidStateError,
+    };
 }
 
 pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !void {

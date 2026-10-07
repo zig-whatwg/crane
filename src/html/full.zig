@@ -31,6 +31,8 @@
 //! ```
 
 const std = @import("std");
+pub const dom_parser = @import("dom_parser.zig");
+pub const serialization = @import("serialization.zig");
 
 // Re-export all of html_core via module import (not file import)
 // This ensures Zig sees html_core as one module, not two modules owning same files

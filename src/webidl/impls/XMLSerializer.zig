@@ -53,7 +53,5 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
 /// Operation: serializeToString
 pub fn call_serializeToString(instance: *runtime.Instance, root: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    _ = root;
-    return error.NotImplemented;
+    return @import("html").serialization.xml(instance.ctx.allocator, root);
 }

@@ -101,6 +101,12 @@ pub const InternalState = struct {
     /// Cached DOMImplementation instance ([SameObject])
     implementation: ?*runtime.Instance,
 
+    /// HTML 4.12.3: one inert owner document per ordinary document. An inert
+    /// owner itself reuses its own document for nested templates.
+    template_owner_document: ?*runtime.Instance = null,
+    template_owner_generation: u64 = 0,
+    is_template_owner_document: bool = false,
+
     /// String interning pool for tag names, attribute names, etc.
     /// Provides memory savings and O(1) string comparison via pointer equality
     string_pool: std.StringHashMap(void),
@@ -609,6 +615,7 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
     @import("dom").document_lifecycle.install(.{
         .parsing_stopped = &lifecycleParsingStopped,
         .finish_loading = &lifecycleFinishLoading,
@@ -657,6 +664,25 @@ pub fn installHooks() void {
     installScriptHooks();
     // The event loop runs a task only while its document is fully active.
     @import("dom").document_activity.install(.{ .fully_active = &isFullyActive });
+}
+
+fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
+    const internal = getInternal(document) orelse return error.InvalidStateError;
+    // Appropriate template contents owner document, step 1.
+    if (internal.is_template_owner_document) return document;
+    if (internal.template_owner_document) |owner| return owner;
+    // Steps 1.1.1–1.1.3: create in the same realm, with no browsing context.
+    // WebKit Document::ensureTemplateDocument keeps this state per document.
+    const owner = try call_constructor(document.ctx);
+    errdefer deinit(owner);
+    const owner_internal = getInternal(owner) orelse return error.InvalidStateError;
+    owner_internal.is_template_owner_document = true;
+    owner_internal.doc_type = internal.doc_type;
+    owner_internal.scripting_enabled = false;
+    internal.template_owner_document = owner;
+    internal.template_owner_generation = runtime.SlabAllocator.generationOf(owner);
+    engine.traceChild(document, owner, .{ .name = "template owner document" });
+    return owner;
 }
 
 /// dom.document_activity: whether a task's document is fully active - "the
@@ -810,6 +836,13 @@ pub fn getBoundV8Wrapper(instance: *runtime.Instance) ?*anyopaque {
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up internal state from registry
     if (Registry.get(instance)) |internal| {
+        engine.forgetTracedChild(instance, .{ .name = "template owner document" });
+        if (internal.template_owner_document) |owner| {
+            if (runtime.SlabAllocator.generationOf(owner) == internal.template_owner_generation and
+                (!instance.ctx.hasEngine() or
+                    (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(owner))))
+                runtime.Instance.deinit(owner);
+        }
         internal.deinit();
     }
     Registry.remove(instance);
@@ -2513,7 +2546,7 @@ fn createAnElement(instance: *runtime.Instance, local_name: []const u8, namespac
     try ElementImpl.setLocalName(element, local_name);
     if (namespace) |ns| try ElementImpl.setNamespaceURI(element, ns);
     if (prefix) |p| try ElementImpl.setPrefix(element, p);
-    try NodeImpl.setOwnerDocument(element, instance);
+    try @import("dom").node_document.set(element, instance);
     return element;
 }
 
@@ -3367,149 +3400,33 @@ pub fn call_hasStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSVal
 /// 1. If node is a document or shadow root, throw "NotSupportedError"
 /// 2. Return clone a node with document=this, subtree=deep
 pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    _ = options; // TODO: Handle ImportNodeOptions (deep flag)
-
-    // Step 1: Check node type
-    const node_type = NodeImpl.getNodeType(node);
-
-    // Document nodes cannot be imported
-    if (node_type == NodeImpl.NodeType.DOCUMENT_NODE) {
-        return error.NotSupportedError;
-    }
-
-    // TODO: Check for shadow root when shadow DOM is implemented
-
-    // Step 2: Clone the node into this document
-    // For now, do a shallow clone (deep=false by default)
-    // TODO: Parse options to get deep flag
-    return cloneNode(instance, node, false);
-}
-
-/// Clone a node for importNode/cloneNode
-/// Spec: https://dom.spec.whatwg.org/#concept-node-clone
-fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplError!*runtime.Instance {
-    const internal = getInternal(doc) orelse return error.InvalidStateError;
-    const node_type = NodeImpl.getNodeType(node) orelse return error.InvalidStateError;
-
-    // Clone based on node type
-    const copy = switch (node_type) {
-        NodeImpl.NodeType.ELEMENT_NODE => blk: {
-            // Create new element
-            // Use interface instead of impl (per Golden Rule #13)
-            const ElementImpl = @import("Element.zig");
-            const elem = try interfaces.Element.init(internal.allocator, doc.ctx);
-            try NodeImpl.setNodeType(elem, NodeImpl.NodeType.ELEMENT_NODE);
-
-            // Copy element properties from source
-            if (ElementImpl.getInternal(node)) |src_internal| {
-                const elem_internal = ElementImpl.getInternal(elem) orelse break :blk elem;
-
-                // Copy namespace, prefix, local name
-                if (src_internal.namespace_uri) |ns| {
-                    elem_internal.namespace_uri = try ns.clone(internal.allocator);
-                }
-                if (src_internal.prefix) |p| {
-                    elem_internal.prefix = try p.clone(internal.allocator);
-                }
-                elem_internal.local_name = try src_internal.local_name.clone(internal.allocator);
-                elem_internal.id = try src_internal.id.clone(internal.allocator);
-                elem_internal.class_name = try src_internal.class_name.clone(internal.allocator);
-                elem_internal.slot = try src_internal.slot.clone(internal.allocator);
-
-                // Copy all attributes using iterator
-                var attr_iter = src_internal.attributeIterator();
-                while (attr_iter.next()) |attr| {
-                    const new_attr = ElementImpl.AttributeEntry{
-                        .namespace_uri = if (attr.namespace_uri) |ns| try internal.allocator.dupe(u8, ns) else null,
-                        .prefix = if (attr.prefix) |p| try internal.allocator.dupe(u8, p) else null,
-                        .local_name = try internal.allocator.dupe(u8, attr.local_name),
-                        .value = try internal.allocator.dupe(u8, attr.value),
-                    };
-                    try elem_internal.addAttribute(new_attr);
-                }
+    // DOM importNode, step 1.
+    if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_NODE() or
+        node.stateAs(interfaces.ShadowRoot.State) != null) return error.NotSupportedError;
+    // Steps 2–5. WebIDL's (boolean or ImportNodeOptions) uses the dictionary
+    // arm for objects and null/undefined; other primitives become boolean.
+    var subtree = false;
+    if (options.was_passed) {
+        const value = options.value;
+        const kind = engine.typeOf(instance.ctx, value);
+        if (kind == .object or kind == .null or kind == .undefined) {
+            subtree = true;
+            if (kind == .object) {
+                const self_only = try engine.getProperty(instance.ctx, value, "selfOnly");
+                defer self_only.release();
+                subtree = !engine.toBoolean(instance.ctx, self_only.value);
+                const registry = try engine.getProperty(instance.ctx, value, "customElementRegistry");
+                defer registry.release();
+                // This base predates scoped registries. Do not silently ignore
+                // an explicit registry; the registry lane owns its integration.
+                if (!registry.value.isNullOrUndefined()) return error.NotSupportedError;
             }
-
-            break :blk elem;
-        },
-        NodeImpl.NodeType.TEXT_NODE => blk: {
-            // Clone text data
-            const CharacterDataImpl = @import("CharacterData.zig");
-            const src_data = CharacterDataImpl.getData(node) orelse "";
-            // Use interface instead of impl (per Golden Rule #13)
-            const text = try interfaces.Text.call_constructor(doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
-            break :blk text;
-        },
-        NodeImpl.NodeType.COMMENT_NODE => blk: {
-            // Clone comment data
-            const CharacterDataImpl = @import("CharacterData.zig");
-            const src_data = CharacterDataImpl.getData(node) orelse "";
-            // Use interface instead of impl (per Golden Rule #13)
-            const comment = try interfaces.Comment.call_constructor(doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
-            break :blk comment;
-        },
-        NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE => blk: {
-            // Use interface instead of impl (per Golden Rule #13)
-            const fragment = try interfaces.DocumentFragment.init(internal.allocator, doc.ctx);
-            try NodeImpl.setNodeType(fragment, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
-            break :blk fragment;
-        },
-        NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE => blk: {
-            // Get source target and data
-            const src_target = ProcessingInstructionImpl.getTarget(node) orelse "";
-            const CharacterDataImpl = @import("CharacterData.zig");
-            const src_data = CharacterDataImpl.getData(node) orelse "";
-
-            // Create PI with target and data
-            const pi = try ProcessingInstructionImpl.createProcessingInstruction(
-                internal.allocator,
-                doc.ctx,
-                src_target,
-                src_data,
-            );
-            break :blk pi;
-        },
-        NodeImpl.NodeType.CDATA_SECTION_NODE => blk: {
-            // Get source data
-            const CharacterDataImpl = @import("CharacterData.zig");
-            const src_data = CharacterDataImpl.getData(node) orelse "";
-
-            // Use interface instead of impl (per Golden Rule #13)
-            const cdata = try interfaces.CDATASection.init(internal.allocator, doc.ctx);
-            try NodeImpl.setNodeType(cdata, NodeImpl.NodeType.CDATA_SECTION_NODE);
-
-            // Set the data via CharacterData (internal method)
-            try CharacterDataImpl.setData(cdata, src_data);
-
-            break :blk cdata;
-        },
-        NodeImpl.NodeType.DOCUMENT_TYPE_NODE => {
-            // DocumentType cannot be imported via importNode per spec
-            return error.NotSupportedError;
-        },
-        else => return error.NotSupportedError,
-    };
-    errdefer {
-        // Clean up on error - cast to generic deinit
-        runtime.Instance.deinit(copy);
-    }
-
-    // Set owner document
-    try NodeImpl.setOwnerDocument(copy, doc);
-
-    // If deep clone, recursively clone children
-    if (deep) {
-        // Iterate node's children using first_child/next_sibling traversal
-        var child = NodeImpl.getFirstChild(node);
-        while (child) |c| {
-            const child_copy = try cloneNode(doc, c, true);
-            // TODO: Append child_copy to copy using proper appendChild
-            // For now we just clone; tree structure maintenance needs mutation algorithms
-            _ = child_copy;
-            child = NodeImpl.getNextSibling(c);
+        } else {
+            subtree = engine.toBoolean(instance.ctx, value);
         }
     }
-
-    return copy;
+    // Step 7: use the same clone algorithm as Node and template contents.
+    return @import("dom").node_creation.clone(node, instance, subtree, null);
 }
 
 /// Operation: createCDATASection
@@ -3632,56 +3549,19 @@ pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!runtime.JSValue
 /// Steps:
 /// 1. If node is a document, throw "NotSupportedError"
 /// 2. If node is a shadow root, throw "HierarchyRequestError"
-/// 3. If node is a DocumentFragment whose host is non-null, return node
-/// 4. Adopt node into this document
-/// 5. Return node
+/// 3. Adopt node into this document (including hosted template fragments).
+/// 4. Return node
 pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
-    const node_type = NodeImpl.getNodeType(node);
-
-    // Step 1: Document nodes cannot be adopted
-    if (node_type == NodeImpl.NodeType.DOCUMENT_NODE) {
+    // DOM adoptNode, steps 1–4. The shared algorithm also runs template
+    // adopting steps when insertion (rather than adoptNode) changes documents.
+    if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_NODE())
         return error.NotSupportedError;
-    }
-
-    // Step 2: Shadow roots cannot be adopted
-    // TODO: Check for shadow root when shadow DOM is implemented
-
-    // Step 3: DocumentFragment with host - just return
-    if (node_type == NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE) {
-        // TODO: Check DocumentFragment.host when shadow DOM is implemented
-        // For now, DocumentFragment doesn't have host field
-    }
-
-    // Step 4: Adopt node into this document
-    // This involves:
-    // a) Remove node from its parent (if any)
-    // b) Set node's node document to this
-    // c) Recursively set node document for all descendants
-
-    // Remove from parent if attached
-    if (NodeImpl.getParent(node)) |parent| {
-        try NodeImpl.removeNodeFromParent(node, parent);
-    }
-
-    // Set owner document (recursively for descendants)
-    try adoptNodeRecursive(instance, node);
-
-    // Step 5: Return node
+    if (node.stateAs(interfaces.ShadowRoot.State) != null) return error.HierarchyRequestError;
+    const dom = @import("dom");
+    const base = dom.instance_bridge.getNodeBase(node) orelse return error.InvalidStateError;
+    const document_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;
+    try dom.mutation.adopt(base, @as(*interfaces.Document, @ptrCast(@alignCast(document_base))));
     return node;
-}
-
-/// Recursively adopt a node and all its descendants
-/// Spec: https://dom.spec.whatwg.org/#concept-node-adopt
-fn adoptNodeRecursive(doc: *runtime.Instance, node: *runtime.Instance) ImplError!void {
-    // Set this node's owner document
-    try NodeImpl.setOwnerDocument(node, doc);
-
-    // Iterate children and adopt recursively using first_child/next_sibling traversal
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        try adoptNodeRecursive(doc, c);
-        child = NodeImpl.getNextSibling(c);
-    }
 }
 
 /// Operation: createTextNode

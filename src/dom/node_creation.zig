@@ -32,6 +32,8 @@ pub const Error = error{ InvalidStateError, OutOfMemory };
 pub const ElementSteps = struct {
     /// Set `element`'s namespace and local name.
     set_names: *const fn (element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) Error!void,
+    /// Borrow the is value assigned by "create an element", for serialization.
+    is_value: ?*const fn (*runtime.Instance) ?[]const u8 = null,
 };
 
 /// What DocumentType supplies.
@@ -44,62 +46,82 @@ pub const DocumentTypeSteps = struct {
 pub const NodeSteps = struct {
     /// Free `node`, which was created and never inserted, and its subtree.
     destroy_uninserted: *const fn (node: *runtime.Instance) void,
+    clone: ?*const fn (*runtime.Instance, ?*runtime.Instance, bool, ?*runtime.Instance) anyerror!*runtime.Instance = null,
+    set_type: ?*const fn (*runtime.Instance, u16) anyerror!void = null,
 };
 
-/// Process-wide, written once at start-up (process_start.zig).
-var element_steps: ?ElementSteps = null;
-var document_type_steps: ?DocumentTypeSteps = null;
-var node_steps: ?NodeSteps = null;
+const Hooks = struct {
+    element: ?ElementSteps = null,
+    document_type: ?DocumentTypeSteps = null,
+    node: ?NodeSteps = null,
+};
+// process-wide: immutable creation algorithms installed before any Browser, with no instance state
+var node_steps: Hooks = .{};
 
 /// Called by Element's installHooks, once, at process start (process_start.zig).
 pub fn installElement(steps: ElementSteps) void {
     process_start.assertInstalling();
-    element_steps = steps;
+    node_steps.element = steps;
 }
 
 /// Called by DocumentType's installHooks, once, at process start (process_start.zig).
 pub fn installDocumentType(steps: DocumentTypeSteps) void {
     process_start.assertInstalling();
-    document_type_steps = steps;
+    node_steps.document_type = steps;
 }
 
 /// Called by Node's installHooks, once, at process start (process_start.zig).
 pub fn installNode(steps: NodeSteps) void {
     process_start.assertInstalling();
-    node_steps = steps;
+    node_steps.node = steps;
 }
 
 /// DOM "create an element": set `element`'s namespace and local name.
 pub fn setElementNames(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) Error!void {
-    const steps = element_steps orelse return error.InvalidStateError;
+    const steps = node_steps.element orelse return error.InvalidStateError;
     return steps.set_names(element, namespace, local_name);
+}
+
+pub fn elementIsValue(element: *runtime.Instance) ?[]const u8 {
+    const steps = node_steps.element orelse return null;
+    const read = steps.is_value orelse return null;
+    return read(element);
 }
 
 /// The parser's DOCTYPE token: set `doctype`'s name, public ID and system
 /// ID, each "" where the token had none.
 pub fn setDoctypeIds(doctype: *runtime.Instance, name: ?[]const u8, public_id: ?[]const u8, system_id: ?[]const u8) void {
-    const steps = document_type_steps orelse return;
+    const steps = node_steps.document_type orelse return;
     steps.set_ids(doctype, name, public_id, system_id);
 }
 
 /// Free `node` - created, never inserted, unreachable from script - and its
 /// subtree.
 pub fn destroyUninserted(node: *runtime.Instance) void {
-    const steps = node_steps orelse return;
+    const steps = node_steps.node orelse return;
     steps.destroy_uninserted(node);
+}
+
+/// DOM "clone a node": unlike cloneNode(), callers supply its document
+/// and parent (importNode and HTML template cloning steps).
+pub fn clone(node: *runtime.Instance, document: ?*runtime.Instance, subtree: bool, parent: ?*runtime.Instance) !*runtime.Instance {
+    const steps = node_steps.node orelse return error.InvalidStateError;
+    const algorithm = steps.clone orelse return error.InvalidStateError;
+    return algorithm(node, document, subtree, parent);
+}
+
+/// Set the node kind during initialization, before publishing the node.
+pub fn setType(node: *runtime.Instance, kind: u16) !void {
+    const steps = node_steps.node orelse return error.InvalidStateError;
+    const algorithm = steps.set_type orelse return error.InvalidStateError;
+    return algorithm(node, kind);
 }
 
 test "without installed steps nothing is set or freed" {
     const std = @import("std");
-    const saved_element = element_steps;
-    const saved_document_type = document_type_steps;
     const saved_node = node_steps;
-    defer element_steps = saved_element;
-    defer document_type_steps = saved_document_type;
     defer node_steps = saved_node;
-    element_steps = null;
-    document_type_steps = null;
-    node_steps = null;
+    node_steps = .{};
     // Never dereferenced: with no steps nothing reads it.
     var node: runtime.Instance = undefined;
     try std.testing.expectError(error.InvalidStateError, setElementNames(&node, null, "div"));
