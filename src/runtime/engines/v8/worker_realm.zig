@@ -125,7 +125,13 @@ threadlocal var records: std.ArrayListUnmanaged(Record) = .empty;
 
 fn take(realm: runtime.Context) ?Record {
     for (records.items, 0..) |record, i| {
-        if (record.realm == realm) return records.swapRemove(i);
+        if (record.realm != realm) continue;
+        const taken = records.swapRemove(i);
+        // The list's memory goes with its last record: a worker thread's
+        // realms all end before it does, and what a threadlocal still holds
+        // when its thread exits is never freed.
+        if (records.items.len == 0) records.clearAndFree(std.heap.page_allocator);
+        return taken;
     }
     return null;
 }

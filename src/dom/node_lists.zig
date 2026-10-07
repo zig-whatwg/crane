@@ -17,6 +17,8 @@ pub const Implementation = struct {
     /// Make `list` - just created, empty - the static list of `nodes`, in
     /// order.
     set_static: *const fn (list: *runtime.Instance, nodes: []const *runtime.Instance) anyerror!void,
+    labels: *const fn (list: *runtime.Instance, element: *runtime.Instance) anyerror!void,
+    named_controls: *const fn (*runtime.Instance, *runtime.Instance, []const u8) anyerror!void,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -33,6 +35,14 @@ pub fn install(impl: Implementation) void {
 pub fn setStatic(list: *runtime.Instance, nodes: []const *runtime.Instance) !void {
     const impl = implementation orelse return error.NotSupported;
     try impl.set_static(list, nodes);
+}
+
+pub fn labels(list: *runtime.Instance, element: *runtime.Instance) !void {
+    try (implementation orelse return error.NotSupported).labels(list, element);
+}
+
+pub fn namedControls(list: *runtime.Instance, collection: *runtime.Instance, name: []const u8) !void {
+    try (implementation orelse return error.NotSupported).named_controls(list, collection, name);
 }
 
 test "setStatic without an installed implementation reports NotSupported" {

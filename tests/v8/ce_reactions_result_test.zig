@@ -55,9 +55,24 @@ fn setup() !void {
 
 /// What the probe's bracket does at `end`, and what it saw.
 const Probe = struct {
-    /// `end` frees the result, as a reaction that ends its realm does.
-    var free_at_end: bool = false;
+    /// What `end` does to the result.
+    var at_end: AtEnd = .nothing;
     var made: ?*runtime.Instance = null;
+
+    const AtEnd = enum {
+        nothing,
+        /// Free it outright, as a realm's end frees what only its wrapper
+        /// cache holds.
+        free,
+        /// What a reaction can really do mid-call (codex-ce Q31): wrap the
+        /// result, drop the wrapper - an upgrade constructor whose `this`
+        /// nobody keeps - and force a full collection (TestUtils.gc()). V8
+        /// runs the weak callbacks' second pass synchronously for a forced
+        /// collection (GlobalHandles::PostGarbageCollectionProcessing), and
+        /// the wrapper cache's finalizer frees a detached element no tree
+        /// holds.
+        collect_unheld_wrapper,
+    };
 
     pub const Meta = struct {
         pub const name = "BceCEReactionsResultProbe";
@@ -86,7 +101,16 @@ const Probe = struct {
 
         fn end(self: *Scope) void {
             const result = self.result orelse return;
-            if (free_at_end) runtime.Instance.deinit(result);
+            switch (at_end) {
+                .nothing => {},
+                .free => runtime.Instance.deinit(result),
+                .collect_unheld_wrapper => {
+                    const r = protocol.currentRealm() orelse return;
+                    const held = protocol.retainValue(r, .{ .instance = result }) catch return;
+                    held.release();
+                    protocol.requestGarbageCollection(r.agent orelse return);
+                },
+            }
         }
     };
 
@@ -162,8 +186,8 @@ const Page = struct {
 test "a result its reactions freed is an InvalidStateError, never a stale pointer" {
     const page = try Page.open();
     defer page.close();
-    Probe.free_at_end = true;
-    defer Probe.free_at_end = false;
+    Probe.at_end = .free;
+    defer Probe.at_end = .nothing;
     try page.expect(
         \\try { BceCEReactionsResultProbe.make(); "returned" }
         \\catch (e) { e instanceof DOMException && e.name === "InvalidStateError" ? "InvalidStateError" : String(e) }
@@ -175,7 +199,18 @@ test "a result its reactions freed is an InvalidStateError, never a stale pointe
 test "a result the reactions left alone is returned and wrapped" {
     const page = try Page.open();
     defer page.close();
-    Probe.free_at_end = false;
+    Probe.at_end = .nothing;
     try page.expect("String(BceCEReactionsResultProbe.make() instanceof HTMLElement)", "true");
     try std.testing.expect(protocol.hasWrapper(Probe.made.?));
+}
+
+test "a forced collection at end frees a result whose wrapper nobody holds: InvalidStateError" {
+    const page = try Page.open();
+    defer page.close();
+    Probe.at_end = .collect_unheld_wrapper;
+    defer Probe.at_end = .nothing;
+    try page.expect(
+        \\try { BceCEReactionsResultProbe.make(); "returned" }
+        \\catch (e) { e instanceof DOMException && e.name === "InvalidStateError" ? "InvalidStateError" : String(e) }
+    , "InvalidStateError");
 }

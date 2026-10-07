@@ -269,46 +269,44 @@ test "element reaction queue - get or create" {
     const allocator = std.testing.allocator;
     initTestAllocators(allocator);
     defer deinitTestAllocators();
-    defer custom_elements.deinitThreadLocalState(); // Clean up thread-local state
+    var queues = custom_elements.ElementReactionQueues.init(allocator);
+    defer queues.deinit();
 
     const element_ptr = try createMockInstance(allocator);
 
     // Get or create should create a new empty queue
-    const queue1 = try custom_elements.getOrCreateReactionQueue(allocator, element_ptr);
+    const queue1 = try custom_elements.getOrCreateReactionQueue(&queues, element_ptr);
     try std.testing.expect(queue1.isEmpty());
 
     // Getting again should return the same queue
-    const queue2 = try custom_elements.getOrCreateReactionQueue(allocator, element_ptr);
+    const queue2 = try custom_elements.getOrCreateReactionQueue(&queues, element_ptr);
     try std.testing.expect(queue1 == queue2);
 
     // Adding to queue should persist
     try queue1.enqueue(.{ .reaction_type = .upgrade });
     try std.testing.expect(!queue2.isEmpty());
-
-    // Clean up handled by deinitThreadLocalState() defer above
 }
 
 test "element reaction queue - removal" {
     const allocator = std.testing.allocator;
     initTestAllocators(allocator);
     defer deinitTestAllocators();
-    defer custom_elements.deinitThreadLocalState(); // Clean up thread-local state
+    var queues = custom_elements.ElementReactionQueues.init(allocator);
+    defer queues.deinit();
 
     const element_ptr = try createMockInstance(allocator);
 
     // Create and populate queue
-    const queue = try custom_elements.getOrCreateReactionQueue(allocator, element_ptr);
+    const queue = try custom_elements.getOrCreateReactionQueue(&queues, element_ptr);
     try queue.enqueue(.{ .reaction_type = .upgrade });
     try std.testing.expect(!queue.isEmpty());
 
     // Remove queue
-    custom_elements.removeReactionQueue(allocator, element_ptr);
+    custom_elements.removeReactionQueue(&queues, element_ptr);
 
     // Getting queue again should return a new empty queue
-    const new_queue = try custom_elements.getOrCreateReactionQueue(allocator, element_ptr);
+    const new_queue = try custom_elements.getOrCreateReactionQueue(&queues, element_ptr);
     try std.testing.expect(new_queue.isEmpty());
-
-    // Clean up handled by deinitThreadLocalState() defer above
 }
 
 // ============================================================================
@@ -375,9 +373,8 @@ test "CallbackType - all types defined" {
 test "reactions stack integration - backup queue processing" {
     const allocator = std.testing.allocator;
 
-    // Reset thread-local state for clean test
-    // Note: In a real implementation, we'd have proper reset functions
-    const stack = custom_elements.getReactionsStack(allocator);
+    var stack = ReactionsStack.init(allocator);
+    defer stack.deinit();
 
     // When stack is empty, elements should go to backup queue
     try std.testing.expect(stack.isEmpty());

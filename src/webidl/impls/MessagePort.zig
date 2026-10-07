@@ -163,12 +163,18 @@ fn initWithEnd(
 /// a document" reaches (`disentangleIn`).
 threadlocal var live_ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
 
+/// `instance` is gone from this thread's list. The list's memory goes with
+/// its last port: a dedicated worker's thread loses every port with its
+/// realm and then ends, and the capacity a threadlocal list still holds
+/// when its thread exits is never freed (page_allocator, invisible to
+/// `leaks`: one page per worker thread that made a port).
 fn forgetPort(instance: *runtime.Instance) void {
     for (live_ports.items, 0..) |port, i| {
         if (port != instance) continue;
         _ = live_ports.swapRemove(i);
-        return;
+        break;
     }
+    if (live_ports.items.len == 0) live_ports.clearAndFree(std.heap.page_allocator);
 }
 
 /// HTML "destroy a document" steps 4-5: "Let ports be the list of
@@ -483,21 +489,14 @@ fn documentIsFullyActive(instance: *runtime.Instance) bool {
     return location != null;
 }
 
-/// Whether `instance`'s realm is a worker's whose closing flag is set: HTML
-/// close() and "terminate a worker" discard every task added to the worker's
-/// event loop - a port's among them (webmessaging/message-channels/
-/// worker-post-after-close: a channel made and used after close() delivers
-/// nothing). While a worker's tasks run on its creator's loop, that loop
-/// cannot tell; a worker's own loop discards them itself.
-fn inClosingWorker(instance: *runtime.Instance) bool {
-    return @import("html").worker_host.scopeClosing(instance.ctx) orelse false;
-}
-
 /// One task of the port message queue: the message port post message steps'
-/// step 7, as a task of the receiving port's realm.
+/// step 7, as a task of the receiving port's realm. (A closing worker's port
+/// hears nothing: HTML close() and "terminate a worker" discard every task
+/// of the worker's event loop, and the worker's own loop - every worker runs
+/// one on its own thread - runs no task once its closing flag is set:
+/// webmessaging/message-channels/worker-post-after-close.)
 fn deliverHook(receiver: *anyopaque, generation: u64, delivery: *port_channels.Delivery) void {
     const port = liveReceiver(receiver, generation) orelse return;
-    if (inClosingWorker(port)) return;
     var task = Delivery{ .port = port, .delivery = delivery };
     engine.runTaskInRealm(port.ctx, Delivery.steps, &task) catch {};
 }
@@ -571,7 +570,6 @@ fn fire(port: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, 
 /// the task of its realm that fires `close` at it.
 fn closedHook(receiver: *anyopaque, generation: u64) void {
     const port = liveReceiver(receiver, generation) orelse return;
-    if (inClosingWorker(port)) return;
     engine.runTaskInRealm(port.ctx, fireCloseSteps, port) catch {};
 }
 

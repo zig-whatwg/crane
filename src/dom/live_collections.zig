@@ -21,6 +21,7 @@ pub const Implementation = struct {
     /// Make `collection` DOM's "list of elements with class names
     /// `class_names`" for `root` (a non-empty set of classes).
     class_names: *const fn (collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) error{OutOfMemory}!void,
+    form_controls: *const fn (*runtime.Instance, *runtime.Instance, bool) void,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -47,6 +48,10 @@ pub fn elementChildren(collection: *runtime.Instance, root: *runtime.Instance) !
 pub fn elementsWithClassNames(collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) !void {
     const impl = implementation orelse return error.NotSupported;
     try impl.class_names(collection, root, class_names);
+}
+
+pub fn formControls(collection: *runtime.Instance, root: *runtime.Instance, fieldset: bool) !void {
+    (implementation orelse return error.NotSupported).form_controls(collection, root, fieldset);
 }
 
 test "elementChildren without an installed implementation reports NotSupported" {

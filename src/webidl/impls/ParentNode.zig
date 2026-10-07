@@ -661,8 +661,6 @@ fn matchesPseudoClass(
         .Visited,
         .Hover,
         .Active,
-        .Enabled,
-        .Disabled,
         .ReadOnly,
         .ReadWrite,
         .Checked,
@@ -681,12 +679,13 @@ fn matchesPseudoClass(
         .FocusWithin => @import("dom").focus_matching.matchesFocusWithin(element),
         .FocusVisible => @import("dom").focus_matching.matchesFocusVisible(element),
 
-        // :state(ident) matches an element whose custom state set contains
-        // ident. A custom state set exists only for an element whose
-        // attachInternals() made an ElementInternals, and attachInternals
-        // is not implemented yet (the custom elements construction work), so
-        // no element has one.
-        .State => false,
+        // HTML 4.13.7.5: match the identifier against the element's states set.
+        .State => |name| @import("dom").custom_elements.matchesState(element, name),
+        .Defined => @import("dom").custom_elements.isDefined(element),
+        .Enabled => if (@import("dom").custom_elements.disabledState(element)) |disabled| !disabled else false,
+        .Disabled => @import("dom").custom_elements.disabledState(element) orelse false,
+        .Valid => @import("dom").custom_elements.validationState(element) == .valid,
+        .Invalid => @import("dom").custom_elements.validationState(element) == .invalid,
     };
 }
 

@@ -46,7 +46,8 @@ pub const DocumentTypeSteps = struct {
 pub const NodeSteps = struct {
     /// Free `node`, which was created and never inserted, and its subtree.
     destroy_uninserted: *const fn (node: *runtime.Instance) void,
-    clone: ?*const fn (*runtime.Instance, ?*runtime.Instance, bool, ?*runtime.Instance) anyerror!*runtime.Instance = null,
+    /// DOM clone-a-node, with an explicit document, parent and fallback registry.
+    clone: ?*const fn (*runtime.Instance, ?*runtime.Instance, bool, ?*runtime.Instance, ?*runtime.Instance) anyerror!*runtime.Instance = null,
     set_type: ?*const fn (*runtime.Instance, u16) anyerror!void = null,
 };
 
@@ -102,12 +103,15 @@ pub fn destroyUninserted(node: *runtime.Instance) void {
     steps.destroy_uninserted(node);
 }
 
-/// DOM "clone a node": unlike cloneNode(), callers supply its document
-/// and parent (importNode and HTML template cloning steps).
+/// DOM "clone a node": callers supply its document and parent.
 pub fn clone(node: *runtime.Instance, document: ?*runtime.Instance, subtree: bool, parent: ?*runtime.Instance) !*runtime.Instance {
+    return cloneWithRegistry(node, document, subtree, parent, null);
+}
+
+pub fn cloneWithRegistry(node: *runtime.Instance, document: ?*runtime.Instance, subtree: bool, parent: ?*runtime.Instance, fallback_registry: ?*runtime.Instance) !*runtime.Instance {
     const steps = node_steps.node orelse return error.InvalidStateError;
     const algorithm = steps.clone orelse return error.InvalidStateError;
-    return algorithm(node, document, subtree, parent);
+    return algorithm(node, document, subtree, parent, fallback_registry);
 }
 
 /// Set the node kind during initialization, before publishing the node.

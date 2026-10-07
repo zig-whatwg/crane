@@ -93,6 +93,9 @@ pub const documentClose = core.documentClose;
 pub const autofill = @import("autofill.zig");
 pub const form_associated = @import("form_associated.zig");
 pub const custom_elements = @import("custom_elements.zig");
+pub const custom_element_creation = @import("custom_elements/creation.zig");
+pub const custom_element_constructor = @import("custom_elements/constructor.zig");
+pub const custom_element_parser = @import("custom_elements/parser.zig");
 pub const upgrade = @import("upgrade.zig");
 
 // Structured Clone (§2.7)
@@ -258,6 +261,9 @@ pub const worker_thread = @import("worker_thread.zig");
 pub const WorkerThread = worker_thread.WorkerThread;
 pub const worker_registry = @import("worker_registry.zig");
 pub const WorkerRegistry = worker_registry.WorkerRegistry;
+/// The Web Locks API's lock managers (a BrowserScope supplement) and the hook
+/// LockManager makes Lock objects through.
+pub const web_locks = @import("web_locks/root.zig");
 
 /// The embedder's answer for the scripts of frame and popup documents
 /// (the WPT runner's testdriver vendor file).

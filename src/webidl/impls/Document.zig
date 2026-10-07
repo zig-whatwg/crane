@@ -19,6 +19,7 @@ const std = @import("std");
 const log = std.log.scoped(.document_impl);
 const runtime = @import("runtime");
 const engine = @import("engine");
+const dom_creation = @import("dom").node_creation;
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -374,6 +375,8 @@ pub const InternalState = struct {
     /// Set via setDefaultView() when the document is associated with a window.
     /// Spec: https://html.spec.whatwg.org/multipage/window-object.html#dom-document-defaultview
     default_view: ?*runtime.Instance = null,
+    custom_element_registry: @import("dom").custom_elements.RegistryAssociation = .{},
+    owns_native_global_registry: bool = false,
 
     /// V8 wrapper for this Document, created in the Document's owning context.
     /// Used for cross-context access (e.g., iframe.contentDocument from parent).
@@ -616,6 +619,10 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
+    @import("dom").custom_elements.installDocument(.{
+        .set_registry = &setCustomElementRegistry,
+        .ensure_global_registry = &ensureGlobalRegistry,
+    });
     @import("dom").document_lifecycle.install(.{
         .parsing_stopped = &lifecycleParsingStopped,
         .finish_loading = &lifecycleFinishLoading,
@@ -843,6 +850,8 @@ pub fn deinit(instance: *runtime.Instance) void {
                     (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(owner))))
                 runtime.Instance.deinit(owner);
         }
+        releaseNativeGlobalRegistry(internal);
+        internal.custom_element_registry.release(instance);
         internal.deinit();
     }
     Registry.remove(instance);
@@ -1978,9 +1987,34 @@ pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Getter for customElementRegistry
 /// Returns the custom element registry associated with this document, or null.
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    // Custom elements not yet implemented
-    return null;
+    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.value;
+}
+
+fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.custom_element_registry.value != registry) releaseNativeGlobalRegistry(internal);
+    internal.custom_element_registry.set(instance, registry);
+}
+
+fn releaseNativeGlobalRegistry(internal: *InternalState) void {
+    if (internal.owns_native_global_registry and !internal.custom_element_registry.traced) {
+        if (internal.custom_element_registry.value) |registry| runtime.Instance.deinit(registry);
+    }
+    internal.owns_native_global_registry = false;
+}
+
+/// HTML create-and-initialize-a-Document: the global registry belongs to the
+/// document. Window replacement must not change the previous document's edge.
+fn ensureGlobalRegistry(instance: *runtime.Instance) !*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.custom_element_registry.value) |registry| {
+        if (!internal.custom_element_registry.traced) internal.custom_element_registry.set(instance, registry);
+        return registry;
+    }
+    const registry = try interfaces.CustomElementRegistry.init(instance.ctx.allocator, instance.ctx);
+    internal.custom_element_registry.set(instance, registry);
+    internal.owns_native_global_registry = !instance.ctx.hasEngine();
+    return registry;
 }
 
 /// Getter for fullscreenElement
@@ -2478,8 +2512,10 @@ pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerr
 /// HTML tag names dispatch to their corresponding interfaces (e.g., "iframe" → HTMLIFrameElement).
 /// Unknown tag names create HTMLUnknownElement.
 pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    _ = options; // TODO: Handle ElementCreationOptions (custom elements)
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const realm = instance.ctx;
+    const allocator = realm.allocator;
+    const was_live = realm.hasEngine();
 
     // DOM 4.5 createElement step 1: "If localName is not a valid element local
     // name, then throw an "InvalidCharacterError" DOMException."
@@ -2487,9 +2523,14 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
 
     // Step 2: "If this is an HTML document, then set localName to localName in
     // ASCII lowercase."
-    const lowered: ?[]u8 = if (internal.doc_type == .html) try std.ascii.allocLowerString(internal.allocator, localName.asSlice()) else null;
-    defer if (lowered) |l| internal.allocator.free(l);
+    const lowered: ?[]u8 = if (internal.doc_type == .html) try std.ascii.allocLowerString(allocator, localName.asSlice()) else null;
+    defer if (lowered) |l| allocator.free(l);
     const local_name_slice: []const u8 = lowered orelse localName.asSlice();
+
+    // Step 3: flatten element creation options; the legacy string is ignored.
+    const flattened = try @import("html").custom_element_creation.flatten(instance, options);
+    defer flattened.deinit(allocator);
+    if (was_live and !realm.hasEngine()) return error.InvalidStateError;
 
     // Step 4: "Let namespace be the HTML namespace, if this is an HTML document
     // or this's content type is "application/xhtml+xml"; otherwise null."
@@ -2502,52 +2543,27 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
         std.mem.eql(u8, internal.content_type.asSlice(), "application/xhtml+xml");
 
     // Step 5: create an element given this, localName, namespace.
-    return createAnElement(instance, local_name_slice, if (in_html_namespace) html_namespace else null, null);
+    return @import("html").custom_element_creation.create(.{
+        .document = instance,
+        .local_name = local_name_slice,
+        .namespace = if (in_html_namespace) html_namespace else null,
+        .is_value = flattened.is_value,
+        .registry = .{ .explicit = flattened.registry },
+        .synchronous = true,
+    });
 }
 
 const html_namespace = "http://www.w3.org/1999/xhtml";
 
-/// DOM "create an element", for a document, local name, namespace and prefix
-/// - custom element definitions aside (TODO: steps 2-5 look one up).
-///
-/// Spec: https://dom.spec.whatwg.org/#concept-create-element step 6: "a new
-/// element that implements interface" - the element interface for localName
-/// and namespace - "with ... namespace set to namespace, namespace prefix set
-/// to prefix, local name set to localName ... and node document set to
-/// document".
-///
-/// Deviation: of the other namespaces' element interfaces only the SVG
-/// script's, SVGScriptElement, is made - every other SVG or MathML element is
-/// a plain Element (TODO).
+/// DOM create-an-element with the default options, used by Document's other
+/// algorithms. The factory operations explicitly set synchronous creation.
 fn createAnElement(instance: *runtime.Instance, local_name: []const u8, namespace: ?[]const u8, prefix: ?[]const u8) !*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ElementImpl = @import("Element.zig");
-    const is_html = if (namespace) |ns| std.mem.eql(u8, ns, html_namespace) else false;
-    const is_svg = if (namespace) |ns| std.mem.eql(u8, ns, svg_namespace) else false;
-    const is_svg_script = is_svg and std.mem.eql(u8, local_name, "script");
-    // An SVG a is an SVGAElement: its activation behaviour follows its
-    // hyperlink (SVG 2 "a"). Other SVG elements stay plain Elements until
-    // their interfaces' impls chain (stated).
-    const is_svg_a = is_svg and std.mem.eql(u8, local_name, "a");
-
-    const element = if (is_html)
-        try createHTMLElement(internal.allocator, instance.ctx, local_name)
-    else if (is_svg_script)
-        try interfaces.SVGScriptElement.init(internal.allocator, instance.ctx)
-    else if (is_svg_a)
-        try interfaces.SVGAElement.init(internal.allocator, instance.ctx)
-    else
-        try interfaces.Element.init(internal.allocator, instance.ctx);
-    errdefer runtime.Instance.deinit(element);
-
-    // An HTML element's init chain sets its node type; a plain Element's
-    // does not.
-    if (!is_html) try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);
-    try ElementImpl.setLocalName(element, local_name);
-    if (namespace) |ns| try ElementImpl.setNamespaceURI(element, ns);
-    if (prefix) |p| try ElementImpl.setPrefix(element, p);
-    try @import("dom").node_document.set(element, instance);
-    return element;
+    return @import("html").custom_element_creation.create(.{
+        .document = instance,
+        .local_name = local_name,
+        .namespace = namespace,
+        .prefix = prefix,
+    });
 }
 
 /// Create an element in the HTML namespace: it implements the interface HTML's
@@ -3400,33 +3416,43 @@ pub fn call_hasStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSVal
 /// 1. If node is a document or shadow root, throw "NotSupportedError"
 /// 2. Return clone a node with document=this, subtree=deep
 pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    // DOM importNode, step 1.
+    const realm = instance.ctx;
+    const was_live = realm.hasEngine();
+    // Step 1: neither documents nor shadow roots can be imported.
     if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_NODE() or
         node.stateAs(interfaces.ShadowRoot.State) != null) return error.NotSupportedError;
-    // Steps 2–5. WebIDL's (boolean or ImportNodeOptions) uses the dictionary
-    // arm for objects and null/undefined; other primitives become boolean.
-    var subtree = false;
-    if (options.was_passed) {
-        const value = options.value;
-        const kind = engine.typeOf(instance.ctx, value);
-        if (kind == .object or kind == .null or kind == .undefined) {
-            subtree = true;
-            if (kind == .object) {
-                const self_only = try engine.getProperty(instance.ctx, value, "selfOnly");
-                defer self_only.release();
-                subtree = !engine.toBoolean(instance.ctx, self_only.value);
-                const registry = try engine.getProperty(instance.ctx, value, "customElementRegistry");
-                defer registry.release();
-                // This base predates scoped registries. Do not silently ignore
-                // an explicit registry; the registry lane owns its integration.
-                if (!registry.value.isNullOrUndefined()) return error.NotSupportedError;
+
+    // Steps 2–5.1: WebIDL selects the dictionary for objects/null and the
+    // boolean branch for other values. Omitted options default to false.
+    var fallback_registry: ?*runtime.Instance = null;
+    var registry_root: ?engine.Owned = null;
+    defer if (registry_root) |root| root.release();
+    const subtree = if (!options.was_passed) false else switch (engine.typeOf(realm, options.value)) {
+        .undefined => false,
+        .null => true,
+        .object => blk: {
+            // WebIDL dictionary conversion reads customElementRegistry first;
+            // unlike ElementCreationOptions its type is non-nullable.
+            const registry_value = try engine.getProperty(realm, options.value, "customElementRegistry");
+            registry_root = registry_value;
+            if (engine.typeOf(realm, registry_value.value) != .undefined) {
+                const registry = engine.convertToPlatformObject(realm, registry_value.value) orelse return error.TypeError;
+                if (registry.stateAs(interfaces.CustomElementRegistry.State) == null) return error.TypeError;
+                fallback_registry = registry;
             }
-        } else {
-            subtree = engine.toBoolean(instance.ctx, value);
-        }
+            const self_only = try engine.getProperty(realm, options.value, "selfOnly");
+            defer self_only.release();
+            break :blk !engine.toBoolean(realm, self_only.value);
+        },
+        else => engine.toBoolean(realm, options.value),
+    };
+    if (was_live and !realm.hasEngine()) return error.InvalidStateError;
+    if (fallback_registry) |registry| {
+        if (!@import("dom").custom_elements.isScoped(registry) and registry != try get_customElementRegistry(instance)) return error.NotSupportedError;
     }
-    // Step 7: use the same clone algorithm as Node and template contents.
-    return @import("dom").node_creation.clone(node, instance, subtree, null);
+    // Steps 6–7: the fallback applies only to null source associations.
+    if (fallback_registry == null) fallback_registry = try get_customElementRegistry(instance);
+    return dom_creation.cloneWithRegistry(node, instance, subtree, null, fallback_registry);
 }
 
 /// Operation: createCDATASection
@@ -3552,15 +3578,23 @@ pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!runtime.JSValue
 /// 3. Adopt node into this document (including hosted template fragments).
 /// 4. Return node
 pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
-    // DOM adoptNode, steps 1–4. The shared algorithm also runs template
-    // adopting steps when insertion (rather than adoptNode) changes documents.
-    if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_NODE())
+    // Step 1: Document nodes cannot be adopted
+    if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_NODE()) {
         return error.NotSupportedError;
+    }
+
+    // Step 2: Shadow roots cannot be adopted
     if (node.stateAs(interfaces.ShadowRoot.State) != null) return error.HierarchyRequestError;
+
+    // Step 3: the shared adoption algorithm removes the old parent, updates
+    // shadow-including descendants and live ranges, and enqueues reactions.
     const dom = @import("dom");
-    const base = dom.instance_bridge.getNodeBase(node) orelse return error.InvalidStateError;
+    const node_base = dom.instance_bridge.getNodeBase(node) orelse return error.InvalidStateError;
     const document_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;
-    try dom.mutation.adopt(base, @as(*interfaces.Document, @ptrCast(@alignCast(document_base))));
+    const document = document_base.getNodeDocument() orelse return error.InvalidStateError;
+    try dom.mutation.adopt(node_base, document);
+
+    // Step 4: Return node
     return node;
 }
 
@@ -4566,7 +4600,9 @@ pub fn call_requestStorageAccess__1(instance: *runtime.Instance) anyerror!runtim
 /// 2. Parse qualifiedName for prefix:localName
 /// 3. Create element with namespace, prefix, localName
 pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    _ = options; // TODO: Handle ElementCreationOptions (custom elements)
+    const realm = instance.ctx;
+    const allocator = realm.allocator;
+    const was_live = realm.hasEngine();
 
     // DOM 4.5 "internal createElementNS steps" step 1: "Let (namespace,
     // prefix, localName) be the result of validating and extracting namespace
@@ -4577,9 +4613,22 @@ pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOM
         .element,
     );
 
-    // Step 5: "Return the result of creating an element given document,
+    // Internal createElementNS step 2: flatten element creation options.
+    const flattened = try @import("html").custom_element_creation.flatten(instance, options);
+    defer flattened.deinit(allocator);
+    if (was_live and !realm.hasEngine()) return error.InvalidStateError;
+
+    // Step 3: "Return the result of creating an element given document,
     // localName, namespace, prefix, is, and true."
-    return createAnElement(instance, extracted.local_name, extracted.namespace, extracted.prefix);
+    return @import("html").custom_element_creation.create(.{
+        .document = instance,
+        .local_name = extracted.local_name,
+        .namespace = extracted.namespace,
+        .prefix = extracted.prefix,
+        .is_value = flattened.is_value,
+        .registry = .{ .explicit = flattened.registry },
+        .synchronous = true,
+    });
 }
 
 /// Operation: captureEvents

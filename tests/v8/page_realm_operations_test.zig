@@ -2103,6 +2103,9 @@ test "protocol: traceValue and tracedValue leave no global handle behind" {
 /// The tree hooks crane.Process installs at start-up (initializeEngine): the
 /// insertion, removing and moving steps that keep node tracing's edges.
 fn withTreeHooks() void {
+    // These tests create DOM elements without starting crane.Process. Install
+    // the owners' hooks even when this file runs in its own test process.
+    interfaces.process_hooks.startHooksForTest();
     v8.wrapper_cache_mod.installTreeHooks();
 }
 

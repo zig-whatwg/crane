@@ -78,6 +78,18 @@ pub const InternalState = struct {
         value: *runtime.Instance,
         edge: same_object.Traced = .{ .slot = .{ .name = "trustedTypes" } },
     } = null,
+    /// HR-Time: this worker global's Performance - made on first use, with
+    /// the settings object's time origin - kept by a collector-traced edge, as
+    /// LocalDOMWindow::Trace and WorkerGlobalScope::Trace visit performance_.
+    performance: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: same_object.Traced = .{ .slot = .{ .name = "performance" } },
+    } = null,
+    /// The settings object's time origin (HR-Time): "run a worker" step 3's
+    /// unsafe worker creation time, monotonic nanoseconds as the worker host
+    /// recorded it (worker_host.ScopeSettings); null when it recorded none.
+    time_origin_ns: ?i64 = null,
     /// IndexedDB 4.3: one factory owned by this worker global's traced graph.
     indexed_db: ?struct {
         owner: *runtime.Instance,
@@ -117,6 +129,7 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         if (self.indexed_db) |*factory| factory.edge.release(factory.owner);
+        if (self.performance) |*performance| performance.edge.release(performance.owner);
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
         // The WorkerLocation and WorkerNavigator objects are the wrapper
@@ -168,7 +181,10 @@ pub fn init(
     errdefer EventTargetImpl.deinit(instance);
     if (@import("html").worker_host.scopeSettings(ctx)) |settings| {
         try setUpFromUrl(instance, allocator, settings.url, settings.worker_type);
-        if (instance.getState(State).own._internal) |internal| internal.cookie_jar = settings.cookie_jar;
+        if (instance.getState(State).own._internal) |internal| {
+            internal.cookie_jar = settings.cookie_jar;
+            internal.time_origin_ns = settings.time_origin_ns;
+        }
     }
     return instance;
 }
@@ -182,6 +198,8 @@ pub fn installHooks() void {
         .origin = &settingsOrigin,
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
+        .performance = &settingsPerformance,
+        .time_origin = &settingsTimeOrigin,
         .crypto = &settingsCrypto,
         .trusted_types = &settingsTrustedTypes,
         .indexed_db = &settingsIndexedDB,
@@ -205,8 +223,7 @@ fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").Cooki
 
 // ============================================================================
 // This worker's environment settings, for the WindowOrWorkerGlobalScope mixin
-// (dom.global_settings). A worker has no CacheStorage or Performance of its
-// own yet.
+// (dom.global_settings). A worker has no CacheStorage of its own yet.
 // ============================================================================
 
 fn isWorkerGlobalScope(global: *runtime.Instance) bool {
@@ -231,6 +248,25 @@ fn settingsCrossOriginIsolated(instance: *runtime.Instance) bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return false;
     return internal.cross_origin_isolated;
+}
+
+/// HR-Time 4.4: "The performance getter steps are to return this's
+/// Performance object" - one per global, made on first use. Its time origin
+/// is the settings object's (`settingsTimeOrigin`), recorded when the worker
+/// was made, never the moment this object is.
+fn settingsPerformance(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    if (internal.performance) |performance| return performance.value;
+    const performance = try interfaces.Performance.init(internal.allocator, instance.ctx);
+    internal.performance = .{ .owner = instance, .value = performance };
+    internal.performance.?.edge.hold(instance, performance);
+    return performance;
+}
+
+/// The settings object's time origin: the worker's creation time.
+fn settingsTimeOrigin(instance: *runtime.Instance) ?i64 {
+    const internal = instance.getState(State).own._internal orelse return null;
+    return internal.time_origin_ns;
 }
 
 /// WebCrypto §10: each worker global gets its own Crypto instance.

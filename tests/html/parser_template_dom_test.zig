@@ -122,3 +122,41 @@ test "repeated unwrapped template parse clone and import have no retained native
         try std.testing.expectEqual(bytes_before, runtime.ArenaAllocator.get().stats().bytes_in_use);
     }
 }
+
+// Integration regression: innerHTML's CE-aware entry point must share the
+// parser's template-content insertion rules.
+test "CE fragment parsing puts nested template descendants in content" {
+    var fixture: Fixture = undefined;
+    try fixture.init();
+    defer fixture.deinit();
+    const source = try template(fixture.document);
+    defer interfaces.HTMLTemplateElement.deinit(source);
+    const fragment = try @import("html").custom_elements.parseFragment(source, "<template><span>x</span></template>");
+    defer dom.node_creation.destroyUninserted(fragment);
+    const nested = (try interfaces.Node.get_firstChild(fragment)).?;
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Node.get_firstChild(nested));
+    const content = try interfaces.HTMLTemplateElement.get_content(nested);
+    try std.testing.expect((try interfaces.Node.get_firstChild(content)) != null);
+}
+
+test "fragment registry inheritance stops at nested template contents" {
+    var fixture: Fixture = undefined;
+    try fixture.init();
+    defer fixture.deinit();
+    const registry = try interfaces.CustomElementRegistry.call_constructor(&fixture.context);
+    defer runtime.Instance.deinit(registry);
+    try interfaces.CustomElementRegistry.call_initialize(registry, fixture.document);
+    const context = try interfaces.Document.call_createElement(fixture.document, .initInterned("div"), .notPassed());
+    defer dom.node_creation.destroyUninserted(context);
+    const fragment = try @import("html").custom_elements.parseFragment(context, "<template><span></span></template><b></b>");
+    defer dom.node_creation.destroyUninserted(fragment);
+    const nested = (try interfaces.Node.get_firstChild(fragment)).?;
+    try std.testing.expectEqual(@as(?*runtime.Instance, registry), try interfaces.Element.get_customElementRegistry(nested));
+    const sibling = (try interfaces.Node.get_nextSibling(nested)).?;
+    try std.testing.expectEqual(@as(?*runtime.Instance, registry), try interfaces.Element.get_customElementRegistry(sibling));
+    const content = try interfaces.HTMLTemplateElement.get_content(nested);
+    const span = (try interfaces.Node.get_firstChild(content)).?;
+    // Look up a custom element registry step 4: a template's fragment has
+    // no registry. Its descendants must not inherit the outer root's one.
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Element.get_customElementRegistry(span));
+}

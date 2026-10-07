@@ -884,17 +884,11 @@ const PipeStream = struct {
     fn notify(context: *anyopaque) void {
         const self: *PipeStream = @ptrCast(@alignCast(context));
         if (self.task_queued or self.detached) return;
-        if (self.ctx.getOptionalEventLoop()) |loop| {
-            self.task_queued = true;
-            loop.queueTask(.{ .callback = runTask, .context = self, .drop = dropTask });
-            return;
-        }
-        if (self.ctx.getOptionalTimer()) |timer| {
-            if (timer.setTimeout(0, runTask, self) != 0) {
-                self.task_queued = true;
-                return;
-            }
-        }
+        // The realm's event loop - a window's, or a worker's own. A bare
+        // realm with none (a unit test's) hears nothing.
+        const loop = self.ctx.getOptionalEventLoop() orelse return;
+        self.task_queued = true;
+        loop.queueTask(.{ .callback = runTask, .context = self, .drop = dropTask });
     }
 
     fn runTask(context: ?*anyopaque) void {

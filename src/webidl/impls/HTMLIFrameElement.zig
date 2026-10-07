@@ -297,6 +297,13 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     document_internals.setDocumentType(document_instance, .html) catch {};
     document_internals.setContentType(document_instance, "text/html") catch {};
 
+    // HTML 7.3.2.1 step 15 supplies the document's registry before step 22
+    // creates descendants, whose registry associations persist after creation.
+    _ = dom_module.custom_elements.ensureGlobalRegistry(document_instance) catch {
+        dom_module.node_creation.destroyUninserted(document_instance);
+        return null;
+    };
+
     // Per HTML spec, about:blank documents must have a basic HTML structure:
     // <html><head></head><body></body></html>
     // This is required because browsers always create these elements for any HTML document.

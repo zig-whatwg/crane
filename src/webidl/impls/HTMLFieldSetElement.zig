@@ -19,7 +19,11 @@ pub const ImplError = error{
 /// Implementations can replace this with a real struct containing:
 /// - Private data not exposed via WebIDL attributes
 /// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    elements: ?*runtime.Instance = null,
+    elements_traced: bool = false,
+};
 
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
@@ -29,19 +33,24 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    // HTMLFieldSetElement has no additional initialization
+    const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
+    errdefer runtime.Instance.deinit(instance);
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(State).own._internal = internal;
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // HTMLFieldSetElement has no additional cleanup
-    // Chain to parent class
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.elements_traced) @import("engine").forgetTracedChild(instance, .{ .name = "elements" });
+        if (!internal.elements_traced) if (internal.elements) |collection| runtime.Instance.deinit(collection);
+        internal.allocator.destroy(internal);
+        state.own._internal = null;
+    }
+    interfaces.HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
@@ -69,8 +78,17 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 /// Getter for elements
 pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    if (internal.elements) |collection| return collection;
+    const collection = try interfaces.HTMLCollection.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(collection);
+    try @import("dom").live_collections.formControls(collection, instance, true);
+    if (instance.ctx.hasEngine()) {
+        @import("engine").traceChild(instance, collection, .{ .name = "elements" });
+        internal.elements_traced = true;
+    }
+    internal.elements = collection;
+    return collection;
 }
 
 /// Getter for willValidate

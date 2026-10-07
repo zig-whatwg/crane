@@ -12,18 +12,20 @@
 //! src/runtime/engines/v8/worker_realm.zig). What is here is the worker as
 //! HTML describes it:
 //!
-//! - its event loop. A DEDICATED worker runs on a thread of its own
-//!   (docs/instances.md, "Decisions"; html/worker_thread.zig): its agent, its
-//!   realm and this host are made on that thread, its tasks and timers run on
-//!   the thread's WorkerEventLoop, and its end runs there synchronously once
-//!   its loop stops (`startDedicatedWorker`, `ThreadHost`). A SHARED worker
-//!   still runs its tasks as timers on its creator's loop (until workers
-//!   batch 2 moves it to a thread of its own too), each ended the worker's
-//!   way (`endTask`) - a microtask checkpoint, the engine's posted tasks;
+//! - its event loop. Every worker - dedicated or shared - runs on a thread
+//!   of its own (docs/instances.md, "Decisions"; html/worker_thread.zig): its
+//!   agent, its realm and this host are made on that thread, its tasks and
+//!   timers run on the thread's WorkerEventLoop, and its end runs there
+//!   synchronously once its loop stops (`startDedicatedWorker`, the shared
+//!   worker manager's `startSharedWorker`, `ThreadHost`);
 //! - its timers (§ 8.6), messages in both directions (a dedicated worker's
 //!   implicit port is one end of a dom.port_channels Channel, whose other end
-//!   is its Worker object's outside port), errors reported to its global
-//!   scope and then to its Worker object;
+//!   is its Worker object's outside port; a shared worker's ports arrive
+//!   through `connect`), errors reported to its global scope and then to its
+//!   Worker object;
+//! - the shared worker manager's steps (§ 10.2.6.4), with the Browser's
+//!   SharedWorkerManager (shared_worker_manager.zig): the worker a
+//!   SharedWorker constructor connects to, or runs, and its owner set;
 //! - its life: running, closing (close() or "terminate a worker"), the
 //!   realm's end, the agent's;
 //! - its agent's host hooks: import() in the worker, and import.meta of the
@@ -57,6 +59,12 @@ const rejected_promises = @import("rejected_promises.zig");
 const fire_event = @import("dom").fire_event;
 const message_ports = @import("dom").message_ports;
 
+// A string timer handler's checks at the call: Trusted Types' "get trusted
+// type compliant string", and CSP's EnsureCSPDoesNotBlockStringCompilation
+// over the global scope's CSP list.
+const trusted_types = @import("dom").trusted_types;
+const code_generation = @import("code_generation.zig");
+
 // A realm's fetches in flight, released when the realm goes.
 const async_fetch = @import("fetch").algorithms.async_fetch;
 
@@ -72,6 +80,9 @@ const WorkerThread = @import("worker_thread.zig").WorkerThread;
 const WorkerEventLoop = @import("worker_event_loop.zig").WorkerEventLoop;
 const WorkerRegistry = @import("worker_registry.zig").WorkerRegistry;
 
+/// HTML's shared worker manager: a supplement of the Browser's scope.
+pub const SharedWorkerManager = @import("shared_worker_manager.zig").SharedWorkerManager;
+
 // The implicit ports' channel, whose ends cross threads.
 const port_channels = @import("dom").port_channels;
 const PortMessage = port_channels.PortMessage;
@@ -84,10 +95,70 @@ const PortMessage = port_channels.PortMessage;
 // (runtime.timer): a worker's task saves and restores the level around its
 // callback, so the page's tasks, which never run inside it, keep theirs.
 
+/// What a timer runs: the timer initialization steps' `handler` after step 1.
+const TimerHandler = union(enum) {
+    /// A Function, invoked with the timer's arguments (step 10.7). OWNED,
+    /// with its callback context.
+    function: engine.CallbackFunction,
+    /// A string, compiled as a classic script when the timer fires (step
+    /// 10.8) - what step 1's Trusted Types check left of the handler. OWNED
+    /// (the timer's allocator).
+    string: []u8,
+};
+
+/// setTimeout()'s and setInterval()'s `handler` as WebIDL converts it: a
+/// member of the TimerHandler union, (DOMString or Function or
+/// TrustedScript).
+const ConvertedHandler = union(enum) {
+    /// BORROWED: the call's argument.
+    function: runtime.JSValue,
+    /// BORROWED: the call's argument.
+    trusted_script: *runtime.Instance,
+    /// What ToString made of the argument. OWNED.
+    string: []u8,
+
+    fn deinit(self: ConvertedHandler, allocator: Allocator) void {
+        switch (self) {
+            .string => |text| allocator.free(text),
+            .function, .trusted_script => {},
+        }
+    }
+};
+
+/// WebIDL 3.2.24, an ECMAScript value to the TimerHandler union, in the
+/// union algorithm's order: a platform object that implements TrustedScript
+/// (step 4), then a callable - the Function member (step 10) - and anything
+/// else converted to the DOMString member by ToString (step 15), which runs
+/// script and can throw (a Symbol is a TypeError).
+fn convertTimerHandler(realm: runtime.Context, value: runtime.JSValue, allocator: Allocator) runtime.EngineError!ConvertedHandler {
+    if (engine.convertToPlatformObject(realm, value)) |instance| {
+        if (trusted_types.dataOf(instance, .script) != null) return .{ .trusted_script = instance };
+    }
+    if (engine.isCallable(realm, value)) return .{ .function = value };
+    const text = engine.convertToDOMString(realm, value, allocator) catch |err| return engineError(err);
+    return .{ .string = text };
+}
+
+/// An engine operation's error as a built-in function's steps return it:
+/// what the operation threw stays pending, and its TypeError is thrown.
+fn engineError(err: engine.Error) runtime.EngineError {
+    return switch (err) {
+        error.ExceptionPending => error.ExceptionPending,
+        error.TypeError => error.TypeError,
+        error.OutOfMemory => error.OutOfMemory,
+        error.DataCloneError => error.DataCloneError,
+        error.NotSupported => error.NotSupported,
+        error.OperationFailed, error.ExceptionReported => error.OperationFailed,
+    };
+}
+
 /// One active timer.
 const WorkerTimerContext = struct {
-    /// The timer's handler (OWNED), with its callback context.
-    callback: engine.CallbackFunction,
+    /// The timer's handler (OWNED).
+    handler: TimerHandler,
+    /// The timer's `arguments` (each OWNED), for a Function handler; empty
+    /// for a string, which runs none.
+    arguments: []engine.Owned = &.{},
     /// The id script holds: HTML's key in the global's map of setTimeout and
     /// setInterval IDs, and its key in its host's `timers`. It names the
     /// timer for as long as it lives - a repeating timer keeps it across
@@ -120,10 +191,26 @@ const WorkerTimerContext = struct {
     worker_host: *WorkerHost,
 };
 
-/// Release a timer context and the handler it holds.
+/// Release a timer context, the handler it holds and its arguments.
 fn freeWorkerTimer(ctx: *WorkerTimerContext) void {
-    ctx.callback.release();
+    switch (ctx.handler) {
+        .function => |function| function.release(),
+        .string => |source| ctx.allocator.free(source),
+    }
+    for (ctx.arguments) |argument| argument.release();
+    ctx.allocator.free(ctx.arguments);
     ctx.allocator.destroy(ctx);
+}
+
+/// WebIDL's conversion of a `long` (ConvertToInt(V, 32, "signed"), steps
+/// 5-12) from the Number ToNumber gave: NaN and the infinities are 0, the
+/// integer part is taken modulo 2^32 and read as two's complement - so 2^32
+/// is 0, as a Window's timeout is (the V8 adapter's ToInt32).
+pub fn convertToLong(number: f64) i32 {
+    if (std.math.isNan(number) or std.math.isInf(number)) return 0;
+    const modulo = @mod(@trunc(number), 4294967296.0);
+    const unsigned: u32 = @intFromFloat(modulo);
+    return @bitCast(unsigned);
 }
 
 /// Cancel and free every timer `owner` armed: HTML "terminate a worker" step 2
@@ -139,9 +226,8 @@ fn cancelWorkerTimers(owner: *WorkerHost) void {
 }
 
 /// Every worker on this thread whose realm is still there, for
-/// `scopeSettings` and the realm hooks: a dedicated worker's thread has its
-/// one; its creator's thread has every shared worker. Freed when it empties,
-/// so a worker thread that ends leaves nothing of it.
+/// `scopeSettings` and the realm hooks: a worker's thread has its one. Freed
+/// when it empties, so a worker thread that ends leaves nothing of it.
 threadlocal var live_contexts: std.ArrayListUnmanaged(*WorkerHost) = .empty;
 
 fn removeLive(wctx: *WorkerHost) void {
@@ -168,6 +254,11 @@ pub const ScopeSettings = struct {
     /// settings object hands to every request it makes. BORROWED from the
     /// host, which owns it for as long as the worker lives.
     policy_container: ?*const fetch_mod.internal.PolicyContainer = null,
+    /// The settings object's time origin (HR-Time): "run a worker" step 3's
+    /// unsafe worker creation time, a monotonic moment in nanoseconds, not
+    /// yet coarsened (dom.global_settings `time_origin`). Null when the host
+    /// recorded none.
+    time_origin_ns: ?i64 = null,
 };
 
 /// The settings for a global scope created in the realm whose runtime
@@ -180,6 +271,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .name = if (wctx.shared) |shared| shared.name else wctx.name,
         .cookie_jar = wctx.cookie_jar,
         .policy_container = &wctx.policy_container,
+        .time_origin_ns = wctx.time_origin_ns,
     };
 }
 
@@ -374,9 +466,10 @@ fn forScope(ctx: runtime.Context) ?*WorkerHost {
     return null;
 }
 
-/// Every worker host on this thread whose memory has not gone (`free`):
-/// what `endWorkersOn` looks through. `live_contexts` is not enough: a worker
-/// leaves it with its realm, and its agent goes one timer later.
+/// Every worker host on this thread whose memory has not gone (`free`): a
+/// worker's thread has its one, until the thread's last step. What a module
+/// evaluation's settling reaction checks its host against
+/// (`PendingModuleEvaluation`). Freed when it empties.
 threadlocal var hosts: std.ArrayListUnmanaged(*WorkerHost) = .empty;
 
 fn removeHost(wctx: *WorkerHost) void {
@@ -388,52 +481,6 @@ fn removeHost(wctx: *WorkerHost) void {
     }
     // A worker thread's one host is gone: nothing of the list outlives it.
     if (hosts.items.len == 0) hosts.clearAndFree(std.heap.page_allocator);
-}
-
-/// The end of the event loop whose timers are `timers`: its owner, the
-/// Browser, is ending, and nothing armed on the loop will fire again. Every
-/// worker on it ends now - HTML "terminate a worker" for one still running,
-/// then what "run a worker" does once the worker's event loop has exited:
-/// the realm goes, then the agent.
-///
-/// A shared worker's steps are timers on its owner's loop, and so is its end
-/// (`scheduleTeardown`); a dedicated worker's thread is ended and joined by
-/// the Browser's WorkerRegistry first, and has no step on this loop. A Browser that ended with a worker still running
-/// let the Worker object go in its page's teardown, which armed the end, and
-/// then dropped the loop with the end unfired: the worker's realm, its agent
-/// and this host - every classic script the realm ran - stayed until the
-/// process did. That was every worker test run alone, and the last file of
-/// each sweep process.
-///
-/// WHERE this is called matters. The owner calls it BEFORE its page's
-/// teardown, while the page realm is alive and entered - the conditions the
-/// timer path runs these steps in. Not from inside the page's teardown (the
-/// rule `scheduleTeardown` keeps), and not after it: the page realm exits the
-/// page isolate when it ends, and a worker agent ended with no isolate
-/// entered was read as the thread's host agent, taking the thread's context
-/// manager and templates down under the page (protocol_agents.endAgent now
-/// records which agent is the host when it is made). The Worker objects then
-/// let go in the page's teardown and find their hosts disposed, so `destroy`
-/// frees them.
-pub fn endWorkersOn(timers: runtime.TimerInterface) void {
-    while (nextToEnd(timers)) |host| host.endWithLoop();
-    dropSharedConnectsOn(timers);
-}
-
-/// A worker on the loop `timers` that has not ended: one whose tasks run on
-/// it, or with a teardown step armed there.
-fn nextToEnd(timers: runtime.TimerInterface) ?*WorkerHost {
-    for (hosts.items) |host| {
-        if (host.phase == .disposed) continue;
-        // Its script on the stack would be torn down under it. The owner
-        // ending its loop is not running a task, so none is; if one were,
-        // the worker stays, as it did before.
-        if (host.entered > 0 or engine.hasRunningScript(host.agent)) continue;
-        const armed_here = if (host.teardown_timer) |armed| armed.timer.ctx == timers.ctx else false;
-        const runs_here = if (host.timer) |own| own.ctx == timers.ctx else false;
-        if (armed_here or runs_here) return host;
-    }
-    return null;
 }
 
 /// Timer callback trampoline - invoked by the timer manager
@@ -513,50 +560,44 @@ fn runWorkerTimerCallback(ctx: *WorkerTimerContext) void {
 }
 
 const TimerCall = struct {
-    /// Timer initialization step 7.1: "invoke handler given arguments and
-    /// "report", and with callback this value set to thisArg" - the global.
+    /// The timer's task, steps 10.7-10.8.
     fn steps(data: ?*anyopaque) void {
         const ctx: *WorkerTimerContext = @ptrCast(@alignCast(data orelse return));
         const wctx = ctx.worker_host;
         const realm = wctx.realm orelse return;
-        const completion = engine.invokeCallbackFunction(realm, &ctx.callback, .global_this, &.{}, .{
-            .report = wctx.reporter(),
-        }) catch return;
-        switch (completion) {
-            inline else => |value| value.release(),
+        switch (ctx.handler) {
+            // 10.7: "invoke handler given arguments and "report", and with
+            // callback this value set to thisArg" - the global.
+            .function => |*function| {
+                const arguments = wctx.allocator.alloc(runtime.JSValue, ctx.arguments.len) catch return;
+                defer wctx.allocator.free(arguments);
+                for (arguments, ctx.arguments) |*argument, owned| argument.* = owned.value;
+                const completion = engine.invokeCallbackFunction(realm, function, .global_this, arguments, .{
+                    .report = wctx.reporter(),
+                }) catch return;
+                switch (completion) {
+                    inline else => |value| value.release(),
+                }
+            },
+            .string => |source| wctx.runTimerString(realm, source),
         }
     }
-};
-
-/// A `connect` task armed on a shared worker's loop, with its timer id.
-const ArmedConnect = struct {
-    task: *ConnectTask,
-    id: runtime.TimerId,
-};
-
-/// One armed timer on the owner's loop: the manager it was armed on, and its id.
-const MessageDispatchTimer = struct {
-    timer: runtime.TimerInterface,
-    id: runtime.TimerId,
 };
 
 /// Where a worker is in its life, as its host sees it.
 ///
 /// HTML "run a worker" runs the worker's event loop until its global scope's
-/// closing flag is set; then the realm goes, and with it the agent. Here the
-/// "event loop" is the worker's timers on the page's loop, so the host tracks
-/// the steps itself.
+/// closing flag is set; then the realm goes, and with it the agent - on the
+/// worker's thread, in WorkerThread's order. The closing flag itself is the
+/// link's (`runsTasks`): "terminate a worker" sets it from another thread.
 const Phase = enum {
     /// Running tasks.
     running,
-    /// close() or "terminate a worker" set the closing flag: no further task
-    /// runs. The realm is still there, and teardown is armed.
+    /// close() set the closing flag: no further task runs. The realm is
+    /// still there; the thread ends it once its loop stops.
     closing,
-    /// The realm is gone: the engine released it. The agent goes one timer
-    /// later (`disposeAgentLater`).
+    /// The realm is gone: the engine released it. The agent goes next.
     realm_gone,
-    /// The agent is disposed.
-    disposed,
 };
 
 /// The worker a Worker object runs: its agent and realm (through the engine
@@ -574,8 +615,8 @@ pub const WorkerHost = struct {
     realm: ?runtime.Context = null,
 
     /// The realm's global object's platform object: its
-    /// DedicatedWorkerGlobalScope. The realm owns it, and frees it when the
-    /// realm goes.
+    /// DedicatedWorkerGlobalScope or SharedWorkerGlobalScope. The realm owns
+    /// it, and frees it when the realm goes.
     global_scope: ?*runtime.Instance = null,
 
     /// The worker's script URL, absolute: the URL its global scope reports
@@ -599,36 +640,31 @@ pub const WorkerHost = struct {
     /// container" chose (`setPolicyContainer`). Owned.
     policy_container: fetch_mod.internal.PolicyContainer,
 
-    /// The timers the worker's tasks run on. A dedicated worker's are its
-    /// own thread's loop's (WorkerEventLoop.timerInterface). A shared
-    /// worker's are its creator's loop's: its tasks - timers, message
-    /// delivery, fetch settling, its end - are timers there, recorded when
-    /// the worker is made, from the creator's realm.
+    /// The timers the worker's tasks run on: its own thread's loop's
+    /// (WorkerEventLoop.timerInterface). Null once the realm has ended: the
+    /// loop ends next.
     timer: ?runtime.TimerInterface,
 
     /// The worker's Browser scope (its creator's), and the cross-thread inbox
-    /// of the loop its tasks run on - a dedicated worker's own loop's, a
-    /// shared worker's creator's. The worker's realm carries both
+    /// of its own loop. The worker's realm carries both
     /// (ContextData.browser_scope, .task_sink): a MessagePort made in it
     /// binds its channel end to that inbox, and a Worker made in it is owned
     /// through it. BORROWED.
     browser_scope: ?*runtime.BrowserScope = null,
-    task_sink: ?*runtime.TaskSink = null,
+    task_sink: *runtime.TaskSink,
 
-    /// Allocator. Thread-safe: a dedicated worker's messages are freed on
-    /// the other thread.
+    /// Allocator. Thread-safe: a worker's messages are freed on the other
+    /// thread.
     allocator: Allocator,
 
-    /// A dedicated worker's own event loop (WorkerEventLoop.eventLoop), which
-    /// its realm records for host algorithms that queue tasks. Null for a
-    /// shared worker.
-    event_loop: ?runtime.EventLoop = null,
+    /// The worker's own event loop (WorkerEventLoop.eventLoop), which its
+    /// realm records for host algorithms that queue tasks.
+    event_loop: runtime.EventLoop,
 
-    /// A dedicated worker on a thread of its own: what this host shares with
-    /// its owner's thread (the worker side's reference is the thread's, not
-    /// this host's). Null for a shared worker. Its state is the closing flag
-    /// of the worker's global scope.
-    link: ?*WorkerLink = null,
+    /// What this host shares with its owner's thread (the worker side's
+    /// reference is the thread's, not this host's). Its state is the
+    /// closing flag of the worker's global scope.
+    link: *WorkerLink,
 
     /// A dedicated worker's implicit port: its end of the channel whose other
     /// end is its Worker object's outside port ("run a worker" onComplete
@@ -637,15 +673,17 @@ pub const WorkerHost = struct {
     /// discards it ("run a worker" step 17: disentangle the worker's ports).
     inside_end: ?*port_channels.End = null,
 
-    /// The worker's creation time in milliseconds since the epoch ("run a
-    /// worker" step 3), its global scope's time origin; null when the host
-    /// has none (a shared worker: now, when its global scope is made).
-    time_origin_ms: ?f64 = null,
+    /// The worker's creation time ("run a worker" step 3, the unsafe worker
+    /// creation time: hr_time's monotonic clock, in nanoseconds), its global
+    /// scope's time origin; null when the host has none (a test's: now, when
+    /// its Performance is made).
+    time_origin_ns: ?i64 = null,
 
-    /// A dedicated worker's Worker object, as its owner's tasks find it: an
-    /// address and slab generation, never dereferenced on this thread - an
-    /// error report carries them to the owner's loop
-    /// (`sendErrorToParent`), which checks the generation there.
+    /// The worker object that ran the worker - a dedicated worker's Worker,
+    /// a shared worker's first SharedWorker - as its owner's tasks find it:
+    /// an address and slab generation, never dereferenced on this thread. An
+    /// error report carries them to the owner's loop (`sendErrorToParent`,
+    /// `ThreadHost.reportStartFailure`), which checks the generation there.
     owner_worker: ?OwnerWorker = null,
 
     /// How deep this host has run script in the worker on the current stack.
@@ -668,25 +706,9 @@ pub const WorkerHost = struct {
     running_own_script: bool = false,
     own_script_parse_failed: bool = false,
 
-    /// The timer that runs the next teardown step, while one is armed.
-    teardown_timer: ?MessageDispatchTimer = null,
-
-    /// The timer that pumps the engine's posted tasks while nothing else
-    /// would (`armPlatformPump`), while one is armed.
-    platform_pump: ?MessageDispatchTimer = null,
-
-    /// A shared worker's manager has let go. Its memory goes once this is set
-    /// and the agent is disposed.
-    owner_released: bool = false,
-
-    /// A shared worker's: what its SharedWorkerGlobalScope was made with,
-    /// which the shared worker manager matches a SharedWorker constructor
-    /// against. Null for a dedicated worker.
+    /// A shared worker's: what its SharedWorkerGlobalScope was made with
+    /// ("run a worker" steps 8 and 10). Null for a dedicated worker. OWNED.
     shared: ?SharedScope = null,
-
-    /// A shared worker's `connect` events whose tasks are armed and have not
-    /// run: discarded with the worker's other tasks.
-    pending_connects: std.ArrayListUnmanaged(ArmedConnect) = .empty,
 
     /// The built-in functions this host defines on the global object. The
     /// engine reads them on every call, so they live as long as this does.
@@ -716,55 +738,15 @@ pub const WorkerHost = struct {
     /// function one defined can call import() at any time.
     classic_scripts: std.ArrayListUnmanaged(*module_script.ClassicScript) = .empty,
 
+    /// The classic script every string timer handler runs as (one of
+    /// `classic_scripts`), made on first use (`timerScript`).
+    timer_script: ?*module_script.ClassicScript = null,
+
     /// import()s whose fetch task is queued and has not run: each holds an
     /// engine request that must be finished while the agent lives.
     pending_imports: std.ArrayListUnmanaged(*DynamicImportTask) = .empty,
 
     const Self = @This();
-
-    /// A SHARED worker for `script_url`, on its creator's thread: "run a
-    /// worker" step 4, obtain a shared worker agent with this host's hooks
-    /// (`worker_hooks`). The realm follows when the global scope is set up.
-    ///
-    /// `creator` is the realm that made the worker: its timers are the loop
-    /// the worker's tasks run on, and its scope and inbox the worker realm's.
-    pub fn init(
-        allocator: Allocator,
-        script_url: []const u8,
-        worker_type: WorkerType,
-        creator: runtime.Context,
-    ) !*Self {
-        const timer = creator.getOptionalTimer();
-        const self = try allocator.create(Self);
-        errdefer allocator.destroy(self);
-
-        const url_copy = try allocator.dupe(u8, script_url);
-        errdefer allocator.free(url_copy);
-
-        // The hooks share an AgentHost, embedded before the agent exists.
-        self.agent_host = html_core.agent_host.AgentHost.init(allocator);
-        errdefer self.agent_host.deinit();
-        const agent = try engine.createAgent(.{
-            .can_block = true,
-            .from_snapshot = false,
-            .hooks = &worker_hooks,
-            .host = &self.agent_host,
-        });
-        self.* = .{
-            .agent = agent,
-            .agent_host = self.agent_host,
-            .script_url = url_copy,
-            .worker_type = worker_type,
-            .policy_container = fetch_mod.internal.PolicyContainer.init(allocator),
-            .timer = timer,
-            .browser_scope = creator.browser_scope,
-            .task_sink = creator.task_sink,
-            .allocator = allocator,
-        };
-        live_contexts.append(std.heap.page_allocator, self) catch {};
-        hosts.append(std.heap.page_allocator, self) catch {};
-        return self;
-    }
 
     /// This host's "report an exception", as the engine protocol takes it.
     fn reporter(self: *Self) engine.Reporter {
@@ -807,7 +789,7 @@ pub const WorkerHost = struct {
             .link = thread.link,
             .owner_worker = start.owner_worker,
             .cookie_jar = start.cookie_jar,
-            .time_origin_ms = start.time_origin_ms,
+            .time_origin_ns = start.time_origin_ns,
         };
         thread_host.host = self;
         hosts.append(std.heap.page_allocator, self) catch {};
@@ -823,6 +805,9 @@ pub const WorkerHost = struct {
         const runs = thread.link.publishAgent(agent);
         self.script_url = try allocator.dupe(u8, start.script_url);
         self.name = try allocator.dupe(u8, start.name);
+        // A shared worker's constructor key, type and credentials. Taken.
+        self.shared = start.shared;
+        start.shared = null;
         // "Run a worker" onComplete: the global scope's policy container,
         // chosen when the script was fetched. Taken.
         if (start.policy_container) |container| {
@@ -834,12 +819,11 @@ pub const WorkerHost = struct {
     }
 
     /// Whether the worker runs tasks: not once its closing flag is set -
-    /// close() in its script, or (a dedicated worker's) "terminate a worker"
-    /// from its owner's thread.
+    /// close() in its script, or "terminate a worker" from another thread
+    /// (its owner, its owner set emptying, the Browser's end).
     pub fn runsTasks(self: *const Self) bool {
         if (self.phase != .running) return false;
-        const link = self.link orelse return true;
-        return link.runsTasks();
+        return self.link.runsTasks();
     }
 
     /// Run `steps` as a task of the worker's realm - its agent entered, and
@@ -853,72 +837,10 @@ pub const WorkerHost = struct {
     }
 
     /// The end of a task that ran script in this worker: a microtask
-    /// checkpoint. A shared worker, whose tasks are timers on its creator's
-    /// loop, also runs the tasks the engine has posted for its agent, and
-    /// keeps a pump armed while background work is left; a dedicated
-    /// worker's own loop does both every turn. Call with the agent entered.
+    /// checkpoint. (The worker's own loop runs the engine's posted tasks
+    /// every turn.) Call with the agent entered.
     fn endTask(self: *Self) void {
         if (self.realm != null) engine.performMicrotaskCheckpoint(self.agent) catch {};
-        if (self.link != null) return;
-        _ = engine.runEngineTasks(self.agent);
-        self.armPlatformPump(false);
-    }
-
-    /// How often an otherwise idle worker pumps while the engine has
-    /// background work for it.
-    const platform_pump_interval_ms = 1;
-
-    /// Keep the engine's posted tasks running while nothing else would.
-    ///
-    /// A worker's tasks run as timers on the page's loop, and each ends by
-    /// pumping its agent (`endTask`). But V8 posts some tasks from a
-    /// background thread when its work there is done - an asynchronous
-    /// WebAssembly compile settles its promise that way - and a worker with no
-    /// timer due and no message arriving never pumped again, so the promise
-    /// never settled. While the engine reports background work for the agent,
-    /// a pump stays armed: d8 keeps its message loop waiting on the same test
-    /// (Shell::CompleteMessageLoop). `again` re-arms regardless - a pump that
-    /// ran a task may have more to run.
-    fn armPlatformPump(self: *Self, again: bool) void {
-        if (self.platform_pump != null or !self.runsTasks()) return;
-        if (!again and !engine.hasPendingEngineWork(self.agent)) return;
-        const timer = self.timer orelse return;
-        const id = timer.setTimeout(platform_pump_interval_ms, platformPumpCallback, self);
-        if (id == 0) return;
-        self.platform_pump = .{ .timer = timer, .id = id };
-    }
-
-    /// The pump: a task that runs what the engine has posted, then ends as
-    /// every worker task does.
-    fn platformPumpCallback(context_ptr: ?*anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(context_ptr orelse return));
-        self.platform_pump = null;
-        if (!self.runsTasks()) return;
-
-        var pumped = Pump{ .host = self };
-        self.runTask(Pump.steps, &pumped);
-        if (pumped.pending or pumped.ran) self.armPlatformPump(true);
-    }
-
-    const Pump = struct {
-        host: *Self,
-        pending: bool = false,
-        ran: bool = false,
-
-        fn steps(data: ?*anyopaque) void {
-            const pump: *Pump = @ptrCast(@alignCast(data orelse return));
-            // Read before pumping: background work that ends between the two
-            // posts its task after the pump looked, and a pending answer taken
-            // first means one more round to find it.
-            pump.pending = engine.hasPendingEngineWork(pump.host.agent);
-            pump.ran = engine.runEngineTasks(pump.host.agent);
-        }
-    };
-
-    /// Stop one armed timer of ours, if any.
-    fn disarm(slot: *?MessageDispatchTimer) void {
-        if (slot.*) |armed| _ = armed.timer.clearTimeout(armed.id);
-        slot.* = null;
     }
 
     // ------------------------------------------------------------------
@@ -926,130 +848,79 @@ pub const WorkerHost = struct {
     // ------------------------------------------------------------------
 
     /// A new inside port on `end` - a MessagePort of this worker's realm,
-    /// entangled with its SharedWorker's outsidePort - and a task on the
-    /// worker's loop to fire `connect` at its global scope carrying it: the
-    /// shared worker manager's steps 5.5-5.7, and "run a worker" onComplete
-    /// steps 3, 5 and 13. Takes `end`.
-    fn connectPort(self: *Self, end: *anyopaque) void {
-        const realm = self.realm orelse return message_ports.discard(end);
-        const timer = self.timer orelse return message_ports.discard(end);
-        if (!self.runsTasks()) return message_ports.discard(end);
-        const port = message_ports.receive(realm, end) catch return;
-        const generation = runtime.SlabAllocator.generationOf(port);
-        const task = self.allocator.create(ConnectTask) catch {
-            port.releaseIfUnwrapped(generation);
-            return;
-        };
-        task.* = .{ .host = self, .port = port, .generation = generation };
-        const id = timer.setTimeout(0, ConnectTask.run, task);
-        if (id == 0) {
-            self.allocator.destroy(task);
-            port.releaseIfUnwrapped(generation);
-            return;
-        }
-        self.pending_connects.append(self.allocator, .{ .task = task, .id = id }) catch {};
+    /// entangled with its SharedWorker's outside port - and `connect` fired
+    /// at the global scope carrying it: the shared worker manager's steps
+    /// 5.5-5.7, and "run a worker" onComplete steps 3, 5 and 13. A task of
+    /// the worker's own loop (`Connect`), so a closing worker discards it.
+    /// Takes `end`.
+    fn connectInsidePort(self: *Self, end: *anyopaque) void {
+        if (!self.runsTasks() or self.realm == null) return message_ports.discard(end);
+        var task: ConnectEvent = .{ .host = self, .end = end };
+        self.runTask(ConnectEvent.steps, &task);
+        // The task did not run (its realm could not be entered).
+        if (task.end) |left| message_ports.discard(left);
     }
 
-    /// `task` has run: it is no longer armed.
-    fn forgetConnect(self: *Self, task: *ConnectTask) void {
-        for (self.pending_connects.items, 0..) |armed, i| {
-            if (armed.task == task) {
-                _ = self.pending_connects.swapRemove(i);
-                return;
-            }
-        }
-    }
+    const ConnectEvent = struct {
+        host: *Self,
+        /// Null once a port took it.
+        end: ?*anyopaque,
 
-    /// Discard the `connect` tasks not yet run, and the ports they carried.
-    fn cancelConnects(self: *Self) void {
-        const timer = self.timer orelse return;
-        for (self.pending_connects.items) |armed| {
-            _ = timer.clearTimeout(armed.id);
-            armed.task.port.releaseIfUnwrapped(armed.task.generation);
-            self.allocator.destroy(armed.task);
+        /// Fire `connect` at the global scope, using MessageEvent, with data
+        /// the empty string and ports and source the new inside port.
+        fn steps(data: ?*anyopaque) void {
+            const self: *ConnectEvent = @ptrCast(@alignCast(data orelse return));
+            const realm = self.host.realm orelse return;
+            const global_scope = self.host.global_scope orelse return;
+            const end = self.end orelse return;
+            self.end = null;
+            // A new MessagePort in the inside settings' realm on the end
+            // (it takes the end whatever happens).
+            const port = message_ports.receive(realm, end) catch return;
+            const ports = [_]*runtime.Instance{port};
+            const init_dict = dictionaries.MessageEventInit{
+                .base = .{},
+                .data = runtime.JSValue.fromStringRef(""),
+                .ports = &ports,
+                .source = .{ .message_port = port },
+            };
+            const event = interfaces.MessageEvent.call_constructor(
+                realm,
+                runtime.DOMString.initInterned("connect"),
+                webidl.Opt(dictionaries.MessageEventInit).passed(init_dict),
+            ) catch return;
+            const generation = runtime.SlabAllocator.generationOf(event);
+            _ = fire_event.dispatchTrusted(global_scope, event) catch {};
+            event.releaseIfUnwrapped(generation);
         }
-        self.pending_connects.clearRetainingCapacity();
-    }
+    };
 
     // ------------------------------------------------------------------
     // The end of a worker
     // ------------------------------------------------------------------
 
-    /// HTML "terminate a worker" for a SHARED worker, on its creator's
-    /// thread (a failed start, or the end of its creator's loop): 1. set the
-    /// closing flag, 2. discard the worker's tasks. Step 3 has nothing to
-    /// abort - its script runs on this thread, so it cannot be running - and
-    /// step 4 is a dedicated worker's. The realm and the agent then go, from
-    /// later tasks (`scheduleTeardown`). A dedicated worker is terminated
-    /// through its link (WorkerLink.terminate), from its owner's thread.
-    pub fn terminate(self: *Self) void {
-        if (self.phase == .realm_gone or self.phase == .disposed) return;
-        self.phase = .closing;
-        cancelWorkerTimers(self);
-        self.cancelConnects();
-        disarm(&self.platform_pump);
-        self.scheduleTeardown();
-    }
-
     /// WorkerGlobalScope close(), from the worker's own script: 1. discard
     /// the tasks queued for the worker's agent, 2. set the closing flag. The
     /// task that called it runs to its end, and what it posts is delivered
     /// (workers/interfaces/WorkerGlobalScope/close/sending-messages); then
-    /// the realm goes - a dedicated worker's at its thread's end, once its
-    /// loop sees the flag; a shared worker's from a later timer.
+    /// the realm goes, at its thread's end, once its loop sees the flag.
     fn closeFromScript(self: *Self) void {
         if (self.phase != .running) return;
         self.phase = .closing;
         cancelWorkerTimers(self);
-        self.cancelConnects();
-        disarm(&self.platform_pump);
-        if (self.link) |link| {
-            // The loop runs no further task; its end discards them.
-            _ = link.requestClose();
-            return;
-        }
-        self.scheduleTeardown();
+        // The loop runs no further task; its end discards them.
+        _ = self.link.requestClose();
     }
 
-    /// Arm the next teardown step. Every step runs from a timer on the page's
-    /// loop, never from the call that ended the worker: that call may be the
-    /// worker's own script (close()), a Worker collected inside a page GC's
-    /// weak callbacks, or the page's own teardown. A loop that is ending runs
-    /// the steps itself first (`endWorkersOn`). With no loop to run them on,
-    /// the realm and agent stay until the process ends, as they always did.
-    fn scheduleTeardown(self: *Self) void {
-        if (self.teardown_timer != null or self.phase == .realm_gone or self.phase == .disposed) return;
-        const timer = self.timer orelse return;
-        const id = timer.setTimeout(0, teardownCallback, self);
-        if (id == 0) return;
-        self.teardown_timer = .{ .timer = timer, .id = id };
-    }
-
-    fn teardownCallback(context_ptr: ?*anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(context_ptr orelse return));
-        self.teardown_timer = null;
-        // The worker's script is on the stack - a nested loop inside one of
-        // its tasks: after that task, then.
-        const script_running = engine.hasRunningScript(self.agent);
-        log.debug("teardown step: entered={d} script_running={}", .{ self.entered, script_running });
-        if (self.entered > 0 or script_running) {
-            self.scheduleTeardown();
-            return;
-        }
-        self.teardownRealm();
-        self.disposeAgentLater();
-    }
-
-    /// The realm's end: what "run a worker" does once the event loop exits -
-    /// clear the active timers, disentangle the ports - and the engine's end
-    /// of the realm (`destroyWorkerRealm`). Nothing runs in the realm again.
+    /// The realm's end, on the worker's thread once its loop has stopped
+    /// (WorkerThread step c, `ThreadHost.endRealm`): what "run a worker" does
+    /// once the event loop exits - clear the active timers, disentangle the
+    /// ports - and the engine's end of the realm (`destroyWorkerRealm`).
+    /// Nothing runs in the realm again.
     fn teardownRealm(self: *Self) void {
         self.phase = .realm_gone;
         removeLive(self);
-        forgetSharedScope(self);
         cancelWorkerTimers(self);
-        self.cancelConnects();
-        disarm(&self.platform_pump);
         // "Run a worker" step 17: disentangle the worker's ports - its
         // implicit port first. Its Worker object's outside port is no longer
         // entangled; what the worker was sent and never ran goes with it.
@@ -1090,70 +961,19 @@ pub const WorkerHost = struct {
         _ = async_fetch.sweep();
     }
 
-    /// Dispose the agent one timer after the realm is gone.
-    ///
-    /// A fetch whose response arrived before the realm ended has its settle
-    /// task armed as a 0 ms timer on the page's loop
-    /// (WindowOrWorkerGlobalScope.call_fetch). It has left the fetch list, so
-    /// `async_fetch.sweep()` cannot reach it, and when it runs it finds the
-    /// realm gone and releases its promise resolver - a handle of THIS agent.
-    /// Every such timer was armed before this one, so it runs first.
-    fn disposeAgentLater(self: *Self) void {
-        const timer = self.timer orelse return;
-        const id = timer.setTimeout(0, disposeAgentCallback, self);
-        if (id == 0) return;
-        self.teardown_timer = .{ .timer = timer, .id = id };
-    }
-
-    fn disposeAgentCallback(context_ptr: ?*anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(context_ptr orelse return));
-        self.teardown_timer = null;
-        self.disposeAgent();
-    }
-
-    /// The agent's end; then this host's memory, if the owner has let go.
-    fn disposeAgent(self: *Self) void {
-        engine.destroyAgent(self.agent);
-        self.phase = .disposed;
-        if (self.owner_released) self.free();
-    }
-
-    /// This worker's end, now rather than from timers: the loop they would
-    /// run on is ending (`endWorkersOn`). Each step leaves the next phase, so
-    /// the worker ends disposed - and freed, if its owner has let it go.
-    ///
-    /// The fetch settle timers `disposeAgentLater` lets run first are dropped
-    /// with the loop, unfired: each keeps its resolver, a handle of this
-    /// agent, and nothing releases it once the agent is gone.
-    fn endWithLoop(self: *Self) void {
-        // HTML "terminate a worker": what the worker posted is not delivered.
-        if (self.phase == .running) self.terminate();
-        disarm(&self.teardown_timer);
-        if (self.phase == .closing) self.teardownRealm();
-        if (self.phase == .realm_gone) self.disposeAgent();
-    }
-
-    /// This host's memory, after its agent's end: a shared worker's from
-    /// `disposeAgent`, a dedicated worker's from its thread's last step
-    /// (`ThreadHost.free`), on the thread that made it.
+    /// This host's memory, from its thread's last step (`ThreadHost.free`),
+    /// after its realm's end and its agent's - so nothing here may reach the
+    /// engine: the realm's end left no timer, import or module behind.
     fn free(self: *Self) void {
         removeLive(self);
         removeHost(self);
-        // Every timer goes with its global; a worker with no teardown ahead
-        // of it still has them here.
-        cancelWorkerTimers(self);
+        std.debug.assert(self.timers.count() == 0);
         self.timers.deinit(self.allocator);
-        forgetSharedScope(self);
         if (self.shared) |*shared| shared.deinit(self.allocator);
-        self.cancelConnects();
-        self.pending_connects.deinit(self.allocator);
-        disarm(&self.teardown_timer);
-        disarm(&self.platform_pump);
-        // A worker with no teardown ahead of it (no loop to run one on) still
-        // has its realm and agent: what they hold of this host goes now.
-        self.finishPendingImports();
+        std.debug.assert(self.pending_imports.items.len == 0);
         self.pending_imports.deinit(self.allocator);
-        self.disposeModules();
+        std.debug.assert(self.modules.count() == 0);
+        self.modules.deinit(self.allocator);
         self.freeClassicScripts();
         if (self.inside_end) |end| end.discard();
         self.inside_end = null;
@@ -1196,9 +1016,8 @@ pub const WorkerHost = struct {
             // "Run a worker" step 5: a SharedWorkerGlobalScope when `is shared`.
             .global = if (self.shared != null) .shared else .dedicated,
             .timer = self.timer,
-            // A dedicated worker's own loop, which host algorithms queue
-            // their tasks on; a shared worker's tasks are its creator's
-            // loop's timers.
+            // The worker's own loop, which host algorithms queue their tasks
+            // on.
             .event_loop = self.event_loop,
             .end_of_task = endTaskOfRealm,
             .on_realm = recordRealm,
@@ -1224,6 +1043,9 @@ pub const WorkerHost = struct {
         // done() for the WPT harness: testharness.js defines its own, which
         // replaces this one when it loads.
         try engine.defineBuiltinFunction(realm, "done", 0, &self.builtins[4]);
+        // `performance` is the global scope's own Performance (the
+        // WindowOrWorkerGlobalScope member, through WorkerGlobalScope's
+        // settings), its time origin `time_origin_ns`.
 
         // Set up GLOBAL object for WPT tests
         // This is required by testharness.js to detect the execution context
@@ -1261,35 +1083,6 @@ pub const WorkerHost = struct {
             \\  };
             \\})();
         );
-
-        // Only performance still needs a bootstrap fallback: WorkerGlobalScope
-        // has no native performance getter. Its crypto and indexedDB accessors
-        // already supply native objects (WebIDL 3.7.6); never shadow them.
-        // Its time origin is the worker's creation time ("run a worker" step
-        // 3, the unsafe worker creation time - taken by the Worker
-        // constructor, before the worker's thread starts) when the host has
-        // it, else now.
-        var origin_buffer: [64]u8 = undefined;
-        const time_origin: []const u8 = if (self.time_origin_ms) |ms|
-            std.fmt.bufPrint(&origin_buffer, "{d}", .{ms}) catch "Date.now()"
-        else
-            "Date.now()";
-        const performance_setup = try std.fmt.allocPrint(self.allocator,
-            \\(function() {{
-            \\  function define(name, value) {{
-            \\    Object.defineProperty(globalThis, name, {{ value: value, writable: true, enumerable: true, configurable: true }});
-            \\  }}
-            \\  // Performance API - https://w3c.github.io/hr-time/
-            \\  var timeOrigin = {s};
-            \\  define('performance', {{
-            \\    timeOrigin: timeOrigin,
-            \\    now: function() {{ return Date.now() - timeOrigin; }},
-            \\    toJSON: function() {{ return {{ timeOrigin: this.timeOrigin }}; }}
-            \\  }});
-            \\}})();
-        , .{time_origin});
-        defer self.allocator.free(performance_setup);
-        try self.runSetupScript(performance_setup);
     }
 
     /// `createWorkerRealm`'s `on_realm`: the realm exists, and its global
@@ -1348,6 +1141,7 @@ pub const WorkerHost = struct {
         }
         self.classic_scripts.deinit(self.allocator);
         self.classic_scripts = .empty;
+        self.timer_script = null;
     }
 
     /// "Run a worker" onComplete step 10 for a classic worker: run the
@@ -1360,15 +1154,6 @@ pub const WorkerHost = struct {
         self.running_own_script = true;
         defer self.running_own_script = false;
         try self.runScript(source, self.script_url, true);
-
-        // A shared worker, whose tasks are its creator's timers: what the
-        // engine posted while the script ran, and if it left background work
-        // (an asynchronous compile), a pump to finish it. A dedicated
-        // worker's loop does both every turn.
-        if (self.link == null) {
-            _ = engine.runEngineTasks(self.agent);
-            self.armPlatformPump(false);
-        }
     }
 
     /// "Run a worker" for a module worker, from "obtain script" on: fetch a
@@ -1389,10 +1174,6 @@ pub const WorkerHost = struct {
         if (graph.error_to_rethrow != null) return false;
 
         self.runModuleScript(&env, graph);
-        if (self.link == null) {
-            _ = engine.runEngineTasks(self.agent);
-            self.armPlatformPump(false);
-        }
         return true;
     }
 
@@ -1535,8 +1316,11 @@ pub const WorkerHost = struct {
         lineno: u32,
         colno: u32,
     ) void {
+        // Step 7 is a DedicatedWorkerGlobalScope's: a shared worker's errors
+        // stay in it, whatever SharedWorker ran it.
+        if (self.shared != null) return;
         const owner = self.owner_worker orelse return;
-        const link = self.link orelse return;
+        const link = self.link;
         const report = ErrorReport.create(self.allocator, owner, .{
             .message = message,
             .filename = if (filename.len > 0) filename else self.script_url,
@@ -1567,8 +1351,7 @@ pub const WorkerHost = struct {
     /// onComplete step 12, after the script has run).
     fn bindInsidePort(self: *Self) void {
         const end = self.inside_end orelse return;
-        const sink = self.task_sink orelse return;
-        end.bind(.{ .sink = sink, .receiver = self, .generation = 0, .hooks = &inside_port_hooks });
+        end.bind(.{ .sink = self.task_sink, .receiver = self, .generation = 0, .hooks = &inside_port_hooks });
     }
 
     /// One task of the implicit port's message queue: the message port post
@@ -1618,25 +1401,25 @@ pub const WorkerHost = struct {
 
     fn setTimeoutSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
         const self: *Self = @ptrCast(@alignCast(data orelse return runtime.JSValue.fromNumber(0)));
-        return runtime.JSValue.fromNumber(@floatFromInt(self.setTimer(args, false)));
+        return runtime.JSValue.fromNumber(@floatFromInt(try self.setTimer(args, false)));
     }
 
     fn setIntervalSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
         const self: *Self = @ptrCast(@alignCast(data orelse return runtime.JSValue.fromNumber(0)));
-        return runtime.JSValue.fromNumber(@floatFromInt(self.setTimer(args, true)));
+        return runtime.JSValue.fromNumber(@floatFromInt(try self.setTimer(args, true)));
     }
 
     /// clearTimeout() and clearInterval(): remove this's map of setTimeout
-    /// and setInterval IDs[id] - the same map for both.
+    /// and setInterval IDs[id] - the same map for both. `optional long id =
+    /// 0` converts as WebIDL does - ToNumber, which can run script and
+    /// throw, then modulo 2^32 - so "5" is 5; an id no timer has (zero, a
+    /// negative one) names nothing.
     fn clearTimerSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
         const self: *Self = @ptrCast(@alignCast(data orelse return runtime.JSValue.jsUndefined));
-        if (args.len < 1) return runtime.JSValue.jsUndefined;
-        const id = switch (args[0]) {
-            .number => |n| n,
-            else => return runtime.JSValue.jsUndefined,
-        };
-        if (std.math.isNan(id) or std.math.isInf(id) or id < 0) return runtime.JSValue.jsUndefined;
-        self.clearTimer(@intFromFloat(id));
+        if (args.len < 1 or args[0] == .undefined) return runtime.JSValue.jsUndefined;
+        const realm = self.realm orelse return runtime.JSValue.jsUndefined;
+        const id = convertToLong(engine.convertToUnrestrictedDouble(realm, args[0]) catch |err| return engineError(err));
+        if (id > 0) self.clearTimer(@intCast(id));
         return runtime.JSValue.jsUndefined;
     }
 
@@ -1674,57 +1457,133 @@ pub const WorkerHost = struct {
         return runtime.JSValue.jsUndefined;
     }
 
-    /// The timer initialization steps (HTML § 8.6) for setTimeout() or
-    /// setInterval(): the new timer's id, or 0 when none was armed.
-    fn setTimer(self: *Self, args: []const runtime.JSValue, repeat: bool) u32 {
+    /// setTimeout() and setInterval(): WebIDL's conversion of their
+    /// arguments - `TimerHandler handler, optional long timeout = 0, any...
+    /// arguments` - then the timer initialization steps (HTML § 8.6) with no
+    /// previousId. The new timer's id, or 0 when none was armed. The
+    /// conversions run script (a handler's toString(), a timeout's
+    /// valueOf()), so they happen here, at the call, in the order WebIDL
+    /// gives, and what they throw reaches the caller.
+    fn setTimer(self: *Self, args: []const runtime.JSValue, repeat: bool) runtime.EngineError!u32 {
         const realm = self.realm orelse return 0;
-        // The handler: only a function is supported (a string handler is not).
-        if (args.len < 1) return 0;
-        if (!engine.isCallable(realm, args[0])) return 0;
+        const global = self.global_scope orelse return 0;
+        // `handler` is not optional: "not enough arguments" is a TypeError.
+        if (args.len < 1) return error.TypeError;
 
-        // The timeout (second argument, default 0).
-        var delay_ms: i64 = 0;
-        if (args.len >= 2) {
-            switch (args[1]) {
-                .number => |n| {
-                    if (!std.math.isNan(n) and !std.math.isInf(n) and n >= 0) delay_ms = @intFromFloat(@min(n, @as(f64, std.math.maxInt(i32))));
-                },
-                else => {},
-            }
+        // `handler`: TimerHandler, (DOMString or Function or TrustedScript),
+        // by WebIDL's union conversion (3.2.24): a platform object that is a
+        // TrustedScript (step 4), then a callable (step 10), else the string
+        // ToString makes of it (step 15).
+        var handler: ConvertedHandler = try convertTimerHandler(realm, args[0], self.allocator);
+        defer handler.deinit(self.allocator);
+
+        // `timeout`: optional long, 0 when undefined or not passed.
+        var timeout: i32 = 0;
+        if (args.len >= 2 and args[1] != .undefined) {
+            timeout = convertToLong(engine.convertToUnrestrictedDouble(realm, args[1]) catch |err| return engineError(err));
         }
 
-        const timer = self.timer orelse return 0;
-        // Room for the entry first: a timer armed and then not tracked could
-        // be neither cleared nor freed with its global.
-        self.timers.ensureUnusedCapacity(self.allocator, 1) catch return 0;
+        // Step 1: a handler that is not a Function, and no previousId: "Set
+        // handler to the result of invoking the get trusted type compliant
+        // string algorithm with TrustedScript, global, handler, sink, and
+        // "script"", the sink being "WorkerGlobalScope setTimeout" or
+        // "WorkerGlobalScope setInterval" - a TrustedScript's data, or the
+        // default policy's value, or a TypeError where Trusted Types are
+        // required. The default policy runs script.
+        var source: ?[]u8 = null;
+        errdefer if (source) |text| self.allocator.free(text);
+        switch (handler) {
+            .function => {},
+            .trusted_script, .string => {
+                const sink: []const u8 = if (repeat) "WorkerGlobalScope setInterval" else "WorkerGlobalScope setTimeout";
+                const input: trusted_types.Input = switch (handler) {
+                    .trusted_script => |instance| .{ .object = instance },
+                    .string => |text| .{ .string = text },
+                    .function => unreachable,
+                };
+                source = trusted_types.getCompliantString(self.allocator, .script, global, input, sink, trusted_types.script_sink_group) catch |err| return switch (err) {
+                    error.TypeError => error.TypeError,
+                    error.ExceptionPending => error.ExceptionPending,
+                    error.OutOfMemory => error.OutOfMemory,
+                    else => error.OperationFailed,
+                };
+                // Not in the spec, stated: step 10.8.2's CSP check runs here,
+                // at the call, as the window's does (src/browser/Context.zig
+                // initializeTimer cites the three engines - Blink's
+                // DOMTimer, Gecko's SetTimeoutOrInterval, WebKit's
+                // setTimeout, each `return 0` after reporting - and the
+                // lesson "a spec step no engine runs breaks tests that never
+                // test it"). The worker's CSP list is its global scope's
+                // policy container's: an enforced policy that blocks the
+                // string reports its violation at the global scope and the
+                // call returns 0, scheduling nothing and reporting no
+                // exception; a report-only one reports and the timer is set.
+                if (!code_generation.timerHandlerAllowed(global, source.?)) {
+                    self.allocator.free(source.?);
+                    source = null;
+                    return 0;
+                }
+            },
+        }
 
-        // The handler as a callback function, with the incumbent realm - the
-        // worker's, whose built-in this is - as its callback context.
-        const handler: engine.CallbackFunction = .{
-            .function = engine.retainValue(realm, args[0]) catch return 0,
-            .context = engine.incumbentRealm() orelse realm,
-        };
-        const timer_ctx = self.allocator.create(WorkerTimerContext) catch {
-            handler.release();
+        const timer = self.timer orelse {
+            if (source) |text| self.allocator.free(text);
+            source = null;
             return 0;
         };
+        // Room for the entry first: a timer armed and then not tracked could
+        // be neither cleared nor freed with its global.
+        try self.timers.ensureUnusedCapacity(self.allocator, 1);
 
-        // Apply HTML §8.6's clamp against the CURRENT nesting level: the spec
-        // reads it in step 4, clamps in step 6, and only then increments for
-        // the timer it is creating.
-        const clamped_ms = runtime.timer.clampTimeout(delay_ms, runtime.timer.nesting_level);
-        const delay_u64: u64 = if (clamped_ms >= 0) @intCast(clamped_ms) else 0;
+        const timer_ctx = try self.allocator.create(WorkerTimerContext);
+        errdefer self.allocator.destroy(timer_ctx);
         timer_ctx.* = .{
-            .callback = handler,
+            .handler = undefined,
             .id = 0, // Given once the timer is armed
             .current_timer_id = 0, // Updated after scheduling
             .is_interval = repeat,
-            .interval_delay_ms = delay_u64,
+            .interval_delay_ms = 0,
             .nesting_level = runtime.timer.nesting_level +| 1,
             .allocator = self.allocator,
             .cancelled = false,
             .worker_host = self,
         };
+        switch (handler) {
+            // The handler as a callback function, with the incumbent realm -
+            // the worker's, whose built-in this is - as its callback
+            // context; and `arguments`, each kept for every run.
+            .function => |function| {
+                const kept = try self.allocator.alloc(engine.Owned, args.len -| 2);
+                var retained: usize = 0;
+                errdefer {
+                    for (kept[0..retained]) |argument| argument.release();
+                    self.allocator.free(kept);
+                }
+                for (kept, 2..) |*argument, i| {
+                    argument.* = engine.retainValue(realm, args[i]) catch |err| return engineError(err);
+                    retained += 1;
+                }
+                const retained_function = engine.retainValue(realm, function) catch |err| return engineError(err);
+                timer_ctx.handler = .{ .function = .{
+                    .function = retained_function,
+                    .context = engine.incumbentRealm() orelse realm,
+                } };
+                timer_ctx.arguments = kept;
+            },
+            // A string runs no arguments.
+            .trusted_script, .string => {
+                timer_ctx.handler = .{ .string = source.? };
+                source = null;
+            },
+        }
+
+        // Steps 3-6: the timeout, 0 when negative, and HTML §8.6's clamp
+        // against the CURRENT nesting level: the spec reads it in step 4,
+        // clamps in step 6, and only then increments for the timer it is
+        // creating (steps 11-12).
+        const clamped_ms = runtime.timer.clampTimeout(@max(timeout, 0), runtime.timer.nesting_level);
+        const delay_u64: u64 = if (clamped_ms >= 0) @intCast(clamped_ms) else 0;
+        timer_ctx.interval_delay_ms = delay_u64;
 
         const timer_id = timer.setTimeout(delay_u64, workerTimerTrampoline, timer_ctx);
         if (timer_id == 0) {
@@ -1735,6 +1594,39 @@ pub const WorkerHost = struct {
         timer_ctx.id = self.takeTimerId();
         self.timers.putAssumeCapacityNoClobber(timer_ctx.id, timer_ctx);
         return @intCast(timer_ctx.id);
+    }
+
+    /// The timer task's step 10.8 for a string handler `source` whose CSP
+    /// check passed at the call (setTimer): create a classic script with the
+    /// default script fetch options and the settings object's API base URL -
+    /// the worker's URL - and run it, its exception reported for the global
+    /// scope.
+    ///
+    /// Step 10.8.5 would take the INITIATING script's base URL and fetch
+    /// options instead (the active script when setTimeout was called): the
+    /// engine protocol has no "active script" (GetActiveScriptOrModule) yet,
+    /// and a window's string timer (src/browser/Context.zig runTimerSteps)
+    /// takes its API base URL the same way. The two differ only for an
+    /// import() inside the string when the script that called setTimeout
+    /// came from importScripts().
+    fn runTimerString(self: *Self, realm: runtime.Context, source: []const u8) void {
+        const script = self.timerScript() catch return;
+        engine.runClassicScript(realm, .{ .utf8 = source }, self.script_url, script, self.reporter()) catch |err| switch (err) {
+            // Reported for the global scope already.
+            error.ExceptionReported => {},
+            else => log.debug("a timer's string handler did not run: {}", .{err}),
+        };
+    }
+
+    /// The classic script every string timer handler runs as - its base URL
+    /// the worker's API base URL, its fetch options the defaults - made on
+    /// first use and kept with the realm's other classic scripts, since a
+    /// function the string defined can call import() at any time.
+    fn timerScript(self: *Self) !*module_script.ClassicScript {
+        if (self.timer_script) |script| return script;
+        const script = try self.classicScript(self.script_url);
+        self.timer_script = script;
+        return script;
     }
 };
 
@@ -1838,7 +1730,7 @@ pub fn fireMessageEvent(
 }
 
 // ============================================================================
-// Shared workers (HTML § 10.2.6.4): the shared worker manager
+// Shared workers (HTML § 10.2.6.4): the shared worker manager's steps
 // ============================================================================
 
 /// What a shared worker's SharedWorkerGlobalScope was made with ("run a
@@ -1855,6 +1747,12 @@ pub const SharedScope = struct {
     /// options["credentials"].
     worker_type: WorkerType,
     credentials: workers.RequestCredentials,
+    /// The global scope's extended lifetime: options["extendedLifetime"].
+    extended_lifetime: bool = false,
+
+    fn options(self: *const SharedScope) SharedWorkerManager.Options {
+        return .{ .worker_type = self.worker_type, .credentials = self.credentials, .extended_lifetime = self.extended_lifetime };
+    }
 
     fn deinit(self: *SharedScope, allocator: Allocator) void {
         allocator.free(self.constructor_origin);
@@ -1863,52 +1761,50 @@ pub const SharedScope = struct {
     }
 };
 
-/// HTML's shared worker manager's list of SharedWorkerGlobalScopes: every
-/// shared worker this thread runs whose realm has not gone. One per user
-/// agent in the spec; one per thread here, which is not observably different
-/// (the spec allows one per origin).
-threadlocal var shared_scopes: std.ArrayListUnmanaged(*WorkerHost) = .empty;
-
-fn forgetSharedScope(host: *WorkerHost) void {
-    for (shared_scopes.items, 0..) |scope, i| {
-        if (scope == host) {
-            _ = shared_scopes.swapRemove(i);
-            return;
-        }
-    }
-}
-
 /// A SharedWorker constructor's step 11 inputs.
 pub const SharedWorkerRequest = struct {
     /// The SharedWorker - "worker". It has pending activity until the
-    /// manager's steps end, so an `error` event can still reach it.
+    /// manager's steps end - or, when they run a worker, until that worker
+    /// has started or failed to - so an `error` event can still reach it.
     worker: *runtime.Instance,
+    /// What the worker's tasks do at `worker`, on its thread (the
+    /// SharedWorker impl's steps).
+    steps: *const OwnerSteps,
     /// The outside settings' realm: the SharedWorker's relevant realm, whose
-    /// loop runs the manager's steps and whose global the worker's creator is.
+    /// loop runs the manager's steps and whose Document joins the worker's
+    /// owner set.
     owner_realm: runtime.Context,
     /// urlRecord, serialized. BORROWED for the call.
     url: []const u8,
     /// outsideStorageKey, and the constructor origin: the outside settings'
     /// origin, serialized. BORROWED for the call.
     origin: []const u8,
-    /// options["name"], ["type"] and ["credentials"]. `name` BORROWED.
+    /// options["name"], ["type"], ["credentials"] and ["extendedLifetime"].
+    /// `name` BORROWED.
     name: []const u8,
     worker_type: WorkerType,
     credentials: workers.RequestCredentials,
+    extended_lifetime: bool = false,
     /// The other end of outsidePort's channel, which becomes the inside
     /// port - a MessagePort of the worker's realm. OWNED: the manager takes
     /// it whatever happens, including when this returns an error.
     inside_end: *anyopaque,
+    /// "Run a worker" step 3, the unsafe worker creation time (hr_time's
+    /// monotonic clock, nanoseconds) - taken by the constructor, as a
+    /// Worker's is: a worker these steps run takes it as its global scope's
+    /// time origin.
+    creation_time_ns: ?i64 = null,
 };
 
 /// The SharedWorker constructor's step 11: "enqueue the following steps to
 /// the shared worker manager". They run as a task on the owner's loop - the
-/// manager's parallel queue, which here is the one thread - after the
-/// constructor has returned: finding the worker, or running one, enters
-/// another agent, which script on the stack must not see.
+/// manager's parallel queue, which here is the Browser's window thread -
+/// after the constructor has returned. A worker they run starts on a thread
+/// of its own; a worker they find hears its new port as a task of its own
+/// loop.
 pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
     errdefer message_ports.discard(request.inside_end);
-    const timer = request.owner_realm.getOptionalTimer() orelse return error.NoEventLoop;
+    const loop = request.owner_realm.getOptionalEventLoop() orelse return error.NoEventLoop;
     const allocator = request.owner_realm.allocator;
     const task = try allocator.create(SharedConnect);
     errdefer allocator.destroy(task);
@@ -1921,83 +1817,113 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
     task.* = .{
         .worker = request.worker,
         .generation = runtime.SlabAllocator.generationOf(request.worker),
+        .steps = request.steps,
         .owner_realm = request.owner_realm,
-        .timer = timer,
         .url = url,
         .origin = origin,
         .name = name,
         .worker_type = request.worker_type,
         .credentials = request.credentials,
+        .extended_lifetime = request.extended_lifetime,
         .inside_end = request.inside_end,
+        .creation_time_ns = request.creation_time_ns,
         .allocator = allocator,
     };
-    if (request.owner_realm.getOptionalEventLoop()) |loop| {
-        // A window's loop drops a task it will not run: `drop` frees it.
-        loop.queueTask(.{ .callback = SharedConnect.run, .context = task, .drop = SharedConnect.drop });
-    } else {
-        // A worker's realm runs its tasks as timers, which are dropped
-        // unfired when their loop ends: `endWorkersOn` frees them.
-        const id = timer.setTimeout(0, SharedConnect.run, task);
-        if (id == 0) return error.NoEventLoop;
-        armed_shared_connects.append(std.heap.page_allocator, .{ .task = task, .timer = timer, .id = id }) catch {};
-    }
+    // A loop that will not run the task drops it: `drop` frees it.
+    loop.queueTask(.{ .callback = SharedConnect.run, .context = task, .drop = SharedConnect.drop });
     // Pending activity until the steps end: whatever script holds, the
     // SharedWorker is there for its `error` event.
     engine.keepPlatformObjectAlive(request.worker);
 }
 
-/// Manager steps armed as timers (a SharedWorker made in a worker's realm)
-/// that have not run.
-threadlocal var armed_shared_connects: std.ArrayListUnmanaged(struct {
-    task: *SharedConnect,
-    timer: runtime.TimerInterface,
-    id: runtime.TimerId,
-}) = .empty;
-
-/// Free the manager steps armed on the loop `timers`, which is ending.
-fn dropSharedConnectsOn(timers: runtime.TimerInterface) void {
-    var i: usize = 0;
-    while (i < armed_shared_connects.items.len) {
-        const armed = armed_shared_connects.items[i];
-        if (armed.timer.ctx != timers.ctx) {
-            i += 1;
-            continue;
-        }
-        _ = armed_shared_connects.swapRemove(i);
-        _ = armed.timer.clearTimeout(armed.id);
-        armed.task.finish();
-    }
+/// "Destroy a document" step 8 - "remove document from the owner set of
+/// each WorkerGlobalScope object whose set contains document" - as an
+/// unloading document cleanup step (the SharedWorker impl installs it): a
+/// shared worker whose owner set this empties is closed (the manager's
+/// "closing orphan workers") - one with an extended lifetime once the
+/// extended lifetime shared worker timeout has passed, from a timer of the
+/// ending realm's loop (a window realm's is its Browser's window loop, where
+/// the manager's steps run). Every realm's end runs it, on its own thread; a
+/// worker's realm owns no shared worker, and finds nothing.
+pub fn sharedWorkerOwnerGone(realm: runtime.Context) void {
+    const manager = SharedWorkerManager.existingOf(realm) orelse return;
+    var extended: std.ArrayListUnmanaged(SharedWorkerManager.Orphan) = .empty;
+    defer extended.deinit(manager.allocator);
+    const closed = manager.removeOwner(realm, &extended);
+    if (closed > 0) log.debug("{d} shared worker(s) closed: their owner set emptied", .{closed});
+    for (extended.items) |orphan| ExtendedOrphan.arm(manager, realm, orphan);
 }
+
+/// A shared worker in extended lifetime: its timer, on its Browser's window
+/// loop. Holds a link reference; the manager outlives the loop (the
+/// Browser's scope ends after its event loop), so a timer never fired is
+/// dropped while the manager is there.
+const ExtendedOrphan = struct {
+    manager: *SharedWorkerManager,
+    orphan: SharedWorkerManager.Orphan,
+
+    /// Arm the timeout for `orphan` (taken). With no loop to arm it on, the
+    /// worker is closed now - the earliest the spec allows.
+    fn arm(manager: *SharedWorkerManager, realm: runtime.Context, orphan: SharedWorkerManager.Orphan) void {
+        const timer = realm.getOptionalTimer() orelse return closeNow(manager, orphan);
+        const self = manager.allocator.create(ExtendedOrphan) catch return closeNow(manager, orphan);
+        self.* = .{ .manager = manager, .orphan = orphan };
+        if (timer.setTimeoutOwned(SharedWorkerManager.extended_lifetime_timeout_ms, fire, self, drop) == 0) {
+            manager.allocator.destroy(self);
+            closeNow(manager, orphan);
+        }
+    }
+
+    fn closeNow(manager: *SharedWorkerManager, orphan: SharedWorkerManager.Orphan) void {
+        _ = manager.closeIfStillOrphaned(orphan.link, orphan.epoch);
+        orphan.link.release();
+    }
+
+    /// The timeout has passed: closed, unless a Document connected since.
+    fn fire(data: ?*anyopaque) void {
+        const self: *ExtendedOrphan = @ptrCast(@alignCast(data.?));
+        const manager = self.manager;
+        const orphan = self.orphan;
+        manager.allocator.destroy(self);
+        closeNow(manager, orphan);
+    }
+
+    /// Never fired: its loop ended (the Browser's end, which terminates
+    /// every worker itself).
+    fn drop(data: ?*anyopaque) void {
+        const self: *ExtendedOrphan = @ptrCast(@alignCast(data.?));
+        const link = self.orphan.link;
+        self.manager.allocator.destroy(self);
+        link.release();
+    }
+};
 
 /// The manager's steps for one SharedWorker, as a task on its owner's loop.
 const SharedConnect = struct {
     worker: *runtime.Instance,
     generation: u64,
+    steps: *const OwnerSteps,
     owner_realm: runtime.Context,
-    timer: runtime.TimerInterface,
     url: []const u8,
     origin: []const u8,
     name: []const u8,
     worker_type: WorkerType,
     credentials: workers.RequestCredentials,
-    /// Null once a MessagePort has taken it.
+    extended_lifetime: bool,
+    /// Null once a worker's loop has taken it.
     inside_end: ?*anyopaque,
-    /// The SharedWorker's pending activity has passed to an `error` task.
+    creation_time_ns: ?i64,
+    /// The SharedWorker's pending activity has passed to an `error` task, or
+    /// to the start of the worker these steps ran.
     hold_passed: bool = false,
     allocator: Allocator,
 
     fn run(data: ?*anyopaque) void {
         const self: *SharedConnect = @ptrCast(@alignCast(data orelse return));
-        for (armed_shared_connects.items, 0..) |armed, i| {
-            if (armed.task == self) {
-                _ = armed_shared_connects.swapRemove(i);
-                break;
-            }
-        }
         defer self.finish();
         // The SharedWorker went with its realm: nothing to connect.
         if (runtime.SlabAllocator.generationOf(self.worker) != self.generation) return;
-        self.steps();
+        self.connect();
     }
 
     /// The loop ended with the task queued: the steps never run.
@@ -2006,8 +1932,8 @@ const SharedConnect = struct {
         self.finish();
     }
 
-    /// The steps' end: the inside end, unless a port took it, and the
-    /// SharedWorker's pending activity.
+    /// The steps' end: the inside end, unless a worker's loop took it, and
+    /// the SharedWorker's pending activity.
     fn finish(self: *SharedConnect) void {
         if (self.inside_end) |end| message_ports.discard(end);
         if (!self.hold_passed and runtime.SlabAllocator.generationOf(self.worker) == self.generation) {
@@ -2019,38 +1945,42 @@ const SharedConnect = struct {
         self.allocator.destroy(self);
     }
 
-    fn steps(self: *SharedConnect) void {
-        // 1-2. workerGlobalScope: the scope whose storage key (origin) equals
-        // outsideStorageKey, whose closing flag is false, whose constructor
-        // URL equals urlRecord and whose name equals options["name"].
-        const found: ?*WorkerHost = for (shared_scopes.items) |host| {
-            const shared = host.shared orelse continue;
-            if (!host.runsTasks()) continue;
-            if (!std.mem.eql(u8, shared.constructor_origin, self.origin)) continue;
-            if (!std.mem.eql(u8, shared.constructor_url, self.url)) continue;
-            if (!std.mem.eql(u8, shared.name, self.name)) continue;
-            break host;
-        } else null;
+    fn ownerWorker(self: *const SharedConnect) OwnerWorker {
+        return .{ .instance = self.worker, .generation = self.generation, .steps = self.steps };
+    }
 
-        // 3. No user agent configuration disallows the connection.
-        if (found) |host| {
-            const shared = host.shared.?;
-            // 4. A type or credentials mismatch: `error` at worker.
-            if (shared.worker_type != self.worker_type or shared.credentials != self.credentials) {
-                self.fireError();
-                return;
-            }
+    fn connect(self: *SharedConnect) void {
+        const manager = SharedWorkerManager.of(self.owner_realm) orelse return self.fireError();
+        const key: SharedWorkerManager.Key = .{ .storage_key = self.origin, .url = self.url, .name = self.name };
+        // 1-2. workerGlobalScope: the scope whose constructor storage key
+        // equals outsideStorageKey, whose closing flag is false, whose
+        // constructor URL equals urlRecord and whose name equals
+        // options["name"] - and 5.8, the relevant owner to add (this
+        // Document) joins its owner set.
+        const options: SharedWorkerManager.Options = .{
+            .worker_type = self.worker_type,
+            .credentials = self.credentials,
+            .extended_lifetime = self.extended_lifetime,
+        };
+        const found = manager.connect(key, options, self.owner_realm) catch
+            return self.fireError();
+        if (found) |worker| {
+            defer worker.link.release();
+            // 3. No user agent configuration disallows the connection.
+            // 4. A type, credentials or extended lifetime mismatch: `error`
+            // at worker.
+            if (!worker.matched) return self.fireError();
             // 5.1-5.3: a secure context mismatch fires `error` too. Crane's
             // settings objects record no secure context yet, so outside and
             // inside settings of one origin never differ here.
             // 5.4-5.7: associate, a new inside port entangled with
-            // outsidePort, and a `connect` event carrying it.
-            host.connectPort(self.takeInsideEnd());
+            // outsidePort, and a `connect` event carrying it - as a task of
+            // the worker's own loop, on its thread.
+            postConnect(self.allocator, worker.link, worker.host, self.takeInsideEnd());
             return;
         }
-
         // 6. Otherwise, run a worker.
-        self.runSharedWorker();
+        self.runSharedWorker(manager, key);
     }
 
     fn takeInsideEnd(self: *SharedConnect) *anyopaque {
@@ -2059,12 +1989,14 @@ const SharedConnect = struct {
         return end;
     }
 
-    /// "Run a worker" with `is shared` true.
-    fn runSharedWorker(self: *SharedConnect) void {
+    /// "Run a worker" with `is shared` true: the script fetched here, on the
+    /// creator's thread (its CSP violations are the outside settings'
+    /// global's to report), then the worker started on a thread of its own.
+    fn runSharedWorker(self: *SharedConnect, manager: *SharedWorkerManager, key: SharedWorkerManager.Key) void {
         const allocator = self.allocator;
         // 12. Fetch a classic worker script, or - for a module worker - the
         // root of its module worker script graph (the rest is fetched in the
-        // worker's realm, below). A failed fetch is a null script.
+        // worker's realm). A failed fetch is a null script: onComplete 1.
         var fetched = workers.fetchWorkerScript(allocator, self.url, .{
             .worker_type = self.worker_type,
             .requesting_origin = self.origin,
@@ -2077,71 +2009,46 @@ const SharedConnect = struct {
         }) catch return self.fireError();
         defer fetched.deinit();
 
-        // 4. The agent: a shared worker agent, [[CanBlock]] false in the
-        // spec - the engine's default blocks, which only Atomics.wait sees.
-        const host = WorkerHost.init(allocator, fetched.final_url, self.worker_type, self.owner_realm) catch return self.fireError();
-        // The manager owns the worker: its memory goes when its agent does.
-        host.owner_released = true;
-        host.cookie_jar = creatorCookieJar(self.owner_realm);
-        // Its policy container, before any of its script runs.
-        host.setPolicyContainer(workerPolicyContainer(allocator, &fetched, self.owner_realm));
-        // 10. The constructor origin, URL, type and credentials; 8. the name.
-        host.shared = sharedScopeOf(allocator, self) catch {
-            host.phase = .disposed;
-            engine.destroyAgent(host.agent);
-            host.free();
-            return self.fireError();
+        var start: WorkerStart = .{
+            .source = fetched.source,
+            .script_url = fetched.final_url,
+            .worker_type = self.worker_type,
+            // 8. The global scope's name (its SharedScope has it too).
+            .name = self.name,
+            // The global scope's policy container, from the response - or
+            // the creator's, for a data: or blob: script.
+            .policy_container = workerPolicyContainer(allocator, &fetched, self.owner_realm),
+            .cookie_jar = creatorCookieJar(self.owner_realm),
+            .owner_realm = self.owner_realm,
+            .owner_worker = self.ownerWorker(),
+            .inside_end = null,
+            // 3. The unsafe worker creation time: the global scope's time
+            // origin.
+            .time_origin_ns = self.creation_time_ns,
         };
-        shared_scopes.append(std.heap.page_allocator, host) catch {};
+        defer if (start.policy_container) |*container| container.deinit();
+        defer if (start.shared) |*shared| shared.deinit(allocator);
+        // 10. The constructor key, type and credentials.
+        start.shared = sharedScopeOf(allocator, self) catch return self.fireError();
 
-        // 5-7. The realm, whose global object is a SharedWorkerGlobalScope.
-        host.setupWorkerGlobalScope() catch {
-            host.terminate();
+        startSharedWorker(allocator, &start, manager, key, self.inside_end.?) catch |err| {
+            log.debug("the shared worker's thread did not start: {}", .{err});
             return self.fireError();
         };
-        // onComplete 3, 5 and 13: the inside port, entangled with outsidePort,
-        // for the `connect` event queued once the script has run.
-        const inside_end = self.takeInsideEnd();
-        switch (self.worker_type) {
-            // onComplete 10: run the classic script. An exception it throws
-            // is reported to the worker's global scope; the worker runs on.
-            .classic => {
-                host.executeScript(fetched.source) catch |err| log.debug("shared worker script: {}", .{err});
-                // onComplete 1: a script that did not parse has an error to
-                // rethrow - `error` at the worker, and its settings are
-                // discarded.
-                if (host.own_script_parse_failed) {
-                    message_ports.discard(inside_end);
-                    host.terminate();
-                    return self.fireError();
-                }
-            },
-            // A module worker's graph: onComplete 1 - a null script, or one
-            // with an error to rethrow, fires `error` at the worker, and the
-            // inside settings are discarded. Else run the module script.
-            .module => if (!host.executeModuleScript(self.url, fetched.source)) {
-                message_ports.discard(inside_end);
-                host.terminate();
-                return self.fireError();
-            },
-        }
-        host.connectPort(inside_end);
+        // The worker's loop has the inside end now, and the SharedWorker's
+        // pending activity is the worker's start's: its outcome - started,
+        // or `error` - ends it (`OwnerSteps.started`, `.start_failed`).
+        self.inside_end = null;
+        self.hold_passed = true;
     }
 
     /// Queue a global task on the owner's loop to fire `error` at worker
-    /// (the manager's step 4.1; onComplete 1.1).
+    /// (the manager's step 4.1; onComplete 1.1) - on the loop's own task
+    /// queue, behind the CSP violation a blocked fetch reported there.
     fn fireError(self: *SharedConnect) void {
-        const task = self.allocator.create(SharedWorkerError) catch return;
-        task.* = .{
-            .worker = self.worker,
-            .generation = self.generation,
-            .owner_realm = self.owner_realm,
-            .allocator = self.allocator,
-        };
-        if (self.timer.setTimeout(0, SharedWorkerError.run, task) == 0) {
-            self.allocator.destroy(task);
-            return;
-        }
+        const loop = self.owner_realm.getOptionalEventLoop() orelse return;
+        const report = ErrorReport.startFailed(self.allocator, self.ownerWorker()) catch return;
+        loop.queueTask(.{ .callback = ErrorReport.run, .context = report, .drop = ErrorReport.drop });
         // The SharedWorker's pending activity is the error task's now: it
         // ends when the event has fired. (A hold is a flag, not a count.)
         self.hold_passed = true;
@@ -2159,8 +2066,93 @@ fn sharedScopeOf(allocator: Allocator, connect: *const SharedConnect) !SharedSco
         .name = try allocator.dupe(u8, connect.name),
         .worker_type = connect.worker_type,
         .credentials = connect.credentials,
+        .extended_lifetime = connect.extended_lifetime,
     };
 }
+
+/// Start a shared worker on a thread of its own: a link whose owner's loop is
+/// the creator's (the Browser's window loop, which hears the worker's start
+/// and end), registered with the Browser's WorkerRegistry - its end joins
+/// every worker thread - and with its shared worker manager under `key`, its
+/// owner set the creator's Document; then its first `connect`, on
+/// `inside_end`, posted to its loop, where it waits until the script has run
+/// ("run a worker" onComplete 13). On success `start.policy_container`,
+/// `start.shared` and `inside_end` are taken; on failure the caller still
+/// holds them, and nothing runs.
+fn startSharedWorker(
+    allocator: Allocator,
+    start: *WorkerStart,
+    manager: *SharedWorkerManager,
+    key: SharedWorkerManager.Key,
+    inside_end: *anyopaque,
+) !void {
+    const owner_sink = start.owner_realm.task_sink orelse return error.NoEventLoop;
+    const registry = WorkerRegistry.of(start.owner_realm);
+    const link = try WorkerLink.create(allocator, owner_sink);
+    // The registry's, the manager's and the thread's references keep it; a
+    // shared worker has no object holding an owner side of its own. Its
+    // `owner_realm` stays null: no realm's end terminates it - its owner
+    // set's emptying does (`sharedWorkerOwnerGone`).
+    defer link.release();
+    if (registry) |r| try r.register(link);
+    errdefer if (registry) |r| r.unregister(link);
+
+    const shared = start.shared orelse return error.NotShared;
+    const thread_host = try ThreadHost.create(allocator, start);
+    errdefer thread_host.destroyUnstarted();
+    const owner_end = try allocator.create(OwnerEnd);
+    errdefer allocator.destroy(owner_end);
+    owner_end.* = .{ .allocator = allocator, .owner = start.owner_worker, .registry = registry, .manager = manager };
+
+    try manager.add(key, shared.options(), link, thread_host, start.owner_realm);
+    errdefer manager.remove(link);
+
+    try WorkerThread.spawn(allocator, link, thread_host.asHost(), owner_end.asOwner(), registry);
+    // The thread has them now.
+    start.policy_container = null;
+    start.shared = null;
+    postConnect(allocator, link, thread_host, inside_end);
+}
+
+/// Post the manager's steps 5.5-5.7 (or "run a worker" onComplete 3, 5 and
+/// 13) to the shared worker's loop: a new inside port on `end` (taken) and
+/// `connect` at its global scope. A worker already ending drops it, and the
+/// end is discarded - its SharedWorker's port hears `close`.
+fn postConnect(allocator: Allocator, link: *WorkerLink, host: *anyopaque, end: *anyopaque) void {
+    const task = allocator.create(Connect) catch return message_ports.discard(end);
+    task.* = .{ .allocator = allocator, .thread_host = @ptrCast(@alignCast(host)), .end = end };
+    // A closed sink drops it.
+    _ = link.worker_sink.post(.{ .run = Connect.run, .drop = Connect.drop, .data = task });
+}
+
+/// A `connect` for a shared worker, as a task of its loop: the channel end
+/// that becomes its inside port.
+const Connect = struct {
+    allocator: Allocator,
+    /// The worker's thread host: read only by `run`, on the worker's thread,
+    /// while its loop runs (the host goes after the loop has ended, and a
+    /// task never run is dropped, not run).
+    thread_host: *ThreadHost,
+    end: *anyopaque,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *Connect = @ptrCast(@alignCast(data.?));
+        const end = self.end;
+        const thread_host = self.thread_host;
+        self.allocator.destroy(self);
+        const host = thread_host.host orelse return message_ports.discard(end);
+        host.connectInsidePort(end);
+    }
+
+    /// Never run: the worker is ending. Any thread: the end is discarded
+    /// (thread-safe), no engine touched.
+    fn drop(data: ?*anyopaque) void {
+        const self: *Connect = @ptrCast(@alignCast(data.?));
+        const end = self.end;
+        self.allocator.destroy(self);
+        message_ports.discard(end);
+    }
+};
 
 /// HTML "initialize a worker global scope's policy container" for a worker
 /// whose script `fetched` is, created by the global whose realm is
@@ -2206,83 +2198,12 @@ fn creatorCookieJar(realm: runtime.Context) ?*CookieJar {
     return @import("dom").global_settings.cookieJarOf(global);
 }
 
-/// A task that fires `error` at a SharedWorker: a plain Event, not
-/// cancelable, at the object in its own realm.
-const SharedWorkerError = struct {
-    worker: *runtime.Instance,
-    generation: u64,
-    owner_realm: runtime.Context,
-    allocator: Allocator,
-
-    fn run(data: ?*anyopaque) void {
-        const self: *SharedWorkerError = @ptrCast(@alignCast(data orelse return));
-        defer self.allocator.destroy(self);
-        if (runtime.SlabAllocator.generationOf(self.worker) != self.generation) return;
-        defer engine.releasePlatformObject(self.worker);
-        engine.runTaskInRealm(self.owner_realm, fire, self) catch {};
-    }
-
-    fn fire(data: ?*anyopaque) void {
-        const self: *SharedWorkerError = @ptrCast(@alignCast(data orelse return));
-        const event = interfaces.Event.call_constructor(
-            self.owner_realm,
-            runtime.DOMString.initInterned("error"),
-            webidl.Opt(dictionaries.EventInit).notPassed(),
-        ) catch return;
-        const generation = runtime.SlabAllocator.generationOf(event);
-        _ = fire_event.dispatchTrusted(self.worker, event) catch {};
-        event.releaseIfUnwrapped(generation);
-    }
-};
-
-/// A `connect` event for a shared worker's global scope, waiting for its
-/// task: the inside port it carries.
-const ConnectTask = struct {
-    host: *WorkerHost,
-    port: *runtime.Instance,
-    generation: u64,
-
-    fn run(data: ?*anyopaque) void {
-        const self: *ConnectTask = @ptrCast(@alignCast(data orelse return));
-        const host = self.host;
-        defer host.allocator.destroy(self);
-        host.forgetConnect(self);
-        if (!host.runsTasks()) return;
-        if (runtime.SlabAllocator.generationOf(self.port) != self.generation) return;
-        host.runTask(fire, self);
-    }
-
-    /// Fire `connect` at the global scope, using MessageEvent, with data the
-    /// empty string and ports and source the inside port.
-    fn fire(data: ?*anyopaque) void {
-        const self: *ConnectTask = @ptrCast(@alignCast(data orelse return));
-        const host = self.host;
-        const realm = host.realm orelse return;
-        const global_scope = host.global_scope orelse return;
-        const ports = [_]*runtime.Instance{self.port};
-        const init_dict = dictionaries.MessageEventInit{
-            .base = .{},
-            .data = runtime.JSValue.fromStringRef(""),
-            .ports = &ports,
-            .source = .{ .message_port = self.port },
-        };
-        const event = interfaces.MessageEvent.call_constructor(
-            realm,
-            runtime.DOMString.initInterned("connect"),
-            webidl.Opt(dictionaries.MessageEventInit).passed(init_dict),
-        ) catch return;
-        const generation = runtime.SlabAllocator.generationOf(event);
-        _ = fire_event.dispatchTrusted(global_scope, event) catch {};
-        event.releaseIfUnwrapped(generation);
-    }
-};
-
 // ============================================================================
 // import() in a worker - the agent's host hooks
 // ============================================================================
 
-/// A dedicated worker agent's host hooks (HTML "obtain a dedicated/shared
-/// worker agent", which `WorkerHost.init` does): HostLoadImportedModule for
+/// A worker agent's host hooks (HTML "obtain a dedicated/shared worker
+/// agent", which `WorkerHost.initOnThread` does): HostLoadImportedModule for
 /// import() and HostGetImportMetaProperties for the modules it loads. The
 /// hooks' `host` is the WorkerHost. (Only an engine with modules calls them.)
 const worker_hooks: engine.HostHooks = .{
@@ -2295,6 +2216,15 @@ const worker_hooks: engine.HostHooks = .{
     // ever heard one.
     .promiseRejectionTracker = rejected_promises.hooks.promiseRejectionTracker,
     .afterMicrotaskCheckpoint = @import("microtask_checkpoint.zig").afterMicrotaskCheckpoint,
+    // HTML 8.1.6.2 HostEnsureCanCompileStrings, 8.1.6.3 HostGetCodeForEval
+    // and the WebAssembly JS API's HostEnsureCanCompileWasmBytes, as a
+    // window agent's (browser/Browser.zig window_agent_hooks): eval,
+    // Function and WebAssembly compilation in a worker are checked against
+    // its global scope's CSP list, and Trusted Types' default policy runs
+    // over a string first. Without them a worker compiled anything.
+    .ensureCanCompileStrings = code_generation.hooks.ensureCanCompileStrings,
+    .getCodeForEval = code_generation.hooks.getCodeForEval,
+    .ensureCanCompileWasmBytes = code_generation.hooks.ensureCanCompileWasmBytes,
 };
 
 /// A worker's module evaluation promise, waiting to settle. Its host
@@ -2423,15 +2353,12 @@ const DynamicImportTask = struct {
     module_type: module_script.ModuleType,
     /// The host's until finished.
     request: *engine.ImportRequest,
-    /// The timer the task runs from, while it is armed.
-    timer: ?MessageDispatchTimer = null,
     /// The fetch task ran, and finished the request.
     finished: bool = false,
 };
 
 fn runDynamicImport(context_ptr: ?*anyopaque) void {
     const task: *DynamicImportTask = @ptrCast(@alignCast(context_ptr orelse return));
-    task.timer = null;
     const self = task.host;
     self.forgetImport(task);
     defer self.freeImport(task);
@@ -2445,6 +2372,11 @@ fn runDynamicImport(context_ptr: ?*anyopaque) void {
     // either way.
     if (!task.finished) finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
 }
+
+/// The fetch task was discarded with the worker's other tasks (its closing
+/// flag is set): it stays on its host's `pending_imports`, whose realm's end
+/// finishes its request while the agent lives (`finishPendingImports`).
+fn droppedDynamicImport(_: ?*anyopaque) void {}
 
 /// The fetch task: fetch a single imported module script and its
 /// descendants, link, then FinishLoadingImportedModule - ContinueDynamicImport
@@ -2519,7 +2451,6 @@ const WorkerModules = struct {
     }
 
     fn queueDynamicImport(self: *WorkerHost, url: []const u8, module_type: module_script.ModuleType, request: *engine.ImportRequest) !void {
-        const timer = self.timer orelse return error.NoEventLoop;
         const task = try self.allocator.create(DynamicImportTask);
         errdefer self.allocator.destroy(task);
         task.* = .{
@@ -2530,10 +2461,9 @@ const WorkerModules = struct {
         };
         errdefer self.allocator.free(task.url);
         try self.pending_imports.append(self.allocator, task);
-        errdefer _ = self.pending_imports.pop();
-        const id = timer.setTimeout(0, runDynamicImport, task);
-        if (id == 0) return error.NoEventLoop;
-        task.timer = .{ .timer = timer, .id = id };
+        // A task of the worker's loop; a closing worker's is dropped at once,
+        // and stays pending for the realm's end.
+        self.event_loop.queueTask(.{ .callback = runDynamicImport, .context = task, .drop = droppedDynamicImport });
     }
 
     fn forgetImport(self: *WorkerHost, task: *DynamicImportTask) void {
@@ -2550,12 +2480,12 @@ const WorkerModules = struct {
         self.allocator.destroy(task);
     }
 
-    /// Discard the import()s whose fetch task has not run: disarm each, and
-    /// finish its request - which rejects a promise nothing will observe - so
-    /// the engine's hold on it ends while the agent is alive.
+    /// Discard the import()s whose fetch task has not run - the realm ends
+    /// after the loop dropped its tasks - and finish each one's request,
+    /// which rejects a promise nothing will observe, so the engine's hold on
+    /// it ends while the agent is alive.
     fn finishPendingImports(self: *WorkerHost) void {
         while (self.pending_imports.pop()) |task| {
-            if (task.timer) |armed| _ = armed.timer.clearTimeout(armed.id);
             finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
             self.freeImport(task);
         }
@@ -2563,13 +2493,14 @@ const WorkerModules = struct {
 };
 
 // ============================================================================
-// A dedicated worker on a thread of its own
+// A worker on a thread of its own
 // ============================================================================
 
-/// A Worker object, as its worker's tasks for it find it: its address and
-/// slab generation - checked on the owner's thread before every use, since a
-/// collected Worker's slot can be reissued - and its owner side's steps. The
-/// worker's thread never dereferences it.
+/// A worker object - a Worker, or the SharedWorker that ran a shared worker
+/// - as its worker's tasks for it find it: its address and slab generation -
+/// checked on the owner's thread before every use, since a collected
+/// object's slot can be reissued - and its owner side's steps. The worker's
+/// thread never dereferences it.
 pub const OwnerWorker = struct {
     instance: *runtime.Instance,
     generation: u64,
@@ -2583,26 +2514,30 @@ pub const OwnerWorker = struct {
     }
 };
 
-/// What a worker's tasks do at its Worker object, on the Worker's thread -
-/// the Worker impl's steps (its state is its own).
+/// What a worker's tasks do at its worker object, on the object's thread -
+/// the Worker or SharedWorker impl's steps (its state is its own).
 pub const OwnerSteps = struct {
-    /// HTML "report an exception" step 7: an error the worker's global scope
-    /// did not handle - fire an ErrorEvent at the Worker.
+    /// HTML "report an exception" step 7: an error a dedicated worker's
+    /// global scope did not handle - fire an ErrorEvent at the Worker.
     error_reported: *const fn (worker: *runtime.Instance, report: *const ErrorReport.Info) void,
     /// "Run a worker" onComplete step 1.1: the worker could not start (its
-    /// module graph failed, or its realm could not be made) - fire `error`.
+    /// script is null or did not parse, its realm could not be made) - fire
+    /// `error`; also the shared worker manager's step 4.1.
     start_failed: *const fn (worker: *runtime.Instance) void,
+    /// The worker's script has run: it started. Null when the object does
+    /// not need to hear it (a Worker hears its end instead).
+    started: ?*const fn (worker: *runtime.Instance) void = null,
     /// The worker has ended: its thread is joined, its link unregistered.
     ended: *const fn (worker: *runtime.Instance) void,
 };
 
-/// A task of the Worker's loop, posted by its worker: an error it reported,
-/// or its failure to start. Its strings are owned (the worker's allocator,
-/// which is thread-safe).
+/// A task of the worker object's loop, posted by its worker: an error it
+/// reported, its start, or its failure to start. Its strings are owned (the
+/// worker's allocator, which is thread-safe).
 pub const ErrorReport = struct {
     allocator: Allocator,
     owner: OwnerWorker,
-    kind: enum { exception, start_failed },
+    kind: enum { exception, start_failed, started },
     info: Info,
 
     pub const Info = struct {
@@ -2628,11 +2563,19 @@ pub const ErrorReport = struct {
     }
 
     fn startFailed(allocator: Allocator, owner: OwnerWorker) Allocator.Error!*ErrorReport {
+        return outcome(allocator, owner, .start_failed);
+    }
+
+    fn started(allocator: Allocator, owner: OwnerWorker) Allocator.Error!*ErrorReport {
+        return outcome(allocator, owner, .started);
+    }
+
+    fn outcome(allocator: Allocator, owner: OwnerWorker, kind: @FieldType(ErrorReport, "kind")) Allocator.Error!*ErrorReport {
         const self = try allocator.create(ErrorReport);
         self.* = .{
             .allocator = allocator,
             .owner = owner,
-            .kind = .start_failed,
+            .kind = kind,
             .info = .{ .message = "", .filename = "", .lineno = 0, .colno = 0 },
         };
         return self;
@@ -2646,6 +2589,7 @@ pub const ErrorReport = struct {
         switch (self.kind) {
             .exception => self.owner.steps.error_reported(worker, &self.info),
             .start_failed => self.owner.steps.start_failed(worker),
+            .started => if (self.owner.steps.started) |started_steps| started_steps(worker),
         }
     }
 
@@ -2661,11 +2605,12 @@ pub const ErrorReport = struct {
     }
 };
 
-/// "Run a worker" for a dedicated worker, as its Worker constructor hands
-/// it over (step 9: "run this step in parallel"). The constructor fetched the
-/// script - it must, before it returns: a blob URL revoked right after
+/// "Run a worker", as its worker object's side hands it over: a dedicated
+/// worker's Worker constructor (step 9: "run this step in parallel"), or the
+/// shared worker manager's steps. The script is fetched first - the Worker
+/// constructor must, before it returns: a blob URL revoked right after
 /// `new Worker(url)` still runs - so the thread starts with it in hand.
-pub const DedicatedWorkerStart = struct {
+pub const WorkerStart = struct {
     /// The classic script's source, or a module graph's root's. BORROWED
     /// (copied).
     source: []const u8,
@@ -2687,9 +2632,12 @@ pub const DedicatedWorkerStart = struct {
     /// The implicit port: the end of the Worker's channel that its global
     /// scope receives on. Taken on success.
     inside_end: ?*port_channels.End,
-    /// "Run a worker" step 3, the unsafe worker creation time, in
-    /// milliseconds since the epoch: the global scope's time origin.
-    time_origin_ms: ?f64 = null,
+    /// "Run a worker" step 3, the unsafe worker creation time (hr_time's
+    /// monotonic clock, nanoseconds): the global scope's time origin.
+    time_origin_ns: ?i64 = null,
+    /// A shared worker's constructor key, type and credentials ("run a
+    /// worker" step 10); null for a dedicated worker. Taken on success.
+    shared: ?SharedScope = null,
 };
 
 /// Start a dedicated worker on a thread of its own: a link shared with the
@@ -2699,7 +2647,7 @@ pub const DedicatedWorkerStart = struct {
 /// with `terminate()` and `release()`. On success `start.policy_container`
 /// and `start.inside_end` are taken (null); on failure the caller still
 /// holds them, and nothing runs.
-pub fn startDedicatedWorker(allocator: Allocator, start: *DedicatedWorkerStart) !*WorkerLink {
+pub fn startDedicatedWorker(allocator: Allocator, start: *WorkerStart) !*WorkerLink {
     // The owner's loop's inbox: where the worker's messages, errors and end
     // go. A realm with none (no event loop made it) runs no worker.
     const owner_sink = start.owner_realm.task_sink orelse return error.NoEventLoop;
@@ -2723,12 +2671,15 @@ pub fn startDedicatedWorker(allocator: Allocator, start: *DedicatedWorkerStart) 
     return link;
 }
 
-/// The owner's side of a worker's end: a task of the Worker's loop once the
-/// worker's thread is at its last instruction (WorkerThread.Owner).
+/// The owner's side of a worker's end: a task of the owner's loop once the
+/// worker's thread is at its last instruction (WorkerThread.Owner). A shared
+/// worker's owner's loop is its creator's - the Browser's window loop - and
+/// its end also leaves the shared worker manager.
 const OwnerEnd = struct {
     allocator: Allocator,
     owner: OwnerWorker,
     registry: ?*WorkerRegistry,
+    manager: ?*SharedWorkerManager = null,
 
     fn asOwner(self: *OwnerEnd) WorkerThread.Owner {
         return .{ .data = self, .ended = ended, .drop = dropped };
@@ -2741,6 +2692,7 @@ const OwnerEnd = struct {
         defer self.allocator.destroy(self);
         link.join();
         if (self.registry) |registry| registry.unregister(link);
+        if (self.manager) |manager| manager.remove(link);
         if (self.owner.live()) |worker| self.owner.steps.ended(worker);
     }
 
@@ -2751,14 +2703,16 @@ const OwnerEnd = struct {
     fn dropped(data: ?*anyopaque, link: *WorkerLink) void {
         const self: *OwnerEnd = @ptrCast(@alignCast(data.?));
         defer self.allocator.destroy(self);
+        // Closing or ended: no constructor matches it any more.
+        if (self.manager) |manager| manager.remove(link);
         if (link.hasThread()) return;
         if (self.registry) |registry| registry.unregister(link);
     }
 };
 
-/// The worker host's part of a dedicated worker's thread
-/// (WorkerThread.Host): "run a worker" from step 4 on, the realm's end, and
-/// the host's memory - all on the worker's thread.
+/// The worker host's part of a worker's thread (WorkerThread.Host): "run a
+/// worker" from step 4 on, the realm's end, and the host's memory - all on
+/// the worker's thread.
 const ThreadHost = struct {
     allocator: Allocator,
     start: Start,
@@ -2776,10 +2730,11 @@ const ThreadHost = struct {
         browser_scope: ?*runtime.BrowserScope,
         owner_worker: OwnerWorker,
         inside_end: ?*port_channels.End,
-        time_origin_ms: ?f64,
+        time_origin_ns: ?i64,
+        shared: ?SharedScope,
     };
 
-    fn create(allocator: Allocator, start: *const DedicatedWorkerStart) !*ThreadHost {
+    fn create(allocator: Allocator, start: *const WorkerStart) !*ThreadHost {
         const source = try allocator.dupe(u8, start.source);
         errdefer allocator.free(source);
         const script_url = try allocator.dupe(u8, start.script_url);
@@ -2799,7 +2754,8 @@ const ThreadHost = struct {
                 .browser_scope = start.owner_realm.browser_scope,
                 .owner_worker = start.owner_worker,
                 .inside_end = start.inside_end,
-                .time_origin_ms = start.time_origin_ms,
+                .time_origin_ns = start.time_origin_ns,
+                .shared = start.shared,
             },
         };
         return self;
@@ -2810,6 +2766,7 @@ const ThreadHost = struct {
     fn destroyUnstarted(self: *ThreadHost) void {
         self.start.policy_container = null;
         self.start.inside_end = null;
+        self.start.shared = null;
         self.freeStart();
         self.allocator.destroy(self);
     }
@@ -2822,6 +2779,8 @@ const ThreadHost = struct {
         self.start.policy_container = null;
         if (self.start.inside_end) |end| end.discard();
         self.start.inside_end = null;
+        if (self.start.shared) |*shared| shared.deinit(self.allocator);
+        self.start.shared = null;
     }
 
     fn asHost(self: *ThreadHost) WorkerThread.Host {
@@ -2844,14 +2803,16 @@ const ThreadHost = struct {
         if (!runs) return false;
 
         // 5-9. The realm, whose global object is a new
-        // DedicatedWorkerGlobalScope, and the host's built-ins on it.
+        // DedicatedWorkerGlobalScope - or SharedWorkerGlobalScope, when
+        // `is shared` - and the host's built-ins on it.
         worker_host.setupWorkerGlobalScope() catch {
             self.reportStartFailure(thread.link);
             return false;
         };
-        // onComplete 3-5: the inside port, its message event target the
-        // global scope, entangled with the Worker's outside port (they are
-        // one channel already) - bound to this thread's loop.
+        // onComplete 3-5 for a dedicated worker: the inside port, its message
+        // event target the global scope, entangled with the Worker's outside
+        // port (they are one channel already) - bound to this thread's loop.
+        // (A shared worker's inside ports arrive with each `connect`.)
         worker_host.bindInsidePort();
 
         // onComplete 10: run the script.
@@ -2868,16 +2829,22 @@ const ThreadHost = struct {
                 }
             },
             // onComplete 1: a module graph that is null, or has an error to
-            // rethrow, fires `error` at the Worker, and the worker's settings
-            // are discarded.
-            .module => if (!worker_host.executeModuleScript(self.start.script_url, self.start.source)) {
-                self.reportStartFailure(thread.link);
-                return false;
+            // rethrow, fires `error` at the worker object, and the worker's
+            // settings are discarded. A shared worker's graph is keyed by its
+            // constructor URL.
+            .module => {
+                const url = if (worker_host.shared) |shared| shared.constructor_url else self.start.script_url;
+                if (!worker_host.executeModuleScript(url, self.start.source)) {
+                    self.reportStartFailure(thread.link);
+                    return false;
+                }
             },
         }
         // The source is not needed again.
         self.allocator.free(self.start.source);
         self.start.source = &.{};
+        // The worker started: its SharedWorker's pending activity can end.
+        if (worker_host.shared != null) self.reportStarted(thread.link);
 
         // onComplete 12: enable the implicit port's message queue - what the
         // owner posted before now is delivered from the next turn on. (Step
@@ -2887,9 +2854,18 @@ const ThreadHost = struct {
         return true;
     }
 
-    /// Post "run a worker" onComplete 1.1 to the Worker's loop.
+    /// Post "run a worker" onComplete 1.1 to the worker object's loop.
     fn reportStartFailure(self: *ThreadHost, link: *WorkerLink) void {
         const report = ErrorReport.startFailed(self.allocator, self.start.owner_worker) catch return;
+        // A closed sink - the owner's loop has ended - drops it.
+        _ = link.owner_sink.post(.{ .run = ErrorReport.run, .drop = ErrorReport.drop, .data = report });
+    }
+
+    /// Post the worker's start - its script has run - to the worker object's
+    /// loop.
+    fn reportStarted(self: *ThreadHost, link: *WorkerLink) void {
+        const report = ErrorReport.started(self.allocator, self.start.owner_worker) catch return;
+        // A closed sink - the owner's loop has ended - drops it.
         _ = link.owner_sink.post(.{ .run = ErrorReport.run, .drop = ErrorReport.drop, .data = report });
     }
 

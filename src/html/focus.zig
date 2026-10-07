@@ -168,10 +168,11 @@ fn isFocusableByDefault(element: *Instance) bool {
     return isSummaryForParentDetails(element) or isNavigableContainer(element) or isEditingHost(element);
 }
 
-/// HTML "actually disabled" (4.10.19.5 and friends).
+/// HTML "actually disabled" (4.15), including custom form controls (4.10.19.5).
 fn isActuallyDisabled(element: *Instance) bool {
     if (form_associated.isButton(element) or form_associated.isInput(element) or
-        form_associated.isSelect(element) or form_associated.isTextArea(element) or named(element, "fieldset"))
+        form_associated.isSelect(element) or form_associated.isTextArea(element) or named(element, "fieldset") or
+        form_associated.isFormAssociatedCustom(element))
     {
         return form_associated.isDisabled(element);
     }

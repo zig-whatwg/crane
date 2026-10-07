@@ -297,7 +297,14 @@ around one would hand-patch shared files."""
 done_when = "Every item below is in the generator or the binding layer, not worked around in impls."
 progress = [
   "5dbae790e - WebAssembly left to V8 (namespaceIsEngineProvided)",
+  "078a1c73b0 - custom-element reactions owned by AgentHost, creation and upgrade hooks shared by DOM and parser paths, and constructor return holds across callbacks; scoped registries, form association and cross-realm constructor fallback remain follow-ups",
+  "e11f10cd02 - Document-owned scoped registries across DOM creation, cloning, adoption and fragment parsing; form-associated ElementInternals ownership, values, validity and callbacks; ordered custom states and selector matching. Set iterator binding and optional UA restoration triggers remain follow-ups",
+  "5b7aa161d9, 5bf24ee0ea - preserve absent versus null customElementRegistry in ShadowRootInit and publish inherited indexed getter/length facades; other nullable dictionary members and HTMLOptionsCollection's missing setter remain follow-ups",
 ]
+
+  [[infra.items]]
+  name = "[CEReactions] scopes and backup queues owned by the agent, with DOM and parser creation/upgrade hooks"
+  status = "done"
 
   [[infra.items]]
   name = "Operation overload resolution"
@@ -349,7 +356,7 @@ progress = [
 
   [[infra.items]]
   name = "A nullable dictionary member tells absent from null"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "An interface-level way to fire a trusted event"
@@ -400,6 +407,7 @@ progress = [
   "9ec30ea8f - the worker global is a DedicatedWorkerGlobalScope; a terminated worker removes its context and disposes its isolate; an idle worker pumps V8's tasks (workers lane)",
   "0b991e733 (merged a9241f56a) - SharedWorker, nested workers with their own timers, worker promise rejection tracking, WorkerLocation from the URL record, MessageEvent source; a timer-map leak fixed (networking lane)",
   "47bd25cb11 - requestIdleCallback on the loop that runs (src/browser/event_loop.zig idle periods); a task whose document is not fully active is dropped (Task.document, dom.document_activity) (eventloop lane)",
+  "ccdcd3dd8f - every worker realm has its own event loop (WorkerRealmOptions.event_loop required); the timer fallbacks for loop-less worker realms removed (FileReader, fetch, XHR, webcrypto, CSP violations, performance timeline, rejected promises, IndexedDB) (workers lane, batch 2)",
 ]
 
   [[infra.items]]
@@ -428,7 +436,7 @@ progress = [
 
   [[infra.items]]
   name = "Worker realms get a host task queue that drops queued tasks at shutdown (no timer-fallback leak window)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "A real rendering opportunity instead of a requestAnimationFrame timer"
@@ -459,6 +467,9 @@ progress = [
   "e263d652b8 (merged c9182f97f6) - workers 1A: every process-wide structure a worker thread reaches is locked, atomic or per isolate; an agent's end frees only its own isolate's entries; two-thread stress tests (workers lane)",
   "7b497b9d03 - workers 1B-i: TaskSink (cross-thread task queue), owned timers, minimal BrowserScope + WorkerRegistry (instances B1 first piece), cross-thread MessagePort channels, worker link/event loop/thread (unused by Worker until 1B-ii) (workers lane)",
   "016aa604a4 (merged 24e8583960) - workers 1B-ii part 1: every dedicated worker on a thread of its own (agent made on the thread, implicit ports a cross-thread channel, terminate() aborts the running script, a Worker's realm ending terminates its worker); a worker's blob: script through fetch's process-wide resolver; loops free the microtasks their agent dropped; shared workers stay on their creator's thread until batch 2; BroadcastChannel's registry on the BrowserScope, delivered across threads; a worker script that does not parse fires a plain error (engine ErrorInfo.parse_error) (workers lane)",
+  "d6d42ba344 (merged 67e85fac60) - Web Locks: one lock manager per Browser and storage key under a mutex, shared by windows and worker threads, grants delivered as tasks to each environment; an environment's end releases its locks (weblocks lane)",
+  "5b56cfb965 (merged 7e9bb59fb0) - workers batch 2: every shared worker on its own thread, the shared worker manager per Browser with an owner set (orphans terminate; extendedLifetime), every no-event-loop fallback removed, worker performance, worker code-generation hooks (workers3 lane)",
+  "7d800953da..d2e1efe58a - workers batch 2: every shared worker on a thread of its own; HTML's shared worker manager a BrowserScope supplement with each worker's owner set (an orphan is closed; extendedLifetime keeps it for the timeout); worker realms all have their own loop; a worker's own Performance; worker agents' code generation hooks (workers lane)",
 ]
 
   [[infra.items]]

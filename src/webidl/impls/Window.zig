@@ -178,9 +178,6 @@ pub const InternalState = struct {
         value: *runtime.Instance,
         edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "trustedTypes" } },
     } = null,
-    /// LocalDOMWindow::Trace visits custom_elements_.
-    custom_elements: ?*runtime.Instance = null,
-
     /// The six BarProp objects, each made on first read and kept for the
     /// Window's life.
     locationbar: ?*runtime.Instance = null,
@@ -452,7 +449,7 @@ pub fn installHooks() void {
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
     // A frame's host binds the Window to the global its realm made here.
-    @import("dom").window_globals.install(.{ .bind = &setBoundV8Global });
+    @import("dom").window_globals.install(.{ .bind = &setBoundV8Global, .set_document = &setDocument });
     // A hyperlink's or form's target that names no frame: the popups this
     // window keeps, or a new one (the rules for choosing a navigable).
     @import("dom").auxiliary_navigables.installTopLevelChooser(.{ .choose = &chooseTopLevelTraversable });
@@ -905,6 +902,7 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
         internal.idle.ended = false;
     };
     internal.document = document;
+    _ = @import("dom").custom_elements.ensureGlobalRegistry(document) catch {};
     // A Window's associated Document is its browsing context's active
     // document while the Window is that context's active window.
     if (internal.browsing_context.getActiveWindow() == @as(?*anyopaque, @ptrCast(instance))) {
@@ -1143,36 +1141,10 @@ pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for customElements
 /// Per spec: Returns the CustomElementRegistry for this window.
-/// Lazily creates the registry on first access.
-///
-/// Until this landed, `internal.custom_elements` was declared and never
-/// assigned, so every `window.customElements` access threw NotImplemented and
-/// script saw `undefined`. The whole custom elements subsystem - a 625-line
-/// registry, a reaction stack, an upgrade path - was unreachable behind it,
-/// and WPT reported `Cannot read properties of undefined (reading 'define')`.
-///
-/// Created with `is_scoped` left false, which is what the window's registry
-/// is. `new CustomElementRegistry()` sets that flag instead; the two must not
-/// share a construction path.
+/// HTML 4.13.4: return the associated Document's global registry.
 pub fn get_customElements(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    if (internal.custom_elements) |registry| {
-        return registry;
-    }
-
-    const CustomElementRegistryImpl = @import("CustomElementRegistry.zig");
-    const CustomElementRegistry = interfaces.CustomElementRegistry;
-    const registry = try CustomElementRegistryImpl.init(
-        internal.allocator,
-        CustomElementRegistryImpl.State,
-        &CustomElementRegistry.vtable,
-        instance.ctx,
-    );
-
-    internal.custom_elements = registry;
-    engine.traceChild(instance, registry, .{ .name = "customElements" });
-    return registry;
+    return @import("dom").custom_elements.ensureGlobalRegistry(internal.document orelse return error.InvalidStateError);
 }
 
 // ============================================================================

@@ -124,4 +124,8 @@ pub const CSSFunctionDescriptors = struct {
     pub const legacy_null_to_empty = .{
         .{ "set_result", 0b1 },
     };
+
+    pub const call_item = CSSStyleDeclaration.call_item;
+
+    pub const get_length = CSSStyleDeclaration.get_length;
 };

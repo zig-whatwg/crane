@@ -1013,4 +1013,8 @@ pub const CSSPositionTryDescriptors = struct {
     pub fn set_position_area(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPositionTryDescriptorsImpl.set_position_area(instance, value);
     }
+
+    pub const call_item = CSSStyleDeclaration.call_item;
+
+    pub const get_length = CSSStyleDeclaration.get_length;
 };

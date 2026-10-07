@@ -1,0 +1,12 @@
+# Architecture: A threadlocal container outlives its thread unless its capacity goes with its last entry
+
+**Date**: 2026-10-05
+**Lesson**: A per-thread list (`threadlocal var list: ArrayListUnmanaged(T)`) whose entries are all removed still holds its capacity, and when the thread exits its TLS goes and the block stays allocated forever. One thread, one block, invisible while the process has a single long-lived thread; one block per worker thread once every dedicated worker has a thread of its own.
+
+**Why**: `swapRemove` and `HashMap.remove` keep the backing allocation for the next insert - right for a list that lives as long as the process, wrong for one whose thread ends. Nothing frees threadlocal storage's heap blocks at thread exit, and the five containers in question used two allocators that hide the loss differently: `std.heap.page_allocator` (mmap, never seen by `leaks --atExit`, which scans malloc zones) and `std.heap.c_allocator` (malloc, seen as a ROOT LEAK only once a worker thread has ended).
+
+**What Happened**: Workers 1B-ii part 2 (item 8). `leaks --atExit` over 300 worker WPT files on main showed 137 ROOT LEAKs of 320 B, each `protocol_modules.register <- newRecord <- parseModule` under `WorkerThread.main`: the module records map's storage, one per module-worker thread. The page_allocator lists - worker_realm's `records`, wrapper_cache's `live_caches`, callback_registry's `live`, MessagePort's `live_ports` - showed nothing there. tests/v8/worker_thread_state_test.zig counts them instead: Zig's page_allocator maps anonymous memory with no VM tag (V8 tags its mappings 255, malloc its zones), so the untagged anonymous bytes newly mapped while N worker threads come and go (`mach_vm_region`, EXTENDED_INFO, `user_tag == 0`) are the leak. 32 threads: 2 MiB before (four 16 KiB pages per thread), 0 after, each container's fix worth one page per thread.
+
+**Fix**: Each container frees its capacity when its last entry leaves (`if (list.items.len == 0) list.clearAndFree(allocator)`; for a map, `count() == 0`), the rule part 1 had applied to worker_host's `hosts`/`live_contexts`. No thread-exit hook: a container that empties when its owners go needs none, and its thread's ends (realm, agent) already remove every entry.
+
+**Takeaway**: **Every `threadlocal` container must be empty AND unallocated when its thread exits: free its capacity with its last entry. Prove page_allocator leaks by counting untagged anonymous VM across many thread lifetimes - `leaks` cannot see mmap.**

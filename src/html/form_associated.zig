@@ -77,6 +77,16 @@ pub fn hasAttribute(element: *Instance, comptime name: []const u8) bool {
     return interfaces.Element.call_hasAttribute(element, runtime.DOMString.initInterned(name)) catch false;
 }
 
+/// HTML 2.6.4.2: an id or name match contributes the element only once.
+pub fn hasControlName(element: *Instance, name: []const u8) bool {
+    for ([_][]const u8{ "id", "name" }) |attribute| {
+        var value = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned(attribute)) catch null) orelse continue;
+        defer value.deinit(element.ctx.allocator);
+        if (std.mem.eql(u8, value.asSlice(), name)) return true;
+    }
+    return false;
+}
+
 /// The attribute's value, owned by `allocator`, or null when the element has
 /// no such attribute. Presence is asked separately: Element.getAttribute
 /// answers "" for a missing attribute.
@@ -274,16 +284,74 @@ pub fn isButtonControl(element: *Instance) bool {
 
 /// "Labelable elements": button, input (not in the Hidden state), meter,
 /// output, progress, select, textarea, and form-associated custom elements.
-/// (Form-associated custom elements are not implemented.)
 pub fn isLabelable(element: *Instance) bool {
     if (isInput(element)) {
         var buffer: [16]u8 = undefined;
         return !std.mem.eql(u8, inputType(element, &buffer), "hidden");
     }
-    return isButton(element) or isSelect(element) or isTextArea(element) or
+    return isFormAssociatedCustom(element) or isButton(element) or isSelect(element) or isTextArea(element) or
         element.stateAs(interfaces.HTMLMeterElement.State) != null or
         element.stateAs(interfaces.HTMLOutputElement.State) != null or
         element.stateAs(interfaces.HTMLProgressElement.State) != null;
+}
+
+pub fn isFormAssociatedCustom(element: *Instance) bool {
+    return @import("dom").custom_elements.isFormAssociated(element);
+}
+
+/// HTML 4.15 / 4.16.3: only a form-associated custom element has this
+/// enabled/disabled state. Other element categories keep their own rules.
+pub fn customDisabledState(element: *Instance) ?bool {
+    if (!isFormAssociatedCustom(element)) return null;
+    return isDisabled(element);
+}
+
+/// HTML 4.16.3 :valid/:invalid read constraints without firing invalid events.
+pub fn validationState(element: *Instance) @import("dom").custom_elements.ValidationState {
+    const fieldset = element.stateAs(interfaces.HTMLFieldSetElement.State) != null;
+    const form = isForm(element);
+    if (!fieldset and !form) return controlValidationState(element);
+    const root = if (form) rootOf(element) else element;
+    var next: ?*Instance = if (form) root else interfaces.Node.get_firstChild(root) catch null;
+    while (next) |control| : (next = nextInTree(control, root, false)) {
+        if (!isElement(control)) continue;
+        if (form and formOwner(control) != element) continue;
+        if (controlValidationState(control) == .invalid) return .invalid;
+    }
+    return .valid;
+}
+
+fn controlValidationState(element: *Instance) @import("dom").custom_elements.ValidationState {
+    const ce = @import("dom").custom_elements;
+    if (isFormAssociatedCustom(element)) {
+        if (isDisabled(element) or hasAttribute(element, "readonly")) return .inapplicable;
+        var ancestor = parentOf(element);
+        while (ancestor) |node| : (ancestor = parentOf(node)) {
+            if (isElementNamed(node, "datalist")) return .inapplicable;
+        }
+        const internals = ce.attachedInternals(element) orelse return .valid;
+        const flags = ce.validityFlags(internals);
+        inline for (std.meta.fields(ce.ValidityFlags)) |field| {
+            if (@field(flags, field.name) orelse false) return .invalid;
+        }
+        return .valid;
+    }
+    // Native controls' constraints remain with their owners. Unsupported
+    // validity APIs are not fabricated here to make custom controls work.
+    inline for (.{ interfaces.HTMLInputElement, interfaces.HTMLButtonElement, interfaces.HTMLSelectElement, interfaces.HTMLTextAreaElement, interfaces.HTMLObjectElement, interfaces.HTMLOutputElement }) |Interface| {
+        if (element.stateAs(Interface.State) != null) {
+            if (!(Interface.get_willValidate(element) catch false)) return .inapplicable;
+            const validity = Interface.get_validity(element) catch return .inapplicable;
+            return if (interfaces.ValidityState.get_valid(validity) catch return .inapplicable) .valid else .invalid;
+        }
+    }
+    return .inapplicable;
+}
+
+pub fn isListed(element: *Instance) bool {
+    return isFormAssociatedCustom(element) or isButton(element) or isInput(element) or isSelect(element) or isTextArea(element) or
+        element.stateAs(interfaces.HTMLFieldSetElement.State) != null or element.stateAs(interfaces.HTMLOutputElement.State) != null or
+        element.stateAs(interfaces.HTMLObjectElement.State) != null;
 }
 
 /// A label element's labeled control: with a for attribute, the first

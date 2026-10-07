@@ -35,6 +35,7 @@ src/dom/crypto_keys.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/cssom.zig rule_lists 1 TL I/engine decl:aee1b21ecd071830
 src/dom/cssom.zig rule_objects 1 TL I/engine decl:2ff910def65b901b
 src/dom/cssom.zig sheets 1 TL I/engine decl:d5da0433784f149e
+src/dom/custom_elements.zig implementation 1 G P-res decl:89dd82c5fbd26c9f
 src/dom/document_activity.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_browsing_context.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_fetches.zig cancelers 1 G H decl:b261b480b9e2e550
@@ -159,8 +160,6 @@ src/fetch/network/curl_backend.zig share_mutexes 1 G I/profile decl:3da8106419fc
 src/fetch/network/curl_backend.zig unlock_call_count 1 G D decl:3796f88280404836
 src/fetch/network/scheduler.zig thread_scheduler 1 TL I/profile decl:0f3c8da331a0bfbd
 src/file/root.zig global_blob_store 1 G I/profile decl:00bd87a143de0674
-src/html/custom_elements.zig element_reaction_queues 1 TL R decl:c14869b1afcc24a6
-src/html/custom_elements.zig reactions_stack 1 TL A decl:c303c403a1a67bea
 src/html/editing/executor.zig document_states 1 G R decl:3e3e1a8064593da4
 src/html/editing/executor.zig getOrCreateEditorState.new_state.Static.editor_state 1 G R decl:8eaedec687f8b9fc
 src/html/embedder_scripts.zig registered 1 TL I/engine decl:985bda748b35fe88
@@ -184,14 +183,14 @@ src/html/script_execution.zig parser_script_loader 1 TL C decl:da637648594fc612
 src/html/script_execution.zig script_fetches 1 TL R decl:b358738a91fcb3d0
 src/html/style_sheet_loading.zig loads 1 TL R decl:30a96afe84f33aff
 src/html/style_sheet_loading.zig next_id 1 TL I/engine decl:e78eed1e4659a6b5
+src/html/web_locks/lock_managers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
+src/html/web_locks/lock_objects.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/html/window/browsing_context.zig live 1 TL I/engine decl:4eb3c63ce8391a0c
 src/html/window/browsing_context.zig next_context_id 1 G I/engine decl:e78eed1e4659a6b5
 src/html/window/browsing_context.zig next_group_id 1 G I/engine decl:e78eed1e4659a6b5
 src/html/window/browsing_context.zig retired 1 G I/engine decl:4eb3c63ce8391a0c
-src/html/worker_host.zig armed_shared_connects 1 TL I/profile decl:7179d01264e2a27b
 src/html/worker_host.zig hosts 1 TL I/engine decl:edd1a75261d8d8dd
 src/html/worker_host.zig live_contexts 1 TL I/engine decl:edd1a75261d8d8dd
-src/html/worker_host.zig shared_scopes 1 TL I/profile decl:edd1a75261d8d8dd
 src/intl/v8_bridge/c_api.zig global_allocator 1 G P-res decl:0b9204adbe527b7e
 src/intl/v8_bridge/c_api.zig last_error 1 TL C decl:3f5aa6740061fdcb
 src/permissions/status.zig PermissionStatus.next_id 1 G P-res decl:1dfcee87d8da8735
@@ -207,6 +206,7 @@ src/platform/timer_backend.zig custom_backend 1 TL H decl:3d002d161da743ae
 src/platform/timer_backend.zig default_backend_allocator 1 TL A decl:72369f58d4c42d35
 src/platform/timer_backend.zig default_backend_instance 1 TL A decl:0bf910b86e57773a
 src/runtime/arena_allocator.zig ArenaAllocator.global 1 G I/engine decl:a580f2e51b09cfeb
+src/runtime/ce_reactions.zig hooks 1 G P-res decl:af7149130290d354
 src/runtime/cleanup_coordinator.zig active_coordinator 1 TL C decl:30416084c34bdb90
 src/runtime/engines/v8/callback_registry.zig live 1 TL I/engine decl:cb121b88af7eecfc
 src/runtime/engines/v8/context_manager.zig accessor_stack 1 TL A decl:d586ff12546cc78f

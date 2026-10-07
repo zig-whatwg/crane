@@ -54,13 +54,7 @@ var undefined_sentinel: u8 = 0;
 
 /// Custom element state per HTML spec
 /// Spec: https://html.spec.whatwg.org/#custom-element-state
-pub const CustomElementState = enum {
-    undefined,
-    failed,
-    uncustomized,
-    precustomized,
-    custom,
-};
+pub const CustomElementState = dom.custom_elements.State;
 
 // ==========================================================================
 // Inline Attribute Storage Optimization
@@ -140,6 +134,9 @@ pub const InternalState = struct {
 
     /// Custom element state per HTML spec
     custom_element_state: CustomElementState = .undefined,
+    custom_element_definition: ?*dom.custom_elements.Definition = null,
+    custom_element_ever_enqueued: bool = false,
+    custom_element_registry: dom.custom_elements.RegistryAssociation = .{},
 
     /// "is" value for customized built-in elements
     is_value: ?runtime.DOMString = null,
@@ -197,6 +194,7 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        if (self.custom_element_definition) |definition| definition.deinit();
         if (self.namespace_uri) |*ns| {
             ns.deinit(self.allocator);
         }
@@ -549,11 +547,70 @@ pub fn installHooks() void {
     });
     // The parsers' "create an element" sets names through `dom.node_creation`.
     dom.node_creation.installElement(.{ .set_names = &setNamesHook, .is_value = &isValueHook });
+    dom.custom_elements.installElement(.{
+        .get = &customElementData,
+        .initialize = &initializeCustomElement,
+        .set_state = &setCustomElementState,
+        .set_definition = &setCustomElementDefinition,
+        .shadow_root_of = &shadowRootOf,
+        .mark_enqueued = &markCustomElementEnqueued,
+        .set_registry = &setCustomElementRegistry,
+        .attach_shadow = &attachShadow,
+    });
 }
 
 fn isValueHook(instance: *runtime.Instance) ?[]const u8 {
     const internal = getInternal(instance) orelse return null;
     return if (internal.is_value) |value| value.asSlice() else null;
+}
+
+fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
+    return (getInternal(instance) orelse return null).shadow_root;
+}
+
+fn markCustomElementEnqueued(instance: *runtime.Instance) void {
+    (getInternal(instance) orelse return).custom_element_ever_enqueued = true;
+}
+
+fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (registry) |value| if (try interfaces.Node.get_ownerDocument(instance)) |document| {
+        try dom.custom_elements.associateDocument(value, document);
+    };
+    internal.custom_element_registry.set(instance, registry);
+}
+
+fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementData {
+    const internal = getInternal(instance) orelse return null;
+    return .{
+        .state = internal.custom_element_state,
+        .definition = internal.custom_element_definition,
+        .is_value = if (internal.is_value) |value| value.asSlice() else null,
+    };
+}
+
+fn initializeCustomElement(instance: *runtime.Instance, prefix: ?[]const u8, is_value: ?[]const u8, state: CustomElementState) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    var owned_is = if (is_value) |value| try runtime.DOMString.initDupe(internal.allocator, value) else null;
+    errdefer if (owned_is) |*value| value.deinit(internal.allocator);
+    const owned_prefix = if (prefix) |value| try runtime.DOMString.initDupe(internal.allocator, value) else null;
+    if (internal.prefix) |*value| value.deinit(internal.allocator);
+    internal.prefix = owned_prefix;
+    if (internal.is_value) |*value| value.deinit(internal.allocator);
+    internal.is_value = owned_is;
+    internal.custom_element_state = state;
+}
+
+fn setCustomElementState(instance: *runtime.Instance, state: CustomElementState) void {
+    const internal = getInternal(instance) orelse return;
+    internal.custom_element_state = state;
+}
+
+fn setCustomElementDefinition(instance: *runtime.Instance, definition: ?*dom.custom_elements.Definition) void {
+    const internal = getInternal(instance) orelse return;
+    const old = internal.custom_element_definition;
+    internal.custom_element_definition = if (definition) |value| value.retain() else null;
+    if (old) |value| value.deinit();
 }
 
 /// Initialize instance (creates the instance)
@@ -594,6 +651,8 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
+        if (internal.custom_element_ever_enqueued) dom.custom_elements.cancelElement(instance);
+        internal.custom_element_registry.release(instance);
         // The host lets its shadow root go: the shadow root forgets its host
         // (dom.shadow_hosts); the host's edge to it goes with the host's
         // wrapper, so the wrapper cache frees it - and its subtree - once
@@ -890,12 +949,8 @@ pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// HTML §4.13.3 - Returns the element's associated custom element registry
 /// Spec: https://html.spec.whatwg.org/#dom-element-customelementregistry
 ///
-/// Note: Returns null until Custom Element Registry is implemented.
-/// This is acceptable as custom elements are an optional feature.
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    // Custom Element Registry not implemented - return null
-    return null;
+    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.value;
 }
 
 /// Getter for onfullscreenchange
@@ -1268,13 +1323,18 @@ fn handleAttributeChanges(
     // Step 2: "If element is custom, then enqueue a custom element callback
     // reaction with element, callback name "attributeChangedCallback", and
     // « attribute's local name, oldValue, newValue, attribute's namespace »."
-    // TODO(custom-elements): nothing moves an element's custom element state
-    // past "undefined" yet, so no element is custom and there is no
-    // definition to consult. Enqueue here once upgrades set the state.
+    if (getInternal(instance)) |internal| {
+        if (internal.custom_element_state == .custom) dom.custom_elements.enqueueCallback(instance, .attribute_changed, .{
+            .attribute_changed = .{ .local_name = local_name, .old_value = old_value, .new_value = new_value, .namespace = namespace },
+        });
+    }
 
     // Step 3: "Run the attribute change steps with element, attribute's local
     // name, oldValue, newValue, and attribute's namespace."
     attributeChangeSteps(instance, local_name, old_value, new_value, namespace);
+    if (namespace == null and (std.mem.eql(u8, local_name, "form") or std.mem.eql(u8, local_name, "id") or std.mem.eql(u8, local_name, "disabled"))) {
+        dom.custom_elements.formTreeChanged(instance);
+    }
 }
 
 /// The attribute change steps this engine defines, in one place.
@@ -1855,8 +1915,6 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     defer internal.allocator.free(compliant);
     const html_string: []const u8 = compliant;
 
-    // Import HTMLParser for fragment parsing
-    const HTMLParser = @import("html").dom_parser;
     const target = try dom.template_contents.insertionTarget(instance);
     const element_base = dom.instance_bridge.getNodeBase(target) orelse return error.InvalidStateError;
 
@@ -1868,12 +1926,7 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
 
     // Step 1: "Let fragment be the result of invoking the fragment parsing
     // algorithm steps with context and compliantString."
-    const fragment = HTMLParser.parseFragment(
-        internal.allocator,
-        instance.ctx,
-        html_string,
-        instance,
-    ) catch |err| switch (err) {
+    const fragment = @import("html").custom_elements.parseFragment(instance, html_string) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.NotSupportedError,
     };
@@ -3133,11 +3186,20 @@ pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!runtime.JSVa
 /// DOM §4.9 - Attaches a shadow root to this element
 /// Spec: https://dom.spec.whatwg.org/#dom-element-attachshadow
 ///
-/// attachShadow steps 1-3 choose the shadow root's custom element registry
-/// (init["customElementRegistry"]); scoped registries are not implemented, so
-/// they are not run and the shadow root has none (TODO: scoped custom element
-/// registries). Step 4 runs "attach a shadow root" below; step 5 returns it.
+/// DOM attachShadow steps 1–5.
 pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootInit) anyerror!*runtime.Instance {
+    const document = (try interfaces.Node.get_ownerDocument(instance)) orelse return error.InvalidStateError;
+    const document_registry = try interfaces.Document.get_customElementRegistry(document);
+    // Steps 1–2: an omitted member uses the document's registry; null stays null.
+    const registry = init_data.customElementRegistry.getOrDefault(document_registry);
+    if (registry) |value| {
+        if (!dom.custom_elements.isScoped(value) and value != document_registry) return error.NotSupportedError;
+    }
+    return attachShadow(instance, init_data, registry);
+}
+
+/// DOM attach-a-shadow-root, also used by cloning with an explicit registry.
+fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootInit, registry: ?*runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // "attach a shadow root", given element, mode, clonable, serializable,
@@ -3158,9 +3220,9 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
     // Step 3: "If element's local name is a valid custom element name, or
     // element's is value is non-null": if its definition's disable shadow is
     // true, throw a NotSupportedError DOMException.
-    // TODO: look the definition up (it lives behind CustomElementRegistry's
-    // interface; there is no hook for "look up a custom element definition"
-    // yet), so a definition with disabledFeatures ["shadow"] is not refused.
+    if (dom.custom_elements.lookup(internal.custom_element_registry.value, namespace, local_name, if (internal.is_value) |value| value.asSlice() else null)) |definition| {
+        if (definition.disable_shadow) return error.NotSupportedError;
+    }
 
     // Step 4: "If element is a shadow host": its shadow root is declarative
     // only when the parser attached it, which Crane's parser does not do yet
@@ -3170,25 +3232,8 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
     // declarative shadow roots.)
     if (internal.shadow_root != null) return error.NotSupportedError;
 
-    const mode = init_data.mode;
-    const slot_assignment = init_data.slotAssignment orelse enums.SlotAssignmentMode._named_;
-
-    // Steps 5, 6 and 8-11: a new shadow root whose host is element, with
-    // mode, delegatesFocus, slotAssignment, declarative false, clonable and
-    // serializable. (Step 7, "available to element internals" for a
-    // precustomized or custom element, and step 12, its custom element
-    // registry: TODO, not set yet.)
-    const ShadowRootImpl = @import("ShadowRoot.zig");
-    const shadow_root = ShadowRootImpl.create(
-        internal.allocator,
-        instance.ctx,
-        instance, // host element
-        mode,
-        init_data.delegatesFocus orelse false,
-        slot_assignment,
-        init_data.clonable orelse false,
-        init_data.serializable orelse false,
-    ) catch return error.OutOfMemory;
+    // Steps 5–14: create and initialize through the shadow root's owner.
+    const shadow_root = try dom.custom_elements.createShadow(instance, init_data, registry);
 
     // Step 13: "Set element's shadow root to shadow." The element keeps it
     // for its whole life - nothing else does - by an edge from its wrapper,

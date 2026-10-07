@@ -148,7 +148,7 @@ pub fn parseHTML(
     document_internals.setMode(document, parser_script_execution.documentMode(tree_builder.quirks_mode)) catch {};
 
     // Step 6: Convert TreeNode tree to DOM nodes
-    try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document);
+    try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document, .{});
 
     return document;
 }
@@ -318,8 +318,23 @@ pub fn parseFragment(
     allocator: Allocator,
     ctx: runtime.Context,
     html: []const u8,
-    context_element: ?*runtime.Instance,
+    target: ?*runtime.Instance,
 ) ParseError!*runtime.Instance {
+    // Fragment steps 2 and 13: a shadow root supplies the registry, while
+    // its host supplies tokenizer context and the ancestor form pointer.
+    const is_shadow = if (target) |value| value.stateAs(interfaces.ShadowRoot.State) != null else false;
+    const context_element = if (is_shadow)
+        interfaces.ShadowRoot.get_host(target.?) catch return error.InvalidStateError
+    else
+        target;
+    const registry: dom.custom_elements.RegistrySelection = if (target) |value|
+        .{ .explicit = if (is_shadow)
+            interfaces.ShadowRoot.get_customElementRegistry(value) catch return error.InvalidStateError
+        else
+            interfaces.Element.get_customElementRegistry(value) catch return error.InvalidStateError }
+    else
+        .default;
+    const conversion = Conversion{ .fragment = true, .registry = registry };
     // The context element's local name and namespace. Its HTML-specific
     // steps below - the tokenizer state, the insertion mode - are for an
     // element in the HTML namespace; a foreign context (innerHTML on an svg
@@ -467,18 +482,23 @@ pub fn parseFragment(
     // Per spec, we return children of root, not the root itself
     var tree_child = root_element.first_child;
     while (tree_child) |tc| {
-        const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tc, owner_doc);
+        const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tc, owner_doc, conversion);
         // Use interface instead of impl (per Golden Rule #13)
         _ = interfaces.Node.call_appendChild(fragment, dom_node) catch return error.InvalidStateError;
 
         // Recursively convert children
-        try convertChildrenToDom(allocator, ctx, tc, dom_node, owner_doc);
+        try convertChildrenToDom(allocator, ctx, tc, dom_node, owner_doc, conversion);
 
         tree_child = tc.next_sibling;
     }
 
     return fragment;
 }
+
+const Conversion = struct {
+    fragment: bool = false,
+    registry: dom.custom_elements.RegistrySelection = .default,
+};
 
 /// Convert a TreeNode tree to DOM nodes recursively
 fn convertTreeNodeToDom(
@@ -487,10 +507,11 @@ fn convertTreeNodeToDom(
     tree_node: *TreeNode,
     parent_dom: *runtime.Instance,
     owner_document: *runtime.Instance,
+    conversion: Conversion,
 ) ParseError!void {
     var child = tree_node.first_child;
     while (child) |tree_child| {
-        const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, owner_document);
+        const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, owner_document, conversion);
 
         // Append to parent (use interface per Golden Rule #13)
         _ = interfaces.Node.call_appendChild(parent_dom, dom_node) catch return error.InvalidStateError;
@@ -501,7 +522,7 @@ fn convertTreeNodeToDom(
         }
 
         // Recursively convert children
-        try convertChildrenToDom(allocator, ctx, tree_child, dom_node, owner_document);
+        try convertChildrenToDom(allocator, ctx, tree_child, dom_node, owner_document, conversion);
 
         child = tree_child.next_sibling;
     }
@@ -514,17 +535,25 @@ fn convertChildrenToDom(
     tree_node: *TreeNode,
     parent_dom: *runtime.Instance,
     owner_document: ?*runtime.Instance,
+    conversion: Conversion,
 ) ParseError!void {
     const target = dom.template_contents.insertionTarget(parent_dom) catch return error.InvalidStateError;
     const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse owner_document;
+    // Create-for-token step 6 uses the intended parent's registry. A
+    // template's insertion target is its content DocumentFragment, whose
+    // registry lookup is null even when the template itself has one.
+    const child_conversion: Conversion = if (target != parent_dom)
+        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null } }
+    else
+        conversion;
     var child = tree_node.first_child;
     while (child) |tree_child| {
-        const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, document);
+        const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, document, child_conversion);
         _ = interfaces.Node.call_appendChild(target, dom_node) catch {
             dom.node_creation.destroyUninserted(dom_node);
             return error.InvalidStateError;
         };
-        try convertChildrenToDom(allocator, ctx, tree_child, dom_node, document);
+        try convertChildrenToDom(allocator, ctx, tree_child, dom_node, document, child_conversion);
         child = tree_child.next_sibling;
     }
 }
@@ -535,9 +564,10 @@ fn createDomNodeFromTreeNode(
     ctx: runtime.Context,
     tree_node: *TreeNode,
     owner_document: ?*runtime.Instance,
+    conversion: Conversion,
 ) ParseError!*runtime.Instance {
     return switch (tree_node.node_type) {
-        .element => try createElementNode(allocator, ctx, tree_node, owner_document),
+        .element => try createElementNode(allocator, ctx, tree_node, owner_document, conversion),
         .text => try createTextNode(allocator, ctx, tree_node, owner_document),
         .comment => try createCommentNode(allocator, ctx, tree_node, owner_document),
         .doctype => try createDoctypeNode(allocator, ctx, tree_node, owner_document),
@@ -551,6 +581,7 @@ fn createElementNode(
     ctx: runtime.Context,
     tree_node: *TreeNode,
     owner_document: ?*runtime.Instance,
+    conversion: Conversion,
 ) ParseError!*runtime.Instance {
     const local_name = tree_node.local_name orelse return error.InvalidStateError;
 
@@ -558,33 +589,35 @@ fn createElementNode(
     const is_script = std.mem.eql(u8, local_name, "script") and
         (tree_node.namespace == .html or tree_node.namespace == .svg);
 
-    // Create the element with the interface its local name and namespace call
-    // for - HTML "create an element for a token" looks the element interface
-    // up exactly as `createElement` does. This path serves innerHTML,
-    // outerHTML, insertAdjacentHTML and document.write, and it used to make
-    // every non-script element a plain Element: `div.innerHTML = "<iframe>"`
-    // produced an Element answering to `getElementsByTagName("iframe")`, and
-    // the first caller that trusted the tag name and read HTMLIFrameElement
-    // state out of it (the page load's iframe initialisation) faulted on
-    // whatever bytes happened to sit where that state should be.
-    // `parser_script_execution.createHTMLElement` is the factory the document
-    // parser's adapter already uses, so both parsers now agree.
-    const element = if (tree_node.namespace == .html)
+    const namespace = Namespace.fromParserNamespace(tree_node.namespace).toUri();
+    const parser_ce = @import("custom_elements/parser.zig");
+    const is_value = parser_ce.isValue(tree_node);
+    const scope = if (owner_document) |document|
+        parser_ce.Scope.begin(document, local_name, namespace, is_value, conversion.fragment) catch return error.InvalidStateError
+    else
+        null;
+    defer if (scope) |current| current.end();
+    // Create-for-token steps 9–12 keep attributes inside the reaction scope.
+    const element = if (owner_document) |document|
+        @import("custom_elements/creation.zig").create(.{
+            .document = document,
+            .local_name = local_name,
+            .namespace = namespace,
+            .is_value = is_value,
+            .synchronous = scope.?.synchronous,
+            .registry = conversion.registry,
+        }) catch return error.InvalidStateError
+    else if (tree_node.namespace == .html)
         parser_script_execution.createHTMLElement(allocator, ctx, local_name) catch return error.OutOfMemory
     else
         parser_script_execution.createForeignElement(allocator, ctx, tree_node.namespace, local_name) catch return error.OutOfMemory;
-    // Whatever interface it got, an element that never made it into the tree
-    // is released through its own vtable.
     errdefer dom.node_creation.destroyUninserted(element);
-    // Names are parser input: the creation hook does not apply script's
-    // createElementNS validation a second time.
-    const ns = Namespace.fromParserNamespace(tree_node.namespace);
-    dom.node_creation.setElementNames(element, ns.toUri(), local_name) catch return error.InvalidStateError;
+    if (owner_document == null) {
+        dom.node_creation.setElementNames(element, namespace, local_name) catch return error.InvalidStateError;
+        dom.custom_elements.initialize(element, null, is_value, .undefined) catch return error.InvalidStateError;
+    }
 
-    // Set owner document
     if (owner_document) |doc| {
-        node_document.set(element, doc) catch return error.InvalidStateError;
-
         // "in head", a start tag whose tag name is "script", step 4: the
         // element's parser document and force async - and "if the parser was
         // created as part of the HTML fragment parsing algorithm, then set the

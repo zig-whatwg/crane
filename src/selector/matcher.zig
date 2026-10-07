@@ -422,11 +422,26 @@ pub const Matcher = struct {
             .FocusWithin => if (instanceOf(element)) |instance| dom.focus_matching.matchesFocusWithin(@ptrCast(@alignCast(instance))) else false,
             .FocusVisible => if (instanceOf(element)) |instance| dom.focus_matching.matchesFocusVisible(@ptrCast(@alignCast(instance))) else false,
             // Input pseudo-classes - not supported without HTML library
-            .Enabled, .Disabled, .ReadOnly, .ReadWrite, .Checked => false,
+            .ReadOnly, .ReadWrite, .Checked => false,
+            .Enabled, .Disabled => blk: {
+                const object = instanceOf(element) orelse break :blk false;
+                const disabled = dom.custom_elements.disabledState(@ptrCast(@alignCast(object))) orelse break :blk false;
+                break :blk if (pseudo.kind == .Disabled) disabled else !disabled;
+            },
+            .Valid, .Invalid => blk: {
+                const object = instanceOf(element) orelse break :blk false;
+                const validity = dom.custom_elements.validationState(@ptrCast(@alignCast(object)));
+                break :blk if (pseudo.kind == .Valid) validity == .valid else validity == .invalid;
+            },
             // The document's target element and custom states live in the
             // DOM's own documents and elements, which this matcher (over
             // ElementWithBase) does not see; ParentNode's matcher answers them.
-            .Target, .State => false,
+            .Target => false,
+            .Defined => if (instanceOf(element)) |object| dom.custom_elements.isDefined(@ptrCast(@alignCast(object))) else false,
+            .State => |name| blk: {
+                const object = dom.instance_bridge.getInstance(&element.base) orelse break :blk false;
+                break :blk dom.custom_elements.matchesState(@ptrCast(@alignCast(object)), name);
+            },
         };
     }
 

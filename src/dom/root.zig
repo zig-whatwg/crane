@@ -142,6 +142,7 @@ pub const document_browsing_context = @import("document_browsing_context.zig");
 /// What the parsers' tree construction sets on the nodes it makes where no
 /// IDL member fits: an element's names, a doctype's identifiers.
 pub const node_creation = @import("node_creation.zig");
+pub const custom_elements = @import("custom_elements.zig");
 /// HTML's user activation timestamps, the focused area of a document and a
 /// document's visibility state: the hooks the user input algorithms reach
 /// Window's and Document's state through (src/html/user_activation.zig,

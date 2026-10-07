@@ -71,10 +71,6 @@ const Tracked = struct {
     about_to_be_notified: std.ArrayListUnmanaged(Rejected) = .empty,
     /// "outstanding rejected promises weak set".
     outstanding: std.ArrayListUnmanaged(Rejected) = .empty,
-    /// Notifications queued as timers (a worker's realm has no event loop of
-    /// its own) that have not run: `forgetGlobal` cancels them, since the
-    /// promises they carry belong to an agent that is about to end.
-    armed: std.ArrayListUnmanaged(Armed) = .empty,
 
     fn isAlive(self: *const Tracked) bool {
         return runtime.SlabAllocator.generationOf(self.global) == self.generation;
@@ -88,24 +84,12 @@ const Tracked = struct {
     }
 
     fn destroy(self: *Tracked) void {
-        for (self.armed.items) |armed| {
-            _ = armed.timer.clearTimeout(armed.id);
-            armed.task.discard();
-        }
-        self.armed.deinit(allocator);
         releaseAll(self.about_to_be_notified.items);
         releaseAll(self.outstanding.items);
         self.about_to_be_notified.deinit(allocator);
         self.outstanding.deinit(allocator);
         allocator.destroy(self);
     }
-};
-
-/// A notification armed as a timer, and its id.
-const Armed = struct {
-    task: *Notification,
-    timer: runtime.TimerInterface,
-    id: runtime.TimerId,
 };
 
 /// Every global's bookkeeping. Each Browser thread and worker thread
@@ -143,9 +127,10 @@ pub fn releaseTracked() void {
     taken.deinit(allocator);
 }
 
-/// Release what is held for `global` - its lists, and the notifications
-/// queued for it that have not run - while its agent still exists: a worker's
-/// realm ends, and one timer later its agent (worker_host teardownRealm).
+/// Release what is held for `global` - its lists - while its agent still
+/// exists: a worker's realm ends, then its agent (worker_host teardownRealm,
+/// on the worker's thread; the notifications queued for it on the worker's
+/// loop were dropped before, and their drop released their promises).
 /// Every promise here is a Global of that agent, and releasing one after its
 /// isolate is disposed touches freed memory: before disposing an isolate,
 /// find everything the process keeps for it
@@ -308,8 +293,6 @@ const Kind = enum { unhandled_rejection, rejection_handled };
 const Notification = struct {
     global: *runtime.Instance,
     generation: u64,
-    /// The global's agent: whose entry holds this task while it is armed.
-    agent: ?*engine.Agent,
     kind: Kind,
     /// Owned.
     promises: []Rejected,
@@ -326,13 +309,12 @@ const Notification = struct {
 /// `runNotification`. Takes ownership of every entry in `promises` (the
 /// slice itself is copied).
 ///
-/// A window's realm has an event loop. A worker's has none of its own: its
-/// tasks run as timers on its owner's loop, and so does this one - tracked,
-/// so that the worker's end can cancel it (`forgetGlobal`).
+/// A window's realm and a worker's have an event loop - a worker's its own,
+/// on its own thread - which owns the task until it runs or is dropped
+/// (`dropNotification`). A bare realm with none (a unit test's) notifies
+/// nothing.
 fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const Rejected) void {
-    const loop = global.ctx.getOptionalEventLoop();
-    const timer = if (loop == null) global.ctx.getOptionalTimer() else null;
-    if (loop == null and timer == null) return releaseAll(promises);
+    const loop = global.ctx.getOptionalEventLoop() orelse return releaseAll(promises);
     const task = allocator.create(Notification) catch return releaseAll(promises);
     const copy = allocator.dupe(Rejected, promises) catch {
         allocator.destroy(task);
@@ -341,22 +323,16 @@ fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const Re
     task.* = .{
         .global = global,
         .generation = runtime.SlabAllocator.generationOf(global),
-        .agent = global.ctx.agent,
         .kind = kind,
         .promises = copy,
     };
-    if (loop) |l| return l.queueTask(.{ .callback = &runNotification, .context = task });
-    const t = trackedFor(global, true) orelse return task.discard();
-    const id = timer.?.setTimeout(0, &runNotification, task);
-    if (id == 0) return task.discard();
-    t.armed.append(allocator, .{ .task = task, .timer = timer.?, .id = id }) catch {};
+    loop.queueTask(.{ .callback = &runNotification, .context = task, .drop = &dropNotification });
 }
 
 /// The queued global task: its steps run as a task of the global's realm -
 /// for a worker's, ended the worker's way.
 fn runNotification(data: ?*anyopaque) void {
     const task: *Notification = @ptrCast(@alignCast(data orelse return));
-    forgetArmed(task);
     defer {
         allocator.free(task.promises);
         allocator.destroy(task);
@@ -365,20 +341,16 @@ fn runNotification(data: ?*anyopaque) void {
     engine.runTaskInRealm(task.global.ctx, notificationSteps, task) catch releaseAll(task.promises);
 }
 
-/// `task` has fired: it is no longer armed. Only its own agent's entries are
-/// looked at: their lists are this thread's.
-fn forgetArmed(task: *Notification) void {
-    tracked.lock();
-    defer tracked.unlock();
-    for (tracked.list.items) |t| {
-        if (!t.inAgent(task.agent)) continue;
-        for (t.armed.items, 0..) |armed, i| {
-            if (armed.task == task) {
-                _ = t.armed.swapRemove(i);
-                return;
-            }
-        }
-    }
+/// The queued global task will never run: its loop dropped it - a closing
+/// worker's loop discards its tasks (HTML close() and "terminate a
+/// worker"), and a window's loop drops a task it ends with. What it carries
+/// is released: its record, its list, and the promises and reasons it holds.
+/// Both loops drop while the task's agent lives (a worker's queueTask drops
+/// a closing worker's task at once; the window loop ends before its agent),
+/// so the handles are released into a live isolate.
+fn dropNotification(data: ?*anyopaque) void {
+    const task: *Notification = @ptrCast(@alignCast(data orelse return));
+    task.discard();
 }
 
 fn notificationSteps(data: ?*anyopaque) void {

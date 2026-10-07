@@ -130,8 +130,11 @@ pub const Outcome = union(enum) {
 };
 
 /// A new promise in `realm`, settled with `outcome` from a task: on the
-/// realm's event loop, else a zero-delay timer, else now (a realm with
-/// neither, as in tests). Returned for the binding.
+/// realm's event loop, else now (a realm with none, as in tests). Returned
+/// for the binding. The realm is a CookieStore's - a Window's
+/// ([Exposed=(ServiceWorker,Window)]; no ServiceWorkerGlobalScope realm is
+/// made) - and a window or frame realm has its loop and its timers together
+/// or neither, so there is no timer to fall back to.
 pub fn settledInTask(realm: runtime.Context, outcome: Outcome) engine.Error!JSValue {
     var capability = engine.createPromise(realm) catch |err| {
         outcome.release();
@@ -152,9 +155,6 @@ pub fn settledInTask(realm: runtime.Context, outcome: Outcome) engine.Error!JSVa
     if (realm.getOptionalEventLoop()) |loop| {
         loop.queueTask(.{ .callback = SettleTask.run, .context = task, .drop = SettleTask.drop });
         return p.take();
-    }
-    if (realm.getOptionalTimer()) |timer| {
-        if (timer.setTimeout(0, SettleTask.run, task) != 0) return p.take();
     }
     SettleTask.run(task);
     return p.take();

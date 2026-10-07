@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -44,6 +45,7 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
     /// Cached iterable entries for iteration protocol
     iterable_cache: ?[]IterableEntry = null,
+    files_traced: bool = false,
 
     pub fn deinit(self: *InternalState) void {
         // Free iterable cache
@@ -71,8 +73,10 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        if (internal.files_traced) engine.forgetTracedChild(instance, .{ .name = "entryFiles" });
         internal.deinit();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
@@ -109,14 +113,15 @@ pub fn call_constructor(ctx: runtime.Context, form: webidl.Opt(*runtime.Instance
 ///
 /// This is used by other APIs (fetch, xhr) that need to create FormData
 /// instances from parsed data.
-/// Takes ownership of the internal FormData - caller should NOT deinit it.
+/// Takes ownership on success; on error the caller still owns the entry list.
 pub fn createFromInternal(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
     form_data: *InternalFormData,
 ) !*runtime.Instance {
     const instance = try init(allocator, State, &FormData.vtable, ctx);
-    errdefer deinit(instance);
+    // No wrapper is made before the final, infallible ownership transfer.
+    errdefer runtime.Instance.deinit(instance);
 
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
@@ -126,10 +131,67 @@ pub fn createFromInternal(
         .allocator = allocator,
     };
 
+    const trace = try materializeParsedFiles(instance, internal);
+    defer if (trace) |value| value.release();
+
     const state = instance.getState(State);
     state.own._internal = internal;
+    setFileTrace(instance, internal, trace);
 
     return instance;
+}
+
+/// Fetch formData(), multipart steps 1–3: construct actual Files before the
+/// parsed entry list becomes observable. Native byte records are not Instances.
+fn materializeParsedFiles(instance: *runtime.Instance, internal: *InternalState) !?engine.Owned {
+    var count: usize = 0;
+    for (internal.form_data.entries.items) |entry| if (entry.value != .string) {
+        count += 1;
+    };
+    if (count == 0) return null;
+
+    const PreparedFile = struct {
+        entry: *xhr.form_data.FormDataEntry,
+        file: *runtime.Instance,
+        keep: engine.Owned,
+    };
+    const prepared = try internal.allocator.alloc(PreparedFile, count);
+    defer internal.allocator.free(prepared);
+    var prepared_len: usize = 0;
+    defer for (prepared[0..prepared_len]) |item| item.keep.release();
+    const values = try internal.allocator.alloc(runtime.JSValue, count);
+    defer internal.allocator.free(values);
+
+    for (internal.form_data.entries.items) |*entry| {
+        const file = switch (entry.value) {
+            .string => continue,
+            .blob_instance => |object| @as(*runtime.Instance, @ptrCast(@alignCast(object))),
+            .file => |record| blk: {
+                const bytes = try engine.createArrayBuffer(instance.ctx, record.data);
+                defer bytes.release();
+                const parts = try engine.createSequenceOfValues(instance.ctx, &.{bytes.value});
+                defer parts.release();
+                break :blk try interfaces.File.call_constructor(instance.ctx, parts.value, entry.filename orelse "blob", .passed(.{
+                    .base = .{ .type = runtime.DOMString.initInterned(record.content_type orelse "text/plain") },
+                }));
+            },
+        };
+        const generation = runtime.SlabAllocator.generationOf(file);
+        defer if (entry.value == .file) file.releaseIfUnwrapped(generation);
+        const keep = try engine.retainValue(instance.ctx, .{ .instance = file });
+        prepared[prepared_len] = .{ .entry = entry, .file = file, .keep = keep };
+        values[prepared_len] = keep.value;
+        prepared_len += 1;
+    }
+
+    // All fallible work precedes replacement: the caller's records remain
+    // unchanged on error, and each prepared File is rooted across allocations.
+    const trace = try engine.createSequenceOfValues(instance.ctx, values);
+    for (prepared) |item| {
+        if (item.entry.value == .file) item.entry.value.deinit(internal.form_data.allocator);
+        item.entry.value = .{ .blob_instance = item.file };
+    }
+    return trace;
 }
 
 /// Get internal state from instance using shared accessor
@@ -146,6 +208,53 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     try internal.form_data.appendString(name, value);
+}
+
+/// XHR append steps 1–3, with HTML's create-an-entry File conversion.
+pub fn call_append__1(instance: *runtime.Instance, name: runtime.USVString, blob: *runtime.Instance, filename: webidl.Opt(runtime.USVString)) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    const file = try entryFile(instance.ctx, blob, filename);
+    const generation = runtime.SlabAllocator.generationOf(file);
+    defer if (file != blob) file.releaseIfUnwrapped(generation);
+    const trace = try prepareFileTrace(instance, internal, null, file);
+    defer if (trace) |value| value.release();
+    try internal.form_data.appendBlobInstance(name, file, null);
+    setFileTrace(instance, internal, trace);
+}
+
+fn entryFile(realm: runtime.Context, blob: *runtime.Instance, filename: webidl.Opt(runtime.USVString)) !*runtime.Instance {
+    if (!filename.was_passed and blob.stateAs(interfaces.File.State) != null) return blob;
+    const parts = try engine.createSequenceOfPlatformObjects(realm, &.{blob});
+    defer parts.release();
+    var content_type = try interfaces.Blob.get_type(blob);
+    defer content_type.deinit(blob.ctx.allocator);
+    return interfaces.File.call_constructor(realm, parts.value, filename.getOrDefault("blob"), .passed(.{ .base = .{ .type = content_type } }));
+}
+
+fn prepareFileTrace(instance: *runtime.Instance, internal: *InternalState, excluding_name: ?[]const u8, added: ?*runtime.Instance) !?engine.Owned {
+    if (!instance.ctx.hasEngine()) return null;
+    var files: std.ArrayList(*runtime.Instance) = .empty;
+    defer files.deinit(internal.allocator);
+    for (internal.form_data.entries.items) |entry| {
+        if (excluding_name) |name| if (std.mem.eql(u8, entry.name, name)) continue;
+        switch (entry.value) {
+            .blob_instance => |object| try files.append(internal.allocator, @ptrCast(@alignCast(object))),
+            else => {},
+        }
+    }
+    if (added) |file| try files.append(internal.allocator, file);
+    if (files.items.len == 0) return null;
+    return try engine.createSequenceOfPlatformObjects(instance.ctx, files.items);
+}
+
+fn setFileTrace(instance: *runtime.Instance, internal: *InternalState, trace: ?engine.Owned) void {
+    const array = trace orelse {
+        if (internal.files_traced) engine.forgetTracedChild(instance, .{ .name = "entryFiles" });
+        internal.files_traced = false;
+        return;
+    };
+    engine.traceValue(instance, array.value, .{ .name = "entryFiles" });
+    internal.files_traced = true;
 }
 
 /// Internal: append Blob/File entry
@@ -168,7 +277,10 @@ pub fn appendBlobEntry(instance: *runtime.Instance, name: runtime.USVString, blo
 /// Removes all values associated with a given key.
 pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
+    const trace = try prepareFileTrace(instance, internal, name, null);
+    defer if (trace) |value| value.release();
     internal.form_data.delete(name);
+    setFileTrace(instance, internal, trace);
 }
 
 /// Operation: get
@@ -182,7 +294,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?
 
     return switch (entry) {
         .string => |s| .{ .usvstring = s }, // USVString is []const u8
-        .file => |f| .{ .file = @ptrCast(f) }, // Cast File to Instance
+        .file => unreachable, // Construction materializes every native record.
         .blob_instance => |ptr| .{ .file = @ptrCast(@alignCast(ptr)) }, // Return the stored Blob/File instance
     };
 }
@@ -195,34 +307,16 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     const values = try internal.form_data.getAll(internal.allocator, name);
-
-    // Convert FormDataEntryValue to strings
-    var string_values: std.ArrayListUnmanaged([]const u8) = .empty;
-    defer string_values.deinit(internal.allocator);
-
-    for (values) |entry_value| {
-        switch (entry_value) {
-            .string => |s| {
-                string_values.append(internal.allocator, s) catch continue;
-            },
-            .file => {
-                // For files, return "[object File]" as the string representation
-                string_values.append(internal.allocator, "[object File]") catch continue;
-            },
-            .blob_instance => {
-                // For blob instances, return "[object Blob]" as the string representation
-                // Note: In a real implementation, we should return the actual Blob objects
-                string_values.append(internal.allocator, "[object Blob]") catch continue;
-            },
-        }
-    }
-
-    // The strings as a new Array of the realm (R12), OWNED by the binding
-    // once returned.
-    const js_values = try internal.allocator.alloc(runtime.JSValue, string_values.items.len);
+    defer internal.allocator.free(values);
+    // XHR getAll: preserve File values, including repeated references.
+    const js_values = try internal.allocator.alloc(runtime.JSValue, values.len);
     defer internal.allocator.free(js_values);
-    for (string_values.items, js_values) |text, *value| value.* = runtime.JSValue.fromStringRef(text);
-    const array = @import("engine").createSequenceOfValues(instance.ctx, js_values) catch return error.InvalidState;
+    for (values, js_values) |entry, *value| value.* = switch (entry) {
+        .string => |text| runtime.JSValue.fromStringRef(text),
+        .blob_instance => |object| .{ .instance = @ptrCast(@alignCast(object)) },
+        .file => unreachable, // Construction materializes every native record.
+    };
+    const array = try engine.createSequenceOfValues(instance.ctx, js_values);
     return array.take();
 }
 
@@ -242,7 +336,21 @@ pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) anyerror!b
 /// Replaces all existing values.
 pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
+    const trace = try prepareFileTrace(instance, internal, name, null);
+    defer if (trace) |kept| kept.release();
     try internal.form_data.setString(name, value);
+    setFileTrace(instance, internal, trace);
+}
+
+pub fn call_set__1(instance: *runtime.Instance, name: runtime.USVString, blob: *runtime.Instance, filename: webidl.Opt(runtime.USVString)) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    const file = try entryFile(instance.ctx, blob, filename);
+    const generation = runtime.SlabAllocator.generationOf(file);
+    defer if (file != blob) file.releaseIfUnwrapped(generation);
+    const trace = try prepareFileTrace(instance, internal, name, file);
+    defer if (trace) |value| value.release();
+    try internal.form_data.setBlobInstance(name, file, null);
+    setFileTrace(instance, internal, trace);
 }
 
 /// Operation: forEach
@@ -263,7 +371,7 @@ pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anye
 /// Get entries for iterable protocol (used by V8Interface)
 ///
 /// Returns entries that can be iterated by entries(), keys(), values(), Symbol.iterator.
-/// For file entries, returns "[object File]" as the string representation.
+/// File values are the same platform objects returned by get and getAll.
 pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const IterableEntry {
     const internal = getInternal(instance) orelse return null;
 
@@ -286,9 +394,7 @@ pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const IterableEntry
             .name = entry.name,
             .value = switch (entry.value) {
                 .string => |s| .{ .usvstring = s },
-                // For files, return [object File] placeholder
-                // TODO: Return actual File instance when WebIDL File is fully integrated
-                .file => .{ .usvstring = "[object File]" },
+                .file => unreachable, // Construction materializes every native record.
                 // blob_instance is already a runtime.Instance (File or Blob)
                 .blob_instance => |b| .{ .file = @ptrCast(@alignCast(b)) },
             },

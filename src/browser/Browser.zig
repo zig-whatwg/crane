@@ -79,6 +79,7 @@ const window_agent_hooks: engine.HostHooks = blk: {
     hooks.ensureCanCompileStrings = html.code_generation.hooks.ensureCanCompileStrings;
     hooks.getCodeForEval = html.code_generation.hooks.getCodeForEval;
     hooks.ensureCanCompileWasmBytes = html.code_generation.hooks.ensureCanCompileWasmBytes;
+    if (engine.capabilities.html_constructor != .unsupported) hooks.htmlConstructor = html.custom_element_constructor.construct;
     break :blk hooks;
 };
 
@@ -256,16 +257,6 @@ pub const Browser = struct {
             registry.terminateAll();
             registry.joinAll();
         }
-        // The workers on this loop end first. A worker's end is a timer on
-        // this loop, armed when its Worker object lets go; the page's
-        // teardown below would arm it, and event_loop.deinit would drop it
-        // unfired, leaving the worker's realm, isolate and host to the
-        // process. Here, BEFORE the page's teardown and not inside it, the
-        // page realm still has the page isolate entered - as it does when
-        // those timers fire - so each worker's agent ends as a worker's.
-        if (self.event_loop) |event_loop| {
-            if (event_loop.timerInterface()) |timers| @import("html").worker_host.endWorkersOn(timers);
-        }
         // Destroy current context if any
         if (self.current_context) |ctx| {
             ctx.deinit();
@@ -290,6 +281,8 @@ pub const Browser = struct {
         }
 
         if (self.agent) |agent| {
+            // Release queued handles while the agent exists; AgentHost outlives it.
+            self.agent_host.custom_elements.releasePending();
             // IMPORTANT: Clean up orphaned DOM nodes BEFORE the agent ends!
             // DOM node internal states may use the agent's allocator, which
             // its end frees. We must clean them up while allocators are valid.

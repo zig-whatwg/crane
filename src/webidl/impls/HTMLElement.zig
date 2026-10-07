@@ -73,6 +73,7 @@ pub const InternalState = struct {
     // === Element Internals ===
     /// ElementInternals instance if attachInternals() was called
     element_internals: ?*runtime.Instance = null,
+    internals_traced: bool = false,
 
     /// Whether attachInternals() has been called (can only be called once)
     internals_attached: bool = false,
@@ -251,6 +252,8 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
+        if (internal.internals_traced) @import("engine").forgetTracedChild(instance, .{ .name = "elementInternals" });
+        if (!internal.internals_traced) if (internal.element_internals) |internals| runtime.Instance.deinit(internals);
         internal.deinit();
     }
     Registry.remove(instance);
@@ -935,18 +938,47 @@ pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#dom-attachinternals
 pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternalState(instance) orelse return error.InvalidStateError;
-
-    // Check if internals already attached
-    if (internal.internals_attached) {
-        return error.NotSupportedError;
-    }
-
-    // Mark as attached
+    const ce = @import("dom").custom_elements;
+    const data = ce.get(instance) orelse return error.NotSupportedError;
+    // HTML 4.13.7 steps 1–4: an autonomous definition must enable internals.
+    if (data.is_value != null) return error.NotSupportedError;
+    var namespace = try interfaces.Element.get_namespaceURI(instance);
+    defer if (namespace) |*value| value.deinit(instance.ctx.allocator);
+    var name = try interfaces.Element.get_localName(instance);
+    defer name.deinit(instance.ctx.allocator);
+    const registry = try interfaces.Element.get_customElementRegistry(instance);
+    const definition = ce.lookup(registry, if (namespace) |value| value.asSlice() else null, name.asSlice(), null) orelse return error.NotSupportedError;
+    if (definition.disable_internals) return error.NotSupportedError;
+    // Steps 5–6: reject repeat calls and elements whose upgrade has failed.
+    if (internal.internals_attached) return error.NotSupportedError;
+    if (data.state != .precustomized and data.state != .custom) return error.NotSupportedError;
+    const internals = try ensureInternals(instance);
     internal.internals_attached = true;
+    return internals;
+}
 
-    // Create and return ElementInternals instance
-    // For now, this is not fully implemented
-    return error.NotImplemented;
+fn ensureInternals(instance: *runtime.Instance) !*runtime.Instance {
+    const internal = getInternalState(instance) orelse return error.InvalidStateError;
+    if (internal.element_internals) |internals| return internals;
+    // Steps 7–8: the element and its internals trace one another. Either can
+    // survive alone in script, and neither creates a persistent engine root.
+    const internals = try interfaces.ElementInternals.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(internals);
+    try @import("dom").custom_elements.setInternalsTarget(internals, instance);
+    if (instance.ctx.hasEngine()) {
+        @import("engine").traceChild(instance, internals, .{ .name = "elementInternals" });
+        internal.internals_traced = true;
+    }
+    internal.element_internals = internals;
+    return internals;
+}
+
+pub fn installHooks() void {
+    @import("dom").custom_elements.installHTMLElement(.{ .internals = &attachedInternals, .ensure_internals = &ensureInternals });
+}
+
+fn attachedInternals(instance: *runtime.Instance) ?*runtime.Instance {
+    return (getInternalState(instance) orelse return null).element_internals;
 }
 
 /// Clean up ALL remaining internal states.

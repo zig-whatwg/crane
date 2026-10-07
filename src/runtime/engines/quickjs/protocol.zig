@@ -396,6 +396,10 @@ pub fn createRejectedPromise(_: Context, _: JSValue) Error!Owned {
 pub fn reactToPromise(_: Context, _: JSValue, _: *const engine.PromiseReactionSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }
+
+pub fn queueResolvedPromiseReaction(_: Context, _: *const engine.PromiseReactionSteps, _: ?*anyopaque) Error!void {
+    return error.NotSupported;
+}
 pub fn markPromiseAsHandled(_: Context, _: JSValue) void {}
 pub fn promiseIsHandled(_: Context, _: JSValue) bool {
     return false;

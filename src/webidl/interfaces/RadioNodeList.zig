@@ -112,4 +112,8 @@ pub const RadioNodeList = struct {
     pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
         try RadioNodeListImpl.set_value(instance, value);
     }
+
+    pub const call_item = NodeList.call_item;
+
+    pub const get_length = NodeList.get_length;
 };

@@ -9,6 +9,17 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+
+- [Share fragment parser state initialization](architecture-share-fragment-parser-state-initialization.md) - Reuse state transitions and test resulting trees.
+
+- [Parser reparenting must consult the live DOM](architecture-parser-reparenting-must-consult-the-live-dom.md) - Keep parser state for decisions and perform DOM moves against live relationships.
+
+- [Stable continuations own their native record](architecture-stable-continuations-own-their-native-record.md) - Retain queued identity separately from the element and release it on completion or drop.
+
+- [Parsed records need platform objects at the binding](architecture-parsed-records-need-platform-objects-at-the-binding.md) - Convert representations at the owner boundary; a pointer cast cannot create a platform object or its lifetime.
+- [Cancelled reaction queues need stable element identities](architecture-cancelled-reaction-queues-need-stable-element-identities.md) - Cancel by stable identity so a reused slab address cannot inherit queued work.
+- [An activity bit cannot own two independent holds](architecture-an-activity-bit-cannot-own-two-independent-holds.md) - Root constructor returns independently across reactions and binding conversion; prove the exact GC window.
+- [Reaction scopes capture the agent before script](architecture-reaction-scopes-capture-the-agent-before-script.md) - Capture scope ownership before script can retire its receiver or realm.
 - [Local vs Global at the FFI seam](architecture-local-vs-global-at-the-ffi-seam.md) - Every `v8_*` call returning a pointer allocates.
 - [InstanceRegistry.createIn destabilises the DOM](architecture-instanceregistry-createin-destabilises-the-dom.md) - A recycled address plus a recycled block is two aliasing bugs, not one.
 - [A module cannot be test-linked if it is its own dependency](architecture-a-module-cannot-be-test-linked-if-it-is-its-own.md) - "It has no V8 link" and "it is red" are different states.
@@ -204,11 +215,18 @@ A lane brief now carries the lessons chosen for its batch.
 - [The DOM's callbacks find an element by its NodeBase name, which most elements leave empty](architecture-dom-callbacks-find-an-element-by-its-nodebase-name.md) - Before filtering a DOM callback by node name, check that the element type's init sets the NodeBase name.
 - [A Fetch policy needs every request construction path](architecture-a-fetch-policy-needs-every-request-construction-path.md) - Trace a policy from its owning settings object through every request constructor to the network boundary.
 - [A loop and its agent end in an order, and what each holds of the other must survive it](architecture-a-loop-and-its-agent-end-in-an-order-each-queue-must-survive.md) - When a loop and an engine agent end, write down which ends first and what each still holds of the other - queued microtasks, task drops that touch the engine - then make each holder survive the order, rather than reordering until one case stops crashing.
+- [A threadlocal container outlives its thread unless its capacity goes with its last entry](architecture-a-threadlocal-container-outlives-its-thread-unless-its-capacity-goes.md) - Every threadlocal container must be empty AND unallocated when its thread exits: free its capacity with its last entry, and prove page_allocator leaks by counting untagged anonymous VM across many thread lifetimes (`leaks` cannot see mmap).
 - [A reused Window outlives its first document's end steps](architecture-a-reused-window-outlives-its-first-documents-end-steps.md) - State a cleanup step ends "for the realm" outlives the document it was meant for when HTML reuses the Window: key it to the document, or reset it where the Window gets its new document, and test rIC, timers and listeners in a frame navigated from about:blank.
 - [An address-keyed entry a teardown misses is inherited](architecture-an-address-keyed-entry-a-teardown-misses-is-inherited.md) - A side table keyed by an address needs both exits: the owner's own deinit on every teardown path, and a check at the address's next birth - an entry found there belongs to a dead instance, never to the new one.
 - [A step reached through an IDL method loses what the method does not take](architecture-a-step-reached-through-an-idl-method-loses-what-the-method-does-not-take.md) - Do not reach a spec step by calling the public API that happens to wrap it: the API's signature is a filter. Expose the step itself (a hook), and keep the caller's full set of inputs.
+- [A callback can end its own environment](architecture-a-callback-can-end-its-own-environment.md) - Before freeing per-environment records at the environment's end, ask which of them a task is in the middle of using: any callback the task invokes can end the environment re-entrantly. Mark the record as the task's before the script runs, and let the end skip it.
 
 ### Spec Compliance
+
+- [Prescan bounds apply to the stream, not each attribute](spec-compliance-prescan-bounds-apply-to-the-stream-not-each-attribute.md) - Preserve complete values within the specified input window.
+
+- [Initialize document-owned state before descendants](spec-compliance-initialize-document-owned-state-before-descendants.md) - Establish persistent associations only after their owner is initialized.
+- [An enqueue step is not an execution guard](spec-compliance-an-enqueue-step-is-not-an-execution-guard.md) - Queue membership has observable effects; preserve the spec's placement of state guards.
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
 - ["Prepare the script element" had no insertion-steps caller](spec-compliance-prepare-the-script-element-had-no-insertion.md) - When a directory of tests all hang on the same idiom, look for the algorithm that idiom triggers and ask who calls it.
 - [Tree construction never received an EOF token](spec-compliance-tree-construction-never-received-an-eof-token.md) - "The loop ended" and "the parser finished" are different claims.
@@ -262,8 +280,13 @@ A lane brief now carries the lessons chosen for its batch.
 - [Media source exhaustion is not a media error](spec-compliance-media-source-exhaustion-is-not-a-media-error.md) - A candidate failure is not necessarily a media-element failure; preserve its selected mode, target and continuation.
 - [A worker script that does not parse is not a runtime error](spec-compliance-a-worker-script-that-does-not-parse-is-not-a-runtime-error.md) - When a spec algorithm branches on how a script failed (parse error vs. thrown), the engine operation must report which - one reporter for both makes whichever branch you implement break the other's tests. Write the case for each branch before touching either.
 - [A spec step no engine runs breaks tests that never test it](spec-compliance-a-spec-step-no-engine-runs-breaks-tests-that-never-test-it.md) - Before implementing a spec step that makes script observe something new, read what the three engines do; if none does it, WPT does not expect it: measure, cite the engines, and state the deviation.
+- [A built-in that shadows an operation owes its WebIDL conversion](spec-compliance-a-built-in-that-shadows-an-operation-owes-its-webidl-conversion.md) - A host built-in that stands in for an IDL operation receives what the binding would have converted: write out the operation's whole WebIDL conversion (union order, integer modulo, defaults, rest arguments) before its spec steps, and test the conversions as well as the happy path.
+- [A test that passes because nothing ever ends tests nothing](spec-compliance-a-test-that-passes-because-nothing-ends-tests-nothing.md) - When a new lifetime rule turns tests red, ask whether they ever passed for the right reason: a "survives" test that went green on a leak is an unimplemented feature, not a regression - implement the extension, never restore the leak.
 
 ### Codegen
+
+- [Nullable dictionary members can need a presence bit](codegen-nullable-dictionary-members-can-need-a-presence-bit.md) - Preserve absence separately from null when the consuming algorithm distinguishes them.
+- [Inherited indexed access needs the parent facade](codegen-inherited-indexed-access-needs-the-parent-facade.md) - Generate exotic-access metadata even when methods come from a prototype.
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
 - [Raw codegen output is not `zig fmt`-clean, so regeneration looks like a 1,419-file change](codegen-raw-codegen-output-is-not-zig-fmt-clean-so.md) - Format generated output before you diff it, or the diff is unreadable and a real change hides in it.
 - [Check generated data against a second copy](codegen-check-generated-data-against-a-second-copy.md) - The index generator hardcoded each encoding index's last pointer; jis0208 stopped at 7,939 of 11,103 and euc-kr at 17,919 of 23,749, so ~5,800 hanja could be neither encoded nor decoded.
@@ -287,6 +310,19 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+
+- [Shared algorithm migrations need caller context tests](testing-shared-algorithm-migrations-need-caller-context-tests.md) - Verify the nodes exist and retain the caller's realm and subtype state.
+
+- [Subtree cleanup must return native storage](testing-subtree-cleanup-must-return-native-storage.md) - Count live storage separately and prove repeated operations plateau.
+
+- [Parser fixtures need explicit and implicit document roots](testing-parser-fixtures-need-explicit-and-implicit-document-roots.md) - Reparenting tests must exercise both root ownership paths.
+
+- [Prove a benchmark reaches the feature](testing-prove-a-benchmark-reaches-the-feature.md) - Assert the feature precondition before treating measurements as evidence.
+- [Typed handle counters can drift on generic disposal](testing-typed-handle-counters-can-drift-on-generic-disposal.md) - Validate counter coverage against actual handle and heap measurements.
+- [Read JSONL with its record delimiter](testing-read-jsonl-with-its-record-delimiter.md) - Preserve Unicode line separators inside strings when splitting records.
+- [An uninstalled hook does not exercise its active path](testing-an-uninstalled-hook-does-not-exercise-its-active-path.md) - Test an installed host's adapter branch as well as the legacy path.
+- [Newly reached leaks need a control without the new feature](testing-newly-reached-leaks-need-a-control-without-the-new-feature.md) - Pair the same operation without the new feature to distinguish reachability from introduction.
+- [A blocking-file headline can hide large subtest regressions](testing-a-blocking-file-headline-can-hide-large-subtest-regressions.md) - Review every lost passing count and preserve conversion semantics when replacing call paths.
 - [Regression-check handle changes with timers, not DOM](testing-regression-check-handle-changes-with-timers-not.md) - Pick the regression suite that exercises the lifetime you changed, not the one that touches the same file.
 - [`--parallel` can manufacture ERROR results; confirm a surprising number serially](testing-parallel-can-manufacture-error-results-confirm-a.md) - An aggregate can move for reasons that have nothing to do with the change; a per-file transition table cannot.
 - [One file can hang the runner past its own per-file ceiling](testing-one-file-can-hang-the-runner-past-its-own-per.md) - A sweep's progress is what it has WRITTEN, not whether it is running.
@@ -350,6 +386,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A dom unit test that reaches an engine operation cannot link](testing-a-dom-unit-test-that-reaches-an-engine-operation-cannot-link.md) - Keep src/dom unit tests to logic that reaches no `engine.*` operation; split the pure step out and test it, and read "N undefined _v8_ symbols" in a dom test step as "a test reached the engine".
 
 ### Debugging
+
+- [Inspect the DOM before changing a serializer](debugging-inspect-the-dom-before-changing-a-serializer.md) - Locate the first incorrect representation before repairing a later result.
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
 - [An instrument can confound its own result](debugging-an-instrument-can-confound-its-own-result.md) - Keep the perturbation independent of the reporting cadence, and prefer a slope between adjacent samples over any per-unit average.
 - [`leaks --atExit` is the tool; attaching never works](debugging-leaks-atexit-is-the-tool-attaching-never-works.md) - If a memory tool looks broken, suspect your own teardown before the tool.

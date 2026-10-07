@@ -8,34 +8,41 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-// File/Blob types - will be properly imported when integrated
-// For now, use placeholder types
+/// Owned file bytes from multipart parsing, not a runtime platform object.
+/// FormData's owner turns this record into a File before exposing its entries.
 pub const File = struct {
     data: []const u8,
     allocator: Allocator,
+    /// Null means the part omitted Content-Type (Fetch defaults to text/plain).
+    content_type: ?[]const u8 = null,
+
+    /// Copy a parsed file's bytes and optional Content-Type into owned storage.
+    pub fn init(allocator: Allocator, data: []const u8, content_type: ?[]const u8) !*File {
+        const file = try allocator.create(File);
+        errdefer allocator.destroy(file);
+        const owned_data = try allocator.dupe(u8, data);
+        errdefer allocator.free(owned_data);
+        file.* = .{
+            .data = owned_data,
+            .allocator = allocator,
+            .content_type = if (content_type) |value| try allocator.dupe(u8, value) else null,
+        };
+        return file;
+    }
 
     pub fn deinit(self: *File, allocator: Allocator) void {
         allocator.free(self.data);
+        if (self.content_type) |value| allocator.free(value);
         allocator.destroy(self);
     }
 
     pub fn clone(self: *File, allocator: Allocator) !*File {
-        const file = try allocator.create(File);
-        file.* = .{
-            .data = try allocator.dupe(u8, self.data),
-            .allocator = allocator,
-        };
-        return file;
+        return init(allocator, self.data, self.content_type);
     }
 
     pub fn fromBlob(allocator: Allocator, blob: *Blob, filename: []const u8) !*File {
         _ = filename;
-        const file = try allocator.create(File);
-        file.* = .{
-            .data = try allocator.dupe(u8, blob.data),
-            .allocator = allocator,
-        };
-        return file;
+        return init(allocator, blob.data, null);
     }
 };
 
@@ -152,10 +159,16 @@ pub const FormData = struct {
         file: *File,
         filename: ?[]const u8,
     ) !void {
+        const owned_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(owned_name);
+        const owned_file = try file.clone(self.allocator);
+        errdefer owned_file.deinit(self.allocator);
+        const owned_filename = if (filename) |f| try self.allocator.dupe(u8, f) else null;
+        errdefer if (owned_filename) |f| self.allocator.free(f);
         const entry = FormDataEntry{
-            .name = try self.allocator.dupe(u8, name),
-            .value = .{ .file = try file.clone(self.allocator) },
-            .filename = if (filename) |f| try self.allocator.dupe(u8, f) else null,
+            .name = owned_name,
+            .value = .{ .file = owned_file },
+            .filename = owned_filename,
         };
         try self.entries.append(self.allocator, entry);
     }
@@ -184,10 +197,14 @@ pub const FormData = struct {
         blob_instance: *anyopaque,
         filename: ?[]const u8,
     ) !void {
+        const owned_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(owned_name);
+        const owned_filename = if (filename) |f| try self.allocator.dupe(u8, f) else null;
+        errdefer if (owned_filename) |f| self.allocator.free(f);
         const entry = FormDataEntry{
-            .name = try self.allocator.dupe(u8, name),
+            .name = owned_name,
             .value = .{ .blob_instance = blob_instance },
-            .filename = if (filename) |f| try self.allocator.dupe(u8, f) else null,
+            .filename = owned_filename,
         };
         try self.entries.append(self.allocator, entry);
     }

@@ -253,7 +253,7 @@ pub fn domAdapterOnChildAppended(parent: *TreeNode, child: *TreeNode, context: ?
 
 pub fn domAdapterOnInserted(location: TreeBuilder.InsertionLocation, child: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
-    if (parser_mutation.insert(adapter, location, child) catch false) {
+    if ((parser_mutation.insert(adapter, location, child) catch false) and adapter.unattached_nodes.count() != 0) {
         if (adapter.getDomNode(child)) |node| _ = adapter.unattached_nodes.remove(node);
     }
 }
@@ -417,11 +417,11 @@ pub const DomTreeAdapter = struct {
             try self.holds.append(self.allocator, owned);
         }
 
-        // Record ownership BEFORE publishing the node, so a failing put below
-        // still leaves the node on the list `deinit` frees. Note that node_map is
+        // Record unwrapped ownership BEFORE publishing the node. Wrapped
+        // nodes are held independently above and belong to engine cleanup. node_map is
         // keyed by TreeNode and a second create for the same TreeNode overwrites
         // it - `unattached_nodes` is keyed by instance and keeps both.
-        if (dom_node != self.document) {
+        if (dom_node != self.document and !engine.hasWrapper(dom_node)) {
             try self.unattached_nodes.put(dom_node, runtime.SlabAllocator.generationOf(dom_node));
         }
         try self.node_map.put(tree_node, dom_node);
@@ -503,26 +503,26 @@ pub const DomTreeAdapter = struct {
 
         // Check if this is an HTML element (most common case)
         const is_html = tree_node.namespace == .html;
-
-        // Create the appropriate element type using HTML element factory
-        // This ensures HTMLIFrameElement is created for "iframe", HTMLDivElement for "div", etc.
-        const element = if (is_html)
-            try createHTMLElement(self.allocator, self.ctx, local_name)
-        else
-            try createForeignElement(self.allocator, self.ctx, tree_node.namespace, local_name);
-        errdefer if (!engine.hasWrapper(element)) dom.node_creation.destroyUninserted(element);
-
-        // Set up the element (local name, namespace, attributes). Its node
-        // type is Element.init's, HTML or not. DOM "create an element" sets
-        // the namespace and local name, which no IDL member does.
         const ns_uri: []const u8 = switch (tree_node.namespace) {
             .html => "http://www.w3.org/1999/xhtml",
             .mathml => "http://www.w3.org/1998/Math/MathML",
             .svg => "http://www.w3.org/2000/svg",
         };
-        dom.node_creation.setElementNames(element, ns_uri, local_name) catch {};
+        const parser_ce = @import("custom_elements/parser.zig");
+        const is_value = parser_ce.isValue(tree_node);
+        // This adapter is the incremental full-document parser, including
+        // document.write. Fragment conversion uses HTMLParser's explicit bit.
+        const scope = try parser_ce.Scope.begin(owner, local_name, ns_uri, is_value, false);
+        defer scope.end();
+        const element = try @import("custom_elements/creation.zig").create(.{
+            .document = owner,
+            .local_name = local_name,
+            .namespace = ns_uri,
+            .is_value = is_value,
+            .synchronous = scope.synchronous,
+        });
 
-        try node_document.set(element, owner);
+        errdefer if (!engine.hasWrapper(element)) dom.node_creation.destroyUninserted(element);
 
         // A script element - HTML's, or an SVG script, whose insertion and
         // children-changed steps wait for its end tag too - is

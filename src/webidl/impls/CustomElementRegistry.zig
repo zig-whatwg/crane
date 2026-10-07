@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const dom_names = @import("dom").names;
+const dom = @import("dom");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const engine = @import("engine");
@@ -40,99 +41,17 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Custom element definition per HTML spec
-/// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#custom-element-definition
-pub const CustomElementDefinition = struct {
-    /// The custom element's name (valid custom element name)
-    name: []const u8,
+pub const CustomElementDefinition = @import("html_core").custom_element_definition.Definition(runtime, engine);
 
-    /// The local name (equals name for autonomous, equals extends for customized built-in)
-    local_name: []const u8,
+/// The HTML document set is weak, as in Blink's AssociatedDocumentSet. A
+/// recycled slab address must not turn an old document into a new candidate.
+const ScopedDocument = struct {
+    instance: *runtime.Instance,
+    generation: u64,
 
-    /// The constructor: define()'s argument, taken over from the binding.
-    /// OWNED, released with the definition.
-    constructor: engine.CallbackFunction,
-
-    /// Observed attributes list (for attributeChangedCallback). OWNED.
-    observed_attributes: []const []const u8,
-
-    /// Lifecycle callbacks
-    lifecycle_callbacks: LifecycleCallbacks,
-
-    /// Whether this is a form-associated custom element
-    form_associated: bool,
-
-    /// Whether attachInternals() is disabled
-    disable_internals: bool,
-
-    /// Whether attachShadow() is disabled
-    disable_shadow: bool,
-
-    /// The construction stack (for upgrade algorithm)
-    /// Each entry is either an element or the already-constructed marker
-    construction_stack: std.ArrayListUnmanaged(ConstructionStackEntry) = .empty,
-
-    allocator: Allocator,
-
-    pub const ConstructionStackEntry = union(enum) {
-        element: *runtime.Instance,
-        already_constructed: void,
-    };
-
-    /// "lifecycle callbacks": a map from the names below to a Web IDL
-    /// Function callback value or null. Each value is a hold of the
-    /// definition's own (OWNED), released with it.
-    pub const LifecycleCallbacks = struct {
-        connectedCallback: ?engine.Owned = null,
-        disconnectedCallback: ?engine.Owned = null,
-        adoptedCallback: ?engine.Owned = null,
-        connectedMoveCallback: ?engine.Owned = null,
-        attributeChangedCallback: ?engine.Owned = null,
-        formAssociatedCallback: ?engine.Owned = null,
-        formResetCallback: ?engine.Owned = null,
-        formDisabledCallback: ?engine.Owned = null,
-        formStateRestoreCallback: ?engine.Owned = null,
-
-        /// Release every callback held.
-        pub fn deinit(self: *LifecycleCallbacks, allocator: Allocator) void {
-            _ = allocator;
-            inline for (std.meta.fields(LifecycleCallbacks)) |field| {
-                if (@field(self, field.name)) |callback| callback.release();
-                @field(self, field.name) = null;
-            }
-        }
-    };
-
-    /// A definition holding `constructor` (taken: released with it).
-    pub fn init(allocator: Allocator, name: []const u8, local_name: []const u8, constructor: engine.CallbackFunction) !*CustomElementDefinition {
-        const def = try allocator.create(CustomElementDefinition);
-        errdefer allocator.destroy(def);
-        const owned_name = try allocator.dupe(u8, name);
-        errdefer allocator.free(owned_name);
-
-        def.* = .{
-            .name = owned_name,
-            .local_name = try allocator.dupe(u8, local_name),
-            .constructor = constructor,
-            .observed_attributes = &.{},
-            .lifecycle_callbacks = .{},
-            .form_associated = false,
-            .disable_internals = false,
-            .disable_shadow = false,
-            .allocator = allocator,
-        };
-
-        return def;
-    }
-
-    pub fn deinit(self: *CustomElementDefinition) void {
-        self.allocator.free(self.name);
-        self.allocator.free(self.local_name);
-        freeStrings(self.allocator, self.observed_attributes);
-        self.construction_stack.deinit(self.allocator);
-        self.lifecycle_callbacks.deinit(self.allocator);
-        self.constructor.release();
-        self.allocator.destroy(self);
+    fn isLive(self: ScopedDocument) bool {
+        return runtime.SlabAllocator.generationOf(self.instance) == self.generation and
+            !runtime.instance_lifecycle.isCleanedUp(self.instance);
     }
 };
 
@@ -150,7 +69,7 @@ pub const InternalState = struct {
     is_scoped: bool = false,
 
     /// Set of documents using this scoped registry
-    scoped_document_set: std.ArrayListUnmanaged(*runtime.Instance) = .empty,
+    scoped_document_set: std.ArrayListUnmanaged(ScopedDocument) = .empty,
 
     /// Custom element definitions (name -> definition)
     definitions: std.StringHashMapUnmanaged(*CustomElementDefinition) = .empty,
@@ -217,6 +136,53 @@ const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
+}
+
+/// Immutable owner hooks, installed before any Browser or worker starts.
+pub fn installHooks() void {
+    const html = @import("html");
+    dom.process_start.assertInstalling();
+    runtime.CEReactions.install(.{ .begin = html.custom_elements.begin, .end = html.custom_elements.end });
+    dom.custom_elements.installOwner(.{
+        .has_definitions = html.custom_elements.hasDefinitions,
+        .lookup = lookUpCustomElementDefinition,
+        .definition_for_constructor = definitionForConstructor,
+        .create = html.custom_element_creation.create,
+        .try_upgrade = html.upgrade.tryToUpgrade,
+        .enqueue_callback = html.custom_elements.callbackFromMutation,
+        .cancel_element = html.custom_elements.cancelElement,
+        .is_scoped = &isScoped,
+        .associate_document = &associateDocument,
+        .form_tree_changed = html.custom_elements.formTreeChanged,
+    });
+    dom.unloading_cleanup.install(html.custom_elements.clearRealm);
+}
+
+fn isScoped(registry: *runtime.Instance) bool {
+    return (getInternal(registry) orelse return false).is_scoped;
+}
+
+fn associateDocument(registry: *runtime.Instance, document: *runtime.Instance) !void {
+    const internal = getInternal(registry) orelse return error.InvalidStateError;
+    if (!internal.is_scoped) return;
+    var i: usize = 0;
+    while (i < internal.scoped_document_set.items.len) {
+        const entry = internal.scoped_document_set.items[i];
+        if (!entry.isLive()) {
+            _ = internal.scoped_document_set.orderedRemove(i);
+            continue;
+        }
+        if (entry.instance == document) return;
+        i += 1;
+    }
+    try internal.scoped_document_set.append(internal.allocator, .{
+        .instance = document,
+        .generation = runtime.SlabAllocator.generationOf(document),
+    });
+}
+
+fn definitionForConstructor(registry: *runtime.Instance, realm: runtime.Context, constructor: runtime.JSValue) ?*CustomElementDefinition {
+    return (getInternal(registry) orelse return null).getDefinitionByConstructor(realm, constructor);
 }
 
 /// Initialize instance (creates the instance)
@@ -369,17 +335,36 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     def.form_associated = collected.form_associated;
     def.disable_internals = collected.disable_internals;
     def.disable_shadow = collected.disable_shadow;
-    errdefer def.deinit();
+    var registered = false;
+    errdefer if (!registered) def.deinit();
 
     // Step 16: "Append definition to this's custom element definition set."
     try internal.addDefinition(def);
+    registered = true;
+    def.registry = instance;
+    if (@import("html").custom_elements.stateForRealm(instance.ctx)) |agent_state| {
+        def.agent_definition_count = &agent_state.definition_count;
+        agent_state.definition_count += 1;
+        if (def.form_associated) {
+            def.agent_form_definition_count = &agent_state.form_definition_count;
+            agent_state.form_definition_count += 1;
+        }
+    }
 
-    // Steps 17-18: "upgrade particular elements within a document". Upgrade
-    // constructs each candidate through the definition's constructor, which
-    // Crane cannot do yet: [HTMLConstructor] and the construction stack are
-    // the custom-elements construction work (tmp/plans/lane-domcore-handoff.md).
-    // TODO(custom-elements): enqueue a custom element upgrade reaction for
-    // each candidate once upgrades construct.
+    // Steps 17–18: enqueue matching candidates in shadow-including tree order.
+    if (internal.is_scoped) {
+        for (internal.scoped_document_set.items) |document| {
+            if (document.isLive()) try @import("html").upgrade.enqueueCandidates(instance, document.instance, def);
+        }
+    } else {
+        if (realm.getRealm()) |record| {
+            if (record.global_object) |global| {
+                const window: *runtime.Instance = @ptrCast(@alignCast(global));
+                const document = try interfaces.Window.get_document(window);
+                try @import("html").upgrade.enqueueCandidates(instance, document, def);
+            }
+        }
+    }
 
     // Step 19: "If this's when-defined promise map[name] exists: resolve it
     // with constructor, and remove it."
@@ -462,7 +447,7 @@ fn readDefinitionSteps(realm: runtime.Context, allocator: Allocator, constructor
 /// not undefined, then set lifecycleCallbacks[callbackName] to the result of
 /// converting callbackValue to the Web IDL Function callback type" - which
 /// throws a TypeError for a value that is not callable. OWNED, or null.
-fn functionProperty(realm: runtime.Context, object: runtime.JSValue, property: []const u8) anyerror!?engine.Owned {
+fn functionProperty(realm: runtime.Context, object: runtime.JSValue, property: []const u8) anyerror!?engine.CallbackFunction {
     const value = try engine.getProperty(realm, object, property);
     if (engine.typeOf(realm, value.value) == .undefined) {
         value.release();
@@ -472,7 +457,7 @@ fn functionProperty(realm: runtime.Context, object: runtime.JSValue, property: [
         value.release();
         return error.TypeError;
     }
-    return value;
+    return .{ .function = value, .context = engine.incumbentRealm() };
 }
 
 /// "Let iterable be ? Get(constructor, property). If iterable is not
@@ -571,21 +556,10 @@ pub fn call_getName(instance: *runtime.Instance, constructor_data: callbacks.Cus
 ///
 /// Tries to upgrade all shadow-including inclusive descendant elements of root.
 pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = root;
-    _ = internal;
-
-    // Step 1: Let candidates be a list of all of root's shadow-including inclusive
-    //         descendant elements, in shadow-including tree order.
-    // Step 2: For each candidate of candidates, try to upgrade candidate.
-
-    // TODO: Implement full tree traversal and upgrade logic
-    // This requires:
-    // 1. Walking the DOM tree including shadow roots
-    // 2. For each element, calling tryToUpgrade()
-    // 3. tryToUpgrade() looks up definition and enqueues upgrade reaction
-
-    // For now, this is a no-op placeholder
+    // WebIDL interface conversion precedes the HTML tree algorithm.
+    if (root.stateAs(interfaces.Node.State) == null) return error.TypeError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    try @import("html").upgrade.upgradeSubtree(root, instance);
 }
 
 /// Operation: initialize(root)
@@ -593,20 +567,39 @@ pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) anyerr
 ///
 /// Associates this registry with elements in the subtree.
 pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
+    if (root.stateAs(interfaces.Node.State) == null) return error.TypeError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = root;
-
-    // Step 1: If this is not scoped and either root is Document or root's document's
-    //         registry is not this, throw NotSupportedError
-    if (!internal.is_scoped) {
-        // TODO: Check if root is Document or if root's node document's registry != this
-        return error.NotSupportedError;
+    const is_document = root.stateAs(interfaces.Document.State) != null;
+    const document = if (is_document) root else (try interfaces.Node.get_ownerDocument(root)) orelse return error.InvalidStateError;
+    // Step 1: a global registry may only initialize roots in its own document.
+    if (!internal.is_scoped and (is_document or try interfaces.Document.get_customElementRegistry(document) != instance)) return error.NotSupportedError;
+    // Steps 2–3: set only a null root association; never replace a registry.
+    if (is_document) {
+        if (try interfaces.Document.get_customElementRegistry(root) == null) try dom.custom_elements.setDocumentRegistry(root, instance);
+    } else if (root.stateAs(interfaces.ShadowRoot.State) != null) {
+        if (try interfaces.ShadowRoot.get_customElementRegistry(root) == null) try dom.custom_elements.setShadowRegistry(root, instance);
     }
-
-    // Steps 2-4: Set custom element registry for elements in subtree
-    // TODO: Implement proper initialization logic
-
-    // For now, this is a no-op placeholder
+    // Step 4 uses inclusive descendants in LIGHT tree order. Shadow trees
+    // keep their own association and require their own initialize() call.
+    const base = dom.instance_bridge.getNodeBase(root) orelse return;
+    var current: ?*dom.NodeBase = base;
+    while (current) |node| {
+        if (node.node_type == dom.NodeBase.ELEMENT_NODE) {
+            if (dom.instance_bridge.getInstance(node)) |object| {
+                const element: *runtime.Instance = @ptrCast(@alignCast(object));
+                if (try interfaces.Element.get_customElementRegistry(element) == null) try dom.custom_elements.setElementRegistry(element, instance);
+                if (try interfaces.Element.get_customElementRegistry(element) == instance) dom.custom_elements.tryUpgrade(element);
+            }
+        }
+        current = if (node.first_child) |child| child else next: {
+            var ancestor = node;
+            while (ancestor != base) {
+                if (ancestor.next_sibling) |sibling| break :next sibling;
+                ancestor = ancestor.parent_node orelse break;
+            }
+            break :next null;
+        };
+    }
 }
 
 /// Operation: whenDefined(name)

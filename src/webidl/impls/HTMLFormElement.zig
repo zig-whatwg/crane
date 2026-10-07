@@ -44,6 +44,8 @@ const Registry = utils.InstanceRegistry(InternalState);
 
 /// Internal state for HTMLFormElement implementation
 pub const InternalState = struct {
+    elements: ?*runtime.Instance = null,
+    elements_traced: bool = false,
     /// HTML § 4.10.22.3 "planned navigation": the token of the queued task
     /// that will navigate, or 0 for null.
     planned_navigation: u64 = 0,
@@ -96,6 +98,8 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
+        if (internal.elements_traced) engine.forgetTracedChild(instance, .{ .name = "elements" });
+        if (!internal.elements_traced) if (internal.elements) |collection| runtime.Instance.deinit(collection);
         internal.deinit();
     }
     Registry.remove(instance);
@@ -208,55 +212,19 @@ pub fn get_method(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return reflectEnumerated(instance, "method", &.{ "get", "post", "dialog" }, "get", "get");
 }
 
-/// The form's "listed elements", per
-/// https://html.spec.whatwg.org/multipage/forms.html#dom-form-elements
-///
-/// input[type=image] is deliberately excluded: it is a listed element but the
-/// spec removes it from this particular collection.
-const LISTED_ELEMENTS = [_][]const u8{
-    "button", "fieldset", "input", "object", "output", "select", "textarea",
-};
-
-fn collectListedElements(node: *runtime.Instance, collection: *runtime.Instance) anyerror!void {
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        if (NodeImpl.getNodeType(c) orelse 0 == NodeImpl.NodeType.ELEMENT_NODE) {
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const name = elem_internal.local_name.asSlice();
-                for (LISTED_ELEMENTS) |listed| {
-                    if (std.ascii.eqlIgnoreCase(name, listed)) {
-                        // input[type=image] is a listed element but is excluded
-                        // from form.elements specifically.
-                        const excluded = std.ascii.eqlIgnoreCase(name, "input") and
-                            if (elem_internal.findAttribute(null, "type")) |t|
-                                std.ascii.eqlIgnoreCase(t.value, "image")
-                            else
-                                false;
-                        if (!excluded) try HTMLCollectionImpl.addElement(collection, c);
-                        break;
-                    }
-                }
-            }
-        }
-        // Descend unconditionally: controls nest inside fieldsets, divs and
-        // anything else, and a nested <form> is a parse error rather than
-        // something to guard against here.
-        try collectListedElements(c, collection);
-        child = NodeImpl.getNextSibling(c);
-    }
-}
-
 /// Getter for elements
 /// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-elements
 pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-
-    const collection = try interfaces.HTMLCollection.init(elem_internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-
-    try collectListedElements(instance, collection);
+    const internal = Registry.get(instance) orelse return error.InvalidState;
+    if (internal.elements) |collection| return collection;
+    const collection = try interfaces.HTMLFormControlsCollection.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(collection);
+    try @import("dom").live_collections.formControls(collection, instance, false);
+    if (instance.ctx.hasEngine()) {
+        engine.traceChild(instance, collection, .{ .name = "elements" });
+        internal.elements_traced = true;
+    }
+    internal.elements = collection;
     return collection;
 }
 
@@ -264,7 +232,6 @@ pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Spec: the number of elements in the form's elements collection.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const collection = try get_elements(instance);
-    defer interfaces.HTMLCollection.deinit(collection);
     return interfaces.HTMLCollection.get_length(collection);
 }
 
@@ -328,8 +295,40 @@ pub fn call_reset(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: checkValidity
 pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return validateCustomControls(instance);
+}
+
+fn validateCustomControls(form: *runtime.Instance) !bool {
+    // HTML 4.10.21.2: snapshot invalid custom controls before firing events.
+    const allocator = form.ctx.allocator;
+    var invalid: std.ArrayList(engine.Owned) = .empty;
+    defer {
+        for (invalid.items) |value| value.release();
+        invalid.deinit(allocator);
+    }
+    const root = form_associated.rootOf(form);
+    var node: ?*runtime.Instance = root;
+    while (node) |element| : (node = nextInTree(element, root, false)) {
+        if (!form_associated.isFormAssociatedCustom(element) or form_associated.formOwner(element) != form) continue;
+        const internals = try @import("dom").custom_elements.ensureInternals(element);
+        if (!(try interfaces.ElementInternals.get_willValidate(internals))) continue;
+        if (try interfaces.ValidityState.get_valid(try interfaces.ElementInternals.get_validity(internals))) continue;
+        const held = try engine.retainValue(form.ctx, .{ .instance = element });
+        invalid.append(allocator, held) catch |err| {
+            held.release();
+            return err;
+        };
+    }
+    const realm = form.ctx;
+    for (invalid.items) |value| {
+        if (!realm.hasEngine()) break;
+        const element = engine.convertToPlatformObject(realm, value.value) orelse continue;
+        const event = try interfaces.Event.call_constructor(realm, runtime.DOMString.initInterned("invalid"), .passed(.{ .cancelable = true }));
+        const generation = runtime.SlabAllocator.generationOf(event);
+        defer event.releaseIfUnwrapped(generation);
+        _ = try @import("dom").fire_event.dispatchTrusted(element, event);
+    }
+    return invalid.items.len == 0;
 }
 
 /// Operation: submit
@@ -385,7 +384,7 @@ fn resetForm(form: *runtime.Instance) anyerror!void {
     while (node) |n| : (node = nextInTree(n, root, false)) {
         if (!form_associated.isElement(n)) continue;
         const resettable = form_associated.isInput(n) or form_associated.isSelect(n) or
-            form_associated.isTextArea(n) or n.stateAs(interfaces.HTMLOutputElement.State) != null;
+            form_associated.isTextArea(n) or n.stateAs(interfaces.HTMLOutputElement.State) != null or form_associated.isFormAssociatedCustom(n);
         if (!resettable) continue;
         if (form_associated.formOwner(n) != form) continue;
         try controls.append(allocator, n);
@@ -401,12 +400,12 @@ fn resetForm(form: *runtime.Instance) anyerror!void {
 // shared form-associated algorithms (form_associated.zig). Stated
 // deviations:
 //
-//   * Constraint validation (submit step 5.4) is not implemented, so every
-//     form validates: an invalid control does not stop a submission.
+//   * Native control constraint validation is still incomplete; FACE
+//     validity participates in submit step 5.4.
 //   * "Submit as entity body" encodes multipart/form-data through Fetch's
 //     FormData extraction: UTF-8 whatever the form's encoding, and a file
-//     control's empty File as an empty string field (FormData cannot yet be
-//     handed a Blob).
+//     control's empty File as an empty string field; custom-element File
+//     submission values retain their platform objects through FormData.
 //   * An Image Button's selected coordinate is always (0, 0): nothing is
 //     rendered, so no activation selects one.
 // ============================================================================
@@ -419,6 +418,8 @@ const Entry = struct {
     value: []u8,
     /// A file control's entry: its value is a File, represented by its name.
     is_file: bool = false,
+    file: ?*runtime.Instance = null,
+    file_root: ?engine.Owned = null,
 };
 
 const EntryList = std.ArrayListUnmanaged(Entry);
@@ -427,6 +428,7 @@ fn freeEntries(allocator: std.mem.Allocator, entries: *EntryList) void {
     for (entries.items) |entry| {
         allocator.free(entry.name);
         allocator.free(entry.value);
+        if (entry.file_root) |held| held.release();
     }
     entries.deinit(allocator);
 }
@@ -512,10 +514,10 @@ fn pickEncoding(allocator: std.mem.Allocator, form: *runtime.Instance, document:
 }
 
 /// Whether `element` is a submittable element: button, input, select or
-/// textarea (form-associated custom elements are not implemented).
+/// textarea, and form-associated custom elements.
 fn isSubmittable(element: *runtime.Instance) bool {
     return form_associated.isButton(element) or form_associated.isInput(element) or
-        form_associated.isSelect(element) or form_associated.isTextArea(element);
+        form_associated.isSelect(element) or form_associated.isTextArea(element) or form_associated.isFormAssociatedCustom(element);
 }
 
 /// § 4.10.22.4 "construct the entry list" given form, submitter (null when
@@ -571,22 +573,7 @@ fn constructEntryList(allocator: std.mem.Allocator, form: *runtime.Instance, sub
     //    left it, through form data.
     freeEntries(allocator, &entries);
     entries = .empty;
-    const after = interfaces.FormData.getEntriesForIterable(form_data) orelse &.{};
-    for (after) |entry| {
-        switch (entry.value) {
-            .usvstring => |value| try appendEntry(allocator, &entries, entry.name, try allocator.dupe(u8, value)),
-            .file => |file| {
-                // A File is represented by its name; a Blob that is not a
-                // File became one named "blob" (XHR "create an entry").
-                const name: []u8 = if (file.stateAs(interfaces.File.State) != null)
-                    try takeString(allocator, file, try interfaces.File.get_name(file))
-                else
-                    try allocator.dupe(u8, "blob");
-                try appendEntry(allocator, &entries, entry.name, name);
-                entries.items[entries.items.len - 1].is_file = true;
-            },
-        }
-    }
+    try appendDataToEntries(allocator, &entries, form_data);
     return entries;
 }
 
@@ -602,6 +589,16 @@ fn appendFieldEntries(allocator: std.mem.Allocator, entries: *EntryList, field: 
     if (form_associated.isButtonControl(field) and field != submitter) return;
     if (is_input and (eql(input_type, "checkbox") or eql(input_type, "radio")) and
         !(try interfaces.HTMLInputElement.get_checked(field))) return;
+
+    // Step 5.3: FACE constructs its entries before the name-attribute check.
+    if (form_associated.isFormAssociatedCustom(field)) {
+        const data = try interfaces.FormData.call_constructor(field.ctx, .notPassed(), .notPassed());
+        const generation = runtime.SlabAllocator.generationOf(data);
+        defer data.releaseIfUnwrapped(generation);
+        try @import("dom").custom_elements.appendFormEntries(field, data);
+        try appendDataToEntries(allocator, entries, data);
+        return;
+    }
 
     // 5.2: an Image Button (the submitter, per 5.1): name.x and name.y, the
     // selected coordinate.
@@ -693,7 +690,34 @@ fn constructEntryListInto(form: *runtime.Instance, submitter: ?*runtime.Instance
     var entries = (try constructEntryList(allocator, form, submitter, encoding_mod.UTF_8)) orelse return error.InvalidStateError;
     defer freeEntries(allocator, &entries);
     // 1.4: set this's entry list to it.
-    for (entries.items) |entry| try interfaces.FormData.call_append(form_data, entry.name, entry.value);
+    for (entries.items) |entry| try appendEntryToData(form_data, entry);
+}
+
+// HTML 4.10.22.4: cloning an entry list keeps each File object unchanged.
+fn appendDataToEntries(allocator: std.mem.Allocator, entries: *EntryList, data: *runtime.Instance) !void {
+    for (interfaces.FormData.getEntriesForIterable(data) orelse &.{}) |entry| {
+        switch (entry.value) {
+            .usvstring => |value| try appendEntry(allocator, entries, entry.name, try allocator.dupe(u8, value)),
+            .file => |file| {
+                const held: ?engine.Owned = if (data.ctx.hasEngine()) try engine.retainValue(data.ctx, .{ .instance = file }) else null;
+                errdefer if (held) |root| root.release();
+                const filename = try takeString(allocator, file, try interfaces.File.get_name(file));
+                try appendEntry(allocator, entries, entry.name, filename);
+                const added = &entries.items[entries.items.len - 1];
+                added.is_file = true;
+                added.file = file;
+                added.file_root = held;
+            },
+        }
+    }
+}
+
+fn appendEntryToData(data: *runtime.Instance, entry: Entry) !void {
+    if (entry.file) |file| {
+        try interfaces.FormData.call_append__1(data, entry.name, file, .notPassed());
+    } else {
+        try interfaces.FormData.call_append(data, entry.name, entry.value);
+    }
 }
 
 fn eql(a: []const u8, comptime b: []const u8) bool {
@@ -810,8 +834,14 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
         // 5.1-5.2: firing submission events.
         if (internal.firing_submission_events) return;
         internal.firing_submission_events = true;
-        // 5.3-5.4: user validity and interactive validation - not
-        // implemented (stated above); every form validates.
+        // 5.3–5.4: FACE participates in interactive constraint validation.
+        // Native control validation remains in the controls' own algorithms.
+        defer if (Registry.get(form)) |after| {
+            after.firing_submission_events = false;
+        };
+        const no_validate = hasAttribute(form, "novalidate") or
+            (submitter != form and hasAttribute(submitter, "formnovalidate"));
+        if (!no_validate and !(try validateCustomControls(form))) return;
 
         // 5.5: submitterButton is null if submitter is form.
         const submitter_button: ?*runtime.Instance = if (submitter == form) null else submitter;
@@ -1026,7 +1056,7 @@ fn multipartBody(allocator: std.mem.Allocator, form_data: *runtime.Instance) !Po
 fn entryListFormData(form: *runtime.Instance, entries: []const Entry) !*runtime.Instance {
     const form_data = try interfaces.FormData.call_constructor(form.ctx, webidl.Opt(*runtime.Instance).notPassed(), webidl.Opt(?*runtime.Instance).notPassed());
     errdefer form_data.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(form_data));
-    for (entries) |entry| try interfaces.FormData.call_append(form_data, entry.name, entry.value);
+    for (entries) |entry| try appendEntryToData(form_data, entry);
     return form_data;
 }
 
@@ -1201,6 +1231,5 @@ fn navigateSteps(data: ?*anyopaque) void {
 
 /// Operation: reportValidity
 pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return validateCustomControls(instance);
 }

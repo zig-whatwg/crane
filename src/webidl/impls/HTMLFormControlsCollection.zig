@@ -28,27 +28,37 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    return interfaces.HTMLCollection.initWithState(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    interfaces.HTMLCollection.deinit(instance);
 }
 
 /// Operation: namedItem
 pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
-    _ = instance;
-    _ = name;
-    return error.NotImplemented;
+    // HTML 2.6.4.2 steps 1–5: duplicates are a live filtered RadioNodeList.
+    if (name.asSlice().len == 0) return null;
+    const length = try interfaces.HTMLCollection.get_length(instance);
+    var first: ?*runtime.Instance = null;
+    var index: u32 = 0;
+    while (index < length) : (index += 1) {
+        const element = (try interfaces.HTMLCollection.call_item(instance, index)) orelse continue;
+        if (!@import("html").form_associated.hasControlName(element, name.asSlice())) continue;
+        if (first == null) {
+            first = element;
+            continue;
+        }
+        const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
+        errdefer runtime.Instance.deinit(list);
+        try @import("dom").node_lists.namedControls(list, instance, name.asSlice());
+        return .{ .instance = list };
+    }
+    return if (first) |element| .{ .instance = element } else null;
 }
 
 /// Get supported property names for named property enumeration
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
-    _ = instance;
-    _ = allocator;
-    return &[_]runtime.DOMString{};
+    return interfaces.HTMLCollection.getSupportedPropertyNames(instance, allocator);
 }
