@@ -32,6 +32,9 @@ var pools_ready = false;
 
 fn ensurePools() void {
     if (pools_ready) return;
+    // A file-isolated executable has no earlier test to install Node's
+    // creation and tree hooks before DocumentFragment.init.
+    interfaces.process_hooks.startHooksForTest();
     runtime.SlabAllocator.init(std.heap.page_allocator);
     runtime.ArenaAllocator.init(std.heap.page_allocator);
     pools_ready = true;

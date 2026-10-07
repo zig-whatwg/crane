@@ -314,6 +314,8 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Testing
 
+- [A shared suite can hide missing hook setup](testing-a-shared-suite-can-hide-missing-hook-setup.md) - Each test file owns its process-wide prerequisites.
+
 - [Shared algorithm migrations need caller context tests](testing-shared-algorithm-migrations-need-caller-context-tests.md) - Verify the nodes exist and retain the caller's realm and subtype state.
 
 - [Subtree cleanup must return native storage](testing-subtree-cleanup-must-return-native-storage.md) - Count live storage separately and prove repeated operations plateau.
