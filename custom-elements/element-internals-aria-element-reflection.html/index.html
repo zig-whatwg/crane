@@ -21,23 +21,30 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li aria-current="page"><code>element-<wbr>internals-<wbr>aria-<wbr>element-<wbr>reflection.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>element-<wbr>internals-<wbr>aria-<wbr>element-<wbr>reflection.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/element-internals-aria-element-reflection.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 0</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 9</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/element-internals-aria-element-reflection.html"><code>custom-<wbr>elements/<wbr>element-<wbr>internals-<wbr>aria-<wbr>element-<wbr>reflection.<wbr>html</code></a></dd></div>
 </dl>
-<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">NotSupportedError: This feature is not yet implemented</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/custom-elements/element-internals-aria-element-reflection.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><span class="quiet">none reported</span></span></h3>
-<pre class="msg harness-msg">NotSupportedError: This feature is not yet implemented</pre>
-<p class="omitted">No subtests were reported.</p>
+<ol class="subtests">
+<li class="sub s-pass" id="s-0abf3ab6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Getting previously-unset ARIA element reflection properties on ElementInternals should return null.</span></div><a class="self" href="#s-0abf3ab6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-344be988"><details><summary><span class="mark">FAIL</span><span class="sub-name">Getting ARIA element reflection properties on ElementInternals should return the value that was set.</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-344be988" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7668d23f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting ARIA element reflection properties to an empty array should work as expected.</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-7668d23f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b2af5a49"><details><summary><span class="mark">FAIL</span><span class="sub-name">Reading an ARIA element reflection array property that was set to an empty array, on an ElementInternals with no previously cached value, should return an empty array.</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-b2af5a49" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be3d96c5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting ARIA element reflection properties on ElementInternals to null should delete any previous value, and not crash</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-be3d96c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2cac5c21"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting ariaLabelledByElements on ElementInternals should change the accessible name of the custom element</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-2cac5c21" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c32bbcb3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Setting aria-labelledby or ariaLabelledByElements on the custom element should supersede the value of ariaLabelledByElements on ElementInternals</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-c32bbcb3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-47eecb74"><details><summary><span class="mark">FAIL</span><span class="sub-name">Caching invariant different attributes.</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-47eecb74" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-309674c3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Caching invariant different elements.</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-309674c3" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </section>
 <footer class="foot">

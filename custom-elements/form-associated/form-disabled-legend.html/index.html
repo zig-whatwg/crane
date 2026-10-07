@@ -21,29 +21,26 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li><a href="../../../custom-elements/form-associated/"><code>form-<wbr>associated/</code></a></li><li aria-current="page"><code>form-<wbr>disabled-<wbr>legend.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>form-<wbr>disabled-<wbr>legend.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/form-associated/form-disabled-legend.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 6</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>6</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 6</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/form-associated/form-disabled-legend.html"><code>custom-<wbr>elements/<wbr>form-<wbr>associated/<wbr>form-<wbr>disabled-<wbr>legend.<wbr>html</code></a></dd></div>
 </dl>
-<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">NotSupportedError: This feature is not yet implemented</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/custom-elements/form-associated/form-disabled-legend.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 6</span></h3>
-<pre class="msg harness-msg">NotSupportedError: This feature is not yet implemented</pre>
 <ol class="subtests">
-<li class="sub s-fail" id="s-5f9ff47d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Custom element inside the first legend of a disabled fieldset is not disabled</span></summary><pre class="msg">assert_true: in legend :enabled expected true got false</pre></details><a class="self" href="#s-5f9ff47d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fbf7cc41"><details><summary><span class="mark">FAIL</span><span class="sub-name">Custom element inside a legend other than the first one is disabled</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-fbf7cc41" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7e97deaa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Legend of an inner fieldset does not shield from an outer disabled fieldset</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-7e97deaa" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1d308236"><details><summary><span class="mark">FAIL</span><span class="sub-name">Toggling disabled on the fieldset does not affect a custom element inside its first legend</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-1d308236" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d19de364"><details><summary><span class="mark">FAIL</span><span class="sub-name">Changing the first legend updates the disabled state of a custom element</span></summary><pre class="msg">assert_true: after inserting a new first legend expected true got false</pre></details><a class="self" href="#s-d19de364" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f97a5c4e"><details><summary><span class="mark">FAIL</span><span class="sub-name">fieldset.elements includes custom elements inside the legend</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;length&#39;)</pre></details><a class="self" href="#s-f97a5c4e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5f9ff47d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Custom element inside the first legend of a disabled fieldset is not disabled</span></div><a class="self" href="#s-5f9ff47d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fbf7cc41"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Custom element inside a legend other than the first one is disabled</span></div><a class="self" href="#s-fbf7cc41" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7e97deaa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Legend of an inner fieldset does not shield from an outer disabled fieldset</span></div><a class="self" href="#s-7e97deaa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1d308236"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Toggling disabled on the fieldset does not affect a custom element inside its first legend</span></div><a class="self" href="#s-1d308236" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d19de364"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Changing the first legend updates the disabled state of a custom element</span></div><a class="self" href="#s-d19de364" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f97a5c4e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fieldset.elements includes custom elements inside the legend</span></div><a class="self" href="#s-f97a5c4e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

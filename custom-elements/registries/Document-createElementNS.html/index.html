@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li><a href="../../../custom-elements/registries/"><code>registries/</code></a></li><li aria-current="page"><code>Document-<wbr>createElementNS.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>Document-<wbr>createElementNS.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/registries/Document-createElementNS.html">
-<p class="figures-main"><span class="fg-pass">5</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>5</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">10</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/registries/Document-createElementNS.html"><code>custom-<wbr>elements/<wbr>registries/<wbr>Document-<wbr>createElementNS.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -36,15 +36,15 @@
 <div class="run">
 <ol class="subtests">
 <li class="sub s-pass" id="s-2b84a07a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createElementNS should use the global registry by default</span></div><a class="self" href="#s-2b84a07a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-58c6676b"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS should use the specified scoped registry</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-58c6676b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3b764448"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS should create a builtin element regardless of a custom element registry specified</span></summary><pre class="msg">assert_equals: expected object &quot;[object CustomElementRegistry]&quot; but got null</pre></details><a class="self" href="#s-3b764448" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-58c6676b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createElementNS should use the specified scoped registry</span></div><a class="self" href="#s-58c6676b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3b764448"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createElementNS should create a builtin element regardless of a custom element registry specified</span></div><a class="self" href="#s-3b764448" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b7766287"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createElementNS should use the specified global registry</span></div><a class="self" href="#s-b7766287" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0caa490d"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS should create an upgrade candidate when there is no matching definition in the specified registry</span></summary><pre class="msg">assert_equals: expected &quot;HTMLElement&quot; but got &quot;GlobalABElement&quot;</pre></details><a class="self" href="#s-0caa490d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0caa490d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createElementNS should create an upgrade candidate when there is no matching definition in the specified registry</span></div><a class="self" href="#s-0caa490d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-aba758cf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">document.createElement should create a builtin element with null registry if customElement is set to null</span></div><a class="self" href="#s-aba758cf" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d44775df"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">document.createElement should create a custom element candidate with null registry if customElement is set to null</span></div><a class="self" href="#s-d44775df" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b0836464"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">document.createElement should create a defined custom element with null registry if customElement is set to null</span></div><a class="self" href="#s-b0836464" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-db1e5386"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS should create an upgrade candidate and the candidate should be upgraded when the element is defined</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-db1e5386" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4845cc76"><details><summary><span class="mark">FAIL</span><span class="sub-name">createElementNS on a non-HTML document should still handle registries correctly</span></summary><pre class="msg">assert_equals: expected object &quot;[object CustomElementRegistry]&quot; but got null</pre></details><a class="self" href="#s-4845cc76" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-db1e5386"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createElementNS should create an upgrade candidate and the candidate should be upgraded when the element is defined</span></div><a class="self" href="#s-db1e5386" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4845cc76"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">createElementNS on a non-HTML document should still handle registries correctly</span></div><a class="self" href="#s-4845cc76" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

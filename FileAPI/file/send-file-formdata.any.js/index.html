@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../FileAPI/"><code>FileAPI/</code></a></li><li><a href="../../../FileAPI/file/"><code>file/</code></a></li><li aria-current="page"><code>send-<wbr>file-<wbr>formdata.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>send-<wbr>file-<wbr>formdata.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="FileAPI/file/send-file-formdata.any.js">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 2</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 2</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/FileAPI/file/send-file-formdata.any.js"><code>FileAPI/<wbr>file/<wbr>send-<wbr>file-<wbr>formdata.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,73 +34,15 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/FileAPI/file/send-file-formdata.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/FileAPI/file/send-file-formdata.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-51580691"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form.txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-DUakHmowq20qqItmP4v
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form.txt
-------formdata-crane-DUakHmowq20qqItmP4v
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form.txt&quot;
-
-filename
-------formdata-crane-DUakHmowq20qqItmP4v
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-DUakHmowq20qqItmP4v--
-
-Expected:
-------formdata-crane-DUakHmowq20qqItmP4v
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form.txt
-------formdata-crane-DUakHmowq20qqItmP4v
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form.txt&quot;
-
-filename
-------formdata-crane-DUakHmowq20qqItmP4v
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form.txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-DUakHmowq20qqItmP4v-- expected true got false</pre></details><a class="self" href="#s-51580691" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-51580691"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form.txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-51580691" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/FileAPI/file/send-file-formdata.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<h3 class="run-head"><code>/FileAPI/file/send-file-formdata.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-f856f8ac"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form.txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-EIIoCot0xtK38vG7mGH
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form.txt
-------formdata-crane-EIIoCot0xtK38vG7mGH
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form.txt&quot;
-
-filename
-------formdata-crane-EIIoCot0xtK38vG7mGH
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-EIIoCot0xtK38vG7mGH--
-
-Expected:
-------formdata-crane-EIIoCot0xtK38vG7mGH
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form.txt
-------formdata-crane-EIIoCot0xtK38vG7mGH
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form.txt&quot;
-
-filename
-------formdata-crane-EIIoCot0xtK38vG7mGH
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form.txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-EIIoCot0xtK38vG7mGH-- expected true got false</pre></details><a class="self" href="#s-f856f8ac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f856f8ac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form.txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-f856f8ac" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

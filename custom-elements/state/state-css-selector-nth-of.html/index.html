@@ -21,23 +21,24 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li><a href="../../../custom-elements/state/"><code>state/</code></a></li><li aria-current="page"><code>state-<wbr>css-<wbr>selector-<wbr>nth-<wbr>of.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>state-<wbr>css-<wbr>selector-<wbr>nth-<wbr>of.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/state/state-css-selector-nth-of.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 0</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/state/state-css-selector-nth-of.html"><code>custom-<wbr>elements/<wbr>state/<wbr>state-<wbr>css-<wbr>selector-<wbr>nth-<wbr>of.<wbr>html</code></a></dd></div>
 </dl>
-<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">NotSupportedError: This feature is not yet implemented</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/custom-elements/state/state-css-selector-nth-of.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><span class="quiet">none reported</span></span></h3>
-<pre class="msg harness-msg">NotSupportedError: This feature is not yet implemented</pre>
-<p class="omitted">No subtests were reported.</p>
+<ol class="subtests">
+<li class="sub s-fail" id="s-3e8cd1ab"><details><summary><span class="mark">FAIL</span><span class="sub-name">state selector has influence on nth-of when state is applied</span></summary><pre class="msg">assert_equals: expected &quot;rgb(255, 0, 0)&quot; but got &quot;rgb(0, 0, 0)&quot;</pre></details><a class="self" href="#s-3e8cd1ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9e833acc"><details><summary><span class="mark">FAIL</span><span class="sub-name">state selector only applies on given ident</span></summary><pre class="msg">assert_equals: expected &quot;rgb(255, 0, 0)&quot; but got &quot;rgb(0, 0, 0)&quot;</pre></details><a class="self" href="#s-9e833acc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-760a2731"><details><summary><span class="mark">FAIL</span><span class="sub-name">style is invalided on clear()</span></summary><pre class="msg">assert_equals: expected &quot;rgb(255, 0, 0)&quot; but got &quot;rgb(0, 0, 0)&quot;</pre></details><a class="self" href="#s-760a2731" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </section>
 <footer class="foot">

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../xhr/"><code>xhr/</code></a></li><li aria-current="page"><code>formdata.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>formdata.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="xhr/formdata.html">
-<p class="figures-main"><span class="fg-pass">4</span><span class="fg-of"> / 9</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>5</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">7</span><span class="fg-of"> / 9</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/xhr/formdata.html"><code>xhr/<wbr>formdata.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -37,10 +37,10 @@
 <ol class="subtests">
 <li class="sub s-pass" id="s-1e654685"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">empty formdata</span></div><a class="self" href="#s-1e654685" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2c85117a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">formdata with string</span></div><a class="self" href="#s-2c85117a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-eecd6715"><details><summary><span class="mark">FAIL</span><span class="sub-name">formdata with named string</span></summary><pre class="msg">assert_equals: expected &quot;\nkey=kv.txt:text/plain:5,&quot; but got &quot;key=[object Blob],\n&quot;</pre></details><a class="self" href="#s-eecd6715" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eecd6715"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">formdata with named string</span></div><a class="self" href="#s-eecd6715" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d150a51c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">formdata from form</span></div><a class="self" href="#s-d150a51c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3a9adc04"><details><summary><span class="mark">FAIL</span><span class="sub-name">formdata with blob</span></summary><pre class="msg">assert_equals: expected &quot;\nkey=blob:text/x-value:5,&quot; but got &quot;key=[object Blob],\n&quot;</pre></details><a class="self" href="#s-3a9adc04" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8b796275"><details><summary><span class="mark">FAIL</span><span class="sub-name">formdata with named blob</span></summary><pre class="msg">assert_equals: expected &quot;\nkey=blob.txt:text/x-value:5,&quot; but got &quot;key=[object Blob],\n&quot;</pre></details><a class="self" href="#s-8b796275" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3a9adc04"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">formdata with blob</span></div><a class="self" href="#s-3a9adc04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8b796275"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">formdata with named blob</span></div><a class="self" href="#s-8b796275" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2381640c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">formdata.append() should throw if value is string and file name is given</span></div><a class="self" href="#s-2381640c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-8531e135"><details><summary><span class="mark">FAIL</span><span class="sub-name">Newly created FormData contains entries added to &quot;formData&quot; IDL attribute of FormDataEvent.</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-8531e135" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-eb3143d2"><details><summary><span class="mark">FAIL</span><span class="sub-name">|new FormData()| in formdata event handler should throw</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-eb3143d2" aria-label="Link to this subtest">&para;</a></li>

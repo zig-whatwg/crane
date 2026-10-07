@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li><a href="../../../custom-elements/registries/"><code>registries/</code></a></li><li aria-current="page"><code>CustomElementRegistry-<wbr>initialize.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>CustomElementRegistry-<wbr>initialize.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/registries/CustomElementRegistry-initialize.html">
-<p class="figures-main"><span class="fg-pass">3</span><span class="fg-of"> / 13</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>10</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">5</span><span class="fg-of"> / 13</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/registries/CustomElementRegistry-initialize.html"><code>custom-<wbr>elements/<wbr>registries/<wbr>CustomElementRegistry-<wbr>initialize.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -45,8 +45,8 @@
 <li class="sub s-fail" id="s-b2e89863"><details><summary><span class="mark">FAIL</span><span class="sub-name">initialize does not set the registry of nested shadow tree to a scoped registry</span></summary><pre class="msg">Cannot read properties of null (reading &#39;customElementRegistry&#39;)</pre></details><a class="self" href="#s-b2e89863" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-b37d5dda"><details><summary><span class="mark">FAIL</span><span class="sub-name">initialize sets element.customElementRegistry permantently</span></summary><pre class="msg">Cannot read properties of null (reading &#39;customElementRegistry&#39;)</pre></details><a class="self" href="#s-b37d5dda" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-7e3cc2ac"><details><summary><span class="mark">FAIL</span><span class="sub-name">initialize is no-op on a subtree with a non-null registry</span></summary><pre class="msg">Cannot read properties of null (reading &#39;customElementRegistry&#39;)</pre></details><a class="self" href="#s-7e3cc2ac" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0bcdb534"><details><summary><span class="mark">FAIL</span><span class="sub-name">initialize works on Document</span></summary><pre class="msg">assert_equals: expected object &quot;[object CustomElementRegistry]&quot; but got null</pre></details><a class="self" href="#s-0bcdb534" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4cab8036"><details><summary><span class="mark">FAIL</span><span class="sub-name">initialize works on DocumentFragment</span></summary><pre class="msg">assert_equals: expected object &quot;[object CustomElementRegistry]&quot; but got null</pre></details><a class="self" href="#s-4cab8036" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0bcdb534"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">initialize works on Document</span></div><a class="self" href="#s-0bcdb534" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4cab8036"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">initialize works on DocumentFragment</span></div><a class="self" href="#s-4cab8036" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-34f741bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">initialize sets registry on shadow root descendants with no registry</span></summary><pre class="msg">Cannot read properties of null (reading &#39;querySelector&#39;)</pre></details><a class="self" href="#s-34f741bb" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>

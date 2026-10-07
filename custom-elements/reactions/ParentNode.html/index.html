@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li><a href="../../../custom-elements/reactions/"><code>reactions/</code></a></li><li aria-current="page"><code>ParentNode.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>ParentNode.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/reactions/ParentNode.html">
-<p class="figures-main"><span class="fg-pass">4</span><span class="fg-of"> / 4</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 4</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/reactions/ParentNode.html"><code>custom-<wbr>elements/<wbr>reactions/<wbr>ParentNode.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -36,9 +36,9 @@
 <div class="run">
 <ol class="subtests">
 <li class="sub s-pass" id="s-c77888aa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">prepend on ParentNode must enqueue a connected reaction</span></div><a class="self" href="#s-c77888aa" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-d31f5f24"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">prepend on ParentNode must enqueue a disconnected reaction, an adopted reaction, and a connected reaction when the custom element was in another document</span></div><a class="self" href="#s-d31f5f24" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d31f5f24"><details><summary><span class="mark">FAIL</span><span class="sub-name">prepend on ParentNode must enqueue a disconnected reaction, an adopted reaction, and a connected reaction when the custom element was in another document</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;disconnected&quot;, &quot;adopted&quot;, &quot;connected&quot;] length 3, got [&quot;disconnected&quot;, &quot;adopted&quot;] length 2</pre></details><a class="self" href="#s-d31f5f24" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-fa024baf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">append on ParentNode must enqueue a connected reaction</span></div><a class="self" href="#s-fa024baf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-e361895b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">append on ParentNode must enqueue a disconnected reaction, an adopted reaction, and a connected reaction when the custom element was in another document</span></div><a class="self" href="#s-e361895b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e361895b"><details><summary><span class="mark">FAIL</span><span class="sub-name">append on ParentNode must enqueue a disconnected reaction, an adopted reaction, and a connected reaction when the custom element was in another document</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;disconnected&quot;, &quot;adopted&quot;, &quot;connected&quot;] length 3, got [&quot;disconnected&quot;, &quot;adopted&quot;] length 2</pre></details><a class="self" href="#s-e361895b" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

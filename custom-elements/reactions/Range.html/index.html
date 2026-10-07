@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li><a href="../../../custom-elements/reactions/"><code>reactions/</code></a></li><li aria-current="page"><code>Range.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>Range.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/reactions/Range.html">
-<p class="figures-main"><span class="fg-pass">9</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">7</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/reactions/Range.html"><code>custom-<wbr>elements/<wbr>reactions/<wbr>Range.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -41,9 +41,9 @@
 <li class="sub s-pass" id="s-4fe00136"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cloneContents on Range must not enqueue an attributeChanged reaction when cloning an element with an unobserved attribute</span></div><a class="self" href="#s-4fe00136" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e77a9e17"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">cloneContents on Range must enqueue an attributeChanged reaction when cloning an element only for observed attributes</span></div><a class="self" href="#s-e77a9e17" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c60bb482"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertNode on Range must enqueue a connected reaction</span></div><a class="self" href="#s-c60bb482" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-83545468"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertNode on Range must enqueue a disconnected reaction, an adopted reaction, and a connected reaction when the custom element was in another document</span></div><a class="self" href="#s-83545468" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-83545468"><details><summary><span class="mark">FAIL</span><span class="sub-name">insertNode on Range must enqueue a disconnected reaction, an adopted reaction, and a connected reaction when the custom element was in another document</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;disconnected&quot;, &quot;adopted&quot;, &quot;connected&quot;] length 3, got [&quot;disconnected&quot;, &quot;adopted&quot;] length 2</pre></details><a class="self" href="#s-83545468" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-67755369"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">surroundContents on Range must enqueue a connected reaction</span></div><a class="self" href="#s-67755369" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-58a68db3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">surroundContents on Range must enqueue a disconnected reaction, an adopted reaction, and a connected reaction when the custom element was in another document</span></div><a class="self" href="#s-58a68db3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-58a68db3"><details><summary><span class="mark">FAIL</span><span class="sub-name">surroundContents on Range must enqueue a disconnected reaction, an adopted reaction, and a connected reaction when the custom element was in another document</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;disconnected&quot;, &quot;adopted&quot;, &quot;connected&quot;] length 3, got [&quot;disconnected&quot;, &quot;adopted&quot;] length 2</pre></details><a class="self" href="#s-58a68db3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-b2f365c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">createContextualFragment on Range must construct a custom element</span></summary><pre class="msg">Cannot convert undefined or null to object</pre></details><a class="self" href="#s-b2f365c1" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>

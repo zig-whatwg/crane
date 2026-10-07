@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../FileAPI/"><code>FileAPI/</code></a></li><li><a href="../../../FileAPI/file/"><code>file/</code></a></li><li aria-current="page"><code>send-<wbr>file-<wbr>formdata-<wbr>controls.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>send-<wbr>file-<wbr>formdata-<wbr>controls.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="FileAPI/file/send-file-formdata-controls.any.js">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 24</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>24</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">18</span><span class="fg-of"> / 24</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>6</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/FileAPI/file/send-file-formdata-controls.any.js"><code>FileAPI/<wbr>file/<wbr>send-<wbr>file-<wbr>formdata-<wbr>controls.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,759 +34,239 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/FileAPI/file/send-file-formdata-controls.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 12</span></h3>
+<h3 class="run-head"><code>/FileAPI/file/send-file-formdata-controls.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 12</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-c4382b0d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-NUL-[␀].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-XlIeCv63N2BfjtR7wfU
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-NUL-[␀].txt
-------formdata-crane-XlIeCv63N2BfjtR7wfU
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-NUL-[␀].txt&quot;
-
-filename
-------formdata-crane-XlIeCv63N2BfjtR7wfU
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-XlIeCv63N2BfjtR7wfU--
-
-Expected:
-------formdata-crane-XlIeCv63N2BfjtR7wfU
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-NUL-[␀].txt
-------formdata-crane-XlIeCv63N2BfjtR7wfU
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-NUL-[␀].txt&quot;
-
-filename
-------formdata-crane-XlIeCv63N2BfjtR7wfU
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-NUL-[␀].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-XlIeCv63N2BfjtR7wfU-- expected true got false</pre></details><a class="self" href="#s-c4382b0d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a89b608e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-BS-[␈].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-vgjWOCYcfNfUyxNPZ1f
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-BS-[␈].txt
-------formdata-crane-vgjWOCYcfNfUyxNPZ1f
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-BS-[␈].txt&quot;
-
-filename
-------formdata-crane-vgjWOCYcfNfUyxNPZ1f
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-vgjWOCYcfNfUyxNPZ1f--
-
-Expected:
-------formdata-crane-vgjWOCYcfNfUyxNPZ1f
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-BS-[␈].txt
-------formdata-crane-vgjWOCYcfNfUyxNPZ1f
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-BS-[␈].txt&quot;
-
-filename
-------formdata-crane-vgjWOCYcfNfUyxNPZ1f
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-BS-[␈].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-vgjWOCYcfNfUyxNPZ1f-- expected true got false</pre></details><a class="self" href="#s-a89b608e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ca65d797"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-VT-[␋].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-Ex6lRGM7mAT97XX0hFu
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-VT-[␋].txt
-------formdata-crane-Ex6lRGM7mAT97XX0hFu
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-VT-[␋].txt&quot;
-
-filename
-------formdata-crane-Ex6lRGM7mAT97XX0hFu
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-Ex6lRGM7mAT97XX0hFu--
-
-Expected:
-------formdata-crane-Ex6lRGM7mAT97XX0hFu
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-VT-[␋].txt
-------formdata-crane-Ex6lRGM7mAT97XX0hFu
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-VT-[␋].txt&quot;
-
-filename
-------formdata-crane-Ex6lRGM7mAT97XX0hFu
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-VT-[␋].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-Ex6lRGM7mAT97XX0hFu-- expected true got false</pre></details><a class="self" href="#s-ca65d797" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4382b0d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-NUL-[␀].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-c4382b0d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a89b608e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-BS-[␈].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-a89b608e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ca65d797"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-VT-[␋].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-ca65d797" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-82a8c9e7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-LF-[
 ].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-SkWalUMP2AG0NSCZ2L1
+------formdata-crane-7rmHCt4TFfDrDg80A1h
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-LF-[
 ].txt
-------formdata-crane-SkWalUMP2AG0NSCZ2L1
+------formdata-crane-7rmHCt4TFfDrDg80A1h
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-LF-[%0D%0A].txt&quot;
 
 filename
-------formdata-crane-SkWalUMP2AG0NSCZ2L1
-Content-Disposition: form-data; name=&quot;file&quot;
+------formdata-crane-7rmHCt4TFfDrDg80A1h
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-LF-[%0D%0A].txt&quot;
+Content-Type: text/plain
 
-[object File]
-------formdata-crane-SkWalUMP2AG0NSCZ2L1--
+ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
+------formdata-crane-7rmHCt4TFfDrDg80A1h--
 
 Expected:
-------formdata-crane-SkWalUMP2AG0NSCZ2L1
+------formdata-crane-7rmHCt4TFfDrDg80A1h
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-LF-[
 ].txt
-------formdata-crane-SkWalUMP2AG0NSCZ2L1
+------formdata-crane-7rmHCt4TFfDrDg80A1h
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-LF-[%0D%0A].txt&quot;
 
 filename
-------formdata-crane-SkWalUMP2AG0NSCZ2L1
+------formdata-crane-7rmHCt4TFfDrDg80A1h
 Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-LF-[%0A].txt&quot;
 Content-Type: text/plain
 
 ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-SkWalUMP2AG0NSCZ2L1-- expected true got false</pre></details><a class="self" href="#s-82a8c9e7" aria-label="Link to this subtest">&para;</a></li>
+------formdata-crane-7rmHCt4TFfDrDg80A1h-- expected true got false</pre></details><a class="self" href="#s-82a8c9e7" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-c5bd141b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-LF-CR-[
 ].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-tKgKB6bv3T2HG1wDKqk
+------formdata-crane-F0SybtoVcIH2ZfNIbVL
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-LF-CR-[
 
 ].txt
-------formdata-crane-tKgKB6bv3T2HG1wDKqk
+------formdata-crane-F0SybtoVcIH2ZfNIbVL
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-LF-CR-[%0D%0A%0D%0A].txt&quot;
 
 filename
-------formdata-crane-tKgKB6bv3T2HG1wDKqk
-Content-Disposition: form-data; name=&quot;file&quot;
+------formdata-crane-F0SybtoVcIH2ZfNIbVL
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-LF-CR-[%0D%0A%0D%0A].txt&quot;
+Content-Type: text/plain
 
-[object File]
-------formdata-crane-tKgKB6bv3T2HG1wDKqk--
+ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
+------formdata-crane-F0SybtoVcIH2ZfNIbVL--
 
 Expected:
-------formdata-crane-tKgKB6bv3T2HG1wDKqk
+------formdata-crane-F0SybtoVcIH2ZfNIbVL
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-LF-CR-[
 
 ].txt
-------formdata-crane-tKgKB6bv3T2HG1wDKqk
+------formdata-crane-F0SybtoVcIH2ZfNIbVL
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-LF-CR-[%0D%0A%0D%0A].txt&quot;
 
 filename
-------formdata-crane-tKgKB6bv3T2HG1wDKqk
+------formdata-crane-F0SybtoVcIH2ZfNIbVL
 Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-LF-CR-[%0A%0D].txt&quot;
 Content-Type: text/plain
 
 ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-tKgKB6bv3T2HG1wDKqk-- expected true got false</pre></details><a class="self" href="#s-c5bd141b" aria-label="Link to this subtest">&para;</a></li>
+------formdata-crane-F0SybtoVcIH2ZfNIbVL-- expected true got false</pre></details><a class="self" href="#s-c5bd141b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-c8ea17ab"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-CR-[].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-ZnT0vd8NEkP7KtSWbBH
+------formdata-crane-ySlmSBKIJfg8v70VS3v
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-CR-[
 ].txt
-------formdata-crane-ZnT0vd8NEkP7KtSWbBH
+------formdata-crane-ySlmSBKIJfg8v70VS3v
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-CR-[%0D%0A].txt&quot;
 
 filename
-------formdata-crane-ZnT0vd8NEkP7KtSWbBH
-Content-Disposition: form-data; name=&quot;file&quot;
+------formdata-crane-ySlmSBKIJfg8v70VS3v
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-CR-[%0D%0A].txt&quot;
+Content-Type: text/plain
 
-[object File]
-------formdata-crane-ZnT0vd8NEkP7KtSWbBH--
+ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
+------formdata-crane-ySlmSBKIJfg8v70VS3v--
 
 Expected:
-------formdata-crane-ZnT0vd8NEkP7KtSWbBH
+------formdata-crane-ySlmSBKIJfg8v70VS3v
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-CR-[
 ].txt
-------formdata-crane-ZnT0vd8NEkP7KtSWbBH
+------formdata-crane-ySlmSBKIJfg8v70VS3v
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-CR-[%0D%0A].txt&quot;
 
 filename
-------formdata-crane-ZnT0vd8NEkP7KtSWbBH
+------formdata-crane-ySlmSBKIJfg8v70VS3v
 Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-CR-[%0D].txt&quot;
 Content-Type: text/plain
 
 ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-ZnT0vd8NEkP7KtSWbBH-- expected true got false</pre></details><a class="self" href="#s-c8ea17ab" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f80f47b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-CR-LF-[
-].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-gryA7zG8dVYYTCoTNQ8
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-CR-LF-[
-].txt
-------formdata-crane-gryA7zG8dVYYTCoTNQ8
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-CR-LF-[%0D%0A].txt&quot;
-
-filename
-------formdata-crane-gryA7zG8dVYYTCoTNQ8
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-gryA7zG8dVYYTCoTNQ8--
-
-Expected:
-------formdata-crane-gryA7zG8dVYYTCoTNQ8
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-CR-LF-[
-].txt
-------formdata-crane-gryA7zG8dVYYTCoTNQ8
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-CR-LF-[%0D%0A].txt&quot;
-
-filename
-------formdata-crane-gryA7zG8dVYYTCoTNQ8
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-CR-LF-[%0D%0A].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-gryA7zG8dVYYTCoTNQ8-- expected true got false</pre></details><a class="self" href="#s-f80f47b8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-92bb20c7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-HT-[	].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-hIgN2f3PMjHBa7tF9mN
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-HT-[	].txt
-------formdata-crane-hIgN2f3PMjHBa7tF9mN
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-HT-[	].txt&quot;
-
-filename
-------formdata-crane-hIgN2f3PMjHBa7tF9mN
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-hIgN2f3PMjHBa7tF9mN--
-
-Expected:
-------formdata-crane-hIgN2f3PMjHBa7tF9mN
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-HT-[	].txt
-------formdata-crane-hIgN2f3PMjHBa7tF9mN
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-HT-[	].txt&quot;
-
-filename
-------formdata-crane-hIgN2f3PMjHBa7tF9mN
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-HT-[	].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-hIgN2f3PMjHBa7tF9mN-- expected true got false</pre></details><a class="self" href="#s-92bb20c7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-25559511"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-FF-[␌].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-SCgN7KCGjJsKoO7b0p8
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-FF-[␌].txt
-------formdata-crane-SCgN7KCGjJsKoO7b0p8
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-FF-[␌].txt&quot;
-
-filename
-------formdata-crane-SCgN7KCGjJsKoO7b0p8
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-SCgN7KCGjJsKoO7b0p8--
-
-Expected:
-------formdata-crane-SCgN7KCGjJsKoO7b0p8
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-FF-[␌].txt
-------formdata-crane-SCgN7KCGjJsKoO7b0p8
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-FF-[␌].txt&quot;
-
-filename
-------formdata-crane-SCgN7KCGjJsKoO7b0p8
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-FF-[␌].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-SCgN7KCGjJsKoO7b0p8-- expected true got false</pre></details><a class="self" href="#s-25559511" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ab53ed61"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-DEL-[␡].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-opOd2yO61sxX4z9X2Df
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-DEL-[␡].txt
-------formdata-crane-opOd2yO61sxX4z9X2Df
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-DEL-[␡].txt&quot;
-
-filename
-------formdata-crane-opOd2yO61sxX4z9X2Df
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-opOd2yO61sxX4z9X2Df--
-
-Expected:
-------formdata-crane-opOd2yO61sxX4z9X2Df
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-DEL-[␡].txt
-------formdata-crane-opOd2yO61sxX4z9X2Df
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-DEL-[␡].txt&quot;
-
-filename
-------formdata-crane-opOd2yO61sxX4z9X2Df
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-DEL-[␡].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-opOd2yO61sxX4z9X2Df-- expected true got false</pre></details><a class="self" href="#s-ab53ed61" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8f548fb8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-ESC-[␛].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-IzTHpK0RL6hUS13jAUX
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-ESC-[␛].txt
-------formdata-crane-IzTHpK0RL6hUS13jAUX
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-ESC-[␛].txt&quot;
-
-filename
-------formdata-crane-IzTHpK0RL6hUS13jAUX
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-IzTHpK0RL6hUS13jAUX--
-
-Expected:
-------formdata-crane-IzTHpK0RL6hUS13jAUX
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-ESC-[␛].txt
-------formdata-crane-IzTHpK0RL6hUS13jAUX
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-ESC-[␛].txt&quot;
-
-filename
-------formdata-crane-IzTHpK0RL6hUS13jAUX
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-ESC-[␛].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-IzTHpK0RL6hUS13jAUX-- expected true got false</pre></details><a class="self" href="#s-8f548fb8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-905c5d1d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-SPACE-[ ].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-cm9vrOrAQozrHt48cfx
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-SPACE-[ ].txt
-------formdata-crane-cm9vrOrAQozrHt48cfx
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-SPACE-[ ].txt&quot;
-
-filename
-------formdata-crane-cm9vrOrAQozrHt48cfx
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-cm9vrOrAQozrHt48cfx--
-
-Expected:
-------formdata-crane-cm9vrOrAQozrHt48cfx
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-SPACE-[ ].txt
-------formdata-crane-cm9vrOrAQozrHt48cfx
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-SPACE-[ ].txt&quot;
-
-filename
-------formdata-crane-cm9vrOrAQozrHt48cfx
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-SPACE-[ ].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-cm9vrOrAQozrHt48cfx-- expected true got false</pre></details><a class="self" href="#s-905c5d1d" aria-label="Link to this subtest">&para;</a></li>
+------formdata-crane-ySlmSBKIJfg8v70VS3v-- expected true got false</pre></details><a class="self" href="#s-c8ea17ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f80f47b8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-CR-LF-[
+].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-f80f47b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-92bb20c7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-HT-[	].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-92bb20c7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-25559511"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-FF-[␌].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-25559511" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ab53ed61"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-DEL-[␡].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-ab53ed61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8f548fb8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-ESC-[␛].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-8f548fb8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-905c5d1d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-SPACE-[ ].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-905c5d1d" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/FileAPI/file/send-file-formdata-controls.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 12</span></h3>
+<h3 class="run-head"><code>/FileAPI/file/send-file-formdata-controls.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 12</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-0725b54f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-NUL-[␀].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-Ae5D6Tq6lni932hMyNj
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-NUL-[␀].txt
-------formdata-crane-Ae5D6Tq6lni932hMyNj
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-NUL-[␀].txt&quot;
-
-filename
-------formdata-crane-Ae5D6Tq6lni932hMyNj
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-Ae5D6Tq6lni932hMyNj--
-
-Expected:
-------formdata-crane-Ae5D6Tq6lni932hMyNj
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-NUL-[␀].txt
-------formdata-crane-Ae5D6Tq6lni932hMyNj
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-NUL-[␀].txt&quot;
-
-filename
-------formdata-crane-Ae5D6Tq6lni932hMyNj
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-NUL-[␀].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-Ae5D6Tq6lni932hMyNj-- expected true got false</pre></details><a class="self" href="#s-0725b54f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9ae10a3d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-BS-[␈].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-Qwt4A2CyOCyn7cBcmMo
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-BS-[␈].txt
-------formdata-crane-Qwt4A2CyOCyn7cBcmMo
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-BS-[␈].txt&quot;
-
-filename
-------formdata-crane-Qwt4A2CyOCyn7cBcmMo
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-Qwt4A2CyOCyn7cBcmMo--
-
-Expected:
-------formdata-crane-Qwt4A2CyOCyn7cBcmMo
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-BS-[␈].txt
-------formdata-crane-Qwt4A2CyOCyn7cBcmMo
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-BS-[␈].txt&quot;
-
-filename
-------formdata-crane-Qwt4A2CyOCyn7cBcmMo
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-BS-[␈].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-Qwt4A2CyOCyn7cBcmMo-- expected true got false</pre></details><a class="self" href="#s-9ae10a3d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d5e6d316"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-VT-[␋].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-Jz1LOtAL52yIPFsznh4
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-VT-[␋].txt
-------formdata-crane-Jz1LOtAL52yIPFsznh4
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-VT-[␋].txt&quot;
-
-filename
-------formdata-crane-Jz1LOtAL52yIPFsznh4
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-Jz1LOtAL52yIPFsznh4--
-
-Expected:
-------formdata-crane-Jz1LOtAL52yIPFsznh4
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-VT-[␋].txt
-------formdata-crane-Jz1LOtAL52yIPFsznh4
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-VT-[␋].txt&quot;
-
-filename
-------formdata-crane-Jz1LOtAL52yIPFsznh4
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-VT-[␋].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-Jz1LOtAL52yIPFsznh4-- expected true got false</pre></details><a class="self" href="#s-d5e6d316" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0725b54f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-NUL-[␀].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-0725b54f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9ae10a3d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-BS-[␈].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-9ae10a3d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d5e6d316"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-VT-[␋].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-d5e6d316" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-054a57dc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-LF-[
 ].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-kl1gR2S2mgc3xZd1ijF
+------formdata-crane-00q7f8kiT77yrbP7P6m
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-LF-[
 ].txt
-------formdata-crane-kl1gR2S2mgc3xZd1ijF
+------formdata-crane-00q7f8kiT77yrbP7P6m
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-LF-[%0D%0A].txt&quot;
 
 filename
-------formdata-crane-kl1gR2S2mgc3xZd1ijF
-Content-Disposition: form-data; name=&quot;file&quot;
+------formdata-crane-00q7f8kiT77yrbP7P6m
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-LF-[%0D%0A].txt&quot;
+Content-Type: text/plain
 
-[object File]
-------formdata-crane-kl1gR2S2mgc3xZd1ijF--
+ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
+------formdata-crane-00q7f8kiT77yrbP7P6m--
 
 Expected:
-------formdata-crane-kl1gR2S2mgc3xZd1ijF
+------formdata-crane-00q7f8kiT77yrbP7P6m
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-LF-[
 ].txt
-------formdata-crane-kl1gR2S2mgc3xZd1ijF
+------formdata-crane-00q7f8kiT77yrbP7P6m
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-LF-[%0D%0A].txt&quot;
 
 filename
-------formdata-crane-kl1gR2S2mgc3xZd1ijF
+------formdata-crane-00q7f8kiT77yrbP7P6m
 Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-LF-[%0A].txt&quot;
 Content-Type: text/plain
 
 ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-kl1gR2S2mgc3xZd1ijF-- expected true got false</pre></details><a class="self" href="#s-054a57dc" aria-label="Link to this subtest">&para;</a></li>
+------formdata-crane-00q7f8kiT77yrbP7P6m-- expected true got false</pre></details><a class="self" href="#s-054a57dc" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-8c7d3fdb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-LF-CR-[
 ].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-sTnwJHNPil8jn5REr9W
+------formdata-crane-ZzEJdyVxWoo7W4QmP0t
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-LF-CR-[
 
 ].txt
-------formdata-crane-sTnwJHNPil8jn5REr9W
+------formdata-crane-ZzEJdyVxWoo7W4QmP0t
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-LF-CR-[%0D%0A%0D%0A].txt&quot;
 
 filename
-------formdata-crane-sTnwJHNPil8jn5REr9W
-Content-Disposition: form-data; name=&quot;file&quot;
+------formdata-crane-ZzEJdyVxWoo7W4QmP0t
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-LF-CR-[%0D%0A%0D%0A].txt&quot;
+Content-Type: text/plain
 
-[object File]
-------formdata-crane-sTnwJHNPil8jn5REr9W--
+ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
+------formdata-crane-ZzEJdyVxWoo7W4QmP0t--
 
 Expected:
-------formdata-crane-sTnwJHNPil8jn5REr9W
+------formdata-crane-ZzEJdyVxWoo7W4QmP0t
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-LF-CR-[
 
 ].txt
-------formdata-crane-sTnwJHNPil8jn5REr9W
+------formdata-crane-ZzEJdyVxWoo7W4QmP0t
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-LF-CR-[%0D%0A%0D%0A].txt&quot;
 
 filename
-------formdata-crane-sTnwJHNPil8jn5REr9W
+------formdata-crane-ZzEJdyVxWoo7W4QmP0t
 Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-LF-CR-[%0A%0D].txt&quot;
 Content-Type: text/plain
 
 ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-sTnwJHNPil8jn5REr9W-- expected true got false</pre></details><a class="self" href="#s-8c7d3fdb" aria-label="Link to this subtest">&para;</a></li>
+------formdata-crane-ZzEJdyVxWoo7W4QmP0t-- expected true got false</pre></details><a class="self" href="#s-8c7d3fdb" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-7bbb58bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-CR-[].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-EH3B8RU8lGcnzibVvbh
+------formdata-crane-G4Kii0fqwU2KhGpwjeN
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-CR-[
 ].txt
-------formdata-crane-EH3B8RU8lGcnzibVvbh
+------formdata-crane-G4Kii0fqwU2KhGpwjeN
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-CR-[%0D%0A].txt&quot;
 
 filename
-------formdata-crane-EH3B8RU8lGcnzibVvbh
-Content-Disposition: form-data; name=&quot;file&quot;
+------formdata-crane-G4Kii0fqwU2KhGpwjeN
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-CR-[%0D%0A].txt&quot;
+Content-Type: text/plain
 
-[object File]
-------formdata-crane-EH3B8RU8lGcnzibVvbh--
+ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
+------formdata-crane-G4Kii0fqwU2KhGpwjeN--
 
 Expected:
-------formdata-crane-EH3B8RU8lGcnzibVvbh
+------formdata-crane-G4Kii0fqwU2KhGpwjeN
 Content-Disposition: form-data; name=&quot;filename&quot;
 
 file-for-upload-in-form-CR-[
 ].txt
-------formdata-crane-EH3B8RU8lGcnzibVvbh
+------formdata-crane-G4Kii0fqwU2KhGpwjeN
 Content-Disposition: form-data; name=&quot;file-for-upload-in-form-CR-[%0D%0A].txt&quot;
 
 filename
-------formdata-crane-EH3B8RU8lGcnzibVvbh
+------formdata-crane-G4Kii0fqwU2KhGpwjeN
 Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-CR-[%0D].txt&quot;
 Content-Type: text/plain
 
 ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-EH3B8RU8lGcnzibVvbh-- expected true got false</pre></details><a class="self" href="#s-7bbb58bb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-66d39c86"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-CR-LF-[
-].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-8lHzR4PTMDrzTT0EpUN
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-CR-LF-[
-].txt
-------formdata-crane-8lHzR4PTMDrzTT0EpUN
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-CR-LF-[%0D%0A].txt&quot;
-
-filename
-------formdata-crane-8lHzR4PTMDrzTT0EpUN
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-8lHzR4PTMDrzTT0EpUN--
-
-Expected:
-------formdata-crane-8lHzR4PTMDrzTT0EpUN
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-CR-LF-[
-].txt
-------formdata-crane-8lHzR4PTMDrzTT0EpUN
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-CR-LF-[%0D%0A].txt&quot;
-
-filename
-------formdata-crane-8lHzR4PTMDrzTT0EpUN
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-CR-LF-[%0D%0A].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-8lHzR4PTMDrzTT0EpUN-- expected true got false</pre></details><a class="self" href="#s-66d39c86" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d5603450"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-HT-[	].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-RMTvTSAhE5KnU0oVh7P
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-HT-[	].txt
-------formdata-crane-RMTvTSAhE5KnU0oVh7P
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-HT-[	].txt&quot;
-
-filename
-------formdata-crane-RMTvTSAhE5KnU0oVh7P
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-RMTvTSAhE5KnU0oVh7P--
-
-Expected:
-------formdata-crane-RMTvTSAhE5KnU0oVh7P
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-HT-[	].txt
-------formdata-crane-RMTvTSAhE5KnU0oVh7P
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-HT-[	].txt&quot;
-
-filename
-------formdata-crane-RMTvTSAhE5KnU0oVh7P
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-HT-[	].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-RMTvTSAhE5KnU0oVh7P-- expected true got false</pre></details><a class="self" href="#s-d5603450" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e11ee63b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-FF-[␌].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-FWbcITme2xOVbW334df
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-FF-[␌].txt
-------formdata-crane-FWbcITme2xOVbW334df
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-FF-[␌].txt&quot;
-
-filename
-------formdata-crane-FWbcITme2xOVbW334df
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-FWbcITme2xOVbW334df--
-
-Expected:
-------formdata-crane-FWbcITme2xOVbW334df
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-FF-[␌].txt
-------formdata-crane-FWbcITme2xOVbW334df
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-FF-[␌].txt&quot;
-
-filename
-------formdata-crane-FWbcITme2xOVbW334df
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-FF-[␌].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-FWbcITme2xOVbW334df-- expected true got false</pre></details><a class="self" href="#s-e11ee63b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2f68a426"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-DEL-[␡].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-zSxK30Y7F29T1yP9p88
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-DEL-[␡].txt
-------formdata-crane-zSxK30Y7F29T1yP9p88
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-DEL-[␡].txt&quot;
-
-filename
-------formdata-crane-zSxK30Y7F29T1yP9p88
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-zSxK30Y7F29T1yP9p88--
-
-Expected:
-------formdata-crane-zSxK30Y7F29T1yP9p88
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-DEL-[␡].txt
-------formdata-crane-zSxK30Y7F29T1yP9p88
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-DEL-[␡].txt&quot;
-
-filename
-------formdata-crane-zSxK30Y7F29T1yP9p88
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-DEL-[␡].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-zSxK30Y7F29T1yP9p88-- expected true got false</pre></details><a class="self" href="#s-2f68a426" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7d796fdb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-ESC-[␛].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-BvEKmBSUm7Hu9OPER2i
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-ESC-[␛].txt
-------formdata-crane-BvEKmBSUm7Hu9OPER2i
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-ESC-[␛].txt&quot;
-
-filename
-------formdata-crane-BvEKmBSUm7Hu9OPER2i
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-BvEKmBSUm7Hu9OPER2i--
-
-Expected:
-------formdata-crane-BvEKmBSUm7Hu9OPER2i
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-ESC-[␛].txt
-------formdata-crane-BvEKmBSUm7Hu9OPER2i
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-ESC-[␛].txt&quot;
-
-filename
-------formdata-crane-BvEKmBSUm7Hu9OPER2i
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-ESC-[␛].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-BvEKmBSUm7Hu9OPER2i-- expected true got false</pre></details><a class="self" href="#s-7d796fdb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5c9dd9c5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-SPACE-[ ].txt (ASCII) in fetch with FormData</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
-------formdata-crane-6pbgCHLm99mSws6iM6w
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-SPACE-[ ].txt
-------formdata-crane-6pbgCHLm99mSws6iM6w
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-SPACE-[ ].txt&quot;
-
-filename
-------formdata-crane-6pbgCHLm99mSws6iM6w
-Content-Disposition: form-data; name=&quot;file&quot;
-
-[object File]
-------formdata-crane-6pbgCHLm99mSws6iM6w--
-
-Expected:
-------formdata-crane-6pbgCHLm99mSws6iM6w
-Content-Disposition: form-data; name=&quot;filename&quot;
-
-file-for-upload-in-form-SPACE-[ ].txt
-------formdata-crane-6pbgCHLm99mSws6iM6w
-Content-Disposition: form-data; name=&quot;file-for-upload-in-form-SPACE-[ ].txt&quot;
-
-filename
-------formdata-crane-6pbgCHLm99mSws6iM6w
-Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-SPACE-[ ].txt&quot;
-Content-Type: text/plain
-
-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ
-------formdata-crane-6pbgCHLm99mSws6iM6w-- expected true got false</pre></details><a class="self" href="#s-5c9dd9c5" aria-label="Link to this subtest">&para;</a></li>
+------formdata-crane-G4Kii0fqwU2KhGpwjeN-- expected true got false</pre></details><a class="self" href="#s-7bbb58bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-66d39c86"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-CR-LF-[
+].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-66d39c86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d5603450"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-HT-[	].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-d5603450" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e11ee63b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-FF-[␌].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-e11ee63b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2f68a426"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-DEL-[␡].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-2f68a426" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7d796fdb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-ESC-[␛].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-7d796fdb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5c9dd9c5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upload file-for-upload-in-form-SPACE-[ ].txt (ASCII) in fetch with FormData</span></div><a class="self" href="#s-5c9dd9c5" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

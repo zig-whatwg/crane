@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../html/"><code>html/</code></a></li><li><a href="../../../../html/syntax/"><code>syntax/</code></a></li><li><a href="../../../../html/syntax/parsing/"><code>parsing/</code></a></li><li aria-current="page"><code>html5lib_<wbr>url.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>html5lib_<wbr>url.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="html/syntax/parsing/html5lib_url.html">
-<p class="figures-main"><span class="fg-pass">1,283</span><span class="fg-of"> / 1,931</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>648</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1,284</span><span class="fg-of"> / 1,931</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>647</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-bac433286d</code>, <span class="nowrap">6 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bac433286d"><code>bac433286d</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/syntax/parsing/html5lib_url.html"><code>html/<wbr>syntax/<wbr>parsing/<wbr>html5lib_<wbr>url.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -907,7 +907,7 @@
 <p class="omitted">18 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/html/syntax/parsing/html5lib_url.html?file=tests_innerHTML_1</code> <span class="gate">OK</span> <span class="fcount"><b>66</b> / 81</span></h3>
+<h3 class="run-head"><code>/html/syntax/parsing/html5lib_url.html?file=tests_innerHTML_1</code> <span class="gate">OK</span> <span class="fcount"><b>67</b> / 81</span></h3>
 <ol class="subtests">
 <li class="sub s-fail" id="s-9e1ced32"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;td&gt;&lt;table&gt;&lt;tbody&gt;&lt;a&gt;&lt;tr&gt; (innerHTML in tbody)</span></summary><pre class="msg">assert_equals: expected &quot;#document\n| &lt;tr&gt;\n|   &lt;td&gt;\n|     &lt;a&gt;\n|     &lt;table&gt;\n|       &lt;tbody&gt;\n|         &lt;tr&gt;&quot; but got &quot;#document\n| &lt;tr&gt;\n|   &lt;td&gt;\n|     &lt;table&gt;\n| &lt;a&gt;\n| &lt;tr&gt;&quot;</pre></details><a class="self" href="#s-9e1ced32" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-eb61fa50"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;td&gt;&lt;table&gt;&lt;a&gt;&lt;tr&gt;&lt;/tr&gt;&lt;tr&gt; (innerHTML in tr)</span></summary><pre class="msg">assert_equals: expected &quot;#document\n| &lt;td&gt;\n|   &lt;a&gt;\n|   &lt;table&gt;\n|     &lt;tbody&gt;\n|       &lt;tr&gt;\n|       &lt;tr&gt;&quot; but got &quot;#document\n| &lt;td&gt;\n|   &lt;table&gt;\n|     &lt;a&gt;&quot;</pre></details><a class="self" href="#s-eb61fa50" aria-label="Link to this subtest">&para;</a></li>
@@ -922,10 +922,9 @@
 <li class="sub s-fail" id="s-6e287d06"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;table&gt;&lt;td&gt;&lt;td&gt; (innerHTML in td)</span></summary><pre class="msg">assert_equals: expected &quot;#document\n| &lt;table&gt;\n|   &lt;tbody&gt;\n|     &lt;tr&gt;\n|       &lt;td&gt;\n|       &lt;td&gt;&quot; but got &quot;#document\n| &lt;table&gt;&quot;</pre></details><a class="self" href="#s-6e287d06" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-ea253bdf"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;keygen&gt;&lt;option&gt; (innerHTML in select)</span></summary><pre class="msg">assert_equals: expected &quot;#document\n| &lt;keygen&gt;\n| &lt;option&gt;&quot; but got &quot;#document\n| &lt;option&gt;&quot;</pre></details><a class="self" href="#s-ea253bdf" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-68d2a502"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;textarea&gt;&lt;option&gt; (innerHTML in select)</span></summary><pre class="msg">assert_equals: expected &quot;#document\n| &lt;textarea&gt;\n|   \&quot;&lt;option&gt;\&quot;&quot; but got &quot;#document\n| &lt;option&gt;&quot;</pre></details><a class="self" href="#s-68d2a502" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e6422e8f"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;/html&gt;&lt;!--abc--&gt; (innerHTML in html)</span></summary><pre class="msg">assert_equals: expected &quot;#document\n| &lt;head&gt;\n| &lt;body&gt;\n| &lt;!-- abc --&gt;&quot; but got &quot;#document\n| &lt;head&gt;\n| &lt;body&gt;&quot;</pre></details><a class="self" href="#s-e6422e8f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-6802e66e"><details><summary><span class="mark">FAIL</span><span class="sub-name"> (innerHTML in html)</span></summary><pre class="msg">assert_equals: expected &quot;#document\n| &lt;head&gt;\n| &lt;body&gt;&quot; but got &quot;#document&quot;</pre></details><a class="self" href="#s-6802e66e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<p class="omitted">66 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">67 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 <div class="run">
 <h3 class="run-head"><code>/html/syntax/parsing/html5lib_url.html?file=tricky01</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 9</span></h3>
