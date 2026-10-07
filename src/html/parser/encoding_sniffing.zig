@@ -152,13 +152,15 @@ pub fn transportEncoding(allocator: std.mem.Allocator, content_type: []const u8)
     for (mime.parameters.entries.items()) |entry| {
         if (!std.mem.eql(u16, entry.key, charset)) continue;
         // A label is ASCII; anything wider names no encoding.
-        var label: [64]u8 = undefined;
-        if (entry.value.len > label.len) return null;
+        // Encoding "get an encoding", step 1, permits arbitrarily long
+        // surrounding ASCII whitespace. Do not truncate the MIME parameter.
+        const label = allocator.alloc(u8, entry.value.len) catch return null;
+        defer allocator.free(label);
         for (entry.value, 0..) |unit, i| {
             if (unit > 0x7F) return null;
             label[i] = @intCast(unit);
         }
-        return lookup(label[0..entry.value.len]);
+        return lookup(label);
     }
     return null;
 }
@@ -322,10 +324,11 @@ fn prescanMeta(bytes: []const u8, position: *usize) OutOfBytes!?Encoding {
     return found;
 }
 
-/// A sniffed attribute's name and value: lowercased copies of at most 64
-/// bytes each (longer ones cannot be a name or label the prescan compares).
+/// "Get an attribute" collects the WHOLE lowercased value: content can have
+/// a long MIME parameter before charset, and labels can have whitespace.
+/// The caller bounds the whole prescan at 1024 bytes, not each attribute.
 const SniffedString = struct {
-    buf: [64]u8 = undefined,
+    buf: [prescan_limit]u8 = undefined,
     len: usize = 0,
     overflow: bool = false,
 
