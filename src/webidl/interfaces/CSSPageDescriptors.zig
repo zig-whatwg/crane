@@ -336,6 +336,10 @@ pub const CSSPageDescriptors = struct {
         .{ "set_bleed", 0b1 },
     };
 
+    pub const call_item = CSSStyleDeclaration.call_item;
+
+    pub const get_length = CSSStyleDeclaration.get_length;
+
     /// Named property getter for CSS property access
     /// Maps style.color, style.backgroundColor to getPropertyValue()
     /// Per CSS OM spec §6.6.1

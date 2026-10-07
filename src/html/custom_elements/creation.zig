@@ -12,38 +12,71 @@ pub const Creation = ce.Creation;
 pub const html_namespace = "http://www.w3.org/1999/xhtml";
 const svg_namespace = "http://www.w3.org/2000/svg";
 
-/// DOM flatten-element-creation-options steps 2–3.1, including the WebIDL
-/// (DOMString or dictionary) conversion. The optional result is OWNED.
-/// Scoped customElementRegistry options remain unmodelled in this batch.
-pub fn flattenIs(document: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) !?[]u8 {
-    if (!options.was_passed) return null;
+pub const FlattenedOptions = struct {
+    registry: ?*runtime.Instance,
+    is_value: ?[]u8 = null,
+    registry_root: ?engine.Owned = null,
+
+    pub fn deinit(self: FlattenedOptions, allocator: std.mem.Allocator) void {
+        if (self.is_value) |value| allocator.free(value);
+        if (self.registry_root) |root| root.release();
+    }
+};
+
+/// WebIDL dictionary conversion precedes DOM flatten-element-creation-options.
+/// Keep the registry's wrapper alive while the subsequent `is` getter runs.
+pub fn flatten(document: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) !FlattenedOptions {
+    var result: FlattenedOptions = .{ .registry = try interfaces.Document.get_customElementRegistry(document) };
+    errdefer result.deinit(document.ctx.allocator);
+    if (!options.was_passed) return result;
     const realm = document.ctx;
     const value = options.value;
     switch (engine.typeOf(realm, value)) {
-        .null, .undefined => return null,
+        .null, .undefined => return result,
         .object => {},
         else => {
             // The legacy string form is converted but never used as an is
             // value. Conversion still throws for a Symbol.
             const ignored = try engine.convertToDOMString(realm, value, realm.allocator);
             realm.allocator.free(ignored);
-            return null;
+            return result;
         },
+    }
+    // WebIDL dictionary members are read in lexicographic order.
+    const registry_value = try engine.getProperty(realm, value, "customElementRegistry");
+    const explicit = engine.typeOf(realm, registry_value.value) != .undefined;
+    result.registry_root = registry_value;
+    if (explicit) {
+        if (engine.typeOf(realm, registry_value.value) == .null) {
+            result.registry = null;
+        } else {
+            const registry = engine.convertToPlatformObject(realm, registry_value.value) orelse return error.TypeError;
+            if (registry.stateAs(interfaces.CustomElementRegistry.State) == null) return error.TypeError;
+            result.registry = registry;
+        }
     }
     const is_value = try engine.getProperty(realm, value, "is");
     defer is_value.release();
-    if (engine.typeOf(realm, is_value.value) == .undefined) return null;
-    return try engine.convertToDOMString(realm, is_value.value, realm.allocator);
+    if (engine.typeOf(realm, is_value.value) != .undefined) result.is_value = try engine.convertToDOMString(realm, is_value.value, realm.allocator);
+    // DOM flatten steps 3.2.1–3.2.3.
+    if (explicit) {
+        if (result.is_value != null) return error.NotSupportedError;
+        if (result.registry) |registry| {
+            if (!ce.isScoped(registry) and registry != try interfaces.Document.get_customElementRegistry(document)) return error.NotSupportedError;
+        }
+    }
+    return result;
 }
 
-pub fn create(options: Creation) !*runtime.Instance {
+pub fn create(requested: Creation) !*runtime.Instance {
+    var options = requested;
     const realm = options.document.ctx;
-    // Steps 2–3: no definition can match before the agent's first define.
-    // Avoid allocating the Window's lazy registry on the ordinary DOM path.
-    const registry = if (driver.hasDefinitions(realm))
-        try interfaces.Document.get_customElementRegistry(options.document)
-    else
-        null;
+    // Steps 2–3: null is an explicit association, distinct from "default".
+    const registry = switch (options.registry) {
+        .default => try interfaces.Document.get_customElementRegistry(options.document),
+        .explicit => |value| value,
+    };
+    options.registry = .{ .explicit = registry };
     const definition = ce.lookup(registry, options.namespace, options.local_name, options.is_value);
     if (definition) |found| {
         const held = found.retain();
@@ -99,9 +132,9 @@ pub fn create(options: Creation) !*runtime.Instance {
                     } else {
                         const element = engine.convertToPlatformObject(realm, result.value).?;
                         const data = ce.get(element) orelse return error.InvalidStateError;
-                        // Steps 5.1.4.9–5.1.4.11. Registry association here is
-                        // the document's global registry; scoped is deferred.
+                        // Steps 5.1.4.9–5.1.4.11.
                         try ce.initialize(element, options.prefix, null, data.state);
+                        try ce.setElementRegistry(element, registry);
                         // Owned keeps the custom wrapper alive across the
                         // generated CEReactions.end and return conversion.
                         transferred = true;
@@ -154,6 +187,10 @@ pub fn createInternal(options: Creation, state: ce.State, interface: Interface) 
     try dom.node_creation.setElementNames(element, options.namespace, options.local_name);
     try dom.node_document.set(element, options.document);
     try ce.initialize(element, options.prefix, options.is_value, state);
+    try ce.setElementRegistry(element, switch (options.registry) {
+        .default => try interfaces.Document.get_customElementRegistry(options.document),
+        .explicit => |value| value,
+    });
     return element;
 }
 

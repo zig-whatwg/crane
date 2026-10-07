@@ -369,6 +369,8 @@ pub const InternalState = struct {
     /// Set via setDefaultView() when the document is associated with a window.
     /// Spec: https://html.spec.whatwg.org/multipage/window-object.html#dom-document-defaultview
     default_view: ?*runtime.Instance = null,
+    custom_element_registry: @import("dom").custom_elements.RegistryAssociation = .{},
+    owns_native_global_registry: bool = false,
 
     /// V8 wrapper for this Document, created in the Document's owning context.
     /// Used for cross-context access (e.g., iframe.contentDocument from parent).
@@ -610,6 +612,10 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    @import("dom").custom_elements.installDocument(.{
+        .set_registry = &setCustomElementRegistry,
+        .ensure_global_registry = &ensureGlobalRegistry,
+    });
     @import("dom").document_lifecycle.install(.{
         .parsing_stopped = &lifecycleParsingStopped,
         .finish_loading = &lifecycleFinishLoading,
@@ -811,6 +817,8 @@ pub fn getBoundV8Wrapper(instance: *runtime.Instance) ?*anyopaque {
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up internal state from registry
     if (Registry.get(instance)) |internal| {
+        releaseNativeGlobalRegistry(internal);
+        internal.custom_element_registry.release(instance);
         internal.deinit();
     }
     Registry.remove(instance);
@@ -1946,11 +1954,34 @@ pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Getter for customElementRegistry
 /// Returns the custom element registry associated with this document, or null.
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    // Deviation: the global registry is currently kept by Window. The spec
-    // keeps it on Document even after its browsing context ends. Moving that
-    // ownership, together with scoped registries, is a follow-up batch.
-    const window = (try get_defaultView(instance)) orelse return null;
-    return try interfaces.Window.get_customElements(window);
+    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.value;
+}
+
+fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.custom_element_registry.value != registry) releaseNativeGlobalRegistry(internal);
+    internal.custom_element_registry.set(instance, registry);
+}
+
+fn releaseNativeGlobalRegistry(internal: *InternalState) void {
+    if (internal.owns_native_global_registry and !internal.custom_element_registry.traced) {
+        if (internal.custom_element_registry.value) |registry| runtime.Instance.deinit(registry);
+    }
+    internal.owns_native_global_registry = false;
+}
+
+/// HTML create-and-initialize-a-Document: the global registry belongs to the
+/// document. Window replacement must not change the previous document's edge.
+fn ensureGlobalRegistry(instance: *runtime.Instance) !*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.custom_element_registry.value) |registry| {
+        if (!internal.custom_element_registry.traced) internal.custom_element_registry.set(instance, registry);
+        return registry;
+    }
+    const registry = try interfaces.CustomElementRegistry.init(instance.ctx.allocator, instance.ctx);
+    internal.custom_element_registry.set(instance, registry);
+    internal.owns_native_global_registry = !instance.ctx.hasEngine();
+    return registry;
 }
 
 /// Getter for fullscreenElement
@@ -2464,9 +2495,8 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
     const local_name_slice: []const u8 = lowered orelse localName.asSlice();
 
     // Step 3: flatten element creation options; the legacy string is ignored.
-    // customElementRegistry options are the deferred scoped-registry work.
-    const is_value = try @import("html").custom_element_creation.flattenIs(instance, options);
-    defer if (is_value) |value| allocator.free(value);
+    const flattened = try @import("html").custom_element_creation.flatten(instance, options);
+    defer flattened.deinit(allocator);
     if (was_live and !realm.hasEngine()) return error.InvalidStateError;
 
     // Step 4: "Let namespace be the HTML namespace, if this is an HTML document
@@ -2484,7 +2514,8 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
         .document = instance,
         .local_name = local_name_slice,
         .namespace = if (in_html_namespace) html_namespace else null,
-        .is_value = is_value,
+        .is_value = flattened.is_value,
+        .registry = .{ .explicit = flattened.registry },
         .synchronous = true,
     });
 }
@@ -3360,11 +3391,22 @@ pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, opt
 
     // Steps 2–5.1: WebIDL selects the dictionary for objects/null and the
     // boolean branch for other values. Omitted options default to false.
-    // Scoped customElementRegistry options remain a follow-up batch.
+    var fallback_registry: ?*runtime.Instance = null;
+    var registry_root: ?engine.Owned = null;
+    defer if (registry_root) |root| root.release();
     const subtree = if (!options.was_passed) false else switch (engine.typeOf(realm, options.value)) {
         .undefined => false,
         .null => true,
         .object => blk: {
+            // WebIDL dictionary conversion reads customElementRegistry first;
+            // unlike ElementCreationOptions its type is non-nullable.
+            const registry_value = try engine.getProperty(realm, options.value, "customElementRegistry");
+            registry_root = registry_value;
+            if (engine.typeOf(realm, registry_value.value) != .undefined) {
+                const registry = engine.convertToPlatformObject(realm, registry_value.value) orelse return error.TypeError;
+                if (registry.stateAs(interfaces.CustomElementRegistry.State) == null) return error.TypeError;
+                fallback_registry = registry;
+            }
             const self_only = try engine.getProperty(realm, options.value, "selfOnly");
             defer self_only.release();
             break :blk !engine.toBoolean(realm, self_only.value);
@@ -3372,9 +3414,12 @@ pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, opt
         else => engine.toBoolean(realm, options.value),
     };
     if (was_live and !realm.hasEngine()) return error.InvalidStateError;
-    // Steps 6–7: cloning uses this document's global registry, not the source
-    // document's, and never runs adoption steps.
-    return dom_creation.clone(node, instance, subtree, null);
+    if (fallback_registry) |registry| {
+        if (!@import("dom").custom_elements.isScoped(registry) and registry != try get_customElementRegistry(instance)) return error.NotSupportedError;
+    }
+    // Steps 6–7: the fallback applies only to null source associations.
+    if (fallback_registry == null) fallback_registry = try get_customElementRegistry(instance);
+    return dom_creation.cloneWithRegistry(node, instance, subtree, null, fallback_registry);
 }
 
 /// Operation: createCDATASection
@@ -4536,8 +4581,8 @@ pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOM
     );
 
     // Internal createElementNS step 2: flatten element creation options.
-    const is_value = try @import("html").custom_element_creation.flattenIs(instance, options);
-    defer if (is_value) |value| allocator.free(value);
+    const flattened = try @import("html").custom_element_creation.flatten(instance, options);
+    defer flattened.deinit(allocator);
     if (was_live and !realm.hasEngine()) return error.InvalidStateError;
 
     // Step 3: "Return the result of creating an element given document,
@@ -4547,7 +4592,8 @@ pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOM
         .local_name = extracted.local_name,
         .namespace = extracted.namespace,
         .prefix = extracted.prefix,
-        .is_value = is_value,
+        .is_value = flattened.is_value,
+        .registry = .{ .explicit = flattened.registry },
         .synchronous = true,
     });
 }

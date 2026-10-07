@@ -21,6 +21,7 @@ pub fn Definition(comptime runtime: type, comptime engine: type) type {
         references: usize = 1,
         registry: ?*runtime.Instance = null,
         agent_definition_count: ?*usize = null,
+        agent_form_definition_count: ?*usize = null,
 
         pub const ConstructionStackEntry = union(enum) {
             element: *runtime.Instance,
@@ -92,6 +93,7 @@ pub fn Definition(comptime runtime: type, comptime engine: type) type {
             self.references -= 1;
             if (self.references != 0) return;
             if (self.agent_definition_count) |count| count.* -= 1;
+            if (self.agent_form_definition_count) |count| count.* -= 1;
             self.allocator.free(self.name);
             self.allocator.free(self.local_name);
             for (self.observed_attributes) |attribute| self.allocator.free(attribute);

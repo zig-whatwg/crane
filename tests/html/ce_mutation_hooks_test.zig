@@ -66,6 +66,9 @@ fn exercise() !void {
     dom.document_browsing_context.setWindow(document, window);
     const target_document = try interfaces.Document.init(testing.allocator, realm);
     try dom.document_internals.setDocumentType(target_document, .html);
+    // This fixture models a second browsing document. DOM insert 7.7.3
+    // requires a non-null registry before enqueueing connectedCallback.
+    _ = try dom.custom_elements.ensureGlobalRegistry(target_document);
     try engine.setProperty(realm, global.value, "targetDocument", .{ .instance = target_document });
     const setup = try engine.evaluateClassicScript(realm, .{ .utf8 =
         \\globalThis.events = [];

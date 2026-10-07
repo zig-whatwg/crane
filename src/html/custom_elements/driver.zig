@@ -221,6 +221,19 @@ fn invokeReaction(_: void, element: *runtime.Instance, reaction: *Reaction) void
                     };
                     break :blk arguments[0..4];
                 },
+                .form_associated => blk: {
+                    arguments[0] = reaction.formValue();
+                    break :blk arguments[0..1];
+                },
+                .form_disabled => |disabled| blk: {
+                    arguments[0] = .{ .boolean = disabled };
+                    break :blk arguments[0..1];
+                },
+                .form_state_restore => |restore| blk: {
+                    arguments[0] = reaction.formValue();
+                    arguments[1] = runtime.JSValue.fromStringRef(@tagName(restore.mode));
+                    break :blk arguments[0..2];
+                },
             };
             // Invoke reactions step 1.2.2: WebIDL invocation reports a callback
             // exception in its own realm and continues with the next reaction.

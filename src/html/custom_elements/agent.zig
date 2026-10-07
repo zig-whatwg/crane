@@ -42,6 +42,7 @@ pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload
         records: ?*Record = null,
         invoking: usize = 0,
         definition_count: usize = 0,
+        form_definition_count: usize = 0,
         active_constructors: infra.List(ActiveConstructor),
         returns: Returns,
 

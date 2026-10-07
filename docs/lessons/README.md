@@ -10,6 +10,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
 
+- [Parsed records need platform objects at the binding](architecture-parsed-records-need-platform-objects-at-the-binding.md) - Convert representations at the owner boundary; a pointer cast cannot create a platform object or its lifetime.
 - [Cancelled reaction queues need stable element identities](architecture-cancelled-reaction-queues-need-stable-element-identities.md) - Cancel by stable identity so a reused slab address cannot inherit queued work.
 - [An activity bit cannot own two independent holds](architecture-an-activity-bit-cannot-own-two-independent-holds.md) - Root constructor returns independently across reactions and binding conversion; prove the exact GC window.
 - [Reaction scopes capture the agent before script](architecture-reaction-scopes-capture-the-agent-before-script.md) - Capture scope ownership before script can retire its receiver or realm.
@@ -216,6 +217,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Spec Compliance
 
+- [Initialize document-owned state before descendants](spec-compliance-initialize-document-owned-state-before-descendants.md) - Establish persistent associations only after their owner is initialized.
 - [An enqueue step is not an execution guard](spec-compliance-an-enqueue-step-is-not-an-execution-guard.md) - Queue membership has observable effects; preserve the spec's placement of state guards.
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
 - ["Prepare the script element" had no insertion-steps caller](spec-compliance-prepare-the-script-element-had-no-insertion.md) - When a directory of tests all hang on the same idiom, look for the algorithm that idiom triggers and ask who calls it.
@@ -274,6 +276,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A test that passes because nothing ever ends tests nothing](spec-compliance-a-test-that-passes-because-nothing-ends-tests-nothing.md) - When a new lifetime rule turns tests red, ask whether they ever passed for the right reason: a "survives" test that went green on a leak is an unimplemented feature, not a regression - implement the extension, never restore the leak.
 
 ### Codegen
+
+- [Nullable dictionary members can need a presence bit](codegen-nullable-dictionary-members-can-need-a-presence-bit.md) - Preserve absence separately from null when the consuming algorithm distinguishes them.
+- [Inherited indexed access needs the parent facade](codegen-inherited-indexed-access-needs-the-parent-facade.md) - Generate exotic-access metadata even when methods come from a prototype.
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
 - [Raw codegen output is not `zig fmt`-clean, so regeneration looks like a 1,419-file change](codegen-raw-codegen-output-is-not-zig-fmt-clean-so.md) - Format generated output before you diff it, or the diff is unreadable and a real change hides in it.
 - [Check generated data against a second copy](codegen-check-generated-data-against-a-second-copy.md) - The index generator hardcoded each encoding index's last pointer; jis0208 stopped at 7,939 of 11,103 and euc-kr at 17,919 of 23,749, so ~5,800 hanja could be neither encoded nor decoded.
@@ -298,6 +303,9 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Testing
 
+- [Prove a benchmark reaches the feature](testing-prove-a-benchmark-reaches-the-feature.md) - Assert the feature precondition before treating measurements as evidence.
+- [Typed handle counters can drift on generic disposal](testing-typed-handle-counters-can-drift-on-generic-disposal.md) - Validate counter coverage against actual handle and heap measurements.
+- [Read JSONL with its record delimiter](testing-read-jsonl-with-its-record-delimiter.md) - Preserve Unicode line separators inside strings when splitting records.
 - [An uninstalled hook does not exercise its active path](testing-an-uninstalled-hook-does-not-exercise-its-active-path.md) - Test an installed host's adapter branch as well as the legacy path.
 - [Newly reached leaks need a control without the new feature](testing-newly-reached-leaks-need-a-control-without-the-new-feature.md) - Pair the same operation without the new feature to distinguish reachability from introduction.
 - [A blocking-file headline can hide large subtest regressions](testing-a-blocking-file-headline-can-hide-large-subtest-regressions.md) - Review every lost passing count and preserve conversion semantics when replacing call paths.

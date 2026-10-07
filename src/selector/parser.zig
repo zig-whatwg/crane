@@ -441,6 +441,8 @@ pub const PseudoClassKind = union(enum) {
     ReadOnly,
     ReadWrite,
     Checked,
+    Valid,
+    Invalid,
 
     // Language pseudo-classes
     Lang: []const u8,
@@ -460,6 +462,9 @@ pub const PseudoClassKind = union(enum) {
 
     // Custom state (HTML "custom state pseudo-class"): :state(<ident>)
     State: []const u8,
+
+    // HTML 4.16.3: an element whose custom-element state is defined.
+    Defined,
 };
 
 /// Nth pattern (an+b)
@@ -978,7 +983,10 @@ pub const Parser = struct {
         if (std.mem.eql(u8, name, "read-only")) return .ReadOnly;
         if (std.mem.eql(u8, name, "read-write")) return .ReadWrite;
         if (std.mem.eql(u8, name, "checked")) return .Checked;
+        if (std.mem.eql(u8, name, "valid")) return .Valid;
+        if (std.mem.eql(u8, name, "invalid")) return .Invalid;
         if (std.mem.eql(u8, name, "target")) return .Target;
+        if (std.ascii.eqlIgnoreCase(name, "defined")) return .Defined;
 
         return error.InvalidSelector;
     }

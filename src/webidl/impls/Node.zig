@@ -1193,21 +1193,20 @@ pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) an
     return dom_module.node_creation.clone(instance, document, deep, null);
 }
 
-/// DOM "clone a node", given node, document, subtree and parent. The
-/// fallbackRegistry argument is not modelled: custom element registries are
-/// not scoped here.
+/// DOM "clone a node", including fallbackRegistry and clonable shadow trees.
 /// Spec: https://dom.spec.whatwg.org/#concept-node-clone
 pub fn cloneANode(
     node: *runtime.Instance,
     document: ?*runtime.Instance,
     subtree: bool,
     parent: ?*runtime.Instance,
+    fallback_registry: ?*runtime.Instance,
 ) !*runtime.Instance {
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
 
     // Step 2: "Let copy be the result of cloning a single node given node,
     // document, and fallbackRegistry."
-    const copy = try cloneSingleNode(node, document);
+    const copy = try cloneSingleNode(node, document, fallback_registry);
     // Until step 4 hands the copy to its parent, nothing else holds it.
     var attached = false;
     errdefer if (!attached) runtime.Instance.deinit(copy);
@@ -1238,16 +1237,39 @@ pub fn cloneANode(
         while (child_base) |c| : (child_base = c.next_sibling) {
             const child_opaque = instance_bridge.getInstance(c) orelse continue;
             const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
-            _ = try cloneANode(child_instance, children_document, subtree, copy);
+            _ = try cloneANode(child_instance, children_document, subtree, copy, fallback_registry);
         }
     }
 
+    // Step 6 clones a clonable shadow tree even for a shallow host clone.
+    if (dom_module.custom_elements.shadowRootOf(node)) |shadow| {
+        if (try interfaces.ShadowRoot.get_clonable(shadow)) {
+            var registry = try interfaces.ShadowRoot.get_customElementRegistry(shadow);
+            if (registry) |value| if (!dom_module.custom_elements.isScoped(value)) {
+                const target = document orelse node_internal.owner_document orelse return error.InvalidStateError;
+                registry = dom_module.custom_elements.effectiveGlobal(try interfaces.Document.get_customElementRegistry(target));
+            };
+            const shadow_copy = try dom_module.custom_elements.attachShadow(copy, .{
+                .mode = try interfaces.ShadowRoot.get_mode(shadow),
+                .delegatesFocus = try interfaces.ShadowRoot.get_delegatesFocus(shadow),
+                .serializable = try interfaces.ShadowRoot.get_serializable(shadow),
+                .slotAssignment = try interfaces.ShadowRoot.get_slotAssignment(shadow),
+                .clonable = true,
+            }, registry);
+            dom_module.custom_elements.cloneShadowFlags(shadow, shadow_copy);
+            var child = try interfaces.Node.get_firstChild(shadow);
+            while (child) |value| {
+                _ = try cloneANode(value, document, true, shadow_copy, null);
+                child = try interfaces.Node.get_nextSibling(value);
+            }
+        }
+    }
     return copy;
 }
 
 /// Clone a single node without children
 /// Creates a new node with the same type and properties
-fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runtime.Instance {
+fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallback_registry: ?*runtime.Instance) !*runtime.Instance {
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
 
     // Get allocator from node's state
@@ -1336,6 +1358,10 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
             // independently of any is attribute, and enqueue an asynchronous
             // upgrade. Attributes and descendants are copied before it runs.
             const custom = dom_module.custom_elements.get(node);
+            var registry = (try interfaces.Element.get_customElementRegistry(node)) orelse fallback_registry;
+            if (registry) |value| if (!dom_module.custom_elements.isScoped(value)) {
+                registry = dom_module.custom_elements.effectiveGlobal(try interfaces.Document.get_customElementRegistry(owner));
+            };
             // Step 1.1 copies the namespace prefix, which is null when absent.
             // The legacy getter returns an empty string for that case; preserve
             // the old createElementNS caller's empty-to-null normalization.
@@ -1349,6 +1375,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
                 .namespace = if (namespace_owned) |value| value.asSlice() else null,
                 .prefix = prefix,
                 .is_value = if (custom) |value| value.is_value else null,
+                .registry = .{ .explicit = registry },
             });
             errdefer runtime.Instance.deinit(copy);
 
@@ -1382,7 +1409,12 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
             // them, so they keep Document.init's defaults - a stated deviation.
             // TODO(dom-clone): a codegen-generated `cloneInternalsFrom` delegate
             // is the boundary-clean way to copy them.
-            return try interfaces.Document.init(allocator, node.ctx);
+            const copy = try interfaces.Document.init(allocator, node.ctx);
+            errdefer runtime.Instance.deinit(copy);
+            if (try interfaces.Document.get_customElementRegistry(node)) |registry| {
+                if (dom_module.custom_elements.isScoped(registry)) try dom_module.custom_elements.setDocumentRegistry(copy, registry);
+            }
+            return copy;
         },
         NodeType.DOCUMENT_TYPE_NODE => {
             // "DocumentType: set copy's name, public ID, and system ID to those

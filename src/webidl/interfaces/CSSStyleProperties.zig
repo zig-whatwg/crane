@@ -140,6 +140,10 @@ pub const CSSStyleProperties = struct {
         "set_cssFloat",
     };
 
+    pub const call_item = CSSStyleDeclaration.call_item;
+
+    pub const get_length = CSSStyleDeclaration.get_length;
+
     /// Named property getter for CSS property access
     /// Maps style.color, style.backgroundColor to getPropertyValue()
     /// Per CSS OM spec §6.6.1

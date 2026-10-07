@@ -23,6 +23,25 @@ pub const reportThrown = driver.reportThrown;
 pub const pushConstructor = driver.pushConstructor;
 pub const activeRegistry = driver.activeRegistry;
 pub const hasDefinitions = driver.hasDefinitions;
+pub const parseFragment = @import("custom_elements/fragment.zig").parse;
+pub const States = @import("custom_elements/states.zig").States;
+
+/// Reset FACE owners/disabled state after tree and relevant attribute changes.
+/// The agent counter avoids traversals in documents with no FACE definitions.
+pub fn formTreeChanged(changed: *runtime.Instance) void {
+    const state = driver.stateForRealm(changed.ctx) orelse return;
+    if (state.form_definition_count == 0) return;
+    const dom = @import("dom");
+    var root = dom.instance_bridge.getNodeBase(changed) orelse return;
+    while (root.parent_node) |parent| root = parent;
+    var descendants = dom.tree_helpers.getShadowIncludingInclusiveDescendants(changed.ctx.allocator, root) catch return;
+    defer descendants.deinit();
+    for (descendants.toSlice()) |node| {
+        if (node.node_type != 1) continue;
+        const object = dom.instance_bridge.getInstance(node) orelse continue;
+        ce.refreshForm(@ptrCast(@alignCast(object)));
+    }
+}
 
 /// Element reaction queue
 /// Each custom element has its own queue of pending reactions

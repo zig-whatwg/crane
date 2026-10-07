@@ -2,6 +2,8 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
+const ce = @import("dom").custom_elements;
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -19,7 +21,33 @@ pub const ImplError = error{
 /// Implementations can replace this with a real struct containing:
 /// - Private data not exposed via WebIDL attributes
 /// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    internals: ?*runtime.Instance = null,
+    generation: u64 = 0,
+    traced: bool = false,
+};
+
+pub fn installHooks() void {
+    ce.installValidity(.{ .set_internals = &setInternals });
+}
+
+fn setInternals(instance: *runtime.Instance, internals: *runtime.Instance) !void {
+    const state = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    state.internals = internals;
+    state.generation = runtime.SlabAllocator.generationOf(internals);
+    if (instance.ctx.hasEngine()) {
+        engine.traceChild(instance, internals, .{ .name = "elementInternals" });
+        state.traced = true;
+    }
+}
+
+fn flagsOf(instance: *runtime.Instance) !ce.ValidityFlags {
+    const state = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const internals = state.internals orelse return error.NotImplemented;
+    if (runtime.SlabAllocator.generationOf(internals) != state.generation or runtime.instance_lifecycle.isCleanedUp(internals)) return error.InvalidStateError;
+    return ce.validityFlags(internals);
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -29,78 +57,77 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(StateType).own._internal = internal;
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    if (internal.traced) engine.forgetTracedChild(instance, .{ .name = "elementInternals" });
+    internal.allocator.destroy(internal);
+    state.own._internal = null;
 }
 
 /// Getter for valueMissing
 pub fn get_valueMissing(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try flagsOf(instance)).valueMissing orelse false;
 }
 
 /// Getter for typeMismatch
 pub fn get_typeMismatch(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try flagsOf(instance)).typeMismatch orelse false;
 }
 
 /// Getter for patternMismatch
 pub fn get_patternMismatch(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try flagsOf(instance)).patternMismatch orelse false;
 }
 
 /// Getter for tooLong
 pub fn get_tooLong(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try flagsOf(instance)).tooLong orelse false;
 }
 
 /// Getter for tooShort
 pub fn get_tooShort(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try flagsOf(instance)).tooShort orelse false;
 }
 
 /// Getter for rangeUnderflow
 pub fn get_rangeUnderflow(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try flagsOf(instance)).rangeUnderflow orelse false;
 }
 
 /// Getter for rangeOverflow
 pub fn get_rangeOverflow(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try flagsOf(instance)).rangeOverflow orelse false;
 }
 
 /// Getter for stepMismatch
 pub fn get_stepMismatch(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try flagsOf(instance)).stepMismatch orelse false;
 }
 
 /// Getter for badInput
 pub fn get_badInput(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try flagsOf(instance)).badInput orelse false;
 }
 
 /// Getter for customError
 pub fn get_customError(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try flagsOf(instance)).customError orelse false;
 }
 
 /// Getter for valid
 pub fn get_valid(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const flags = try flagsOf(instance);
+    inline for (std.meta.fields(ce.ValidityFlags)) |field| {
+        if (@field(flags, field.name) orelse false) return false;
+    }
+    return true;
 }

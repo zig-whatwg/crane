@@ -126,6 +126,7 @@ pub fn parseFragment(
     const tokenizer = try allocator.create(Tokenizer);
     errdefer allocator.destroy(tokenizer);
     tokenizer.* = Tokenizer.init(allocator, input);
+    errdefer tokenizer.deinit();
 
     // Step 6: Set tokenizer state based on context element
     const context_name = context_element.local_name orelse "";
@@ -162,6 +163,9 @@ pub fn parseFragment(
     errdefer allocator.destroy(tree_builder);
     tree_builder.* = try TreeBuilder.init(allocator, tokenizer);
     errdefer tree_builder.deinit();
+    // HTML fragment parsing step 9: the adjusted current node is this context
+    // while only the synthetic html root is on the stack of open elements.
+    tree_builder.fragment_context = @constCast(context_element);
 
     // Set scripting flag
     tree_builder.scripting_enabled = options.scripting_enabled;
@@ -274,9 +278,9 @@ fn resetInsertionModeForContextWithAncestors(context: *const TreeNode, ancestors
     } else if (std.mem.eql(u8, name, "frameset")) {
         return .in_frameset;
     } else if (std.mem.eql(u8, name, "html")) {
-        // Fragment case: use in_body
-        // (Full spec checks for head element, but fragment always has one)
-        return .in_body;
+        // Reset insertion mode step 14.1: a new fragment parser's head
+        // element pointer is null, so html context starts before head.
+        return .before_head;
     }
 
     // Default: in_body

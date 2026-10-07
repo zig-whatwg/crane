@@ -36,6 +36,7 @@ pub fn collectInterfaceReferences(
     // Add types from members
     for (interface.members) |member| {
         switch (member.type) {
+            .setlike => {}, // References belong to the synthesized bound members.
             .attribute => if (member.attribute) |attr| {
                 try collectTypeReferences(&refs, attr.idlType);
             },
@@ -667,6 +668,7 @@ pub fn collectMemberReferences(
     // Add types from members
     for (members) |member| {
         switch (member.type) {
+            .setlike => {}, // References belong to the synthesized bound members.
             .attribute => if (member.attribute) |attr| {
                 try collectTypeReferences(&refs, attr.idlType);
             },

@@ -41,6 +41,8 @@ pub const InternalState = struct {
     /// collection script keeps can outlive its root; a mismatch means the
     /// root is gone and the collection is empty, never a read of freed memory.
     root_generation: u64 = 0,
+    form_root_traced: bool = false,
+    fieldset_controls: bool = false,
 
     /// How a LIVE collection rebuilds its elements from `root`: set by the
     /// producer (`makeLive`) and run before every read. Null for a static
@@ -92,6 +94,32 @@ fn makeLive(collection: *runtime.Instance, root: *runtime.Instance, refill: Refi
 /// element children".
 fn makeElementChildren(collection: *runtime.Instance, root: *runtime.Instance) void {
     makeLive(collection, root, &refillElementChildren);
+}
+
+fn makeFormControls(collection: *runtime.Instance, root: *runtime.Instance, fieldset: bool) void {
+    const internal = getInternal(collection) orelse return;
+    internal.fieldset_controls = fieldset;
+    if (collection.ctx.hasEngine()) {
+        @import("engine").traceChild(collection, root, .{ .name = "formControlsRoot" });
+        internal.form_root_traced = true;
+    }
+    makeLive(collection, root, &refillFormControls);
+}
+
+fn refillFormControls(collection: *runtime.Instance, owner: *runtime.Instance) void {
+    const internal = getInternal(collection) orelse return;
+    const forms = @import("html").form_associated;
+    const root = if (internal.fieldset_controls) owner else forms.rootOf(owner);
+    var node: ?*runtime.Instance = if (internal.fieldset_controls) forms.nextInTree(owner, owner, false) else root;
+    while (node) |element| : (node = forms.nextInTree(element, root, false)) {
+        if (!forms.isListed(element)) continue;
+        if (!internal.fieldset_controls and forms.formOwner(element) != owner) continue;
+        if (!internal.fieldset_controls and forms.isInput(element)) {
+            var buffer: [16]u8 = undefined;
+            if (std.mem.eql(u8, forms.inputType(element, &buffer), "image")) continue;
+        }
+        addElement(collection, element) catch return;
+    }
 }
 
 /// The element children of `root`, in tree order - read through the Node
@@ -213,7 +241,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls make a collection live through dom.live_collections.
-    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames });
+    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .form_controls = &makeFormControls });
 }
 
 /// Initialize instance (creates the instance)
@@ -227,7 +255,7 @@ pub fn init(
     errdefer runtime.Instance.deinit(instance);
 
     // Initialize internal state
-    const state = instance.getState(StateType);
+    const state = instance.getState(State);
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
@@ -243,6 +271,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        if (internal.form_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "formControlsRoot" });
         internal.deinit();
 
         // Return the block itself, not just what it points to.
