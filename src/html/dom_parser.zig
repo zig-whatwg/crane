@@ -323,11 +323,18 @@ pub fn parseFragment(
     // Fragment steps 2 and 13: a shadow root supplies the registry, while
     // its host supplies tokenizer context and the ancestor form pointer.
     const is_shadow = if (target) |value| value.stateAs(interfaces.ShadowRoot.State) != null else false;
+    const is_template = if (target) |value| value.stateAs(interfaces.HTMLTemplateElement.State) != null else false;
     const context_element = if (is_shadow)
         interfaces.ShadowRoot.get_host(target.?) catch return error.InvalidStateError
     else
         target;
-    const registry: dom.custom_elements.RegistrySelection = if (target) |value|
+    // Fragment parsing step 17 makes the root insertion target a
+    // DocumentFragment. For a template context that fragment is its inert
+    // content: create-for-token step 6 finds no registry there, even if the
+    // template element itself has the document's global registry.
+    const registry: dom.custom_elements.RegistrySelection = if (is_template)
+        .{ .explicit = null }
+    else if (target) |value|
         .{ .explicit = if (is_shadow)
             interfaces.ShadowRoot.get_customElementRegistry(value) catch return error.InvalidStateError
         else

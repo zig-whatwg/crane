@@ -160,3 +160,24 @@ test "fragment registry inheritance stops at nested template contents" {
     // no registry. Its descendants must not inherit the outer root's one.
     try std.testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Element.get_customElementRegistry(span));
 }
+
+test "template fragment context creates top-level descendants without a registry" {
+    var fixture: Fixture = undefined;
+    try fixture.init();
+    defer fixture.deinit();
+    const registry = try interfaces.CustomElementRegistry.call_constructor(&fixture.context);
+    defer runtime.Instance.deinit(registry);
+    try interfaces.CustomElementRegistry.call_initialize(registry, fixture.document);
+    const context = try template(fixture.document);
+    defer dom.node_creation.destroyUninserted(context);
+    try std.testing.expectEqual(@as(?*runtime.Instance, registry), try interfaces.Element.get_customElementRegistry(context));
+
+    const fragment = try parser.parseFragment(std.testing.allocator, &fixture.context, "<some-element><span></span></some-element>", context);
+    defer dom.node_creation.destroyUninserted(fragment);
+    const child = (try interfaces.Node.get_firstChild(fragment)).?;
+    const grandchild = (try interfaces.Node.get_firstChild(child)).?;
+    // HTML create-for-token step 6 consults the intended parent: the
+    // template's content fragment, which has no custom-element registry.
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Element.get_customElementRegistry(child));
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Element.get_customElementRegistry(grandchild));
+}

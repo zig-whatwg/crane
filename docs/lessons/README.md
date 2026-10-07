@@ -224,6 +224,8 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Spec Compliance
 
+- [Template fragment parsing uses the content registry](spec-compliance-template-fragment-parsing-uses-the-content-registry.md) - Derive registry from the intended insertion parent, not just the fragment context.
+
 - [Prescan bounds apply to the stream, not each attribute](spec-compliance-prescan-bounds-apply-to-the-stream-not-each-attribute.md) - Preserve complete values within the specified input window.
 
 - [Initialize document-owned state before descendants](spec-compliance-initialize-document-owned-state-before-descendants.md) - Establish persistent associations only after their owner is initialized.
