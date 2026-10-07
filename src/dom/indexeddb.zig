@@ -555,7 +555,10 @@ pub fn agentCleanupList(realm: runtime.Context) ?*CleanupList {
 /// ED 2.8 database-access tasks use the realm's host queue: its event loop -
 /// a window's, or a worker's own (every worker runs its own loop on its own
 /// thread, so the timer fallback workers once needed is gone). Ownership
-/// transfers only on success; a failure never invokes the task.
+/// transfers only on success; a failure never invokes the task. A closing
+/// worker may call `drop` synchronously on the success path, before this
+/// function returns. Callers must publish their queued state first and may
+/// not touch an owned task after a successful call.
 pub fn queueDatabaseTask(realm: runtime.Context, task: runtime.EventLoopTask) !DatabaseTaskHandle {
     const loop = realm.getOptionalEventLoop() orelse return error.NoTaskQueue;
     loop.queueTask(task);
@@ -577,6 +580,51 @@ pub fn cancelDatabaseTask(handle: *DatabaseTaskHandle) bool {
 /// Called at callback/drop entry, before invoking anything reentrant.
 pub fn databaseTaskStarted(handle: *DatabaseTaskHandle) void {
     handle.* = .{};
+}
+
+test "IndexedDB queue can drop a task before returning" {
+    const Loop = struct {
+        dropped: bool = false,
+
+        fn queueTask(ptr: *anyopaque, task: runtime.EventLoopTask) void {
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            if (task.drop) |drop| drop(task.context);
+            self.dropped = true;
+        }
+        fn queueMicrotask(_: *anyopaque, _: runtime.EventLoopMicrotask) void {}
+        fn runMicrotasks(_: *anyopaque) void {}
+        fn runOnce(_: *anyopaque) bool {
+            return false;
+        }
+        fn promiseAllocator(_: *anyopaque) std.mem.Allocator {
+            return std.testing.allocator;
+        }
+        const vtable: runtime.EventLoop.VTable = .{
+            .queueTask = queueTask,
+            .queueMicrotask = queueMicrotask,
+            .runMicrotasks = runMicrotasks,
+            .runOnce = runOnce,
+            .promiseAllocator = promiseAllocator,
+        };
+    };
+    var loop: Loop = .{};
+    var realm = try runtime.ContextData.init(std.testing.allocator, .{
+        .event_loop = .{ .ptr = &loop, .vtable = &Loop.vtable },
+    });
+    defer realm.deinit();
+    var dropped = false;
+    const Drop = struct {
+        fn run(_: ?*anyopaque) void {
+            @panic("the closing loop must drop rather than run");
+        }
+        fn drop(data: ?*anyopaque) void {
+            const flag: *bool = @ptrCast(@alignCast(data.?));
+            flag.* = true;
+        }
+    };
+    _ = try queueDatabaseTask(&realm, .{ .callback = Drop.run, .context = &dropped, .drop = Drop.drop });
+    try std.testing.expect(loop.dropped);
+    try std.testing.expect(dropped);
 }
 
 test "IndexedDB queue absence does not run a task synchronously" {

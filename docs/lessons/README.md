@@ -15,6 +15,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Parser reparenting must consult the live DOM](architecture-parser-reparenting-must-consult-the-live-dom.md) - Keep parser state for decisions and perform DOM moves against live relationships.
 
 - [Stable continuations own their native record](architecture-stable-continuations-own-their-native-record.md) - Retain queued identity separately from the element and release it on completion or drop.
+- [A queue handoff may drop the task before return](architecture-a-queue-handoff-may-drop-the-task-before-return.md) - After transferring task ownership, treat the payload as already destroyed.
 
 - [Parsed records need platform objects at the binding](architecture-parsed-records-need-platform-objects-at-the-binding.md) - Convert representations at the owner boundary; a pointer cast cannot create a platform object or its lifetime.
 - [Cancelled reaction queues need stable element identities](architecture-cancelled-reaction-queues-need-stable-element-identities.md) - Cancel by stable identity so a reused slab address cannot inherit queued work.
