@@ -20,7 +20,6 @@ const Allocator = std.mem.Allocator;
 
 const TreeBuilder = @import("tree_builder.zig").TreeBuilder;
 const TreeNode = @import("tree_builder.zig").TreeNode;
-const InsertionMode = @import("tree_builder.zig").InsertionMode;
 const QuirksMode = @import("tree_builder.zig").QuirksMode;
 const Namespace = @import("tree_builder.zig").Namespace;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
@@ -126,6 +125,7 @@ pub fn parseFragment(
     const tokenizer = try allocator.create(Tokenizer);
     errdefer allocator.destroy(tokenizer);
     tokenizer.* = Tokenizer.init(allocator, input);
+    errdefer tokenizer.deinit();
 
     // Step 6: Set tokenizer state based on context element
     const context_name = context_element.local_name orelse "";
@@ -165,6 +165,8 @@ pub fn parseFragment(
 
     // Set scripting flag
     tree_builder.scripting_enabled = options.scripting_enabled;
+    // HTML fragment parsing, step 9: later resets must still see context.
+    tree_builder.fragment_context = @constCast(context_element);
 
     // Step 2-3: Set quirks mode on the document
     // Spec: "Let the Document's mode be the mode of context_element's node document."
@@ -187,8 +189,7 @@ pub fn parseFragment(
     // We store a reference but don't need the actual token for basic parsing
 
     // Step 12: Reset the parser's insertion mode appropriately
-    // Pass ancestors for proper in_select_in_table detection
-    tree_builder.insertion_mode = resetInsertionModeForContextWithAncestors(context_element, context_element.parent);
+    tree_builder.resetInsertionModeAppropriately();
 
     // Step 13: Set form element pointer to nearest form ancestor
     // Walk up the context element's ancestors to find a form
@@ -207,80 +208,6 @@ pub fn parseFragment(
         .tokenizer = tokenizer,
         .allocator = allocator,
     };
-}
-
-/// Determine the initial insertion mode based on the context element.
-/// This implements "reset the insertion mode appropriately" for fragment case.
-///
-/// HTML Standard §13.2.4.1: The algorithm checks ancestors in specific order.
-fn resetInsertionModeForContext(context: *const TreeNode) InsertionMode {
-    return resetInsertionModeForContextWithAncestors(context, null);
-}
-
-/// Extended version that checks ancestors for select-in-table case.
-fn resetInsertionModeForContextWithAncestors(context: *const TreeNode, ancestors: ?*const TreeNode) InsertionMode {
-    const name = context.local_name orelse return .in_body;
-
-    // Only consider HTML namespace elements for special handling
-    if (context.namespace != .html) {
-        // MathML/SVG: use in_body (foreign content rules apply during parsing)
-        return .in_body;
-    }
-
-    // Check element name to determine insertion mode
-    if (std.mem.eql(u8, name, "select")) {
-        // HTML Standard: Check ancestors for table/template/tbody/tfoot/thead/tr
-        // If any ancestor is table-related, use in_select_in_table
-        if (ancestors != null) {
-            var ancestor: ?*const TreeNode = ancestors;
-            while (ancestor) |anc| {
-                if (anc.namespace == .html) {
-                    const anc_name = anc.local_name orelse "";
-                    if (std.mem.eql(u8, anc_name, "table") or
-                        std.mem.eql(u8, anc_name, "template") or
-                        std.mem.eql(u8, anc_name, "tbody") or
-                        std.mem.eql(u8, anc_name, "tfoot") or
-                        std.mem.eql(u8, anc_name, "thead") or
-                        std.mem.eql(u8, anc_name, "tr"))
-                    {
-                        return .in_select_in_table;
-                    }
-                }
-                ancestor = anc.parent;
-            }
-        }
-        return .in_select;
-    } else if (std.mem.eql(u8, name, "td") or std.mem.eql(u8, name, "th")) {
-        return .in_cell;
-    } else if (std.mem.eql(u8, name, "tr")) {
-        return .in_row;
-    } else if (std.mem.eql(u8, name, "tbody") or std.mem.eql(u8, name, "thead") or std.mem.eql(u8, name, "tfoot")) {
-        return .in_table_body;
-    } else if (std.mem.eql(u8, name, "caption")) {
-        return .in_caption;
-    } else if (std.mem.eql(u8, name, "colgroup")) {
-        return .in_column_group;
-    } else if (std.mem.eql(u8, name, "table")) {
-        return .in_table;
-    } else if (std.mem.eql(u8, name, "template")) {
-        // Should use current template insertion mode, default to in_template
-        return .in_template;
-    } else if (std.mem.eql(u8, name, "head")) {
-        // Fragment case: use in_body, not in_head
-        // (Different from regular parsing where we'd check if this is the last node)
-        return .in_body;
-    } else if (std.mem.eql(u8, name, "body")) {
-        return .in_body;
-    } else if (std.mem.eql(u8, name, "frameset")) {
-        return .in_frameset;
-    } else if (std.mem.eql(u8, name, "html")) {
-        // Fragment case: use in_body
-        // (Full spec checks for head element, but fragment always has one)
-        return .in_body;
-    }
-
-    // Default: in_body
-    return .in_body;
 }
 
 /// Find the nearest form element ancestor of the given element.
@@ -533,51 +460,4 @@ test "fragment parser - quirks mode from table context" {
 
     // Should have parsed table content
     try std.testing.expect(result.children.len > 0);
-}
-
-test "resetInsertionModeForContext - various elements" {
-    // Test select
-    const select = TreeNode{
-        .node_type = .element,
-        .local_name = "select",
-        .namespace = .html,
-        .parent = null,
-        .first_child = null,
-        .last_child = null,
-        .prev_sibling = null,
-        .next_sibling = null,
-        .attributes = undefined,
-        .text_content = undefined,
-        .doctype_name = null,
-        .doctype_public_id = null,
-        .doctype_system_id = null,
-        .force_quirks = false,
-        .allocator = undefined,
-    };
-    try std.testing.expectEqual(InsertionMode.in_select, resetInsertionModeForContext(&select));
-
-    // Test td
-    var td = select;
-    td.local_name = "td";
-    try std.testing.expectEqual(InsertionMode.in_cell, resetInsertionModeForContext(&td));
-
-    // Test tr
-    var tr = select;
-    tr.local_name = "tr";
-    try std.testing.expectEqual(InsertionMode.in_row, resetInsertionModeForContext(&tr));
-
-    // Test tbody
-    var tbody = select;
-    tbody.local_name = "tbody";
-    try std.testing.expectEqual(InsertionMode.in_table_body, resetInsertionModeForContext(&tbody));
-
-    // Test table
-    var table = select;
-    table.local_name = "table";
-    try std.testing.expectEqual(InsertionMode.in_table, resetInsertionModeForContext(&table));
-
-    // Test div (ordinary element)
-    var div = select;
-    div.local_name = "div";
-    try std.testing.expectEqual(InsertionMode.in_body, resetInsertionModeForContext(&div));
 }
