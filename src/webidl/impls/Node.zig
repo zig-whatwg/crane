@@ -370,6 +370,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Also used by DomTreeAdapter to clean up orphaned nodes that were never attached
 /// to the document tree.
 pub fn deinitNodeByType(instance: *runtime.Instance) void {
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    if (generation == runtime.SlabAllocator.dead_generation) return;
+    const ctx = instance.ctx;
+    const teardown_started = runtime.cleanup_coordinator.isContextTearingDown();
     // The teardown is recorded FIRST, before anything of the node runs - and
     // this is the check that it has not begun already (a collection's and a
     // tree's, or two trees'). platformObjectDestroyed below arms the node's
@@ -380,6 +384,26 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
     // tree's anyway (wrapper_cache treeOwns); a root - the parser's adapter
     // frees one through dom.node_creation.destroyUninserted - was not.
     if (!runtime.instance_lifecycle.markCleanupStarted(instance)) return;
+
+    // A collected child's wrapper can finalize while its parent still
+    // owns the Instance. Its cache entry then goes, leaving the tree's
+    // teardown to return the storage as well as clean the resources. A
+    // cached wrapper keeps its existing storage owner until it dies.
+    //
+    // Read the generation before any Instance field: teardown can collect
+    // or retire its realm. A pending finalizer rejects a returned slot by
+    // this same generation. Never query the cache during coordinated
+    // teardown, whose map can still hold entries already disposed; nor a
+    // retired realm, whose objects can be wrapped in another live realm.
+    defer {
+        if (runtime.SlabAllocator.generationOf(instance) == generation and
+            runtime.instance_lifecycle.isCleanedUp(instance) and
+            !teardown_started and !runtime.cleanup_coordinator.isContextTearingDown() and
+            ctx.hasEngine() and !engine.hasWrapper(instance))
+        {
+            runtime.gc.releaseStorage(instance);
+        }
+    }
 
     // Its wrapper must not free it again (engine.platformObjectDestroyed).
     engine.platformObjectDestroyed(instance);
