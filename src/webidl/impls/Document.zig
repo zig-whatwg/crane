@@ -4313,6 +4313,23 @@ fn lifecycleMarkReadyForPostLoadTasks(document: *runtime.Instance) void {
 /// dom.document_lifecycle: something that delayed `document`'s load event
 /// may have stopped. If "the end" waits at step 8, look again.
 fn lifecycleLoadDelayMayHaveEnded(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    // "The end" steps 5 and 7 wait by spinning the event loop. A DOM
+    // removal or resource undelay must not enter parser/deferred script on
+    // its caller's stack; the epoch-checked document task resumes it.
+    if (internal.parsing_end_waiting_on_scripts or
+        @import("html").script_execution.pendingParserBlockingScriptReady(document))
+    {
+        queueScriptDeliveryContinuation(document, false);
+    } else if (internal.load_waiting_on_delay) {
+        // Rechecking step 8 only queues the load task; it executes no script.
+        queueLoadUnlessDelayed(document);
+    }
+    @import("dom").content_navigables.loadDelayMayHaveEnded(document);
+}
+
+/// Task-only parser and deferred-script continuation after a load delay ends.
+fn resumeAfterLoadDelay(document: *runtime.Instance) void {
     // An inline parser script can wait on a style sheet without a script
     // fetch of its own. Resume its parser when the last blocking sheet
     // finishes, using the same readiness test as fetched parser scripts.
@@ -4363,6 +4380,11 @@ fn lifecycleScriptDeliveryDiscarded(document: *runtime.Instance, removed_parser_
         !(removed_parser_blocker and internal.active_parser != null) and
         internal.scripts.scripts_to_execute_asap.items.len == 0 and
         internal.scripts.scripts_to_execute_in_order_asap.items.len == 0) return;
+    queueScriptDeliveryContinuation(document, removed_parser_blocker);
+}
+
+fn queueScriptDeliveryContinuation(document: *runtime.Instance, removed_parser_blocker: bool) void {
+    const internal = getInternal(document) orelse return;
     const task = LifecycleTask{
         .allocator = document.ctx.allocator,
         .target = document,
@@ -4424,7 +4446,7 @@ fn resumeScriptDelivery(task: *LifecycleTask) void {
     if (!canResumeScriptDelivery(task)) return;
     @import("html").script_execution.executeScriptsAsap(document.ctx.allocator, document);
     if (!canResumeScriptDelivery(task)) return;
-    lifecycleLoadDelayMayHaveEnded(document);
+    resumeAfterLoadDelay(document);
 }
 
 /// dom.document_lifecycle: HTML "delay the load event" - one more thing

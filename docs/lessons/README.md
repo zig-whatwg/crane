@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Load-delay notification is not permission to run script](architecture-load-delay-notification-is-not-permission-to-run-script.md) - Synchronous readiness callbacks queue parser and deferred-script continuation on a guarded document task.
 
 - [Associate a parser after the last reentrant step](architecture-associate-a-parser-after-the-last-reentrant-step.md) - Release the parser present at association, including one installed by a callback in the same operation.
 

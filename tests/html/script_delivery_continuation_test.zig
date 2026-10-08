@@ -235,3 +235,41 @@ test "unavailable continuation allocation or event loop has no inline fallback" 
         try std.testing.expect(!internal.ready_for_post_load_tasks);
     }
 }
+
+test "load undelay defers ready deferred-script work and has no inline fallback" {
+    for (0..3) |kind| {
+        var fixture: Fixture = .{};
+        try fixture.init();
+        defer fixture.deinit();
+        const internal = dom.document_internals.getInternal(fixture.document).?;
+        const script = try interfaces.HTMLScriptElement.init(std.testing.allocator, &fixture.ctx);
+        defer {
+            internal.script_delivery_continuation_suppressed = true;
+            html.script_execution.discardParserScripts(fixture.document);
+            interfaces.HTMLScriptElement.deinit(script);
+        }
+        try dom.node_document.set(script, fixture.document);
+        const state = html.script_element.of(script).?;
+        state.preparation_time_document = fixture.document;
+        state.preparation_time_document_generation = runtime.SlabAllocator.generationOf(fixture.document);
+        state.ready_to_be_parser_executed = true;
+        state.result = .null;
+        const lists = dom.document_scripts.of(fixture.document).?;
+        try lists.scripts_to_execute_when_parsing_finished.append(std.testing.allocator, script);
+        internal.parsing_end_waiting_on_scripts = true;
+        dom.document_lifecycle.delayLoadEvent(fixture.document);
+        if (kind == 1) fixture.drop_tasks = true;
+        if (kind == 2) fixture.ctx.event_loop = null;
+        dom.document_lifecycle.undelayLoadEvent(fixture.document);
+        try std.testing.expectEqual(@as(usize, 1), lists.scripts_to_execute_when_parsing_finished.items.len);
+        try std.testing.expect(internal.parsing_end_waiting_on_scripts);
+        try std.testing.expect(!internal.ready_for_post_load_tasks);
+        if (kind == 0) {
+            try std.testing.expectEqual(@as(usize, 1), fixture.task_count);
+            fixture.runFirst();
+            try std.testing.expectEqual(@as(usize, 0), lists.scripts_to_execute_when_parsing_finished.items.len);
+            try std.testing.expect(!internal.parsing_end_waiting_on_scripts);
+            try std.testing.expect(internal.ready_for_post_load_tasks);
+        } else try std.testing.expectEqual(@as(usize, 0), fixture.task_count);
+    }
+}
