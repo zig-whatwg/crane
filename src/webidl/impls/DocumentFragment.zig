@@ -60,14 +60,26 @@ const utils = @import("webidl").utils;
 const Registry = utils.InstanceRegistry(InternalState);
 
 pub fn installHooks() void {
-    dom.template_contents.install(.{ .set_host = &setTemplateHost, .host = &templateHost });
+    dom.template_contents.install(.{ .set_host = &setTemplateHost, .host = &templateHost, .clear_host = &clearTemplateHost });
 }
 
+/// The template whose contents this fragment is: a native pointer, checked by
+/// generation on every read (`templateHost`). No edge is traced to the
+/// template's wrapper: that made a wrapper for a template script had not seen
+/// yet - from then on the collector's to free with it - and a constructor
+/// binding the template to NewTarget's object would replace that wrapper
+/// (PR-M1). The template owns the fragment natively instead
+/// (`dom.template_contents.ownedByLiveTemplate`).
 fn setTemplateHost(fragment: *runtime.Instance, host: *runtime.Instance) !void {
     const internal = Registry.get(fragment) orelse return error.InvalidStateError;
     internal.host = host;
     internal.host_generation = runtime.SlabAllocator.generationOf(host);
-    engine.traceChild(fragment, host, .{ .name = "template host" });
+}
+
+fn clearTemplateHost(fragment: *runtime.Instance) void {
+    const internal = Registry.get(fragment) orelse return;
+    internal.host = null;
+    internal.host_generation = 0;
 }
 
 fn templateHost(fragment: *runtime.Instance) ?*runtime.Instance {
@@ -118,7 +130,6 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 pub fn deinit(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
     if (Registry.get(instance)) |internal| {
-        engine.forgetTracedChild(instance, .{ .name = "template host" });
         engine.forgetTracedChild(instance, .{ .name = "template owner document" });
         internal.deinit();
         // Remove from registry to prevent double-free

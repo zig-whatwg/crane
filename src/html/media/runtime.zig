@@ -259,7 +259,7 @@ pub const Activity = struct {
             continuation.unlink();
             self.sync();
         }
-        try engine.queueResolvedPromiseReaction(realm, &StableContinuation.steps, continuation);
+        try engine.queueRealmMicrotask(realm, &StableContinuation.steps, continuation);
     }
     /// Whether this resource selection already has a pending stable section.
     pub fn hasStable(self: *const Activity, generation: u64) bool {

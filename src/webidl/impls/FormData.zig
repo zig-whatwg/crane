@@ -257,20 +257,6 @@ fn setFileTrace(instance: *runtime.Instance, internal: *InternalState, trace: ?e
     internal.files_traced = true;
 }
 
-/// Internal: append Blob/File entry
-///
-/// This is an internal helper for handling the Blob overload of append.
-/// NOT a WebIDL operation - no corresponding interface delegate.
-/// Spec: https://xhr.spec.whatwg.org/#dom-formdata-append
-pub fn appendBlobEntry(instance: *runtime.Instance, name: runtime.USVString, blob_instance: *runtime.Instance, filename: ?runtime.USVString) ImplError!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    // Store the Blob instance reference
-    // We need to store it in a way that can be retrieved later
-    // For now, create an entry that holds the blob instance pointer
-    try internal.form_data.appendBlobInstance(name, blob_instance, filename);
-}
-
 /// Operation: delete
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata-delete
