@@ -10,6 +10,7 @@ pub const Hooks = struct {
     adopted: ?*const fn (*runtime.Instance) anyerror!void = null,
     set_host: ?*const fn (*runtime.Instance, *runtime.Instance) anyerror!void = null,
     host: ?*const fn (*runtime.Instance) ?*runtime.Instance = null,
+    clear_host: ?*const fn (*runtime.Instance) void = null,
 };
 
 // process-wide: owner algorithms are identical for every Browser and installed only at process start
@@ -45,6 +46,28 @@ pub fn adopted(node: *runtime.Instance) !void {
 pub fn setHost(fragment: *runtime.Instance, element: *runtime.Instance) !void {
     const algorithm = hooks.set_host orelse return error.InvalidStateError;
     try algorithm(fragment, element);
+}
+
+/// The template whose contents `fragment` is has gone: the fragment is no
+/// longer any template's (`ownedByLiveTemplate` answers false from now on),
+/// and lives on only while script holds it.
+pub fn releaseHost(fragment: *runtime.Instance) void {
+    const algorithm = hooks.clear_host orelse return;
+    algorithm(fragment);
+}
+
+/// Whether `fragment` is the template contents of a template that is alive:
+/// that template owns it natively (WebKit's HTMLTemplateElement keeps a
+/// RefPtr to its content, Blink's traces content_), so the collector taking
+/// the fragment's wrapper must not free it - the template's teardown does, or
+/// hands it to its wrapper (`releaseHost`). The DEFAULT is false: anything
+/// that is not a template's contents - an ordinary fragment, a shadow root, a
+/// non-node - is not owned this way (tests/v8/template_owns_predicate_test.zig).
+pub fn ownedByLiveTemplate(fragment: *runtime.Instance) bool {
+    if (fragment.stateAs(interfaces.DocumentFragment.State) == null) return false;
+    if (fragment.stateAs(interfaces.ShadowRoot.State) != null) return false;
+    const algorithm = hooks.host orelse return false;
+    return algorithm(fragment) != null;
 }
 
 pub fn host(fragment: *runtime.Instance) ?*runtime.Instance {

@@ -246,7 +246,22 @@ fn slotReissued(entry: *const CacheEntry) bool {
 /// that is not, which keeps an instance alive a little longer, never frees a
 /// live one.
 fn engineOwns(instance: *runtime.Instance) bool {
-    return treeOwns(instance) or engineHoldsWrapper(instance);
+    return treeOwns(instance) or templateOwns(instance) or engineHoldsWrapper(instance);
+}
+
+/// True for a template's contents while its template is alive: the template
+/// owns the fragment natively (HTML 4.12.3; WebKit's HTMLTemplateElement keeps
+/// a RefPtr to it, Blink's traces content_), and only the template's teardown
+/// frees it - or, when script still holds the fragment, hands it to its
+/// wrapper by making it nobody's (`dom.template_contents.releaseHost`). The
+/// edge between the two wrappers keeps only the content's wrapper, and goes
+/// with either: owned through it, the fragment was freed under a template
+/// whose wrapper had been replaced or collected (PR-M1). Like `treeOwns`, an
+/// instance arm only - the content's wrapper stays weak. The default is false
+/// (an ordinary fragment, a shadow root, anything not a node), pinned by
+/// tests/v8/template_owns_predicate_test.zig.
+pub fn templateOwns(instance: *runtime.Instance) bool {
+    return @import("dom").template_contents.ownedByLiveTemplate(instance);
 }
 
 /// The part of `engineOwns` that holds the WRAPPER too, not only the
@@ -1325,6 +1340,20 @@ pub const WrapperCache = struct {
         self.registered = false;
     }
 
+    /// The wrapper `instance` already has, BORROWED - a node's one wrapper
+    /// whatever realm made it (its alias), else this cache's live entry -
+    /// or null when script has not seen it. What a constructor whose
+    /// instance was wrapped while it was made returns, instead of binding
+    /// the object V8 made for NewTarget (which `set` refuses).
+    pub fn existingWrapper(self: *Self, instance: *runtime.Instance) ?*v8.Object {
+        if (@import("dom").instance_bridge.getNodeBase(@ptrCast(instance))) |node| {
+            if (node.bound_v8_wrapper) |bound| return @ptrCast(@alignCast(bound));
+        }
+        const entry = self.cache.get(instance) orelse return null;
+        if (entry.instance_already_cleaned or slotReissued(entry)) return null;
+        return @ptrCast(entry.wrapper);
+    }
+
     /// Get cached wrapper for an instance
     ///
     /// ## Parameters
@@ -1359,6 +1388,23 @@ pub const WrapperCache = struct {
         _ = isolate; // Will be used for weak callback in next commit
         self.register();
 
+        // An instance has ONE wrapper in a realm. One that is live already
+        // is never replaced: every edge drawn on it - a traced child, a
+        // [SameObject] value, its tree edges - would go with it (a template's
+        // content was freed this way when a constructor bound the template to
+        // NewTarget's object, PR-M1). A constructor whose instance was
+        // wrapped while it was made returns that wrapper instead
+        // (interface.zig, `adoptExistingWrapper`). Only an entry left by a
+        // dead instance at a reissued address, or by a torn-down one, gives
+        // way below - and a realm's Window, whose wrapper is its realm's
+        // global object, bound here when the realm is made: none of its edges
+        // hang on a cached wrapper (protocol_tracing.zig holderOf hangs them
+        // on the global object).
+        if (self.cache.get(instance)) |existing| {
+            if (!existing.instance_already_cleaned and !slotReissued(existing) and !isRealmWindow(instance))
+                return error.AlreadyWrapped;
+        }
+
         // Allocate CacheEntry
         const entry = try self.allocator.create(CacheEntry);
         errdefer self.allocator.destroy(entry);
@@ -1374,12 +1420,12 @@ pub const WrapperCache = struct {
 
         // Store in HashMap.
         //
-        // An existing entry means this instance is being wrapped a second time,
-        // which normally indicates a missed cache lookup upstream. Replacing the
-        // value without releasing the old entry would leak its CacheEntry and its
-        // Global<Object>* handle, and leave that handle's weak callback armed
-        // pointing at memory we are about to orphan. Release it the same way
-        // remove() does before taking over the key.
+        // An existing entry here is a dead or torn-down instance's (a live
+        // one was refused above). Replacing the value without releasing the
+        // old entry would leak its CacheEntry and its Global<Object>* handle,
+        // and leave that handle's weak callback armed pointing at memory we
+        // are about to orphan. Release it the same way remove() does before
+        // taking over the key.
         if (self.cache.fetchRemove(instance)) |kv| {
             const old_entry = kv.value;
             log.debug(
@@ -1404,10 +1450,17 @@ pub const WrapperCache = struct {
         }
         // Edges traced from the instance before script saw it.
         self.drawDeferredEdges(instance, entry.original_generation, wrapper);
-        // A node: the edges between its wrapper and its parent's, drawn
-        // while this wrapper is still held strongly - its parent's wrapper
-        // made first if script has not seen it (node tracing).
+        // A node: this is its one wrapper, whatever realm reads it - the
+        // alias node tracing finds it by (`nodeWrapper`), and every later
+        // wrap returns. Set here, for every wrapper the cache takes: one a
+        // constructor made used to have none, so the insertion steps drew no
+        // edges for it and `f.appendChild(new Text())` left the text's
+        // wrapper - its expandos, a custom element's class - to the next
+        // collection. Then the edges between its wrapper and its parent's,
+        // drawn while this wrapper is still held strongly - its parent's
+        // wrapper made first if script has not seen it (node tracing).
         if (@import("dom").instance_bridge.getNodeBase(@ptrCast(instance))) |node| {
+            if (node.bound_v8_wrapper == null) node.bound_v8_wrapper = @ptrCast(wrapper);
             if (node.parent_node != null and !self.is_tearing_down) drawTreeEdges(node, @ptrCast(wrapper));
         }
         if (shouldBeStrong(entry) and self.detached_holder == null) {
