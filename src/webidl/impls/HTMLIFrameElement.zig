@@ -1242,7 +1242,7 @@ fn navigableContext(integration: *IFrameIntegration) ?runtime.Context {
 /// Step 24.1: "checking if unloading is canceled" for the active document's
 /// inclusive descendant navigables - beforeunload at each, parents first.
 /// Step 24.2: canceled, or navigated again meanwhile, and this navigation
-/// ends. Step 24.3 (abort the active document) is not modelled.
+/// ends. Step 24.3 aborts the active document before the replacement fetch.
 fn runBeforeUnload(context: ?*anyopaque) void {
     const id = idOf(context);
     const record = navigationById(id) orelse return;
@@ -1273,7 +1273,9 @@ fn runBeforeUnload(context: ?*anyopaque) void {
         // it was being parsed, as browsers do (replace-before-load/*).
         for (documents.items) |entry| {
             if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
-            document_lifecycle.abort(entry.document);
+            // The explicit provisional path preserves live XHR loaders;
+            // a stop/open called by an owner callback remains observable.
+            document_lifecycle.abortForNavigation(entry.document);
         }
     }
     startFetch(navigationById(id) orelse return);

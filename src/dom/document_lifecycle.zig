@@ -39,6 +39,8 @@ pub const Implementation = struct {
     fire_beforeunload: *const fn (document: *runtime.Instance) BeforeUnloadResult,
     unload: *const fn (document: *runtime.Instance) void,
     abort: *const fn (document: *runtime.Instance) void,
+    /// Navigation's provisional abort, before the replacement commits.
+    abort_for_navigation: *const fn (document: *runtime.Instance) void,
     /// Abort a document and its descendants, step 3.2: propagate the
     /// descendant's unsalvageable state to the root after its abort task.
     propagate_abort: *const fn (parent: *runtime.Instance, child: *runtime.Instance) void,
@@ -205,6 +207,13 @@ pub fn unload(document: *runtime.Instance) void {
 pub fn abort(document: *runtime.Instance) void {
     const impl = implementation orelse return;
     impl.abort(document);
+}
+
+/// Navigation's abort uses the same parser steps, while fetch owners can
+/// distinguish provisional loading from an explicit stop/document.open.
+pub fn abortForNavigation(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.abort_for_navigation(document);
 }
 
 /// HTML "abort a document and its descendants" step 3.2: if child's

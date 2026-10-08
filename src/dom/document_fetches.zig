@@ -36,6 +36,9 @@ pub const Owner = struct {
     prepare_abort: ?*const fn (document: *runtime.Instance) bool = null,
     /// Abort only the marked requests; their callbacks may start new ones.
     abort: ?*const fn (document: *runtime.Instance) void = null,
+    /// Prepare a provisional navigation's document abort.
+    /// Other owners keep their ordinary document-abort preparation.
+    prepare_navigation_document_abort: ?*const fn (document: *runtime.Instance) bool = null,
 };
 
 /// One slot per kind of fetch owner, with room to spare.
@@ -80,10 +83,23 @@ pub fn abortAll(realm: runtime.Context) void {
 /// so the document must be made unsalvageable. A reused Window's realm is
 /// insufficient identity: each owner records the document at request start.
 pub fn abort(document: *runtime.Instance) bool {
+    return abortDocument(document, false);
+}
+
+/// The provisional navigation call is explicit: a stop invoked reentrantly
+/// on a descendant must still use ordinary cancellation.
+pub fn abortForNavigation(document: *runtime.Instance) bool {
+    return abortDocument(document, true);
+}
+
+fn abortDocument(document: *runtime.Instance, for_navigation: bool) bool {
     var canceled = false;
     for (cancelers) |slot| {
         const owner = slot orelse break;
-        const prepare = owner.prepare_abort orelse continue;
+        const prepare = if (for_navigation)
+            owner.prepare_navigation_document_abort orelse owner.prepare_abort orelse continue
+        else
+            owner.prepare_abort orelse continue;
         canceled = prepare(document) or canceled;
     }
     // Snapshot all owners before callbacks can start a request of any kind.
@@ -109,6 +125,7 @@ test "document abort prepares every owner before callbacks and destruction stays
         all_prepared: bool = false,
         aborted: usize = 0,
         discarded: usize = 0,
+        navigation_prepared: bool = false,
 
         fn of(document: *runtime.Instance) *@This() {
             return @ptrCast(@alignCast(document.state));
@@ -129,6 +146,10 @@ test "document abort prepares every owner before callbacks and destruction stays
             of(document).second_marked = true;
             return true;
         }
+        fn prepareNavigation(document: *runtime.Instance) bool {
+            of(document).navigation_prepared = true;
+            return false;
+        }
         fn abortFirst(document: *runtime.Instance) void {
             const state = of(document);
             state.all_prepared = state.first_marked and state.second_marked;
@@ -146,7 +167,7 @@ test "document abort prepares every owner before callbacks and destruction stays
     const realm: runtime.Context = @ptrCast(@alignCast(state));
     abortAll(realm);
     try std.testing.expect(!abort(&document));
-    const first: Owner = .{ .discard = TestState.discard, .prepare_abort = TestState.prepare, .abort = TestState.abortFirst };
+    const first: Owner = .{ .discard = TestState.discard, .prepare_abort = TestState.prepare, .abort = TestState.abortFirst, .prepare_navigation_document_abort = TestState.prepareNavigation };
     install(first);
     install(first);
     install(.{ .discard = TestState.discardOther, .prepare_abort = TestState.prepareOther, .abort = TestState.abortOther });
@@ -157,6 +178,13 @@ test "document abort prepares every owner before callbacks and destruction stays
     abortAll(realm);
     try std.testing.expectEqual(@as(usize, 11), state.discarded);
     try std.testing.expectEqual(@as(usize, 11), state.aborted);
+    state.* = .{};
+    try std.testing.expect(abortForNavigation(&document));
+    try std.testing.expect(state.navigation_prepared);
+    try std.testing.expect(!state.first_marked);
+    try std.testing.expect(state.second_marked);
+    try std.testing.expectEqual(@as(usize, 11), state.aborted);
+    try std.testing.expectEqual(@as(usize, 0), state.discarded);
 }
 
 test "full owner table rejects a new owner and accepts an already installed owner" {

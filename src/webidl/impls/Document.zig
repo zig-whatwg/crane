@@ -663,6 +663,7 @@ pub fn installHooks() void {
         .fire_beforeunload = &lifecycleFireBeforeUnload,
         .unload = &lifecycleUnload,
         .abort = &lifecycleAbort,
+        .abort_for_navigation = &lifecycleAbortForNavigation,
         .propagate_abort = &lifecyclePropagateAbort,
         .destroy = &lifecycleDestroy,
         .set_about_base_url = &lifecycleSetAboutBaseUrl,
@@ -4209,6 +4210,16 @@ fn becomeComplete(data: ?*anyopaque) void {
 /// read its parser association again afterwards. Unsalvageable is a bfcache
 /// property, independent of whether the document is still fully active.
 fn lifecycleAbort(document: *runtime.Instance) void {
+    abortDocument(document, false);
+}
+
+fn lifecycleAbortForNavigation(document: *runtime.Instance) void {
+    abortDocument(document, true);
+}
+
+/// Only fetch-owner policy distinguishes provisional navigation here;
+/// parser cancellation and all other lifecycle steps remain shared.
+fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
     // Fetch cancellation can synchronously drop delivery tasks. Normal load
     // continuation is already forbidden before any cancellation callback.
     if (getInternal(document)) |internal| internal.script_delivery_continuation_suppressed = true;
@@ -4229,7 +4240,8 @@ fn lifecycleAbort(document: *runtime.Instance) void {
             @import("dom").content_navigables.loadDelayMayHaveEnded(document);
         }
     }
-    const canceled = @import("dom").document_fetches.abort(document);
+    const document_fetches = @import("dom").document_fetches;
+    const canceled = if (for_navigation) document_fetches.abortForNavigation(document) else document_fetches.abort(document);
     if (had_engine and !realm.hasEngine()) return;
     if (runtime.SlabAllocator.generationOf(document) != generation) return;
     const internal = getInternal(document) orelse return;
