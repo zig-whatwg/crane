@@ -4949,7 +4949,18 @@ pub fn V8Interface(comptime Interface: type) type {
             //        every constructor's path); a prototype of NewTarget's own
             //        is never re-read, so its getter's script ran once, before
             //        the host's steps (the hook's single-call contract).
-            if (receiverHasActivePrototype(this_obj, active, current_context)) {
+            //    V8's fallback for a non-object is %Object.prototype% of
+            //    GetFunctionRealm(NewTarget) for an API constructor
+            //    (JSFunction::GetDerivedMap: OBJECT_FUNCTION_INDEX when the
+            //    constructor names no intrinsic), never an interface
+            //    prototype - so a receiver given that object needs the
+            //    fallback too (CE-S1: newtarget.html, newtarget-customized-
+            //    builtins.html). The fallback re-reads NewTarget.prototype
+            //    and changes nothing for a real object, so a NewTarget whose
+            //    prototype IS that %Object.prototype% stays as it is.
+            if (receiverHasActivePrototype(this_obj, active, current_context) or
+                receiverHasRealmObjectPrototype(this_obj, new_target, isolate))
+            {
                 handleNewTargetPrototypeFallback(info, this_obj, isolate, current_context, interface_name);
             }
 
@@ -5014,6 +5025,28 @@ pub fn V8Interface(comptime Interface: type) type {
             const prototype = v8.v8_Object_GetPrototypeV2(receiver) orelse return true;
             defer v8.v8_Value_Dispose(prototype);
             return v8.v8_Value_StrictEquals(prototype, active_prototype);
+        }
+
+        /// Whether V8 gave `receiver` %Object.prototype% of
+        /// GetFunctionRealm(`new_target`) - what it does for an API
+        /// constructor when NewTarget's `prototype` is not an object. A
+        /// prototype whose own [[Prototype]] is not null cannot be it, and is
+        /// answered without finding the realm.
+        fn receiverHasRealmObjectPrototype(receiver: *v8.Object, new_target: *v8.Value, isolate: *v8.Isolate) bool {
+            const prototype = v8.v8_Object_GetPrototypeV2(receiver) orelse return false;
+            defer v8.v8_Value_Dispose(prototype);
+            if (!v8.v8_Value_IsObject(prototype)) return false;
+            const above = v8.v8_Object_GetPrototypeV2(@ptrCast(prototype)) orelse return false;
+            defer v8.v8_Value_Dispose(above);
+            if (!v8.v8_Value_IsNull(above)) return false;
+            const realm = getFunctionRealm(new_target, isolate) orelse return false;
+            defer v8.v8_Context_Dispose(realm);
+            // An ordinary object made in that realm has its %Object.prototype%.
+            const probe = v8.v8_Object_NewInContext(realm) orelse return false;
+            defer v8.v8_Object_Dispose(probe);
+            const object_prototype = v8.v8_Object_GetPrototypeV2(probe) orelse return false;
+            defer v8.v8_Value_Dispose(object_prototype);
+            return v8.v8_Value_StrictEquals(prototype, object_prototype);
         }
 
         /// The wrapper cache of `element`'s relevant realm.
