@@ -575,10 +575,14 @@ fn markCustomElementEnqueued(instance: *runtime.Instance) void {
 
 fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (registry) |value| if (try interfaces.Node.get_ownerDocument(instance)) |document| {
-        try dom.custom_elements.associateDocument(value, document);
+    const document = try interfaces.Node.get_ownerDocument(instance);
+    if (registry) |value| if (document) |owner| {
+        try dom.custom_elements.associateDocument(value, owner);
     };
-    internal.custom_element_registry.set(instance, registry);
+    // CE2-S2: the document keeps its own global registry; only another one is
+    // traced from the element.
+    const document_registry = if (document) |owner| try interfaces.Document.get_customElementRegistry(owner) else null;
+    internal.custom_element_registry.setForNode(instance, registry, document_registry);
 }
 
 fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementData {
