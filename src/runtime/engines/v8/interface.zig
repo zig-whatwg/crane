@@ -9235,7 +9235,11 @@ fn getFunctionRealmWithDepth(func: *v8.Value, isolate: *v8.Isolate, depth: u32) 
     if (v8.v8_Value_IsProxy(func)) {
         const proxy_obj: *v8.Object = @ptrCast(func);
         if (v8.v8_Proxy_GetTarget(proxy_obj)) |target| {
-            // Recurse on the target
+            // OWNED (a Global per call): released once the recursion has
+            // its answer, a Context of its own. Kept, it was one leaked
+            // handle per proxy NewTarget whose prototype fell back
+            // (`leaks --atExit`: ROOT LEAK <malloc in v8_Proxy_GetTarget>).
+            defer v8.v8_Value_Dispose(target);
             return getFunctionRealmWithDepth(target, isolate, depth + 1);
         }
         // Revoked proxy or error - fall through to function check
