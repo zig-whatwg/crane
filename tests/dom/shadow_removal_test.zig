@@ -94,7 +94,10 @@ test "host insertion and removal propagate connectedness and release shadow scri
     try fixture.connect();
     const expected = fixture.expected();
     for (expected) |node| try std.testing.expect(node.is_connected);
-    for (fixture.scripts) |script| try dom.document_rendering.block(script);
+    for (fixture.scripts) |script| {
+        try dom.document_rendering.block(script);
+        try std.testing.expect(dom.document_rendering.contains(fixture.document, script));
+    }
     _ = try interfaces.Node.call_removeChild(fixture.html, fixture.host);
     for (expected) |node| try std.testing.expect(!node.is_connected);
     for (fixture.scripts) |script| try std.testing.expect(!dom.document_rendering.contains(fixture.document, script));
@@ -105,7 +108,10 @@ test "allocation failure after detaching a host still removes nested shadow bloc
     try fixture.init();
     defer fixture.deinit();
     try fixture.connect();
-    for (fixture.scripts) |script| try dom.document_rendering.block(script);
+    for (fixture.scripts) |script| {
+        try dom.document_rendering.block(script);
+        try std.testing.expect(dom.document_rendering.contains(fixture.document, script));
+    }
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
     const parent = base(fixture.html);
     const saved_allocator = parent.allocator;

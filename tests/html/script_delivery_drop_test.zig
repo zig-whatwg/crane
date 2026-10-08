@@ -22,6 +22,5 @@ test "an actual initial graph task drop cleans its owner without recursive conti
 }
 
 test "a dropped delivery cannot discard another preparation generation" {
-    // The saved pre-fix source predates this helper and its guard case.
-    if (@hasDecl(cases, "generationGuard")) try cases.generationGuard();
+    try cases.generationGuard();
 }

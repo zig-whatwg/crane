@@ -58,7 +58,7 @@ fn check(scenario: Scenario) !void {
                 .discarded => {},
                 .removed_during_state, .removed_during_abort => {
                     const handler = if (self.scenario == .removed_during_state) "onreadystatechange" else "onabort";
-                    const script = try std.fmt.allocPrint(allocator, "request.{s} = () => {{ frame.remove(); if (typeof gc === 'function') gc(); }}", .{handler});
+                    const script = try std.fmt.allocPrint(allocator, "request.{s} = () => {{ frame.remove(); TestUtils.gc(); }}", .{handler});
                     defer allocator.free(script);
                     try page.runScript(script);
                     _ = try browser.runEventLoopBlocking(10);
@@ -132,21 +132,12 @@ fn checkNavigation(scenario: NavigationScenario) !void {
                 try page.runScript("window.stop(); if (request.readyState !== 1 || abortEvents.length !== 0) throw new Error('stop delivered inline')");
                 try std.testing.expectEqual(before, async_fetch.inFlight());
             }
-            // On the regressed tree, prepare its old marker so RED reaches
-            // the silent-detach bug rather than an absent-API assertion.
-            if (comptime @hasDecl(document_fetches, "prepareNavigationAbort")) {
-                document_fetches.prepareNavigationAbort(document);
-            }
             if (self.scenario == .replacement_before_abort) {
                 try page.runScript("request.open('POST', 'http://127.0.0.1:65533/replacement'); request.send('replacement upload'); abortEvents.length = 0");
                 try std.testing.expectEqual(before + 1, async_fetch.inFlight());
             }
-            // Provisional navigation preserves every XHR. The fallback
-            // reaches the old production path for behavioral RED.
-            const canceled = if (comptime @hasDecl(document_fetches, "abortForNavigation"))
-                document_fetches.abortForNavigation(document)
-            else
-                document_fetches.abort(document);
+            // Provisional navigation preserves every XHR.
+            const canceled = document_fetches.abortForNavigation(document);
             try std.testing.expect(!canceled);
             if (self.scenario != .queued_stop) {
                 try std.testing.expectEqual(before + 1, async_fetch.inFlight());
