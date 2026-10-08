@@ -411,6 +411,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A poisoned Array.prototype poisons testharness.js too](testing-a-poisoned-prototype-poisons-testharness-too.md) - Scope a prototype poison to the one call it tests; the harness shares the realm and trips over it.
 - [A dom unit test that reaches an engine operation cannot link](testing-a-dom-unit-test-that-reaches-an-engine-operation-cannot-link.md) - Keep src/dom unit tests to logic that reaches no `engine.*` operation; split the pure step out and test it, and read "N undefined _v8_ symbols" in a dom test step as "a test reached the engine".
 
+- [Measure the WPT process, not its supervisor](testing-measure-the-wpt-process-not-its-supervisor.md) - Even `--parallel=1` changes the process measured by `leaks --atExit`; compare direct runners.
+
 ### Debugging
 
 - [Inspect the DOM before changing a serializer](debugging-inspect-the-dom-before-changing-a-serializer.md) - Locate the first incorrect representation before repairing a later result.
