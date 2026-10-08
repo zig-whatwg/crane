@@ -96,12 +96,11 @@ const Tracker = struct {
     /// Its key: a traversal's destination key; null for navigate()/reload().
     key: ?[36]u8 = null,
     /// Its info, for the navigate event: kept by an edge from the
-    /// navigation's wrapper in this slot (engine.traceValue), never a root -
+    /// navigation's fixed traced array, never an independent root -
     /// HTML leaves a cross-document navigation's tracker ongoing on the
     /// document it left, and an info held as a root kept that document's
     /// realm alive. Null: undefined.
-    info_slot: ?engine.TracedSlot = null,
-    info_slot_name: [40]u8 = undefined,
+    info_index: ?usize = null,
     /// Its serialized state: navigate()'s and reload()'s navigation API state.
     serialized_state: ?joint_history.SerializedState = null,
     /// The NavigationHistoryEntry it committed to.
@@ -117,12 +116,13 @@ const Tracker = struct {
     held: bool = false,
 
     /// `navigation`: the Navigation that keeps its info.
-    fn destroy(self: *Tracker, allocator: Allocator, navigation: *runtime.Instance) void {
+    fn destroy(self: *Tracker, internal: *InternalState, clear_info: bool) void {
         engine.releasePromiseCapability(&self.committed);
         engine.releasePromiseCapability(&self.finished);
-        if (self.info_slot) |slot| engine.forgetTracedChild(navigation, slot);
-        if (self.serialized_state) |*s| s.deinit(allocator);
-        allocator.destroy(self);
+        // The collector teardown ends the whole edge, without reading JS.
+        if (clear_info) releaseTrackerInfo(internal, self);
+        if (self.serialized_state) |*s| s.deinit(internal.allocator);
+        internal.allocator.destroy(self);
     }
 };
 
@@ -226,6 +226,10 @@ pub const InternalState = struct {
     transition: ?*Transition = null,
     /// Every tracker and event record alive; each goes once nothing uses it.
     trackers: std.ArrayListUnmanaged(*Tracker) = .empty,
+    /// Reusable indices, bounded by simultaneously live info values. The
+    /// values themselves are collectible edges, not native engine roots.
+    tracker_info_slots: std.ArrayListUnmanaged(bool) = .empty,
+    tracker_info_count: usize = 0,
     records: std.ArrayListUnmanaged(*EventRecord) = .empty,
     next_record_id: u64 = 1,
     /// "Navigation's activation", once made, kept by this object's wrapper.
@@ -245,8 +249,10 @@ pub const InternalState = struct {
         self.handed.deinit(self.allocator);
         for (self.records.items) |record| record.destroy(self.allocator);
         self.records.deinit(self.allocator);
-        for (self.trackers.items) |tracker| tracker.destroy(self.allocator, self.navigation);
+        engine.forgetTracedChild(self.navigation, tracker_info_slot);
+        for (self.trackers.items) |tracker| tracker.destroy(self, false);
         self.trackers.deinit(self.allocator);
+        self.tracker_info_slots.deinit(self.allocator);
         self.upcoming.deinit(self.allocator);
         if (self.transition) |t| t.destroy(self.allocator);
         self.transition = null;
@@ -834,16 +840,85 @@ fn newTracker(instance: *runtime.Instance, internal: *InternalState, info: runti
     const tracker = try internal.allocator.create(Tracker);
     errdefer internal.allocator.destroy(tracker);
     tracker.* = .{ .committed = committed, .finished = finished, .pending = true };
+    if (info != .undefined) try keepTrackerInfo(internal, tracker, info);
+    errdefer releaseTrackerInfo(internal, tracker);
     try internal.trackers.append(internal.allocator, tracker);
-    if (info != .undefined) {
-        const id = internal.next_record_id;
-        internal.next_record_id += 1;
-        if (std.fmt.bufPrint(&tracker.info_slot_name, "tracker-info:{d}", .{id})) |name| {
-            tracker.info_slot = .{ .name = name };
-            engine.traceValue(instance, info, tracker.info_slot.?);
-        } else |_| {}
-    }
     return tracker;
+}
+
+// Private::ForApi keys outlive every navigation in an isolate. Only this
+// fixed member uses that namespace; numeric array members are collectible.
+const tracker_info_slot: engine.TracedSlot = .{ .name = "navigation:tracker-info" };
+
+fn keepTrackerInfo(internal: *InternalState, tracker: *Tracker, info: runtime.JSValue) !void {
+    const navigation = internal.navigation;
+    const realm = navigation.ctx;
+    const index = std.mem.indexOfScalar(bool, internal.tracker_info_slots.items, false) orelse blk: {
+        const next = internal.tracker_info_slots.items.len;
+        try internal.tracker_info_slots.append(internal.allocator, false);
+        break :blk next;
+    };
+    const values = if (internal.tracker_info_count > 0)
+        engine.tracedValue(navigation, tracker_info_slot) orelse return error.OutOfMemory
+    else blk: {
+        const made = try engine.createSequenceOfValues(realm, &.{});
+        errdefer made.release();
+        engine.traceValue(navigation, made.borrow(), tracker_info_slot);
+        const published = engine.tracedValue(navigation, tracker_info_slot) orelse {
+            engine.forgetTracedChild(navigation, tracker_info_slot);
+            return error.OutOfMemory;
+        };
+        defer published.release();
+        if (!engine.sameValue(realm, made.borrow(), published.borrow())) {
+            engine.forgetTracedChild(navigation, tracker_info_slot);
+            return error.InvalidStateError;
+        }
+        break :blk made;
+    };
+    defer values.release();
+    errdefer if (internal.tracker_info_count == 0) engine.forgetTracedChild(navigation, tracker_info_slot);
+    var buffer: [32]u8 = undefined;
+    const key = std.fmt.bufPrint(&buffer, "{d}", .{index}) catch unreachable;
+    // Define an own member, never invoking an inherited array setter.
+    try engine.defineOwnProperty(realm, values.borrow(), key, info, .{
+        .writable = true,
+        .enumerable = true,
+        .configurable = true,
+    });
+    internal.tracker_info_slots.items[index] = true;
+    internal.tracker_info_count += 1;
+    tracker.info_index = index;
+}
+
+fn trackerInfo(internal: *InternalState, tracker: *Tracker) ?engine.Owned {
+    const index = tracker.info_index orelse return null;
+    const values = engine.tracedValue(internal.navigation, tracker_info_slot) orelse return null;
+    defer values.release();
+    var buffer: [32]u8 = undefined;
+    const key = std.fmt.bufPrint(&buffer, "{d}", .{index}) catch unreachable;
+    return engine.getProperty(internal.navigation.ctx, values.borrow(), key) catch null;
+}
+
+/// Normal collection of completed trackers only, never collector teardown.
+fn releaseTrackerInfo(internal: *InternalState, tracker: *Tracker) void {
+    const index = tracker.info_index orelse return;
+    tracker.info_index = null;
+    internal.tracker_info_slots.items[index] = false;
+    internal.tracker_info_count -= 1;
+    const navigation = internal.navigation;
+    if (internal.tracker_info_count == 0) {
+        engine.forgetTracedChild(navigation, tracker_info_slot);
+        return;
+    }
+    const values = engine.tracedValue(navigation, tracker_info_slot) orelse return;
+    defer values.release();
+    var buffer: [32]u8 = undefined;
+    const key = std.fmt.bufPrint(&buffer, "{d}", .{index}) catch unreachable;
+    engine.defineOwnProperty(navigation.ctx, values.borrow(), key, .undefined, .{
+        .writable = true,
+        .enumerable = true,
+        .configurable = true,
+    }) catch {};
 }
 
 const Upcoming = struct { index: usize, tracker: *Tracker };
@@ -941,7 +1016,7 @@ fn collect(internal: *InternalState) void {
             continue;
         }
         _ = internal.trackers.swapRemove(t);
-        tracker.destroy(internal.allocator, internal.navigation);
+        tracker.destroy(internal, true);
     }
 }
 
@@ -1390,7 +1465,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     const form_data_generation = if (form_data) |fd| runtime.SlabAllocator.generationOf(fd) else 0;
     defer if (form_data) |fd| fd.releaseIfUnwrapped(form_data_generation);
     // The tracker's info, read back from the navigation's wrapper.
-    const info: ?engine.Owned = if (api_tracker.info_slot) |slot| engine.tracedValue(instance, slot) else null;
+    const info = trackerInfo(internal, api_tracker);
     defer if (info) |i| i.release();
     // Steps 1, 12-24: the event.
     const event = interfaces.NavigateEvent.call_constructor(realm, runtime.DOMString.initInterned("navigate"), .{
