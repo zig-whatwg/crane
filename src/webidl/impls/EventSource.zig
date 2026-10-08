@@ -23,6 +23,7 @@ const fetch = @import("fetch");
 const eventsource = @import("eventsource");
 const EventSource = interfaces.EventSource;
 const LiveSources = eventsource.Registry(*anyopaque, *anyopaque);
+const same_object = @import("same_object.zig");
 
 pub const State = EventSource.State;
 
@@ -43,6 +44,9 @@ pub const InternalState = struct {
     origin: []const u8 = "",
     read_queued: bool = false,
     retry: eventsource.Retry(runtime.TimerInterface) = .{},
+    document: ?same_object.Link = null,
+    generation: u64 = 0,
+    document_abort_pending: ?u64 = null,
 
     fn syncPendingActivity(self: *InternalState) void {
         const instance = self.instance orelse return;
@@ -55,6 +59,7 @@ pub const InternalState = struct {
 
     /// 9.2.2 close(), and 9.2.9 forcible close. No event is fired.
     fn close(self: *InternalState) void {
+        self.document_abort_pending = null;
         self.connection.close();
         self.retry.cancel();
         self.endFetch();
@@ -94,6 +99,9 @@ pub const InternalState = struct {
 
     /// Constructor step 15 and reestablish step 5.4: an incremental fetch.
     fn connect(self: *InternalState) !void {
+        self.generation +%= 1;
+        self.document_abort_pending = null;
+        self.read_queued = false;
         try self.parser.reset();
         const request = try self.request.?.clone();
         // 9.2.3 step 5.3: ID is already UTF-8. A fresh request clone also
@@ -151,7 +159,7 @@ pub const InternalState = struct {
         const instance = self.instance orelse return error.InvalidStateError;
         const loop = instance.ctx.getOptionalEventLoop() orelse return error.NotSupportedError;
         const task = try self.allocator.create(Task);
-        task.* = .{ .source = self, .kind = kind };
+        task.* = .{ .source = self, .kind = kind, .generation = self.generation };
         var queued: runtime.EventLoopTask = .{ .callback = Task.run, .context = task, .drop = Task.drop };
         if (globalOf(instance.ctx)) |global| {
             if (std.mem.eql(u8, global.vtable.name, "Window")) {
@@ -278,6 +286,7 @@ pub const InternalState = struct {
 const Task = struct {
     source: *InternalState,
     kind: Kind,
+    generation: u64,
     const Kind = union(enum) {
         read,
         open,
@@ -290,6 +299,7 @@ const Task = struct {
         const self: *Task = @ptrCast(@alignCast(context.?));
         defer self.finish();
         const source = self.source;
+        if (self.generation != source.generation) return;
         if (self.kind == .read) source.read_queued = false;
         const instance = source.instance orelse return;
         if (source.connection.state == .closed) return;
@@ -298,6 +308,7 @@ const Task = struct {
     fn steps(context: ?*anyopaque) void {
         const self: *Task = @ptrCast(@alignCast(context.?));
         const source = self.source;
+        if (self.generation != source.generation) return;
         const instance = source.instance orelse return;
         if (source.connection.state == .closed) return;
         switch (self.kind) {
@@ -312,7 +323,7 @@ const Task = struct {
                 // 9.2.3 steps 1.1–1.3: CONNECTING before firing error.
                 if (!source.connection.reestablish()) return;
                 fire(instance, "error");
-                if (source.instance == null or !source.connection.canReconnect()) return;
+                if (self.generation != source.generation or source.instance == null or !source.connection.canReconnect()) return;
                 const timer = instance.ctx.getOptionalTimer() orelse {
                     source.queueFailure();
                     return;
@@ -334,7 +345,7 @@ const Task = struct {
     }
     fn drop(context: ?*anyopaque) void {
         const self: *Task = @ptrCast(@alignCast(context.?));
-        self.source.close();
+        if (self.generation == self.source.generation) self.source.close();
         self.finish();
     }
     fn finish(self: *Task) void {
@@ -352,8 +363,43 @@ const Task = struct {
 
 /// Installed once at process start, never lazily in a constructor.
 pub fn installHooks() void {
-    dom.document_fetches.install(closeInRealm);
+    dom.document_fetches.install(.{ .discard = closeInRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
     dom.unloading_cleanup.install(closeInRealm);
+}
+fn prepareDocumentAbort(document: *runtime.Instance) bool {
+    const sources = liveSources(document.ctx) orelse return false;
+    var canceled = false;
+    for (sources.entries.toSlice()) |entry| {
+        const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+        const self = getInternal(instance);
+        const link = self.document orelse continue;
+        if (link.instance != document or !link.isLive() or self.connection.state == .closed) continue;
+        self.document_abort_pending = self.generation;
+        canceled = true;
+    }
+    return canceled;
+}
+fn abortDocument(document: *runtime.Instance) void {
+    const sources = liveSources(document.ctx) orelse return;
+    while (true) {
+        const self: *InternalState = blk: {
+            for (sources.entries.toSlice()) |entry| {
+                const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+                const candidate = getInternal(instance);
+                const link = candidate.document orelse continue;
+                if (candidate.document_abort_pending != null and link.instance == document and link.isLive()) break :blk candidate;
+            }
+            return;
+        };
+        const generation = self.document_abort_pending.?;
+        self.document_abort_pending = null;
+        if (generation != self.generation or self.connection.state == .closed) continue;
+        // An external cancellation fails the connection. Old network tasks
+        // discard their payloads; the new failure task alone can fire error.
+        self.generation +%= 1;
+        self.read_queued = false;
+        self.queueFailure();
+    }
 }
 fn liveSources(realm: runtime.Context) ?*LiveSources {
     const agent = realm.agent orelse return null;
@@ -410,6 +456,9 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, eventSourc
     const instance = try init(ctx.allocator, State, &EventSource.vtable, ctx);
     errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
     const internal = getInternal(instance);
+    if (globalOf(ctx)) |global| if (std.mem.eql(u8, global.vtable.name, "Window")) {
+        if (interfaces.Window.get_document(global) catch null) |document| internal.document = same_object.Link.to(document);
+    };
     internal.url = parsed;
     url_taken = true;
     // Steps 6–13: potential-CORS request with the relevant client/settings.

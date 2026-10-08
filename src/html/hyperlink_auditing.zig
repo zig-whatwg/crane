@@ -18,9 +18,58 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const fetch = @import("fetch");
-const global_settings = @import("dom").global_settings;
+const dom = @import("dom");
+const global_settings = dom.global_settings;
+const html_core = @import("html_core");
+const LivePings = @FieldType(html_core.agent_host.AgentHost, "hyperlink_pings");
 
 const log = std.log.scoped(.hyperlink_auditing);
+
+/// The shared owner for a and area requests, installed with the anchor's
+/// process hooks.
+pub fn installDocumentAbort() void {
+    dom.document_fetches.install(.{ .discard = discardRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
+}
+
+fn livePings(realm: runtime.Context) ?*LivePings {
+    const agent = realm.agent orelse return null;
+    const host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(@import("engine").agentHost(agent) orelse return null));
+    return &host.hyperlink_pings;
+}
+
+fn prepareDocumentAbort(document: *runtime.Instance) bool {
+    const registry = livePings(document.ctx) orelse return false;
+    const generation = runtime.SlabAllocator.generationOf(document);
+    var canceled = false;
+    for (registry.entries.toSlice()) |entry| {
+        const pending: *Pending = @ptrCast(@alignCast(entry.instance));
+        if (pending.document != document or pending.document_generation != generation) continue;
+        pending.document_abort_pending = true;
+        canceled = true;
+    }
+    return canceled;
+}
+
+fn abortDocument(document: *runtime.Instance) void {
+    const registry = livePings(document.ctx) orelse return;
+    while (true) {
+        const pending = for (registry.entries.toSlice()) |entry| {
+            const candidate: *Pending = @ptrCast(@alignCast(entry.instance));
+            if (candidate.document == document and candidate.document_abort_pending) break candidate;
+        } else return;
+        pending.cancel();
+    }
+}
+
+fn discardRealm(realm: runtime.Context) void {
+    const registry = livePings(realm) orelse return;
+    while (true) {
+        const pending = for (registry.entries.toSlice()) |entry| {
+            if (entry.realm == @as(*anyopaque, @ptrCast(realm))) break @as(*Pending, @ptrCast(@alignCast(entry.instance)));
+        } else return;
+        pending.cancel();
+    }
+}
 
 /// Audit the following of the hyperlink `subject` (an `a` or `area`
 /// element) creates: "If a hyperlink created by an a or area element has a
@@ -62,14 +111,14 @@ pub fn audit(subject: *runtime.Instance) void {
     while (tokens.next()) |token| {
         const ping_url = parseRelative(document, token) orelse continue;
         defer allocator.free(ping_url);
-        sendPing(window, document_url, ping_url, target_url) catch |err| {
+        sendPing(window, document, document_url, ping_url, target_url) catch |err| {
             log.warn("ping to {s} not sent: {}", .{ ping_url, err });
         };
     }
 }
 
 /// Steps 1-6 for one ping URL.
-fn sendPing(window: *runtime.Instance, document_url: []const u8, ping_url: []const u8, target_url: []const u8) !void {
+fn sendPing(window: *runtime.Instance, document: *runtime.Instance, document_url: []const u8, ping_url: []const u8, target_url: []const u8) !void {
     // 1. "If ping URL's scheme is not an HTTP(S) scheme, then return."
     const scheme_end = std.mem.indexOfScalar(u8, ping_url, ':') orelse return;
     if (!fetch.algorithms.isHttpScheme(ping_url[0..scheme_end])) return;
@@ -112,11 +161,23 @@ fn sendPing(window: *runtime.Instance, document_url: []const u8, ping_url: []con
 
     // 6. "Fetch request." Its response is ignored.
     const pending = try allocator.create(Pending);
-    pending.* = .{ .allocator = allocator, .ctx = window.ctx };
+    pending.* = .{
+        .allocator = allocator,
+        .ctx = window.ctx,
+        .document = document,
+        .document_generation = runtime.SlabAllocator.generationOf(document),
+    };
+    if (livePings(window.ctx)) |registry| {
+        registry.add(pending, window.ctx) catch |err| {
+            allocator.destroy(pending);
+            return err;
+        };
+        pending.registry = registry;
+    }
     owned = false;
-    _ = fetch.algorithms.AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), pending.client()) catch |err| {
+    pending.fetch = fetch.algorithms.AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), pending.client()) catch |err| {
         // The fetch owned the request, and freed it.
-        allocator.destroy(pending);
+        pending.destroy();
         return err;
     };
 }
@@ -129,6 +190,25 @@ const Pending = struct {
     /// its context - `engine_ctx` becomes null - and Fetch terminates the
     /// fetch group with it.
     ctx: runtime.Context,
+    document: *runtime.Instance,
+    document_generation: u64,
+    document_abort_pending: bool = false,
+    registry: ?*LivePings = null,
+    fetch: ?*fetch.algorithms.AsyncFetch = null,
+
+    fn cancel(self: *Pending) void {
+        const active = self.fetch;
+        self.fetch = null;
+        // terminate neither calls gone nor finished; this owner releases
+        // its native registry entry and client record itself.
+        if (active) |f| f.terminate();
+        self.destroy();
+    }
+
+    fn destroy(self: *Pending) void {
+        if (self.registry) |registry| registry.remove(self);
+        self.allocator.destroy(self);
+    }
 
     fn client(self: *Pending) fetch.algorithms.AsyncFetch.Client {
         return .{ .context = self, .done = done, .alive = alive, .gone = gone, .finished = finished };
@@ -148,12 +228,14 @@ const Pending = struct {
 
     fn gone(context: *anyopaque) void {
         const self: *Pending = @ptrCast(@alignCast(context));
-        self.allocator.destroy(self);
+        self.fetch = null;
+        self.destroy();
     }
 
     fn finished(context: *anyopaque) void {
         const self: *Pending = @ptrCast(@alignCast(context));
-        self.allocator.destroy(self);
+        self.fetch = null;
+        self.destroy();
     }
 };
 

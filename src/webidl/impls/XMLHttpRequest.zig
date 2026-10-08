@@ -127,7 +127,11 @@ pub const InternalState = struct {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // "Abort a document" reaches a send()'s fetches through `live_pending`.
-    document_fetches.install(&abortFetchesIn);
+    document_fetches.install(.{
+        .discard = &abortFetchesIn,
+        .prepare_abort = &prepareDocumentAbort,
+        .abort = &abortDocumentFetches,
+    });
 }
 
 /// Initialize instance (creates the instance)
@@ -611,8 +615,10 @@ fn openSteps(
     const xhr_state = getXHRState(instance);
 
     // Steps 5-6: "encoding-parsing a URL url, relative to this's relevant
-    // settings object". Borrowed from the realm - not ours to free.
+    // settings object". A Window's API base URL is its associated
+    // Document's base URL, including an initial about:blank's creator base.
     const base_url = relevantBaseURL(instance);
+    defer if (base_url) |base| instance.ctx.allocator.free(base);
 
     // Step 12 fires readystatechange only "if this's state is not opened" -
     // a second open() on an opened request changes nothing observable there.
@@ -696,17 +702,29 @@ fn currentGlobalIsWindow() bool {
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#api-base-url
 ///
-/// The realm's document URL: a Window's navigation records its document's
-/// URL there, and a worker its script URL, which is a worker's API base URL.
-/// (Not the Document's or the Location's: in a WPT [window] run those were
-/// measured as '' and 'about:blank'.)
-///
-/// Returns a BORROWED slice owned by the realm, so the caller must not free
-/// it.
-fn relevantBaseURL(instance: *runtime.Instance) ?[]const u8 {
+/// A Window's current document base URL; a worker's script URL. Owned by
+/// instance.ctx.allocator, as Request's apiBaseURL is. The Document getter
+/// includes about:blank and srcdoc fallback bases and the first base element.
+fn relevantBaseURL(instance: *runtime.Instance) ?[]u8 {
+    if (relevantDocument(instance)) |document| {
+        const base = interfaces.Node.get_baseURI(document) catch null;
+        if (base) |b| {
+            if (b.len > 0) return @constCast(b);
+            document.ctx.allocator.free(b);
+        }
+    }
     const url = instance.ctx.documentUrl() orelse return null;
     if (url.len == 0) return null;
-    return url;
+    return instance.ctx.allocator.dupe(u8, url) catch null;
+}
+
+/// The document associated with this request's relevant global at this
+/// moment. Capture it for each send: HTML may reuse the Window and realm.
+fn relevantDocument(instance: *runtime.Instance) ?*runtime.Instance {
+    const record = instance.ctx.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(global) catch null;
 }
 
 // =============================================================================
@@ -967,6 +985,7 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     pending.* = .{
         .allocator = allocator,
         .instance = instance,
+        .document = if (relevantDocument(instance)) |document| same_object.Link.to(document) else null,
         .body = if (effective_body != null) owned_body else null,
         .started_ms = clock.monotonicMillis(),
     };
@@ -1027,6 +1046,38 @@ fn abortFetchesIn(realm: runtime.Context) void {
     }
 }
 
+/// HTML "abort a document" step 2: snapshot requests before any owner's
+/// cancellation dispatches script. A new send from an abort listener is not
+/// part of the old request's cancellation.
+fn prepareDocumentAbort(document: *runtime.Instance) bool {
+    var marked = false;
+    for (live_pending.items) |pending| {
+        if (pending.cancelled or pending.complete) continue;
+        const owner = pending.document orelse continue;
+        if (owner.instance != document or !owner.isLive()) continue;
+        pending.document_abort_pending = true;
+        marked = true;
+    }
+    return marked;
+}
+
+fn abortDocumentFetches(document: *runtime.Instance) void {
+    // Restart after each dispatch: it can end any other request, move the
+    // live entries, or start new work. Only the prepared requests are ended.
+    while (true) {
+        const next: ?*PendingFetch = blk: {
+            for (live_pending.items) |pending| {
+                if (!pending.document_abort_pending or pending.cancelled) continue;
+                const owner = pending.document orelse continue;
+                if (owner.instance == document and owner.isLive()) break :blk pending;
+            }
+            break :blk null;
+        };
+        const pending = next orelse return;
+        pending.abortForDocument();
+    }
+}
+
 /// One asynchronous send()'s fetch, from `send()` until its body has been
 /// read to its end.
 ///
@@ -1050,6 +1101,9 @@ fn abortFetchesIn(realm: runtime.Context) void {
 const PendingFetch = struct {
     allocator: std.mem.Allocator,
     instance: *runtime.Instance,
+    /// Request-start document identity, independent of Window realm reuse.
+    document: ?same_object.Link = null,
+    document_abort_pending: bool = false,
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// The fetch's outcome, from `done` until a task processes it.
     outcome: ?(fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) = null,
@@ -1251,6 +1305,31 @@ const PendingFetch = struct {
             self.fetch_holds = false;
         }
         self.maybeFree();
+    }
+
+    /// Document cancellation runs XHR's request error steps, without the
+    /// public abort() method's final UNSENT reset. Blink's DidFail ->
+    /// HandleDidCancel -> HandleRequestError uses the same distinction.
+    fn abortForDocument(self: *PendingFetch) void {
+        self.document_abort_pending = false;
+        // Keep the pending activity's pin until every event has returned.
+        // This can be called reentrantly from one of this request's tasks:
+        // restore its running hold rather than releasing that outer task.
+        const was_running = self.running;
+        self.running = true;
+        self.detach();
+        self.cancel();
+        engine.runInRealm(self.instance.ctx, documentAbortSteps, self.instance) catch {};
+        self.running = was_running;
+        self.maybeFree();
+    }
+
+    fn documentAbortSteps(context: ?*anyopaque) void {
+        const instance: *runtime.Instance = @ptrCast(@alignCast(context.?));
+        const internal = getInternal(instance);
+        internal.releaseResponseValue(instance);
+        var processor = xhr.response.ResponseProcessor.init(&internal.xhr_state);
+        processor.handleAbort();
     }
 
     /// Stop listening to the body; the pipe itself is the response's.

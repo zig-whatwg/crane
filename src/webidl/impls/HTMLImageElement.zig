@@ -33,6 +33,7 @@ const HTMLImageElement = interfaces.HTMLImageElement;
 const Element = interfaces.Element;
 const EventTarget = interfaces.EventTarget;
 const Event = interfaces.Event;
+const same_object = @import("same_object.zig");
 
 // Event loop for microtask/task queuing
 const event_loop_mod = @import("streams_event_loop");
@@ -63,12 +64,30 @@ pub const InternalState = struct {
 
     /// The allocator used for this internal state
     allocator: std.mem.Allocator = undefined,
+    document: ?same_object.Link = null,
+    document_abort_pending: ?u64 = null,
+    active_fetch: ?*ImageFetch = null,
+    event_pending: bool = false,
+
+    fn cancelFetch(self: *InternalState) void {
+        self.document_abort_pending = null;
+        if (self.active_fetch) |active| {
+            self.active_fetch = null;
+            if (active.fetch) |transport| transport.terminate();
+            active.allocator.destroy(active);
+        }
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        self.cancelFetch();
+    }
 };
 
 /// Context for microtask callback that initiates image loading
 /// This is allocated on the heap and freed after the microtask executes
 const LoadMicrotaskContext = struct {
     instance: *runtime.Instance,
+    instance_generation: u64,
     generation: u64,
     url: []const u8,
     allocator: std.mem.Allocator,
@@ -86,6 +105,7 @@ const ImageEventType = enum { load, @"error" };
 /// This is allocated on the heap and freed after the task executes
 const FireEventTaskContext = struct {
     instance: *runtime.Instance,
+    instance_generation: u64,
     generation: u64,
     event_type: ImageEventType,
     allocator: std.mem.Allocator,
@@ -154,6 +174,7 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up internal state
+    if (getInternal(instance)) |internal| internal.cancelFetch();
     removeInternal(instance);
 
     // Chain to parent class through interface (per Golden Rule #14)
@@ -290,6 +311,48 @@ pub fn installHooks() void {
     // "update the image data" - however the attribute is set: the IDL
     // setters reflect into the content attributes, and setAttribute.
     @import("dom").attribute_change_steps.install("img", &attributeChangeSteps);
+    @import("dom").document_fetches.install(.{ .discard = discardRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
+}
+fn prepareDocumentAbort(document: *runtime.Instance) bool {
+    var iter = Registry.iterator() orelse return false;
+    var canceled = false;
+    while (iter.next()) |entry| {
+        const internal = entry.internal;
+        const link = internal.document orelse continue;
+        if (link.instance != document or !link.isLive() or (internal.complete and !internal.event_pending)) continue;
+        internal.document_abort_pending = internal.load_generation;
+        canceled = true;
+    }
+    return canceled;
+}
+fn abortDocument(document: *runtime.Instance) void {
+    var iter = Registry.iterator() orelse return;
+    while (iter.next()) |entry| {
+        const internal = entry.internal;
+        const generation = internal.document_abort_pending orelse continue;
+        const link = internal.document orelse continue;
+        if (link.instance != document or !link.isLive()) continue;
+        internal.document_abort_pending = null;
+        if (generation != internal.load_generation) continue;
+        internal.cancelFetch();
+        internal.load_generation +%= 1;
+        internal.complete = true;
+        internal.event_pending = false;
+        const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+        engine.releasePlatformObject(instance);
+    }
+}
+fn discardRealm(realm: runtime.Context) void {
+    var iter = Registry.iterator() orelse return;
+    while (iter.next()) |entry| {
+        const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+        if (instance.ctx != realm) continue;
+        entry.internal.cancelFetch();
+        entry.internal.load_generation +%= 1;
+        entry.internal.complete = true;
+        entry.internal.event_pending = false;
+        engine.releasePlatformObject(instance);
+    }
 }
 
 /// The img element's attribute change steps: its relevant mutations - the
@@ -368,8 +431,18 @@ fn startLoad(instance: *runtime.Instance, url_str: []const u8) !void {
 
     // Step 3: Increment generation counter to cancel any pending loads
     const internal = try getOrCreateInternal(instance);
+    internal.cancelFetch();
+    internal.document = if (interfaces.Node.get_ownerDocument(instance) catch null) |document| same_object.Link.to(document) else null;
+    internal.event_pending = false;
     internal.load_generation += 1;
     internal.complete = false; // Mark as loading
+    // HTML keeps the element while update-the-image-data is running, even
+    // when disconnected. Cancellation and the event's completed task end it.
+    engine.keepPlatformObjectAlive(instance);
+    errdefer {
+        internal.complete = true;
+        releaseLoadHold(instance, runtime.SlabAllocator.generationOf(instance), internal.load_generation);
+    }
     const current_generation = internal.load_generation;
 
     // Step 4: Queue a microtask to start the "update the image data" algorithm
@@ -387,6 +460,7 @@ fn startLoad(instance: *runtime.Instance, url_str: []const u8) !void {
     const ctx = try allocator.create(LoadMicrotaskContext);
     ctx.* = .{
         .instance = instance,
+        .instance_generation = runtime.SlabAllocator.generationOf(instance),
         .generation = current_generation,
         .url = url_copy,
         .allocator = allocator,
@@ -412,6 +486,7 @@ fn performSynchronousLoad(instance: *runtime.Instance, url_str: []const u8, gene
     // Perform fetch
     var fetch_result = fetch.webidl.globalFetch(allocator, .{ .url = url_str }, .{});
     defer fetch_result.deinit();
+    defer releaseLoadHold(instance, runtime.SlabAllocator.generationOf(instance), generation);
 
     // Check generation again after fetch (may have been cancelled during fetch)
     if (internal.load_generation != generation) {
@@ -443,6 +518,7 @@ fn loadMicrotaskCallback(data: ?*anyopaque) void {
     defer ctx.deinit();
 
     const instance = ctx.instance;
+    if (runtime.SlabAllocator.generationOf(instance) != ctx.instance_generation) return;
     const generation = ctx.generation;
     const url_str = ctx.url;
     const allocator = ctx.allocator;
@@ -466,36 +542,44 @@ fn loadMicrotaskCallback(data: ?*anyopaque) void {
 /// Queue the task that fires `event_type` at `instance` for the load
 /// `generation` names (a newer load cancels it when it runs).
 fn queueImageEvent(instance: *runtime.Instance, generation: u64, event_type: ImageEventType, allocator: std.mem.Allocator) void {
+    if (getInternal(instance)) |internal| internal.event_pending = true;
     const event_name = switch (event_type) {
         .load => "load",
         .@"error" => "error",
     };
-    // Queue a task to fire the event (per spec, events fire via task queue)
-    // Use setTimeout(0) for task queue semantics
-    const timer = instance.ctx.getOptionalTimer() orelse {
-        // No timer support - fire event synchronously as fallback
+    const loop = instance.ctx.getOptionalEventLoop() orelse {
+        // No event loop - fire event synchronously as fallback
+        defer releaseLoadHold(instance, runtime.SlabAllocator.generationOf(instance), generation);
+        if (getInternal(instance)) |internal| internal.event_pending = false;
         fireEventOnElement(instance, event_name) catch {};
         return;
     };
     const task_ctx = allocator.create(FireEventTaskContext) catch {
         // OOM - fire synchronously as fallback
+        defer releaseLoadHold(instance, runtime.SlabAllocator.generationOf(instance), generation);
+        if (getInternal(instance)) |internal| internal.event_pending = false;
         fireEventOnElement(instance, event_name) catch {};
         return;
     };
     task_ctx.* = .{
         .instance = instance,
+        .instance_generation = runtime.SlabAllocator.generationOf(instance),
         .generation = generation,
         .event_type = event_type,
         .allocator = allocator,
     };
-    _ = timer.setTimeout(0, &fireEventTaskCallback, task_ctx);
+    var task: runtime.EventLoopTask = .{ .callback = fireEventTaskCallback, .context = task_ctx, .drop = dropImageEvent };
+    if (getInternal(instance)) |internal| if (internal.document) |document| {
+        task.document = document.instance;
+        task.document_generation = document.generation;
+    };
+    loop.queueTask(task);
 }
 
 /// The image request of one "update the image data", fetched in parallel
-/// (fetch.algorithms.AsyncFetch, as a link's style sheet is). It does not
-/// keep the element alive: the element's slab generation says whether it
-/// is still there, and a fetch whose element or realm is gone is
-/// terminated.
+/// (fetch.algorithms.AsyncFetch, as a link's style sheet is). The loading
+/// element's pending-activity hold lasts through its event; slab generations
+/// still fence callbacks after forced document teardown.
 ///
 /// Not modelled, stated: the image is not decoded - a response that is not
 /// a network error and is ok (or opaque, which cannot be read) is a
@@ -508,6 +592,7 @@ const ImageFetch = struct {
     /// The load this fetch is for (InternalState.load_generation).
     load_generation: u64,
     realm: runtime.Context,
+    fetch: ?*fetch.algorithms.AsyncFetch = null,
 
     fn client(self: *ImageFetch) fetch.algorithms.AsyncFetch.Client {
         return .{ .context = self, .done = done, .alive = alive, .gone = gone };
@@ -526,7 +611,15 @@ const ImageFetch = struct {
     /// has been terminated, and no event fires.
     fn gone(context: *anyopaque) void {
         const self: *ImageFetch = @ptrCast(@alignCast(context));
+        self.detach();
         self.allocator.destroy(self);
+    }
+
+    fn detach(self: *ImageFetch) void {
+        self.fetch = null;
+        if (self.elementIsLive()) if (getInternal(self.element)) |internal| {
+            if (internal.active_fetch == self) internal.active_fetch = null;
+        };
     }
 
     /// The response, body and all: the image is available, or the request
@@ -534,6 +627,7 @@ const ImageFetch = struct {
     /// this one.
     fn done(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
         const self: *ImageFetch = @ptrCast(@alignCast(context));
+        self.detach();
         defer self.allocator.destroy(self);
         const event_type: ImageEventType = blk: {
             var result = outcome catch break :blk .@"error";
@@ -558,6 +652,8 @@ const ImageFetch = struct {
 /// referrer policy the element's referrerpolicy attribute's state - then
 /// fetched in parallel.
 fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64) !void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    internal.document = if (interfaces.Node.get_ownerDocument(instance) catch null) |document| same_object.Link.to(document) else null;
     const allocator = instance.ctx.allocator;
     const request = try fetch.internal.InternalRequest.init(allocator, url);
     var request_owned = true;
@@ -596,7 +692,8 @@ fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64
     };
     // The fetch owns the request from here, even when it fails to start.
     request_owned = false;
-    _ = try fetch.algorithms.AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), image_fetch.client());
+    image_fetch.fetch = try fetch.algorithms.AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), image_fetch.client());
+    internal.active_fetch = image_fetch;
 }
 
 /// The value of `instance`'s attribute `name`, or null when it has none.
@@ -616,8 +713,10 @@ fn realmGlobal(realm: runtime.Context) ?*runtime.Instance {
 fn fireEventTaskCallback(data: ?*anyopaque) void {
     const ctx: *FireEventTaskContext = @ptrCast(@alignCast(data.?));
     defer ctx.deinit();
+    defer releaseLoadHold(ctx.instance, ctx.instance_generation, ctx.generation);
 
     const instance = ctx.instance;
+    if (runtime.SlabAllocator.generationOf(instance) != ctx.instance_generation) return;
     const generation = ctx.generation;
 
     // Final generation check - don't fire if superseded
@@ -625,12 +724,26 @@ fn fireEventTaskCallback(data: ?*anyopaque) void {
     if (internal.load_generation != generation) {
         return; // Cancelled
     }
+    internal.event_pending = false;
 
     // The task runs from the event loop, not from script: it is run as a task
     // of the element's realm, which enters it. A realm that has gone (the page
     // navigated away) runs nothing, and the task has no one to report to: it
     // is dropped, as a task of a document that is not fully active is.
     engine.runTaskInRealm(instance.ctx, fireEventTaskSteps, ctx) catch {};
+}
+fn releaseLoadHold(instance: *runtime.Instance, instance_generation: u64, load_generation: u64) void {
+    if (runtime.SlabAllocator.generationOf(instance) != instance_generation) return;
+    const internal = getInternal(instance) orelse return;
+    if (internal.load_generation == load_generation and internal.complete and !internal.event_pending) engine.releasePlatformObject(instance);
+}
+fn dropImageEvent(context: ?*anyopaque) void {
+    const task: *FireEventTaskContext = @ptrCast(@alignCast(context.?));
+    defer task.deinit();
+    if (runtime.SlabAllocator.generationOf(task.instance) == task.instance_generation) if (getInternal(task.instance)) |internal| {
+        if (internal.load_generation == task.generation) internal.event_pending = false;
+    };
+    releaseLoadHold(task.instance, task.instance_generation, task.generation);
 }
 
 /// The task's steps, inside the element's realm: fire the event.

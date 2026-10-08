@@ -41,6 +41,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    embedded_content.installDocumentAbort();
     // "The element is popped off the stack of open elements of an HTML
     // parser": its children - the fallback content - are parsed.
     dom.finish_parsing_children.install("object", .{ .created = &createdByParser, .finished = &finishedParsingChildren });
