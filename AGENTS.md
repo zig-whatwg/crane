@@ -33,7 +33,8 @@ was used by mistake early in this work and produced two real defects: an
 "React passes booleans", which made `addEventListener(t, fn, 2.3)` register as
 a bubble listener when the spec says capture; and `navigation-api/` excluded
 from the WPT worklist on the grounds that React and Phoenix do not need it.
-When in doubt, implement what the spec says and let WPT report the gap.
+When in doubt, implement what the spec says and let WPT report the gap - and
+where the spec text and the browsers disagree, the browsers win (golden rule 2).
 
 **Not everything has a spec.** V8 handle ownership, allocator lifetimes and
 teardown order are engine concerns — read the code, not `specs/`.
@@ -653,9 +654,17 @@ read it before adding state.
 
 1. **Algorithm precision.** WHATWG specs define web platform behaviour.
    Implement exactly as specified, step by step, with numbered comments. Small
-   deviations break browser compatibility.
-2. **Browser compatibility.** Match real browser behaviour. When in doubt,
-   check how Chrome, Firefox and Safari handle it.
+   deviations break browser compatibility. Where the browsers do otherwise,
+   rule 2 wins.
+2. **Browsers decide.** Where the browsers and the spec text disagree, Crane
+   does what the browsers do - in all cases (the user, 2026-10-08). Check
+   wpt.fyi (Chrome, Firefox, Safari) and the engines' source, implement their
+   behaviour, and state the deviation from the spec text in a comment citing
+   the evidence: the wpt.fyi results, the engine code, the upstream issue if
+   one exists. Where the browsers split, follow the majority of Chrome,
+   Firefox and Safari and say so; with no majority, ask the integrator. Not a
+   licence to skip spec work: where they agree with the spec, the spec's steps
+   are the implementation.
 3. **Performance matters**, but spec compliance comes first. Never sacrifice
    correctness for speed.
 4. **Commit after every logical unit of work.** A feature, a fix, a passing
