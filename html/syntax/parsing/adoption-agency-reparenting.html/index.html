@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../html/"><code>html/</code></a></li><li><a href="../../../../html/syntax/"><code>syntax/</code></a></li><li><a href="../../../../html/syntax/parsing/"><code>parsing/</code></a></li><li aria-current="page"><code>adoption-<wbr>agency-<wbr>reparenting.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>adoption-<wbr>agency-<wbr>reparenting.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="html/syntax/parsing/adoption-agency-reparenting.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 5</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>5</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">5</span><span class="fg-of"> / 5</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f83fd1e955</code>, <span class="nowrap">8 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f83fd1e955"><code>f83fd1e955</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/syntax/parsing/adoption-agency-reparenting.html"><code>html/<wbr>syntax/<wbr>parsing/<wbr>adoption-<wbr>agency-<wbr>reparenting.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,11 +35,11 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-7b04d85c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Baseline: adoption agency for &lt;b&gt;1&lt;p&gt;2&lt;/b&gt;3&lt;/p&gt; (no script)</span></summary><pre class="msg">assert_equals: expected &quot;&lt;b&gt;[\&quot;1\&quot;]&lt;p&gt;[&lt;b&gt;[\&quot;2\&quot;]\&quot;3\&quot;]&quot; but got &quot;&lt;b&gt;[\&quot;1\&quot;&lt;p&gt;[\&quot;2\&quot;]]\&quot;3\&quot;&lt;p&gt;&quot;</pre></details><a class="self" href="#s-7b04d85c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-322c0899"><details><summary><span class="mark">FAIL</span><span class="sub-name">Furthest block adopted into another Document before &lt;/b&gt;</span></summary><pre class="msg">assert_equals: furthest block&#39;s document after the algorithm runs expected &quot;main&quot; but got &quot;other&quot;</pre></details><a class="self" href="#s-322c0899" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d7622e36"><details><summary><span class="mark">FAIL</span><span class="sub-name">Common ancestor adopted into another Document before &lt;/b&gt;</span></summary><pre class="msg">assert_equals: other document body expected &quot;&lt;div#ca&gt;[&lt;b&gt;[\&quot;1\&quot;]&lt;p#fb&gt;[&lt;b&gt;[\&quot;2\&quot;&lt;script&gt;]\&quot;3\&quot;]]&quot; but got &quot;&lt;div#ca&gt;[&lt;b&gt;[\&quot;1\&quot;&lt;p#fb&gt;[\&quot;2\&quot;&lt;script&gt;]]\&quot;3\&quot;&lt;p&gt;]&quot;</pre></details><a class="self" href="#s-d7622e36" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-dae370fa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Furthest block detached before &lt;/b&gt;</span></summary><pre class="msg">assert_equals: main document body expected &quot;&lt;b&gt;[\&quot;1\&quot;]&lt;p#fb&gt;[&lt;b&gt;[\&quot;2\&quot;&lt;script&gt;]\&quot;3\&quot;]&quot; but got &quot;&lt;b&gt;[\&quot;1\&quot;]\&quot;3\&quot;&lt;p&gt;&quot;</pre></details><a class="self" href="#s-dae370fa" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3f9344ed"><details><summary><span class="mark">FAIL</span><span class="sub-name">Adoption agency with a foster-parenting common ancestor (&lt;tr&gt;)</span></summary><pre class="msg">assert_equals: main document body expected &quot;&lt;b&gt;&lt;div#fb&gt;[&lt;b&gt;[&lt;script&gt;]]&lt;table&gt;[&lt;tbody&gt;[&lt;tr&gt;]]&quot; but got &quot;&lt;table&gt;[&lt;tbody&gt;[&lt;tr&gt;[&lt;b&gt;]]]&quot;</pre></details><a class="self" href="#s-3f9344ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7b04d85c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Baseline: adoption agency for &lt;b&gt;1&lt;p&gt;2&lt;/b&gt;3&lt;/p&gt; (no script)</span></div><a class="self" href="#s-7b04d85c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-322c0899"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Furthest block adopted into another Document before &lt;/b&gt;</span></div><a class="self" href="#s-322c0899" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d7622e36"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Common ancestor adopted into another Document before &lt;/b&gt;</span></div><a class="self" href="#s-d7622e36" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dae370fa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Furthest block detached before &lt;/b&gt;</span></div><a class="self" href="#s-dae370fa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3f9344ed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adoption agency with a foster-parenting common ancestor (&lt;tr&gt;)</span></div><a class="self" href="#s-3f9344ed" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../trusted-types/"><code>trusted-<wbr>types/</code></a></li><li aria-current="page"><code>block-<wbr>string-<wbr>assignment-<wbr>to-<wbr>Element-<wbr>outerHTML.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>block-<wbr>string-<wbr>assignment-<wbr>to-<wbr>Element-<wbr>outerHTML.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="trusted-types/block-string-assignment-to-Element-outerHTML.html">
-<p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">7</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f83fd1e955</code>, <span class="nowrap">8 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f83fd1e955"><code>f83fd1e955</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/trusted-types/block-string-assignment-to-Element-outerHTML.html"><code>trusted-<wbr>types/<wbr>block-<wbr>string-<wbr>assignment-<wbr>to-<wbr>Element-<wbr>outerHTML.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -36,9 +36,7 @@
 <div class="run">
 <ol class="subtests">
 <li class="sub s-pass" id="s-dbc613f6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">outerHTML with html assigned via policy (successful HTML transformation).</span></div><a class="self" href="#s-dbc613f6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cac490a3"><details><summary><span class="mark">FAIL</span><span class="sub-name">`outerHTML = TrustedHTML` throws NoModificationAllowedError when parent is a document.</span></summary><pre class="msg">assert_throws_dom: function &quot;_ =&gt; {
-      document.documentElement.outerHTML = p.createHTML(&#39;&lt;p&gt;Content&lt;/p&gt;&#39;);
-    }&quot; threw object &quot;HierarchyRequestError: HierarchyRequestError&quot; that is not a DOMException NoModificationAllowedError: property &quot;code&quot; is equal to 3, expected 7</pre></details><a class="self" href="#s-cac490a3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cac490a3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`outerHTML = TrustedHTML` throws NoModificationAllowedError when parent is a document.</span></div><a class="self" href="#s-cac490a3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c992409b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`outerHTML = string` throws.</span></div><a class="self" href="#s-c992409b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-bde8f2ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`outerHTML = string` throws TypeError even when parent is a document.</span></div><a class="self" href="#s-bde8f2ae" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-492238c5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`outerHTML = null` throws.</span></div><a class="self" href="#s-492238c5" aria-label="Link to this subtest">&para;</a></li>

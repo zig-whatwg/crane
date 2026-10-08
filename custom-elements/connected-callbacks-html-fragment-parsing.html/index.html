@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li aria-current="page"><code>connected-<wbr>callbacks-<wbr>html-<wbr>fragment-<wbr>parsing.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>connected-<wbr>callbacks-<wbr>html-<wbr>fragment-<wbr>parsing.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/connected-callbacks-html-fragment-parsing.html">
-<p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">7</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f83fd1e955</code>, <span class="nowrap">8 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f83fd1e955"><code>f83fd1e955</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/connected-callbacks-html-fragment-parsing.html"><code>custom-<wbr>elements/<wbr>connected-<wbr>callbacks-<wbr>html-<wbr>fragment-<wbr>parsing.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -36,7 +36,7 @@
 <div class="run">
 <ol class="subtests">
 <li class="sub s-pass" id="s-ee6e3dcb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inserting a custom element into the document using HTML fragment parsing must enqueue a custom element upgrade reaction, not synchronously invoke its constructor</span></div><a class="self" href="#s-ee6e3dcb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f4f897e9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Inserting a custom element into the document of the template elements using HTML fragment parsing must enqueue a custom element upgrade reaction, not synchronously invoke its constructor</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;ownerDocument&#39;)&quot;</pre></details><a class="self" href="#s-f4f897e9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f4f897e9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inserting a custom element into the document of the template elements using HTML fragment parsing must enqueue a custom element upgrade reaction, not synchronously invoke its constructor</span></div><a class="self" href="#s-f4f897e9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3efb64cc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inserting a custom element into a new document using HTML fragment parsing must enqueue a custom element upgrade reaction, not synchronously invoke its constructor</span></div><a class="self" href="#s-3efb64cc" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e8223287"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inserting a custom element into a cloned document using HTML fragment parsing must enqueue a custom element upgrade reaction, not synchronously invoke its constructor</span></div><a class="self" href="#s-e8223287" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-be5f41e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Inserting a custom element into a document created by createHTMLDocument using HTML fragment parsing must enqueue a custom element upgrade reaction, not synchronously invoke its constructor</span></div><a class="self" href="#s-be5f41e2" aria-label="Link to this subtest">&para;</a></li>

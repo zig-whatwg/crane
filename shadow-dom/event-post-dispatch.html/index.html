@@ -21,25 +21,46 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../shadow-dom/"><code>shadow-<wbr>dom/</code></a></li><li aria-current="page"><code>event-<wbr>post-<wbr>dispatch.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>event-<wbr>post-<wbr>dispatch.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="shadow-dom/event-post-dispatch.html">
-<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 2</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3</span><span class="fg-of"> / 16</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>13</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f83fd1e955</code>, <span class="nowrap">8 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f83fd1e955"><code>f83fd1e955</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/event-post-dispatch.html"><code>shadow-<wbr>dom/<wbr>event-<wbr>post-<wbr>dispatch.<wbr>html</code></a></dd></div>
 </dl>
-<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">TypeError: TypeError</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/shadow-dom/event-post-dispatch.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>2</b> / 2</span></h3>
-<pre class="msg harness-msg">TypeError: TypeError</pre>
 <ol class="subtests">
 <li class="sub s-pass" id="s-726875dc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Event properties post dispatch without ShadowRoots (composed: true).</span></div><a class="self" href="#s-726875dc" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-57f30ce3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Event properties post dispatch without ShadowRoots (composed: false).</span></div><a class="self" href="#s-57f30ce3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9e170c09"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with an open ShadowRoot (composed: true).</span></summary><pre class="msg">assert_equals: expected Element node &lt;div id=&quot;host&quot;&gt;
+    
+  &lt;/div&gt; but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-9e170c09" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1bd32d01"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with an open ShadowRoot (composed: false).</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-1bd32d01" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ab20e465"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with a closed ShadowRoot (composed: true).</span></summary><pre class="msg">assert_equals: expected Element node &lt;div id=&quot;host&quot;&gt;
+    
+  &lt;/div&gt; but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-ab20e465" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4b9a5be1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with a closed ShadowRoot (composed: false).</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-4b9a5be1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8c7cd805"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with nested ShadowRoots (composed: true).</span></summary><pre class="msg">assert_equals: expected Element node &lt;div id=&quot;host1&quot;&gt;
+    
+  &lt;/div&gt; but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-8c7cd805" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f0b6e299"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with nested ShadowRoots (composed: false).</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-f0b6e299" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6d366d53"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with relatedTarget in the same shadow tree. (composed: true)</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-6d366d53" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a85ad632"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with relatedTarget in the same shadow tree. (composed: false)</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-a85ad632" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e8101fa2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with relatedTarget in the document tree and the shadow tree. (composed: true)</span></summary><pre class="msg">assert_equals: expected Element node &lt;div id=&quot;host&quot;&gt;
+    
+  &lt;/div&gt; but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-e8101fa2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-914dc43f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with relatedTarget in the document tree and the shadow tree. (composed: false)</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-914dc43f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1251408f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with relatedTarget in the different shadow trees. (composed: true)</span></summary><pre class="msg">assert_equals: expected Element node &lt;div id=&quot;host1&quot;&gt;
+    
+  &lt;/div&gt; but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-1251408f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2e5a7d92"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with relatedTarget in the different shadow trees. (composed: false)</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-2e5a7d92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a9db6de0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch when target get moved out of the shadow tree by event listener</span></summary><pre class="msg">assert_equals: expected (undefined) undefined but got (object) object &quot;[object MouseEvent]&quot;</pre></details><a class="self" href="#s-a9db6de0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c93a08ce"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Event properties post dispatch when target get moved into the shadow tree by event listener</span></div><a class="self" href="#s-c93a08ce" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

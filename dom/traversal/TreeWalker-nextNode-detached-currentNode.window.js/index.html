@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../dom/"><code>dom/</code></a></li><li><a href="../../../dom/traversal/"><code>traversal/</code></a></li><li aria-current="page"><code>TreeWalker-<wbr>nextNode-<wbr>detached-<wbr>currentNode.<wbr>window.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>TreeWalker-<wbr>nextNode-<wbr>detached-<wbr>currentNode.<wbr>window.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="dom/traversal/TreeWalker-nextNode-detached-currentNode.window.js">
-<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f83fd1e955</code>, <span class="nowrap">8 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f83fd1e955"><code>f83fd1e955</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/traversal/TreeWalker-nextNode-detached-currentNode.window.js"><code>dom/<wbr>traversal/<wbr>TreeWalker-<wbr>nextNode-<wbr>detached-<wbr>currentNode.<wbr>window.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -37,7 +37,7 @@
 <ol class="subtests">
 <li class="sub s-pass" id="s-3e35cb7a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">nextNode() returns null when currentNode is a detached element with no descendants and whatToShow does not match it</span></div><a class="self" href="#s-3e35cb7a" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e4120822"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">nextNode() returns null after exhausting a detached subtree</span></div><a class="self" href="#s-e4120822" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cc1cc0df"><details><summary><span class="mark">FAIL</span><span class="sub-name">nextNode() terminates when iterating over template.content not under the walker&#39;s root</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-cc1cc0df" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc1cc0df"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">nextNode() terminates when iterating over template.content not under the walker&#39;s root</span></div><a class="self" href="#s-cc1cc0df" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

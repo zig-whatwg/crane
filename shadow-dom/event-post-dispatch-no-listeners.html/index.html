@@ -26,7 +26,7 @@
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f83fd1e955</code>, <span class="nowrap">8 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f83fd1e955"><code>f83fd1e955</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/event-post-dispatch-no-listeners.html"><code>shadow-<wbr>dom/<wbr>event-<wbr>post-<wbr>dispatch-<wbr>no-<wbr>listeners.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,11 +35,19 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-11c0d970"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with an open ShadowRoot and no listeners (composed: true)</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-11c0d970" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ae7dc9cd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with an open ShadowRoot and no listeners (composed: false)</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-ae7dc9cd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-943da1a4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with a closed ShadowRoot and no listeners (composed: true)</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-943da1a4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7762dcdf"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with nested open ShadowRoots and no listeners (composed: true)</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-7762dcdf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c14df675"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with a disabled element in shadow tree and no listeners (composed: true)</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-c14df675" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-11c0d970"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with an open ShadowRoot and no listeners (composed: true)</span></summary><pre class="msg">assert_equals: event.target should be the shadow host (retargeted) after dispatch expected Element node &lt;div id=&quot;host&quot;&gt;
+    
+  &lt;/div&gt; but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-11c0d970" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ae7dc9cd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with an open ShadowRoot and no listeners (composed: false)</span></summary><pre class="msg">assert_equals: event.target should be null for non-composed event inside shadow tree expected null but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-ae7dc9cd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-943da1a4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with a closed ShadowRoot and no listeners (composed: true)</span></summary><pre class="msg">assert_equals: event.target should be the shadow host (retargeted) after dispatch expected Element node &lt;div id=&quot;host&quot;&gt;
+    
+  &lt;/div&gt; but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-943da1a4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7762dcdf"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with nested open ShadowRoots and no listeners (composed: true)</span></summary><pre class="msg">assert_equals: event.target should be the outermost shadow host after dispatch expected Element node &lt;div id=&quot;host1&quot;&gt;
+    
+  &lt;/div&gt; but got Element node &lt;div id=&quot;target&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-7762dcdf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c14df675"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event properties post dispatch with a disabled element in shadow tree and no listeners (composed: true)</span></summary><pre class="msg">assert_equals: event.target should be the shadow host (retargeted) after dispatch expected Element node &lt;div id=&quot;host&quot;&gt;
+    
+  &lt;/div&gt; but got Element node &lt;input id=&quot;target&quot; disabled=&quot;&quot;&gt;&lt;/input&gt;</pre></details><a class="self" href="#s-c14df675" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

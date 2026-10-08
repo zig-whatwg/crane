@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../../../">Crane WPT results</a></li><li><a href="../../../../../../html/"><code>html/</code></a></li><li><a href="../../../../../../html/semantics/"><code>semantics/</code></a></li><li><a href="../../../../../../html/semantics/scripting-1/"><code>scripting-<wbr>1/</code></a></li><li><a href="../../../../../../html/semantics/scripting-1/the-template-element/"><code>the-<wbr>template-<wbr>element/</code></a></li><li><a href="../../../../../../html/semantics/scripting-1/the-template-element/template-element/"><code>template-<wbr>element/</code></a></li><li aria-current="page"><code>content-<wbr>attribute.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>content-<wbr>attribute.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="html/semantics/scripting-1/the-template-element/template-element/content-attribute.html">
-<p class="figures-main"><span class="fg-pass">5</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">7</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9717346413</code>, <span class="nowrap">7 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9717346413"><code>9717346413</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f83fd1e955</code>, <span class="nowrap">8 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f83fd1e955"><code>f83fd1e955</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/scripting-1/the-template-element/template-element/content-attribute.html"><code>html/<wbr>semantics/<wbr>scripting-<wbr>1/<wbr>the-<wbr>template-<wbr>element/<wbr>template-<wbr>element/<wbr>content-<wbr>attribute.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -36,10 +36,10 @@
 <div class="run">
 <ol class="subtests">
 <li class="sub s-pass" id="s-787658b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Content attribute of template element is read-only. Test empty template</span></div><a class="self" href="#s-787658b7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-09410617"><details><summary><span class="mark">FAIL</span><span class="sub-name">Content attribute of template element is read-only. Test not empty template populated by appendchild()</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;appendChild&#39;)</pre></details><a class="self" href="#s-09410617" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-09410617"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Content attribute of template element is read-only. Test not empty template populated by appendchild()</span></div><a class="self" href="#s-09410617" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-9c7524d6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Content attribute of template element is read-only. Test not empty template populated by innerHTML</span></div><a class="self" href="#s-9c7524d6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d93da8c2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Content attribute of template element is read-only. Test that custom content attribute named &#39;content&#39; doesn&#39;t make content IDL attribute writable</span></div><a class="self" href="#s-d93da8c2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7f4ee156"><details><summary><span class="mark">FAIL</span><span class="sub-name">Content attribute of template element is read-only. Test that custom content attribute named &#39;content&#39; doesn&#39;t affect content IDL attribute</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;childNodes&#39;)</pre></details><a class="self" href="#s-7f4ee156" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7f4ee156"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Content attribute of template element is read-only. Test that custom content attribute named &#39;content&#39; doesn&#39;t affect content IDL attribute</span></div><a class="self" href="#s-7f4ee156" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-130b7277"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Content attribute of template element is read-only. Text value of content attribute of template tag should be ignored, when loading document from a file</span></div><a class="self" href="#s-130b7277" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ab50e7ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Content attribute of template element is read-only. Test content attribute of a document loaded from a file</span></div><a class="self" href="#s-ab50e7ca" aria-label="Link to this subtest">&para;</a></li>
 </ol>
