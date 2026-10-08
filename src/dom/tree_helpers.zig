@@ -10,6 +10,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+const runtime = @import("runtime");
+const instance_bridge = @import("instance_bridge.zig");
+const shadow_hosts = @import("shadow_hosts.zig");
 
 // Import DOM types
 // NodeBase is the single source of truth for tree structure per unified DOM tree model
@@ -729,22 +732,29 @@ pub fn getShadowIncludingInclusiveDescendants(allocator: Allocator, root: *NodeB
 
 /// Helper: Recursively collect shadow-including descendants in tree order
 fn collectShadowIncludingDescendants(result: *infra.List(*NodeBase), node: *const NodeBase) !void {
+    // Enter the current host's root immediately after encountering the host,
+    // including when the traversal's root itself is a host. Closed roots are
+    // part of this internal traversal, as are the ShadowRoot nodes themselves.
+    if (shadowRootForHost(node)) |shadow| {
+        try result.append(shadow);
+        try collectShadowIncludingDescendants(result, shadow);
+    }
     // Visit each child in order using NodeBase's child_nodes
     for (node.child_nodes.items()) |child| {
-        // Add the child
         try result.append(child);
-
-        // Per spec: If child is a shadow host, traverse its shadow tree immediately
-        // after adding the child, before traversing the child's own children
-        // Check if child is an Element (node_type == 1) with a shadow root
-        // TODO: Shadow DOM integration - check for shadow root when implemented
-        // if (child.node_type == NodeBase.ELEMENT_NODE) {
-        //     // Check for shadow root and traverse if present
-        // }
-
-        // After shadow tree (if any), recursively traverse child's light DOM descendants
         try collectShadowIncludingDescendants(result, child);
     }
+}
+
+/// Internal shadow edge of an element, including a closed root. The bridge
+/// owns the NodeBase association; no cast between NodeBase and an IDL state
+/// layout or script-facing shadowRoot getter is needed.
+pub fn shadowRootForHost(node: *const NodeBase) ?*NodeBase {
+    if (node.node_type != NodeBase.ELEMENT_NODE) return null;
+    const instance_ptr = instance_bridge.getInstance(@constCast(node)) orelse return null;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+    const shadow = shadow_hosts.rootForHost(instance) orelse return null;
+    return instance_bridge.getNodeBase(shadow);
 }
 
 /// Get all shadow-including descendants (not including root) in shadow-including tree order

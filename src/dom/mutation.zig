@@ -288,8 +288,18 @@ fn runPostConnectionStepsRecursive(node: anytype) void {
 /// Recursively run removing steps for a node and all its descendants
 fn runRemovingStepsRecursive(node: anytype, old_parent: anytype) void {
     runRemovingSteps(node, old_parent);
+    runRemovingStepsForDescendants(node, old_parent);
+}
+
+/// Allocation-free fallback for remove step 14, in the same shadow-including
+/// tree order as the collected list. Every callback receives the original
+/// ancestor that the subtree was removed from, including shadow descendants.
+fn runRemovingStepsForDescendants(node: anytype, old_parent: anytype) void {
+    if (tree_helpers.shadowRootForHost(node)) |shadow| {
+        runRemovingStepsRecursive(shadow, old_parent);
+    }
     for (node.child_nodes.items()) |child| {
-        runRemovingStepsRecursive(child, node);
+        runRemovingStepsRecursive(child, old_parent);
     }
 }
 
@@ -345,6 +355,11 @@ fn isConnectedThroughShadow(node: anytype) bool {
 /// Uses sibling pointers instead of child_nodes.items() for safety during tree construction
 fn setConnectedRecursive(node: anytype, connected: bool) void {
     node.is_connected = connected;
+    // Connectedness follows the shadow-including root, so a host changes its
+    // own root and all nested shadow trees before its ordinary descendants.
+    if (tree_helpers.shadowRootForHost(node)) |shadow| {
+        setConnectedRecursive(shadow, connected);
+    }
     // Use first_child/next_sibling which are always safely initialized to null
     var child = node.first_child;
     while (child) |c| {
@@ -1635,20 +1650,18 @@ pub fn remove(
         var mut_descendants = descendants;
         defer mut_descendants.deinit();
 
-        // Step 14.1: Run the removing steps with descendant and null
+        // Step 14.1: Run removing steps with the original removed ancestor.
         // Step 14.2: Custom element disconnectedCallback
         for (mut_descendants.items()) |descendant| {
-            runRemovingSteps(descendant, null);
+            runRemovingSteps(descendant, parent);
 
             // TODO: If descendant is custom and isParentConnected is true,
             // enqueue disconnectedCallback reaction
         }
     } else |_| {
-        // If we can't allocate for shadow-including traversal,
-        // fall back to regular descendant traversal
-        for (node.child_nodes.items()) |descendant| {
-            runRemovingStepsRecursive(descendant, node);
-        }
+        // The node is already detached: allocation failure must not skip
+        // shadow descendant cleanup or repeat the root's removing steps.
+        runRemovingStepsForDescendants(node, parent);
     }
 
     // Step 15: transient registered observers on node, for every observer
