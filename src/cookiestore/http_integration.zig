@@ -364,7 +364,9 @@ pub fn generateCookieHeader(
     };
     defer {
         for (cookies.items) |*c| c.deinit();
-        cookies.deinit(allocator);
+        // retrieve allocates the list with the jar's allocator; only the
+        // returned serialized/query result uses this caller's allocator.
+        cookies.deinit(jar.allocator);
     }
     return serializeCookies(allocator, cookies.items);
 }
