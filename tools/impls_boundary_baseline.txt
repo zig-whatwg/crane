@@ -3,8 +3,6 @@
 # count rises or a new pair appears. After paying debt down, lower it with
 # `zig build lint-impls -- --update`. Never raise it by hand.
 src/browser/Context.zig Document.setDefaultView 1
-src/browser/Context.zig HTMLIFrameElement.get_contentWindow 1
-src/browser/Context.zig HTMLParser.ScriptLoader 2
 src/browser/Context.zig HTMLParser.parseHTMLWithScripting 1
 src/browser/Context.zig Location.setWindow 1
 src/browser/Context.zig Window.getInternal 1
@@ -135,7 +133,6 @@ src/webidl/impls/Document.zig DOMImplementation.setDocument 1
 src/webidl/impls/Document.zig Element.getInternal 25
 src/webidl/impls/Document.zig Event.setInitializedFlag 1
 src/webidl/impls/Document.zig EventTarget.dispatchTrusted 3
-src/webidl/impls/Document.zig EventTarget.eraseAllEventListenersAndHandlers 2
 src/webidl/impls/Document.zig EventTarget.eventHandler 1
 src/webidl/impls/Document.zig EventTarget.setEventHandler 1
 src/webidl/impls/Document.zig HTMLCollection.addElement 9
@@ -143,11 +140,10 @@ src/webidl/impls/Document.zig Node.InternalState 1
 src/webidl/impls/Document.zig Node.NodeType 14
 src/webidl/impls/Document.zig Node.deinit 2
 src/webidl/impls/Document.zig Node.deinitNodeByType 2
-src/webidl/impls/Document.zig Node.getFirstChild 12
+src/webidl/impls/Document.zig Node.getFirstChild 10
 src/webidl/impls/Document.zig Node.getInternalState 1
-src/webidl/impls/Document.zig Node.getNextSibling 11
+src/webidl/impls/Document.zig Node.getNextSibling 9
 src/webidl/impls/Document.zig Node.getNodeType 10
-src/webidl/impls/Document.zig Node.getParent 1
 src/webidl/impls/Document.zig Node.init 1
 src/webidl/impls/Document.zig Node.setNodeType 3
 src/webidl/impls/Document.zig Node.setOwnerDocument 8
@@ -297,10 +293,10 @@ src/webidl/impls/HTMLIFrameElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLIFrameElement.zig Location.setNavigateCallback 2
 src/webidl/impls/HTMLIFrameElement.zig Location.setURLFromString 2
 src/webidl/impls/HTMLIFrameElement.zig Location.setWindow 2
-src/webidl/impls/HTMLIFrameElement.zig Node.call_appendChild 42
-src/webidl/impls/HTMLIFrameElement.zig Node.getOwnerDocument 155
-src/webidl/impls/HTMLIFrameElement.zig Node.get_isConnected 56
-src/webidl/impls/HTMLIFrameElement.zig Node.setLocalName 14
+src/webidl/impls/HTMLIFrameElement.zig Node.call_appendChild 39
+src/webidl/impls/HTMLIFrameElement.zig Node.getOwnerDocument 131
+src/webidl/impls/HTMLIFrameElement.zig Node.get_isConnected 52
+src/webidl/impls/HTMLIFrameElement.zig Node.setLocalName 13
 src/webidl/impls/HTMLIFrameElement.zig Window.getInternal 15
 src/webidl/impls/HTMLIFrameElement.zig Window.replaceBrowsingContext 1
 src/webidl/impls/HTMLIFrameElement.zig Window.setDocument 10
@@ -577,7 +573,6 @@ src/webidl/impls/WorkerGlobalScope.zig EventTarget.init 1
 src/webidl/impls/WorkerGlobalScope.zig EventTarget.setEventHandler 1
 src/webidl/impls/WorkerGlobalScope.zig WorkerLocation.InternalState 1
 src/webidl/impls/WorkerGlobalScope.zig WorkerNavigator.InternalState 1
-src/webidl/impls/XMLHttpRequest.zig EventTarget.dispatchTrusted 1
 src/webidl/impls/XMLHttpRequest.zig EventTarget.eventHandler 1
 src/webidl/impls/XMLHttpRequest.zig EventTarget.getEventListenersForType 1
 src/webidl/impls/XMLHttpRequest.zig EventTarget.setEventHandler 1
