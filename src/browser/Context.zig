@@ -19,6 +19,7 @@ const engine = @import("engine");
 const clock = @import("clock");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const webidl = @import("webidl");
 const fetch = @import("fetch");
 
 const storage_mod = @import("storage/Storage.zig");
@@ -1202,6 +1203,10 @@ pub const Context = struct {
     location_instance: ?*runtime.Instance = null,
     history_instance: ?*runtime.Instance = null,
     performance_instance: ?*runtime.Instance = null,
+    /// The parse of the load that made `document_instance` - null for the
+    /// initial about:blank document, which no load made. One reference,
+    /// handed to the document's deferred destroy when a load replaces it.
+    current_load: ?*LoadParse = null,
 
     // Debug counter for tracking context lifecycle
     var context_id_counter: u32 = 0;
@@ -1341,16 +1346,16 @@ pub const Context = struct {
 
         const win = self.window_instance orelse return error.NotInitialized;
 
-        // Document (__internal.document), with the Window and its document
-        // each pointing at the other.
+        // Document (__internal.document): the top-level traversable's initial
+        // about:blank document (HTML "create a new browsing context and
+        // document"), which the page's first load replaces with a document of
+        // its own, as every later load does (loadHTML) - and as browsers do.
         const doc_instance = interfaces.Document.init(self.allocator, realm) catch |err| {
-            log.debug("the document singleton was not made: {}", .{err});
+            log.debug("the initial about:blank document was not made: {}", .{err});
             return;
         };
-        self.document_instance = doc_instance;
-        impls.Window.setDocument(win, doc_instance);
-        impls.Document.setDefaultView(doc_instance, win);
-        storeInternal(realm, internal.value, "document", doc_instance);
+        initializeInitialAboutBlank(doc_instance);
+        self.associateDocument(realm, doc_instance);
 
         // Navigator (__internal.navigator).
         const nav_instance = interfaces.Navigator.init(self.allocator, realm) catch |err| {
@@ -1399,6 +1404,125 @@ pub const Context = struct {
             log.debug("__internal.{s} was not stored: {}", .{ name, err });
         };
     }
+
+    /// HTML "create a new browsing context and document" for the page's
+    /// top-level traversable, the document's own steps: type "html" and
+    /// content type "text/html" and "is initial about:blank" (step 15, which
+    /// gives it quirks mode, and with it steps 21 and 24: ready for post-load
+    /// tasks, completely loaded, readiness "complete"), then step 22,
+    /// "populate with html/head/body". Steps 23-24 have nothing to wait for:
+    /// a top-level traversable has no container to fire load at.
+    fn initializeInitialAboutBlank(document: *runtime.Instance) void {
+        dom_mod.document_internals.setDocumentType(document, .html) catch {};
+        dom_mod.document_internals.setContentType(document, "text/html") catch {};
+        dom_mod.document_lifecycle.markInitialAboutBlank(document);
+        populateWithHtmlHeadBody(document) catch |err| {
+            log.debug("the initial about:blank document was not populated: {}", .{err});
+        };
+    }
+
+    /// HTML "populate with html/head/body": "1. Let html be the result of
+    /// creating an element given document, "html", and the HTML namespace.
+    /// 2. Let head be ... "head" ... 3. Let body be ... "body" ... 4. Append
+    /// html to document. 5. Append head to html. 6. Append body to html."
+    fn populateWithHtmlHeadBody(document: *runtime.Instance) !void {
+        // Each element is appended as soon as it is made - nothing runs
+        // script in between - so one that cannot be is freed, never leaked.
+        const html = try createHtmlElement(document, "html");
+        _ = interfaces.Node.call_appendChild(document, html) catch |err| {
+            dom_mod.node_creation.destroyUninserted(html);
+            return err;
+        };
+        for ([_][]const u8{ "head", "body" }) |local_name| {
+            const element = try createHtmlElement(document, local_name);
+            _ = interfaces.Node.call_appendChild(html, element) catch |err| {
+                dom_mod.node_creation.destroyUninserted(element);
+                return err;
+            };
+        }
+    }
+
+    /// "Creating an element given document, `local_name`, and the HTML
+    /// namespace" - createElement's, for an HTML document.
+    fn createHtmlElement(document: *runtime.Instance, local_name: []const u8) !*runtime.Instance {
+        return interfaces.Document.call_createElement(document, runtime.DOMString.initInterned(local_name), webidl.Opt(runtime.JSValue).notPassed());
+    }
+
+    /// Make `document` the page's: its Window's associated Document (HTML
+    /// "create and initialize a Document object" step 10), which makes it
+    /// the browsing context's active document and lets go of the document it
+    /// replaces (Window.setDocument, through dom.window_globals); its
+    /// browsing context the window's, so `defaultView` answers the window and
+    /// the window keeps its wrapper (dom.document_browsing_context);
+    /// `__internal.document`; and `document_instance`.
+    ///
+    /// The session history entries that showed the document it replaces show
+    /// this one: an entry names its document by pointer, and the replaced
+    /// one is the collector's from here (Crane's loads into one Context
+    /// commit no entries of their own; Browser.navigate makes a new Context).
+    fn associateDocument(self: *Context, realm: runtime.Context, document: *runtime.Instance) void {
+        const window = self.window_instance orelse return;
+        const previous = self.document_instance;
+        dom_mod.window_globals.setDocument(window, document);
+        dom_mod.document_browsing_context.setWindow(document, window);
+        self.document_instance = document;
+        if (engine.getProperty(realm, .{ .instance = window }, "__internal")) |internal| {
+            defer internal.release();
+            storeInternal(realm, internal.value, "document", document);
+        } else |err| log.debug("__internal is not on the global: {}", .{err});
+        const replaced = previous orelse return;
+        if (replaced == document) return;
+        const navigable = html_mod.window.BrowsingContext.ofWindow(window) orelse return;
+        const history = navigable.getTop().joint_history orelse return;
+        history.forgetDocument(@ptrCast(replaced));
+        if (history.currentEntry(navigable.id)) |entry| history.setDocumentOfState(entry.document_state, @ptrCast(document));
+    }
+
+    /// The page's current document goes, because a load replaces it: HTML
+    /// "abort a document" - its active parser aborted, its parser-owned
+    /// scripts discarded, its fetches canceled. Its browsing context becomes
+    /// null ("destroy a document" step 6) when the new document takes its
+    /// place (Window.setDocument, through associateDocument), which unlinks
+    /// it from the Window and from the Context.
+    ///
+    /// Nothing more is done to it here, and its storage is never freed here:
+    /// a parser of it may still be on the native stack - a script of the
+    /// page started this load - and script may hold its nodes. It is left to
+    /// its owner: its wrapper (associateDocument made one when it became the
+    /// window's), whose collection frees it once neither script nor an
+    /// active parser call (DocumentParser.protect roots the document and its
+    /// nodes) reaches it, or the realm's end. Blink keeps a detached
+    /// parser's open-elements stack "because HTMLConstructionSite might be
+    /// on the callstack" (HTMLTreeBuilder::Detach); WebKit's parser keeps
+    /// itself with `Ref protectedThis`.
+    ///
+    /// The rest of "destroy a document" - its state: destroyed, its document
+    /// scripts, which may be mid-preparation under that parser, discarded -
+    /// comes later, from a task (DestroyReplacedDocument, queued by
+    /// createLoadDocument). Not run, stated: the unloading document cleanup
+    /// steps, which are keyed on the realm here (dom.unloading_cleanup) and
+    /// would end the new document's timers and sockets too: HTML gives a
+    /// document that replaces a non-initial one a new Window ("create and
+    /// initialize a Document object" step 7), and a Context keeps its one
+    /// Window across loads. Browser.navigate makes a new Context, with a new
+    /// realm, for each navigation.
+    ///
+    /// Abort runs script (readystatechange, XHR abort): a load that script
+    /// starts replaces the document meanwhile, and that one is aborted too -
+    /// the document replaced is whichever is current when no script runs any
+    /// more (docs/lessons/architecture-associate-a-parser-after-the-last-reentrant-step.md).
+    fn endCurrentDocument(self: *Context) void {
+        var rounds: usize = 0;
+        while (self.document_instance) |previous| : (rounds += 1) {
+            if (rounds == max_replaced_documents) return;
+            dom_mod.document_lifecycle.abort(previous);
+            if (self.document_instance == previous) return;
+        }
+    }
+
+    /// How many documents loads started by abort listeners may replace in
+    /// one `endCurrentDocument`, before it stops chasing them.
+    const max_replaced_documents = 16;
 
     /// A worker context's globals: `self`, and its WorkerNavigator.
     fn registerWorkerGlobals(self: *Context, realm: runtime.Context, global: runtime.JSValue) !void {
@@ -1617,37 +1741,43 @@ pub const Context = struct {
             .multipart, .external => return,
         };
 
-        // "Create and initialize a Document object" step 9: the document's
-        // policy container is the one "determine navigation params policy
-        // container" chose - for a top-level page with no initiator, the
-        // response's ("create a policy container from a fetch response"), or
-        // a new one for a response from no network. It is the document's
-        // before any of its script runs.
-        if (self.document_instance) |document| {
-            if (result.takePolicyContainer()) |container| dom_mod.policy_containers.set(document, container);
-        }
-
-        // Steps 3-5: parse and execute scripts using loadHTML - the full
-        // HTML parser with script loading.
-        try self.loadHTML(markup, .{
-            .base_url = self.url,
+        // Steps 3-5: parse and execute scripts - the full HTML parser with
+        // script loading, into the new document "create and initialize a
+        // Document object" makes for this load (createLoadDocument). The
+        // URL is this load's own copy: a load that script starts - from the
+        // replaced document's abort listeners, or from this page's parser -
+        // replaces `self.url`.
+        const url = try self.allocator.dupe(u8, self.url);
+        defer self.allocator.free(url);
+        const html_options: LoadHTMLOptions = .{
+            .base_url = url,
             .scripting_enabled = kind == .html or kind == .xml,
             .script_loader = options.script_loader,
             // An HTML page is its response's bytes, decoded with the encoding
             // HTML's sniffing algorithm determines from them and their
             // Content-Type; the markup made for other types is characters.
             .byte_stream = if (kind == .html or kind == .xml) .{ .content_type = result.content_type } else null,
-        });
-        if (text_encoding) |name| {
-            if (self.document_instance) |document| dom_mod.document_internals.setEncoding(document, name) catch {};
-        }
+        };
+        const made = try self.createLoadDocument(html_options);
+        const document = made.document;
+        const hold = self.holdDocument(document);
+        defer if (hold) |held| held.release();
+        // "Create and initialize a Document object" step 9: the document's
+        // policy container is the one "determine navigation params policy
+        // container" chose - for a top-level page with no initiator, the
+        // response's ("create a policy container from a fetch response"), or
+        // a new one for a response from no network. It is the document's
+        // before any of its script runs.
+        if (result.takePolicyContainer()) |container| dom_mod.policy_containers.set(document, container);
+        try self.parseLoadDocument(made, markup, html_options);
+        // A load the page's own script started has replaced it.
+        if (self.document_instance != document) return;
+        if (text_encoding) |name| dom_mod.document_internals.setEncoding(document, name) catch {};
         // "Create and initialize a Document object" step 11: its content type
         // is the response's computed type. An XHTML page parsed as HTML keeps
         // the HTML document it was always given.
         if (kind == .text or kind == .media) {
-            if (self.document_instance) |document| {
-                dom_mod.document_internals.setContentType(document, computed) catch {};
-            }
+            dom_mod.document_internals.setContentType(document, computed) catch {};
         }
     }
 
@@ -1677,14 +1807,16 @@ pub const Context = struct {
         byte_stream: ?html_mod.scripted_parser.ByteStream = null,
     };
 
-    /// Load and parse HTML content into the document
+    /// Load HTML content as the page's new document
     ///
     /// This method:
-    /// 1. Sets up the document URL and Window origin
-    /// 2. Parses HTML using HTMLParser.parseHTMLWithScripting()
-    /// 3. Executes inline and external scripts during parsing
-    /// 4. Initializes iframe browsing contexts
-    /// 5. Fires DOMContentLoaded after parsing
+    /// 1. Aborts the document the page shows (never freed here: it is left
+    ///    to whatever still holds it - script, or a parser on the stack)
+    /// 2. Sets up the document URL and Window origin
+    /// 3. Makes a NEW Document, the Window's from then on - every load does
+    /// 4. Parses HTML into it (html.dom_parser.parseHTMLWithScripting),
+    ///    executing inline and external scripts during parsing
+    /// 5. Initializes iframe browsing contexts
     ///
     /// Per HTML Standard §13.2.7 "The end":
     /// - Scripts execute during parsing (inline and deferred)
@@ -1707,6 +1839,31 @@ pub const Context = struct {
     /// // result === "Hello"
     /// ```
     pub fn loadHTML(self: *Context, html_content: []const u8, options: LoadHTMLOptions) !void {
+        const made = try self.createLoadDocument(options);
+        const hold = self.holdDocument(made.document);
+        defer if (hold) |held| held.release();
+        try self.parseLoadDocument(made, html_content, options);
+    }
+
+    /// A load's new document, and its parse (LoadParse) - BORROWED from the
+    /// Context, which holds both while the document is the page's.
+    const LoadDocument = struct {
+        document: *runtime.Instance,
+        load: *LoadParse,
+    };
+
+    /// HTML "create and initialize a Document object", as much of it as a
+    /// page's load is: the document the page shows goes (endCurrentDocument),
+    /// the load's URL and origin become the page's, and a NEW Document (step
+    /// 9) becomes its Window's (step 10, associateDocument) - before any
+    /// parser exists, so the page's own scripts, which the parser runs, see
+    /// the document they are in. Every load makes one: the page's first
+    /// replaces the initial about:blank document registerWindowGlobals made.
+    fn createLoadDocument(self: *Context, options: LoadHTMLOptions) !LoadDocument {
+        if (self.realm == null or self.window_instance == null) return error.NotInitialized;
+        // The document the load replaces is aborted first - its listeners
+        // see it at its own URL.
+        self.endCurrentDocument();
         const runtime_ctx = self.realm orelse return error.NotInitialized;
 
         // The realm's document URL, for fetch's relative URL resolution.
@@ -1732,20 +1889,51 @@ pub const Context = struct {
             }
         }
 
-        // Get existing document instance - it was created during context initialization
-        // and is already registered in V8. We pass it to the parser so scripts can
-        // access the DOM via document.getElementById(), querySelector(), etc.
-        const document = self.document_instance orelse {
-            log.debug("ERROR: document_instance is null - context must be initialized first\n", .{});
-            return error.NotInitialized;
+        // Step 9: "Let document be a new Document" whose type is "html"
+        // ("load an HTML document"); the parser gives it its content type.
+        const load = try LoadParse.create(self.allocator);
+        const document = interfaces.Document.init(self.allocator, runtime_ctx) catch |err| {
+            load.release();
+            return err;
         };
+        dom_mod.document_internals.setDocumentType(document, .html) catch {};
+        // Step 10: "Set window's associated Document to document." From here
+        // the window keeps it, and the document it replaces is unlinked.
+        const replaced = self.document_instance;
+        const replaced_load = self.current_load;
+        self.associateDocument(runtime_ctx, document);
+        self.current_load = load;
+        // The replaced document reaches "destroy a document" from a task,
+        // once no parse of it is on the stack (DestroyReplacedDocument).
+        if (replaced) |old| {
+            DestroyReplacedDocument.queue(self.allocator, old, replaced_load);
+        } else if (replaced_load) |stale| stale.release();
+        return .{ .document = document, .load = load };
+    }
 
-        // Create HTMLParser script loader
-        const HTMLParser = impls.HTMLParser;
+    /// Keep `document` alive while a load works on it: a load its own
+    /// scripts start replaces it, and only script would hold it then. Null
+    /// when the engine cannot hold it; the load then rechecks that the
+    /// document is still the page's before touching it.
+    fn holdDocument(self: *Context, document: *runtime.Instance) ?engine.Owned {
+        const realm = self.realm orelse return null;
+        return engine.retainValue(realm, .{ .instance = document }) catch null;
+    }
 
-        // Parse HTML into the existing document (already registered in V8)
+    /// Parse a load's document (createLoadDocument), running its scripts,
+    /// and give its iframes their browsing contexts once parsing has stopped
+    /// or waits. The caller holds `document` (holdDocument).
+    fn parseLoadDocument(self: *Context, made: LoadDocument, html_content: []const u8, options: LoadHTMLOptions) !void {
+        const runtime_ctx = self.realm orelse return error.NotInitialized;
+        const document = made.document;
+        // On the stack from here until the parse returns: a load its scripts
+        // start defers the replaced document's destroy past it.
+        made.load.retain();
+        defer made.load.release();
+        made.load.parsing = true;
+        defer made.load.parsing = false;
         var parser_canceled = false;
-        _ = HTMLParser.parseHTMLWithScripting(
+        _ = html_mod.dom_parser.parseHTMLWithScripting(
             self.allocator,
             runtime_ctx,
             html_content,
@@ -1754,14 +1942,16 @@ pub const Context = struct {
                 .parser_canceled = &parser_canceled,
                 .base_url = options.base_url,
                 .script_loader = options.script_loader,
-                .existing_document = document,
+                .document = document,
                 .byte_stream = options.byte_stream,
             },
         ) catch |err| {
             log.debug("HTML parse error: {}\n", .{err});
             return error.ParseError;
         };
-        if (parser_canceled) return;
+        // Its parser was aborted, or a load its scripts started replaced it:
+        // the page is that load's now.
+        if (parser_canceled or self.document_instance != document) return;
 
         // Initialize browsing contexts for any iframes in the document
         // This is necessary for window.frames[N] to work properly
@@ -1810,8 +2000,10 @@ pub const Context = struct {
     fn setUrl(self: *Context, url: []const u8) !void {
         // Update internal URL
         // IMPORTANT: Check if url points to self.url (same slice) to avoid use-after-free.
-        // This can happen when loadHTML is called with base_url = self.url
-        if (url.ptr == self.url.ptr) {
+        // This can happen when loadHTML is called with base_url = self.url.
+        // An equal URL keeps the slice too: loadPage passes its own copy, and
+        // a slice of self.url borrowed before the load stays valid.
+        if (url.ptr == self.url.ptr or std.mem.eql(u8, url, self.url)) {
             // URL is already set to this value, nothing to do
             return;
         }
@@ -1893,6 +2085,8 @@ pub const Context = struct {
         self.location_instance = null;
         self.history_instance = null;
         self.performance_instance = null;
+        if (self.current_load) |load| load.release();
+        self.current_load = null;
 
         // The end of the page's realm (engine.destroyWindowRealm): its
         // Window, document and frames torn down, its WindowProxy detached,
@@ -1908,6 +2102,110 @@ pub const Context = struct {
 
         self.allocator.free(self.url);
         self.initialized = false;
+    }
+};
+
+// ============================================================================
+// A replaced document's end
+// ============================================================================
+
+/// One load's parse, as the deferred destroy of the document it made sees it:
+/// whether that parse is still on the native stack. The Context holds a
+/// reference while the document is the page's (`current_load`), a running
+/// parse holds its own, and the Context's passes to the document's
+/// DestroyReplacedDocument when a load replaces it.
+const LoadParse = struct {
+    allocator: std.mem.Allocator,
+    references: u32 = 1,
+    /// Context.parseLoadDocument is running this load's parser.
+    parsing: bool = false,
+
+    fn create(allocator: std.mem.Allocator) !*LoadParse {
+        const self = try allocator.create(LoadParse);
+        self.* = .{ .allocator = allocator };
+        return self;
+    }
+
+    fn retain(self: *LoadParse) void {
+        self.references += 1;
+    }
+
+    fn release(self: *LoadParse) void {
+        std.debug.assert(self.references > 0);
+        self.references -= 1;
+        if (self.references == 0) self.allocator.destroy(self);
+    }
+};
+
+/// HTML "destroy a document" for the document a load replaced (its state:
+/// salvageable false, destroyed, its scripts and parser discarded -
+/// dom.document_lifecycle.destroy), from a task on its event loop - never
+/// inside the load, where the parser of that document, or script holding its
+/// nodes, may still be on the stack. A task that finds the load's parse still
+/// running (a script of the replaced page started the load, and the loop was
+/// pumped from under that parse) queues itself again.
+///
+/// The task does not keep the document: its wrapper's owners do, and one the
+/// collector took - or the realm's end freed - needs no destroy; the slab
+/// generation says which. Nor does it name the document as its task
+/// document: that document is not fully active, so the loop would drop it.
+/// It frees no storage; that stays the wrapper's (Context.endCurrentDocument).
+const DestroyReplacedDocument = struct {
+    allocator: std.mem.Allocator,
+    /// BORROWED, checked against `generation` before every use.
+    document: *runtime.Instance,
+    generation: u64,
+    /// The parse of the load that made `document`, OWNED (one reference);
+    /// null for the initial about:blank document.
+    load: ?*LoadParse,
+
+    /// Queue the destroy of `document`, taking `load`'s reference on every
+    /// path. Without an event loop (a host that has none) the document stays
+    /// as abort left it.
+    fn queue(allocator: std.mem.Allocator, document: *runtime.Instance, load: ?*LoadParse) void {
+        const loop = document.ctx.getOptionalEventLoop() orelse {
+            if (load) |held| held.release();
+            return;
+        };
+        const self = allocator.create(DestroyReplacedDocument) catch {
+            if (load) |held| held.release();
+            return;
+        };
+        self.* = .{
+            .allocator = allocator,
+            .document = document,
+            .generation = runtime.SlabAllocator.generationOf(document),
+            .load = load,
+        };
+        loop.queueTask(self.task());
+    }
+
+    fn task(self: *DestroyReplacedDocument) runtime.EventLoopTask {
+        return .{ .callback = &run, .context = self, .drop = &drop };
+    }
+
+    fn run(context: ?*anyopaque) void {
+        const self: *DestroyReplacedDocument = @ptrCast(@alignCast(context.?));
+        if (runtime.SlabAllocator.generationOf(self.document) == self.generation and self.document.ctx.hasEngine()) {
+            const parsing = if (self.load) |load| load.parsing else false;
+            if (!parsing) {
+                dom_mod.document_lifecycle.destroy(self.document);
+            } else if (self.document.ctx.getOptionalEventLoop()) |loop| {
+                loop.queueTask(self.task());
+                return;
+            }
+        }
+        self.deinit();
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *DestroyReplacedDocument = @ptrCast(@alignCast(context.?));
+        self.deinit();
+    }
+
+    fn deinit(self: *DestroyReplacedDocument) void {
+        if (self.load) |load| load.release();
+        self.allocator.destroy(self);
     }
 };
 

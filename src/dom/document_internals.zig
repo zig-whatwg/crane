@@ -172,36 +172,6 @@ pub fn getDoctype(instance: *runtime.Instance) ?*runtime.Instance {
 }
 
 // =============================================================================
-// Tree Cleanup
-// =============================================================================
-
-/// Remove and deinitialize all child nodes from the document.
-/// This is used when reusing an existing document for fresh parsing.
-/// Each child node is properly deinitialized via deinitNodeByType, which
-/// handles type-specific cleanup and recursive child cleanup.
-pub fn clearChildren(instance: *runtime.Instance) void {
-    const NodeImpl = impls.Node;
-
-    // Iterate through children and deinit each one using helper functions
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |child_node| {
-        // Get next sibling BEFORE deinit (deinit may clear sibling pointers)
-        const next = NodeImpl.getNextSibling(child_node);
-
-        // Deinit the child node based on its type
-        NodeImpl.deinitNodeByType(child_node);
-
-        child = next;
-    }
-
-    // Also clear document-specific references
-    if (getInternal(instance)) |internal| {
-        internal.document_element = null;
-        internal.doctype = null;
-    }
-}
-
-// =============================================================================
 // String Interning
 // =============================================================================
 
