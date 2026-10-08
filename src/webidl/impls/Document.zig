@@ -2822,6 +2822,14 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
 
     // Steps 16-17: create a parser that waits for document.close()'s EOF,
     // with its insertion point just before its empty stream's end.
+    // Steps 11-12 can run unload/currententrychange handlers that open this
+    // document again. Association replaces that parser too: release its
+    // scripts and the document's reference before installing our parser.
+    internal.script_delivery_continuation_suppressed = true;
+    @import("html").script_execution.discardParserScripts(instance);
+    discardDocumentParser(internal);
+    internal.parsing_end_waiting_on_scripts = false;
+    internal.load_waiting_on_delay = false;
     const parser = try @import("html").scripted_parser.DocumentParser.create(
         internal.allocator,
         instance.ctx,

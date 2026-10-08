@@ -10,6 +10,8 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
 
+- [Associate a parser after the last reentrant step](architecture-associate-a-parser-after-the-last-reentrant-step.md) - Release the parser present at association, including one installed by a callback in the same operation.
+
 - [Parser tracing uses a fixed member and collectible storage](architecture-parser-tracing-uses-a-fixed-member-and-collectible-storage.md) - Keep variable parser graphs collectible and active calls rooted through native cleanup.
 - [An internal mutation keeps its caller's reaction scope](architecture-an-internal-mutation-keeps-its-callers-reaction-scope.md) - Use shared DOM algorithms inside the owning public operation's reaction boundary.
 
