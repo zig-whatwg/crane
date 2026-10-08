@@ -12,7 +12,7 @@ const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 const runtime = @import("runtime");
 const instance_bridge = @import("instance_bridge.zig");
-const custom_elements = @import("custom_elements.zig");
+const shadow_hosts = @import("shadow_hosts.zig");
 
 // Import DOM types
 // NodeBase is the single source of truth for tree structure per unified DOM tree model
@@ -731,24 +731,30 @@ pub fn getShadowIncludingInclusiveDescendants(allocator: Allocator, root: *NodeB
 }
 
 /// Helper: Recursively collect shadow-including descendants in tree order
-fn collectShadowIncludingDescendants(result: *infra.List(*NodeBase), node: *NodeBase) !void {
-    // DOM shadow-including tree order: the host's shadow tree immediately
-    // follows the host, before its light children. Include the root host too.
-    if (node.node_type == NodeBase.ELEMENT_NODE) {
-        if (instance_bridge.getInstance(node)) |opaque_instance| {
-            const element: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
-            if (custom_elements.shadowRootOf(element)) |shadow| {
-                if (instance_bridge.getNodeBase(shadow)) |shadow_base| {
-                    try result.append(shadow_base);
-                    try collectShadowIncludingDescendants(result, shadow_base);
-                }
-            }
-        }
+fn collectShadowIncludingDescendants(result: *infra.List(*NodeBase), node: *const NodeBase) !void {
+    // Enter the current host's root immediately after encountering the host,
+    // including when the traversal's root itself is a host. Closed roots are
+    // part of this internal traversal, as are the ShadowRoot nodes themselves.
+    if (shadowRootForHost(node)) |shadow| {
+        try result.append(shadow);
+        try collectShadowIncludingDescendants(result, shadow);
     }
+    // Visit each child in order using NodeBase's child_nodes
     for (node.child_nodes.items()) |child| {
         try result.append(child);
         try collectShadowIncludingDescendants(result, child);
     }
+}
+
+/// Internal shadow edge of an element, including a closed root. The bridge
+/// owns the NodeBase association; no cast between NodeBase and an IDL state
+/// layout or script-facing shadowRoot getter is needed.
+pub fn shadowRootForHost(node: *const NodeBase) ?*NodeBase {
+    if (node.node_type != NodeBase.ELEMENT_NODE) return null;
+    const instance_ptr = instance_bridge.getInstance(@constCast(node)) orelse return null;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+    const shadow = shadow_hosts.rootForHost(instance) orelse return null;
+    return instance_bridge.getNodeBase(shadow);
 }
 
 /// Get all shadow-including descendants (not including root) in shadow-including tree order

@@ -25,6 +25,8 @@ pub const InternalState = struct {
     processing: bool = false,
     waiting: bool = false,
     read_queued: bool = false,
+    fetch_document: ?same_object.Link = null,
+    document_abort_pending: ?u64 = null,
 
     fn enabled(self: *InternalState) bool {
         const track = self.track orelse return false;
@@ -36,6 +38,7 @@ pub const InternalState = struct {
         };
     }
     fn stopFetch(self: *InternalState) void {
+        self.document_abort_pending = null;
         self.resource.stop();
         self.activity.fetching = false;
         self.read_queued = false;
@@ -177,7 +180,7 @@ pub fn installHooks() void {
     dom.attribute_change_steps.install("track", attributeChanged);
     dom.mutation.registerInsertionStepsCallback(inserted) catch @panic("track insertion hook allocation");
     dom.mutation.registerRemovingStepsCallback(removed) catch @panic("track removing hook allocation");
-    dom.document_fetches.install(cancelRealm);
+    dom.document_fetches.install(.{ .discard = cancelRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
     dom.unloading_cleanup.install(cancelRealm);
 }
 fn modeChanged(instance: *runtime.Instance, _: hooks.Mode, _: hooks.Mode) void {
@@ -217,15 +220,17 @@ fn inserted(node: *dom.NodeBase) void {
     }
     data(instance).start() catch data(instance).cancel();
 }
-fn removed(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
+fn removed(node: *dom.NodeBase, _: ?*dom.NodeBase) void {
     const instance = dom.instance_bridge.getInstanceTyped(runtime.Instance, node) orelse return;
     if (std.mem.eql(u8, instance.vtable.name, "HTMLTrackElement")) {
-        data(instance).cancel();
-        const old = if (old_parent) |parent| dom.instance_bridge.getInstanceTyped(runtime.Instance, parent) else null;
+        const self = data(instance);
+        self.cancel();
+        // DOM passes the removed subtree's old ancestor to every descendant.
+        // HTML track membership follows changes to this track's direct parent.
+        const old = if (self.parent) |link| (if (link.isLive()) link.instance else null) else null;
         const current = interfaces.Node.get_parentNode(instance) catch null;
-        // Removing steps also visit descendants whose own parent did not move.
-        if (old_parent != null and old != current) {
-            data(instance).parent = if (current) |parent| same_object.Link.to(parent) else null;
+        if (old != current) {
+            self.parent = if (current) |parent| same_object.Link.to(parent) else null;
             hooks.trackElementParentChanged(instance, old, current);
         }
     }
@@ -241,6 +246,50 @@ fn cancelRealm(ctx: runtime.Context) void {
         const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
         if (std.mem.eql(u8, instance.vtable.name, "HTMLTrackElement")) data(instance).cancel();
     }
+}
+fn prepareDocumentAbort(document: *runtime.Instance) bool {
+    const registry = common.liveRegistry(document.ctx) orelse return false;
+    var canceled = false;
+    for (registry.entries.toSlice()) |entry| {
+        const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+        if (!std.mem.eql(u8, instance.vtable.name, "HTMLTrackElement")) continue;
+        const self = data(instance);
+        const link = self.fetch_document orelse continue;
+        if (!self.activity.fetching or link.instance != document or !link.isLive()) continue;
+        self.document_abort_pending = self.generation;
+        canceled = true;
+    }
+    return canceled;
+}
+fn abortDocument(document: *runtime.Instance) void {
+    const registry = common.liveRegistry(document.ctx) orelse return;
+    while (true) {
+        const self: *InternalState = blk: {
+            for (registry.entries.toSlice()) |entry| {
+                const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+                if (!std.mem.eql(u8, instance.vtable.name, "HTMLTrackElement")) continue;
+                const candidate = data(instance);
+                const link = candidate.fetch_document orelse continue;
+                if (candidate.document_abort_pending != null and link.instance == document and link.isLive()) break :blk candidate;
+            }
+            return;
+        };
+        const generation = self.document_abort_pending.?;
+        self.document_abort_pending = null;
+        if (generation != self.generation or !self.activity.fetching) continue;
+        const instance = self.activity.instance orelse continue;
+        engine.runInRealm(instance.ctx, documentAbortSteps, self) catch self.cancel();
+    }
+}
+fn documentAbortSteps(context: ?*anyopaque) void {
+    const self: *InternalState = @ptrCast(@alignCast(context.?));
+    self.generation +%= 1;
+    self.activity.discardTasks(false);
+    self.stopFetch();
+    // Failed fetch processing is a new element task. The old resource's
+    // queued reads keep their owners until run/drop but cannot dispatch.
+    self.queue(.failure) catch self.cancel();
+    self.activity.sync();
 }
 fn stable(context: *anyopaque, generation: u64) void {
     const self: *InternalState = @ptrCast(@alignCast(context));
@@ -263,6 +312,7 @@ fn startFetch(instance: *runtime.Instance) !void {
     var cors = if (parent) |owner| (if (common.isMedia(owner)) try interfaces.HTMLMediaElement.get_crossOrigin(owner) else null) else null;
     defer if (cors) |*value| value.deinit(instance.ctx.allocator);
     const request = try common.requestFor(instance, selected, .track, html.script_request.corsSettingFromAttribute(if (cors) |value| value.asSlice() else null));
+    self.fetch_document = if (common.documentOf(instance)) |document| same_object.Link.to(document) else null;
     self.activity.fetching = true;
     self.activity.sync();
     self.resource.start(request) catch {

@@ -166,6 +166,9 @@ pub const runtime = @import("runtime");
 pub const script_execution = @import("script_execution.zig");
 pub const script_request = @import("script_request.zig");
 
+/// Module script records, descendant fetch options, and document graph loading.
+pub const module_script = @import("module_script.zig");
+
 /// A script element's processing-model state (its parser document, already
 /// started, result, ...), and the hook the processing model reaches an
 /// element's through - Blink's ScriptLoader, WebKit's ScriptElement.
@@ -217,6 +220,9 @@ pub const media_runtime = @import("media/runtime.zig");
 /// What an object or embed element represents, and its fetch, events and
 /// child navigable (HTML 4.8.6, 4.8.7).
 pub const embedded_content = @import("embedded_content.zig");
+
+/// Queued tasks for aborting a document's descendant navigables.
+pub const document_abort = @import("document_abort.zig");
 
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing

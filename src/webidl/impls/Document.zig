@@ -35,7 +35,6 @@ const Registry = utils.InstanceRegistry(InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-const EventTargetImpl = @import("EventTarget.zig");
 const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
@@ -144,6 +143,9 @@ pub const InternalState = struct {
     page_showing: bool = false,
     /// HTML "completely loaded": "completely finish loading" has run.
     completely_loaded: bool = false,
+    /// HTML "ready for post-load tasks", reached by "the end" step 11.
+    /// Document.open preserves this independently of readiness/loaded time.
+    ready_for_post_load_tasks: bool = false,
     /// HTML "is initial about:blank": the document "create a new browsing
     /// context and document" made, until something replaces it.
     is_initial_about_blank: bool = false,
@@ -155,7 +157,8 @@ pub const InternalState = struct {
     /// step 14) while its iframe load was in progress, and the iframe load
     /// event steps fire no load for it (step 3).
     mute_iframe_load: bool = false,
-    /// HTML "salvageable"; set false by "unload" (Crane keeps no bfcache).
+    /// HTML "salvageable"; abort and unload may prevent bfcache storage
+    /// without changing which document is currently active.
     salvageable: bool = true,
     /// HTML "destroy" has run: the document's browsing context is null. It
     /// stays readable - script elsewhere may hold it - but has no view.
@@ -167,6 +170,12 @@ pub const InternalState = struct {
     /// "The end" is waiting at step 8 - something delays the load event -
     /// and has not queued step 9's task yet.
     load_waiting_on_delay: bool = false,
+    /// "The end" is waiting for its deferred scripts before DOMContentLoaded.
+    parsing_end_waiting_on_scripts: bool = false,
+    /// Abort, destruction, and parser replacement discard deliveries without
+    /// continuing the old document's normal loading steps. A new parser epoch
+    /// enables delivery continuations again.
+    script_delivery_continuation_suppressed: bool = false,
     /// HTML "delay the load event": how many delays are held on this
     /// document's load event (dom.document_lifecycle.delayLoadEvent) - an
     /// object element's fetch, say. Blink's load_event_delay_count_.
@@ -253,6 +262,8 @@ pub const InternalState = struct {
     /// html's script processing model through dom.document_scripts, which
     /// this impl installs.
     scripts: dom_document_scripts.Scripts,
+    /// HTML 3.1.6: ordered set of elements blocking rendering.
+    render_blocking_elements: @import("dom").document_rendering.ElementSet,
 
     /// Throw-on-dynamic-markup-insertion counter
     /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#throw-on-dynamic-markup-insertion-counter
@@ -278,10 +289,13 @@ pub const InternalState = struct {
     /// Whether the active parser was aborted (e.g., by navigation)
     active_parser_was_aborted: bool,
 
-    /// Buffered content from document.write() in after-parsing mode
-    /// When insertion_point is null and document.write() is called, content
-    /// is accumulated here until document.close() is called
-    write_buffer: std.ArrayList(u8),
+    /// The document owns one reference to its navigation or script-created
+    /// parser until EOF, cancellation, replacement, or destruction.
+    active_parser: ?*@import("html").scripted_parser.DocumentParser,
+
+    /// Distinguishes successive parsers of the same Document across script
+    /// callbacks, including a replacement that already finished again.
+    parser_epoch: u64 = 0,
 
     /// The InputStreamManager for document.write() during parsing
     /// This is set when parsing starts and cleared when parsing finishes
@@ -297,6 +311,8 @@ pub const InternalState = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-map
     /// Key: module specifier (resolved URL), Value: V8 Module handle
     module_map: std.StringHashMap(*anyopaque),
+    module_loader: ?*anyopaque = null,
+    dispose_module_loader: ?dom_document_modules.DisposeFn = null,
 
     /// Import map for the document (type="importmap")
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map
@@ -430,12 +446,13 @@ pub const InternalState = struct {
             // Event handlers
             // Script execution state
             .scripts = dom_document_scripts.Scripts.init(allocator),
+            .render_blocking_elements = @import("dom").document_rendering.ElementSet.init(allocator),
             .throw_on_dynamic_markup_insertion_counter = 0,
             .unload_counter = 0,
             .insertion_point = null,
             .is_script_created_parser = false,
             .active_parser_was_aborted = false,
-            .write_buffer = .empty,
+            .active_parser = null,
             .input_stream_manager = null,
             .scripting_enabled = true, // Default to true for browser environments
             // Module map and import map
@@ -464,6 +481,22 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        self.script_delivery_continuation_suppressed = true;
+        // Borrowed membership ends before parsers/module owners release nodes.
+        self.render_blocking_elements.clear();
+        if (self.active_parser) |parser| {
+            self.active_parser = null;
+            self.input_stream_manager = null;
+            parser.detachForDocumentDestruction();
+            parser.release();
+        }
+        // Loader cancellation can re-enter script delivery cleanup. Keep
+        // the document's queues and borrowed render set usable until every
+        // loader client has relinquished its preparation.
+        if (self.module_loader) |loader| {
+            self.module_loader = null;
+            if (self.dispose_module_loader) |dispose| dispose(loader);
+        }
         // Free all interned strings from pool
         var it = self.string_pool.keyIterator();
         while (it.next()) |key_ptr| {
@@ -511,14 +544,11 @@ pub const InternalState = struct {
 
         // Event handlers
 
-        // Write buffer (for document.write() in after-parsing mode)
-        self.write_buffer.deinit(self.allocator);
-
-        // Note: input_stream_manager is NOT owned by Document - it's owned by HTMLParser
-        // and is just a reference here for document.write() integration
+        // A navigation's input_stream_manager is borrowed from its parser.
 
         // Script execution lists (don't own the script elements, just the list storage)
         self.scripts.deinit();
+        self.render_blocking_elements.deinit();
 
         // Module map - dispose module handles and free keys
         {
@@ -624,9 +654,22 @@ pub fn installHooks() void {
         .ensure_global_registry = &ensureGlobalRegistry,
     });
     @import("dom").document_lifecycle.install(.{
+        .rendering = .{
+            .of = &renderBlockingElements,
+            .allows_adding = &allowsAddingRenderBlockers,
+            .current_time_ms = &renderBlockingTime,
+        },
+        .associate_parser = &lifecycleAssociateParser,
+        .discard_parser = &lifecycleDiscardParser,
+        .parser_finished = &lifecycleParserFinished,
+        .finish_without_parser = &lifecycleFinishWithoutParser,
         .parsing_stopped = &lifecycleParsingStopped,
         .finish_loading = &lifecycleFinishLoading,
         .load_delay_may_have_ended = &lifecycleLoadDelayMayHaveEnded,
+        .script_delivery_discarded = &lifecycleScriptDeliveryDiscarded,
+        .delays_load_event = &lifecycleDelaysLoadEvent,
+        .is_ready_for_post_load_tasks = &lifecycleIsReadyForPostLoadTasks,
+        .mark_ready_for_post_load_tasks = &lifecycleMarkReadyForPostLoadTasks,
         .is_completely_loaded = &lifecycleIsCompletelyLoaded,
         .is_initial_about_blank = &lifecycleIsInitialAboutBlank,
         .mark_initial_about_blank = &lifecycleMarkInitialAboutBlank,
@@ -634,6 +677,8 @@ pub fn installHooks() void {
         .fire_beforeunload = &lifecycleFireBeforeUnload,
         .unload = &lifecycleUnload,
         .abort = &lifecycleAbort,
+        .abort_for_navigation = &lifecycleAbortForNavigation,
+        .propagate_abort = &lifecyclePropagateAbort,
         .destroy = &lifecycleDestroy,
         .set_about_base_url = &lifecycleSetAboutBaseUrl,
         .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
@@ -692,11 +737,47 @@ fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
     return owner;
 }
 
+fn renderBlockingElements(document: *runtime.Instance) ?*@import("dom").document_rendering.ElementSet {
+    const internal = getInternal(document) orelse return null;
+    return &internal.render_blocking_elements;
+}
+
+/// HTML 3.1.6: content type text/html, with no body or frameset child of
+/// the HTML document element. Read the current tree, not parser readiness.
+fn allowsAddingRenderBlockers(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    return @import("dom").document_rendering.allowsAdding(internal.content_type.asSlice(), renderingBodyElement(document) != null);
+}
+
+fn renderingBodyElement(document: *runtime.Instance) ?*runtime.Instance {
+    const html = documentElementOf(document) orelse return null;
+    if (!isElementNamed(html, "http://www.w3.org/1999/xhtml", "html")) return null;
+    var child = interfaces.Node.get_firstChild(html) catch return null;
+    while (child) |node| : (child = interfaces.Node.get_nextSibling(node) catch null) {
+        if (isElementNamed(node, "http://www.w3.org/1999/xhtml", "body") or
+            isElementNamed(node, "http://www.w3.org/1999/xhtml", "frameset")) return node;
+    }
+    return null;
+}
+
+/// HR-Time current high resolution time in the relevant global. With no
+/// Window (native DOM tests), its empty origin is zero.
+fn renderBlockingTime(document: *runtime.Instance) f64 {
+    const internal = getInternal(document) orelse return 0;
+    const window = internal.default_view orelse return 0;
+    const settings = @import("dom").global_settings.of(window) orelse return 0;
+    const origin_fn = settings.time_origin orelse return 0;
+    const origin = origin_fn(window) orelse return 0;
+    const hr_time = @import("hr_time");
+    const now = hr_time.coarsenTime(hr_time.MonotonicClock.unsafeCurrentTime(), settings.cross_origin_isolated(window));
+    const coarsened_origin = hr_time.coarsenTime(@as(i128, origin), settings.cross_origin_isolated(window));
+    return hr_time.clock.toMilliseconds(@max(0, now - coarsened_origin));
+}
+
 /// dom.document_activity: whether a task's document is fully active - "the
 /// active document of a navigable navigable, and either navigable is a
 /// top-level traversable or navigable's container document is fully
-/// active". A document that was unloaded (not salvageable: Crane keeps no
-/// bfcache) or destroyed is no navigable's active document; nor is one whose
+/// active". A destroyed document is no navigable's active document; nor is one whose
 /// window is no navigable's active window any more, or whose navigable shows
 /// another. Removing a frame discards its navigable and every one inside it
 /// (BrowsingContext.discard closes them all), so the container documents
@@ -719,7 +800,7 @@ fn isFullyActive(object: *runtime.Instance) bool {
         return isActiveDocumentFullyActive(@ptrCast(@alignCast(active)));
     }
     const internal = getInternal(object) orelse return false;
-    if (internal.destroyed or !internal.salvageable) return false;
+    if (internal.destroyed) return false;
     const window = internal.default_view orelse return false;
     const navigable = html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
     if (navigable.is_closed) return false;
@@ -731,7 +812,7 @@ fn isFullyActive(object: *runtime.Instance) bool {
 /// destroyed.
 fn isActiveDocumentFullyActive(document: *runtime.Instance) bool {
     const internal = getInternal(document) orelse return false;
-    return !internal.destroyed and internal.salvageable;
+    return !internal.destroyed;
 }
 
 /// Initialize instance (creates the instance)
@@ -841,6 +922,8 @@ pub fn getBoundV8Wrapper(instance: *runtime.Instance) ?*anyopaque {
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| internal.script_delivery_continuation_suppressed = true;
+    @import("html").script_execution.discardDocumentScripts(instance);
     // Clean up internal state from registry
     if (Registry.get(instance)) |internal| {
         engine.forgetTracedChild(instance, .{ .name = "template owner document" });
@@ -1830,6 +1913,8 @@ pub fn setDefaultView(instance: *runtime.Instance, window: *runtime.Instance) vo
 /// hold and release below makes the wrapper cache read again.
 fn clearDefaultView(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
+    // HTML 3.1.6: the tree becomes browsing-context disconnected.
+    internal.render_blocking_elements.clear();
     internal.default_view = null;
     engine.keepPlatformObjectAlive(instance);
     engine.releasePlatformObject(instance);
@@ -2622,11 +2707,6 @@ pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin
 /// HTML §8.4.1 - Opens the document for writing
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-open
 ///
-/// Algorithm (simplified):
-/// 1. If document is an XML document, throw InvalidStateError
-/// 2. If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
-/// 3. Clear the document and create a script-created parser
-/// 4. Return the document
 pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMString), unused2: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
     _ = unused1;
     _ = unused2;
@@ -2643,16 +2723,23 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
         return error.InvalidStateError;
     }
 
+    // Steps 3-4: the entry document's origin, before the parser/unload early
+    // returns. document.domain relaxation does not change this comparison.
+    const entry_document = documentOfRealm(engine.entryRealm()) orelse instance;
+    if (!try sameOriginForOpen(instance, entry_document)) return error.SecurityError;
+    const entry_pin = if (entry_document.ctx.hasEngine())
+        try engine.retainValue(entry_document.ctx, .{ .instance = entry_document })
+    else
+        null;
+    defer if (entry_pin) |held| held.release();
+
     // Step 5: "If document has an active parser whose script nesting level
     // is greater than 0, then return document." - an inline script of the
     // page being parsed calls document.open(), which is ignored. The parser
-    // sets the insertion point as it raises its script nesting level for a
-    // parser-inserted script, and restores it as it lowers it (the script
-    // end tag steps, and the pending parsing-blocking script's), so while
-    // the document's parser has an input stream, an insertion point in it
-    // is that nesting level above 0.
+    // nesting level comes from tree construction, since a script-created
+    // parser also has an insertion point while no script is running.
     if (internal.input_stream_manager) |stream| {
-        if (stream.hasInsertionPoint()) return instance;
+        if (stream.isExecutingScript()) return instance;
     }
 
     // Step 6: Check unload counter
@@ -2668,11 +2755,22 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Step 8: "If document's node navigable is non-null and document's node
     // navigable's ongoing navigation is a navigation ID, then stop loading
     // document's node navigable."
-    @import("dom").content_navigables.stopLoading(instance);
+    @import("dom").content_navigables.stopLoadingIfNavigating(instance);
+
+    // Detach the previous parser before replacing its DOM.
+    // A parser pump currently on the stack keeps its own reference until
+    // that invocation has restored its input stream's insertion limits.
+    internal.script_delivery_continuation_suppressed = true;
+    @import("html").script_execution.discardParserScripts(instance);
+    discardDocumentParser(internal);
+    internal.parsing_end_waiting_on_scripts = false;
+    // Step 16 replaces the parser. An old "the end" suspended at steps
+    // 7-8 no longer completes this stream; only its explicit EOF can do so.
+    // Post-load readiness and completely-loaded time remain unchanged.
+    internal.load_waiting_on_delay = false;
 
     // Step 9: "For each shadow-including inclusive descendant node of
-    // document, erase all event listeners and handlers given node." (No
-    // shadow trees exist yet.)
+    // document, erase all event listeners and handlers given node."
     eraseListenersOfTree(instance);
 
     // Step 10: "If document is the associated Document of document's
@@ -2680,21 +2778,36 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // given document's relevant global object."
     if (internal.default_view) |window| {
         if ((interfaces.Window.get_document(window) catch null) == instance) {
-            EventTargetImpl.eraseAllEventListenersAndHandlers(window);
+            @import("dom").event_handlers.eraseAll(window);
         }
     }
 
     // Step 11: "Replace all with null within document."
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        const next = NodeImpl.getNextSibling(c);
-        _ = interfaces.Node.call_removeChild(instance, c) catch {};
-        child = next;
-    }
+    // Keep removals in open's outer reaction scope. An inner removeChild
+    // scope would invoke disconnected callbacks before step 16's parser.
+    const dom = @import("dom");
+    const document_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;
+    try dom.mutation.replaceAll(@as(?*dom.NodeBase, null), document_base);
 
     // Reset document element and doctype references
     internal.document_element = null;
     internal.doctype = null;
+
+    // Step 12: update the current history entry in place. The default
+    // serializedData preserves history.state. Only a different entry
+    // document loses its fragment; a detached document keeps its own URL.
+    if (isFullyActive(instance)) {
+        const entry_url = try interfaces.Document.get_URL(entry_document);
+        defer entry_document.ctx.allocator.free(entry_url);
+        const end = if (entry_document == instance) entry_url.len else std.mem.indexOfScalar(u8, entry_url, '#') orelse entry_url.len;
+        if (internal.default_view) |window| {
+            @import("dom").history_traversal.urlAndHistoryUpdate(window, entry_url[0..end], null, .replace);
+            // Associated documents read the context's live URL. Drop a
+            // prior explicit URL so later pushState updates stay visible.
+            if (internal.url.len > 0) internal.allocator.free(internal.url);
+            internal.url = "";
+        }
+    }
 
     // Step 13: "Set document's is initial about:blank to false."
     internal.is_initial_about_blank = false;
@@ -2707,22 +2820,51 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Step 15: "Set document to no-quirks mode."
     internal.mode = .no_quirks;
 
-    // Step 16: Create new HTML parser (script-created)
+    // Steps 16-17: create a parser that waits for document.close()'s EOF,
+    // with its insertion point just before its empty stream's end.
+    const parser = try @import("html").scripted_parser.DocumentParser.create(
+        internal.allocator,
+        instance.ctx,
+        instance,
+        internal.default_view != null and internal.scripting_enabled,
+        &activeParserFinished,
+    );
+    internal.parser_epoch +%= 1;
+    parser.document_epoch = internal.parser_epoch;
+    internal.script_delivery_continuation_suppressed = false;
+    internal.active_parser = parser;
+    internal.input_stream_manager = &parser.input_stream;
     internal.is_script_created_parser = true;
-
-    // Step 17: Set insertion point to 0 (beginning of stream)
     internal.insertion_point = 0;
 
-    // Clear any previously buffered content
-    internal.write_buffer.clearRetainingCapacity();
-
-    // Step 18: "Update the current document readiness of document to
-    // "loading"." Not implemented, stated: step 14 (mute the iframe load
-    // event).
+    // Step 18: update readiness after erasing the old listeners.
     updateReadiness(instance, ._loading_);
 
     // Return the document
     return instance;
+}
+
+fn documentOfRealm(realm: ?runtime.Context) ?*runtime.Instance {
+    const record = (realm orelse return null).getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(global) catch null;
+}
+
+fn sameOriginForOpen(document: *runtime.Instance, entry_document: *runtime.Instance) !bool {
+    // A detached document created in this realm inherits its creator's
+    // origin, including an opaque origin's identity.
+    if (document.ctx == entry_document.ctx) return true;
+    const own_document = if ((getInternal(document) orelse return false).default_view == null)
+        documentOfRealm(document.ctx) orelse document
+    else
+        document;
+    const own = try serializedOrigin(own_document, getInternal(own_document) orelse return false, document.ctx.allocator);
+    defer if (own) |value| document.ctx.allocator.free(value);
+    const entry = try serializedOrigin(entry_document, getInternal(entry_document) orelse return false, document.ctx.allocator);
+    defer if (entry) |value| document.ctx.allocator.free(value);
+    if (own == null or entry == null) return false;
+    return std.mem.eql(u8, own.?, entry.?);
 }
 
 /// open(url, name, features): "1. If this is not fully active, then throw an
@@ -2750,16 +2892,19 @@ pub fn call_open__1(instance: *runtime.Instance, url: runtime.USVString, name: r
 fn eraseListenersOfTree(document: *runtime.Instance) void {
     var node: ?*runtime.Instance = document;
     while (node) |current| {
-        EventTargetImpl.eraseAllEventListenersAndHandlers(current);
-        if (NodeImpl.getFirstChild(current)) |first| {
+        @import("dom").event_handlers.eraseAll(current);
+        if (@import("dom").shadow_hosts.rootForHost(current)) |shadow| {
+            eraseListenersOfTree(shadow);
+        }
+        if (interfaces.Node.get_firstChild(current) catch null) |first| {
             node = first;
             continue;
         }
         var cursor = current;
         node = while (true) {
             if (cursor == document) break null;
-            if (NodeImpl.getNextSibling(cursor)) |next| break next;
-            cursor = NodeImpl.getParent(cursor) orelse break null;
+            if (interfaces.Node.get_nextSibling(cursor) catch null) |next| break next;
+            cursor = (interfaces.Node.get_parentNode(cursor) catch null) orelse break null;
         };
     }
 }
@@ -3003,7 +3148,14 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
     // Step 8: "If document's active parser was aborted is true, then return."
     if (internal.active_parser_was_aborted) return;
 
-    // A parser is running (the document's own, a frame's, or document.close()'s)
+    // Keep document.open()'s parser alive through nested script and through
+    // processInserted restoring the stream's limits. Reentrant open/close
+    // can detach it before the outer write has returned.
+    var kept_parser = internal.active_parser;
+    if (kept_parser) |parser| parser.retain();
+    defer if (kept_parser) |parser| parser.release();
+
+    // A parser is running (the document's own, a frame's, or a script-created)
     // and has an insertion point - it runs the script calling us, or a script
     // that script's write() inserted.
     if (internal.input_stream_manager) |stream| {
@@ -3018,6 +3170,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
             // the processing of the tokenizer is aborted by the tree
             // construction stage."
             if (internal.scripts.pending_parsing_blocking_script == null) stream.processInserted();
+            if (kept_parser) |parser| try parser.finishIfPossible();
             return;
         }
     }
@@ -3038,27 +3191,15 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
         // an unload in progress, an aborted parser - without a
         // script-created parser; then nothing is written.
         if (!internal.is_script_created_parser) return;
+        if (kept_parser) |parser| parser.release();
+        kept_parser = internal.active_parser;
+        if (kept_parser) |parser| parser.retain();
     }
-
-    if (string.items.len == 0) return;
-    try appendToScriptCreatedParserInput(instance, internal, string.items);
-}
-
-/// A script-created parser's input: buffered for document.close() to parse,
-/// and - so the document shows it before then - parsed as a fragment into the
-/// body. Deviation, stated: the script-created parser does not process each
-/// write as it arrives; that needs document.open()'s parser, which is not this
-/// function's to create.
-/// Steps 10-11 for a script-created parser: insert string into its input
-/// stream. Deviation, stated (as for document.open()): the script-created
-/// parser processes its stream when document.close() inserts the explicit
-/// EOF, not as each write() inserts - so what was written is not in the
-/// tree until then.
-fn appendToScriptCreatedParserInput(instance: *runtime.Instance, internal: *InternalState, buffer: []const u8) !void {
-    _ = instance;
-    internal.write_buffer.appendSlice(internal.allocator, buffer) catch {
-        return error.OutOfMemory;
-    };
+    const stream = internal.input_stream_manager orelse return;
+    // Steps 10-11 apply to the newly created parser as to an existing one.
+    try stream.insert(string.items);
+    if (internal.scripts.pending_parsing_blocking_script == null) stream.processInserted();
+    if (kept_parser) |parser| try parser.finishIfPossible();
 }
 
 /// Operation: createAttribute
@@ -3822,8 +3963,8 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 /// Algorithm:
 /// 1. If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
 /// 2. If no script-created parser, return
-/// 3. Set insertion point to undefined
-/// 4. Parse any buffered content
+/// 3. Return if there is no script-created parser
+/// 4-6. Insert explicit EOF and resume the existing tokenizer
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -3842,33 +3983,66 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return;
     }
 
-    // Steps 4-6: insert an explicit EOF at the end of the input stream and run
-    // the tokenizer until it reaches it. The script-created parser has
-    // buffered everything document.write() inserted, so this is the parse of
-    // that stream as the document's own - from the initial insertion mode,
-    // into the document open() emptied - by the parser a navigation uses. It
-    // used to be parsed as a fragment, which never made the html, head and
-    // body elements a document has. Deviation, stated: step 5 (a pending
-    // parsing-blocking script) does not arise - scripts in the stream run as
-    // the parser meets them.
-    const input = try internal.allocator.dupe(u8, internal.write_buffer.items);
-    defer internal.allocator.free(input);
-    internal.write_buffer.clearRetainingCapacity();
-    const window: ?*runtime.Instance = get_defaultView(instance) catch null;
-    _ = @import("html").scripted_parser.parseHTMLWithScripting(internal.allocator, instance.ctx, input, .{
-        .scripting_enabled = window != null,
-        .window = window,
-        .document = instance,
-    }) catch |err| log.warn("document.close(): the parser stopped early: {}", .{err});
+    const parser = internal.active_parser orelse return;
+    parser.retain();
+    defer parser.release();
+    try parser.close();
+}
+
+fn discardDocumentParser(internal: *InternalState) void {
+    const parser = internal.active_parser orelse return;
+    internal.active_parser = null;
+    if (internal.input_stream_manager == &parser.input_stream) internal.input_stream_manager = null;
     internal.is_script_created_parser = false;
     internal.insertion_point = null;
+    parser.detach();
+    parser.release();
+}
 
-    // The tokenizer reached the explicit EOF, so the parser stops: "the end".
+fn lifecycleAssociateParser(document: *runtime.Instance, opaque_parser: *anyopaque) bool {
+    const internal = getInternal(document) orelse return false;
+    const parser: *@import("html").scripted_parser.DocumentParser = @ptrCast(@alignCast(opaque_parser));
+    internal.script_delivery_continuation_suppressed = true;
+    @import("html").script_execution.discardParserScripts(document);
+    discardDocumentParser(internal);
+    internal.parser_epoch +%= 1;
+    parser.document_epoch = internal.parser_epoch;
+    internal.script_delivery_continuation_suppressed = false;
+    parser.retain();
+    internal.active_parser = parser;
+    internal.input_stream_manager = &parser.input_stream;
+    internal.insertion_point = null;
+    internal.is_script_created_parser = false;
+    internal.active_parser_was_aborted = false;
+    internal.parsing_end_waiting_on_scripts = false;
+    internal.load_waiting_on_delay = false;
+    internal.scripting_enabled = parser.script_context.scripting_enabled;
+    updateReadiness(document, ._loading_);
+    return true;
+}
+
+fn lifecycleDiscardParser(document: *runtime.Instance, expected: ?*anyopaque) void {
+    const internal = getInternal(document) orelse return;
+    if (expected) |parser| if (internal.active_parser != @as(*@import("html").scripted_parser.DocumentParser, @ptrCast(@alignCast(parser)))) return;
+    internal.script_delivery_continuation_suppressed = true;
+    @import("html").script_execution.discardParserScripts(document);
+    discardDocumentParser(internal);
+}
+
+fn lifecycleParserFinished(document: *runtime.Instance, parser: *anyopaque) void {
+    activeParserFinished(document, @ptrCast(@alignCast(parser)));
+}
+
+fn activeParserFinished(instance: *runtime.Instance, parser: *@import("html").scripted_parser.DocumentParser) void {
+    const internal = getInternal(instance) orelse return;
+    if (internal.active_parser != parser) return;
+    // End the parser association before the readiness events can run script.
+    discardDocumentParser(internal);
     theEnd(instance);
 }
 
 // =============================================================================
-// "The end" (HTML §13.2.7) for a script-created parser
+// "The end" (HTML §13.2.7) for any document parser
 // =============================================================================
 
 /// "Update the current document readiness": if `readiness` is new, set it
@@ -3891,18 +4065,29 @@ fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadySt
     fireEvent(instance, instance, "readystatechange", false);
 }
 
-/// "The end" from step 3, once document.close()'s parse has stopped: step 5
+/// "The end" from step 3, once the active parser reaches EOF: step 5
 /// runs the scripts that will execute when the document has finished
 /// parsing - a defer script document.write() put in the stream - as the
-/// other parser drivers' "the end" does (HTMLParser.zig, a frame's parse).
+/// navigation and written parsers both use these guarded lifecycle steps.
 /// Deviation, stated: load's legacy target override is not modelled.
 fn theEnd(instance: *runtime.Instance) void {
+    const realm = instance.ctx;
+    const had_engine = realm.hasEngine();
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    const epoch = (getInternal(instance) orelse return).parser_epoch;
     lifecycleParsingStopped(instance);
-    const internal = getInternal(instance);
+    // HTML "the end" belongs to the parser that stopped. WebKit's
+    // HTMLDocumentParser::prepareToStopParsing checks isDetached after the
+    // interactive event; document.open may have installed another parser.
+    if ((had_engine and !realm.hasEngine()) or runtime.SlabAllocator.generationOf(instance) != generation) return;
+    const internal = getInternal(instance) orelse return;
+    if (internal.parser_epoch != epoch) return;
     const scripting = (get_defaultView(instance) catch null) != null;
-    if (internal != null and scripting) {
-        @import("html").script_execution.executeScriptsWhenParsingFinished(internal.?.allocator, instance);
+    if (scripting) {
+        @import("html").script_execution.executeScriptsWhenParsingFinished(internal.allocator, instance);
     }
+    if ((had_engine and !realm.hasEngine()) or runtime.SlabAllocator.generationOf(instance) != generation) return;
+    if ((getInternal(instance) orelse return).parser_epoch != epoch) return;
     lifecycleFinishLoading(instance);
 }
 
@@ -3916,6 +4101,15 @@ fn lifecycleParsingStopped(document: *runtime.Instance) void {
     };
 }
 
+/// HTML XML parsing uses the same end steps (§14.2, §13.2.7). Until the
+/// navigation XML parser exists, its received empty document still needs
+/// readiness, queued lifecycle events, and ready-for-post-load state.
+fn lifecycleFinishWithoutParser(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    if (internal.active_parser != null or internal.ready_state != ._loading_) return;
+    theEnd(document);
+}
+
 fn becomeInteractive(data: ?*anyopaque) void {
     updateReadiness(@ptrCast(@alignCast(data.?)), ._interactive_);
 }
@@ -3924,40 +4118,104 @@ fn becomeComplete(data: ?*anyopaque) void {
     updateReadiness(@ptrCast(@alignCast(data.?)), ._complete_);
 }
 
-/// dom.document_lifecycle: HTML "abort" a document (§7.5.6). Step 2 (the
-/// document's fetches) and step 3 (WebDriver BiDi) are not modelled. Step 4:
-/// "If document has an active parser": set its active parser was aborted,
-/// abort that parser, and make document unsalvageable.
-///
-/// Crane parses a frame's document in one synchronous run, so its parser is
-/// "active" exactly while readiness is "loading" - a navigation started by
-/// the document's own script during the parse. The parse runs to its end
-/// (the rest of the markup is still parsed, stated), and lifecycleFinishLoading
-/// then does "abort a parser" step 4 instead of "the end": as in Blink and
-/// Gecko, a document whose load a navigation interrupted never fires load,
-/// and neither does its iframe (navigating-across-documents/
-/// replace-before-load/*).
+/// HTML "abort a document", steps 2 and 4. Fetch cancellation can run XHR
+/// listeners synchronously; keep the document through those callbacks and
+/// read its parser association again afterwards. Unsalvageable is a bfcache
+/// property, independent of whether the document is still fully active.
 fn lifecycleAbort(document: *runtime.Instance) void {
+    abortDocument(document, false);
+}
+
+fn lifecycleAbortForNavigation(document: *runtime.Instance) void {
+    abortDocument(document, true);
+}
+
+/// Only fetch-owner policy distinguishes provisional navigation here;
+/// parser cancellation and all other lifecycle steps remain shared.
+fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
+    // Fetch cancellation can synchronously drop delivery tasks. Normal load
+    // continuation is already forbidden before any cancellation callback.
+    if (getInternal(document)) |internal| internal.script_delivery_continuation_suppressed = true;
+    const realm = document.ctx;
+    const had_engine = realm.hasEngine();
+    const pin: ?engine.Owned = if (had_engine)
+        engine.retainValue(realm, .{ .instance = document }) catch return
+    else
+        null;
+    defer if (pin) |held| held.release();
+    const generation = runtime.SlabAllocator.generationOf(document);
+    // "Abort a document" cancels its fetches, clearing script/resource
+    // delays. An already-ready child's written stream may hold the parent's
+    // last delay with no navigation in progress (iframe delay predicate 3).
+    // Wake only the parent: this parser must not resume or fire load.
+    defer {
+        if ((!had_engine or realm.hasEngine()) and runtime.SlabAllocator.generationOf(document) == generation) {
+            @import("dom").content_navigables.loadDelayMayHaveEnded(document);
+        }
+    }
+    const document_fetches = @import("dom").document_fetches;
+    const canceled = if (for_navigation) document_fetches.abortForNavigation(document) else document_fetches.abort(document);
+    if (had_engine and !realm.hasEngine()) return;
+    if (runtime.SlabAllocator.generationOf(document) != generation) return;
     const internal = getInternal(document) orelse return;
-    if (internal.ready_state != ._loading_) return;
+    if (canceled) internal.salvageable = false;
+    internal.parsing_end_waiting_on_scripts = false;
+    if (internal.input_stream_manager == null and internal.active_parser == null) return;
+    const stream = internal.input_stream_manager;
+    if (stream) |input| if (input.aborted) return;
+    const parser = internal.active_parser;
+    if (parser) |active| active.retain();
+    defer if (parser) |active| active.release();
     internal.active_parser_was_aborted = true;
-    // "Make document unsalvageable" is left to the unload that follows:
-    // Crane reads an unsalvageable document as unloaded (isShownByItsWindow),
-    // and this one stays its navigable's active document until the
-    // navigation commits. With no bfcache, nothing salvages it either way.
+    internal.salvageable = false;
+    @import("html").script_execution.discardParserScripts(document);
+    // "Abort a parser", steps 1-2 discard the input, step 3 announces
+    // interactive, step 4 pops the open elements, then step 5 is complete.
+    // Keep the original parser through readiness listeners and do not clear
+    // another parser's association if a callback replaced this one.
+    if (stream) |input| input.discardInput();
+    engine.runInRealm(realm, becomeInteractive, document) catch {};
+    if (had_engine and !realm.hasEngine()) return;
+    if (runtime.SlabAllocator.generationOf(document) != generation) return;
+    if (stream) |input| input.abort();
+    if (had_engine and !realm.hasEngine()) return;
+    if (runtime.SlabAllocator.generationOf(document) != generation) return;
+    const current = getInternal(document) orelse return;
+    if (current.active_parser == parser) discardDocumentParser(current);
+    if (current.input_stream_manager == stream) {
+        current.input_stream_manager = null;
+        current.insertion_point = null;
+    }
+    engine.runInRealm(realm, becomeComplete, document) catch {};
+}
+
+/// "Abort a document and its descendants", step 3.2.
+fn lifecyclePropagateAbort(parent: *runtime.Instance, child: *runtime.Instance) void {
+    const child_state = getInternal(child) orelse return;
+    if (child_state.salvageable) return;
+    const parent_state = getInternal(parent) orelse return;
+    parent_state.salvageable = false;
 }
 
 /// dom.document_lifecycle: step 6's task fires DOMContentLoaded; step 9's
 /// completes the load, once step 8 finds nothing delaying it.
 fn lifecycleFinishLoading(document: *runtime.Instance) void {
     // A parser a navigation aborted (lifecycleAbort) stops without "the
-    // end": HTML "abort a parser" step 4, "Update the current document
+    // end": HTML "abort a parser" step 5, "Update the current document
     // readiness to "complete"" - and no DOMContentLoaded, load, pageshow or
     // load at the container.
     if (getInternal(document)) |internal| if (internal.active_parser_was_aborted) {
         engine.runInRealm(document.ctx, becomeComplete, document) catch {};
         return;
     };
+    // "The end", step 5: await each deferred script in order, including
+    // its fetch and any style sheet that blocks scripts, before step 6.
+    const internal = getInternal(document) orelse return;
+    if (@import("html").script_execution.parsingFinishedScriptsPending(document)) {
+        internal.parsing_end_waiting_on_scripts = true;
+        return;
+    }
+    internal.parsing_end_waiting_on_scripts = false;
     // HTML "try to scroll to the fragment" queues its scroll while the parser
     // runs and gives up once it has stopped; Crane parses a document in one
     // run, so that task would always give up. Scroll once parsing is done,
@@ -3980,10 +4238,6 @@ fn lifecycleFinishLoading(document: *runtime.Instance) void {
 /// when it stops (dom.content_navigables: a frame that finished loading, or
 /// went away).
 ///
-/// A frame's navigation is what delays it today. Without this the window's
-/// load event, and every `onload` test reading its frames, ran before the
-/// frames it contains had loaded as soon as frame navigation stopped being
-/// synchronous.
 fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     // Step 7: "Spin the event loop until the set of scripts that will
@@ -3991,20 +4245,155 @@ fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
     // in order as soon as possible are empty" - script_execution says when a
     // script leaves them (loadDelayMayHaveEnded). Then step 8.
     const scripts_pending = internal.scripts.scripts_to_execute_asap.items.len > 0 or internal.scripts.scripts_to_execute_in_order_asap.items.len > 0;
-    if (scripts_pending or internal.load_event_delay_count > 0 or @import("dom").content_navigables.delaysLoadEvent(document) or @import("dom").style_sheet_owners.delaysLoadEvent(document) or @import("dom").media_elements.mediaDelaysLoadEvent(document)) {
+    if (scripts_pending or lifecycleDelaysLoadEvent(document)) {
         internal.load_waiting_on_delay = true;
         return;
     }
     internal.load_waiting_on_delay = false;
+    // "The end" step 11 follows queueing step 9, without waiting for that
+    // task to fire load. Set this before the native no-loop fallback can
+    // synchronously run the queued task and its callbacks.
+    internal.ready_for_post_load_tasks = true;
     queueLifecycleTask(document, .load);
+}
+
+/// The resource conditions of "the end" step 8, also read by an iframe
+/// about its active document (HTML §4.8.5's third delay predicate).
+fn lifecycleDelaysLoadEvent(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    const dom = @import("dom");
+    return internal.load_event_delay_count > 0 or
+        dom.script_elements.delaysLoadEvent(document) or
+        dom.content_navigables.delaysLoadEvent(document) or
+        dom.style_sheet_owners.delaysLoadEvent(document) or
+        dom.media_elements.mediaDelaysLoadEvent(document);
+}
+
+fn lifecycleIsReadyForPostLoadTasks(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return true;
+    return internal.ready_for_post_load_tasks;
+}
+
+fn lifecycleMarkReadyForPostLoadTasks(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    internal.ready_for_post_load_tasks = true;
 }
 
 /// dom.document_lifecycle: something that delayed `document`'s load event
 /// may have stopped. If "the end" waits at step 8, look again.
 fn lifecycleLoadDelayMayHaveEnded(document: *runtime.Instance) void {
+    // An inline parser script can wait on a style sheet without a script
+    // fetch of its own. Resume its parser when the last blocking sheet
+    // finishes, using the same readiness test as fetched parser scripts.
+    const realm = document.ctx;
+    const had_engine = realm.hasEngine();
+    const generation = runtime.SlabAllocator.generationOf(document);
+    // An already-ready child's written stream can remain open after its
+    // resource delay ends. Its parent still needs to recheck its own delay.
+    // Parent callbacks may remove this child; do not access it afterward.
+    defer {
+        if ((!had_engine or realm.hasEngine()) and runtime.SlabAllocator.generationOf(document) == generation) {
+            @import("dom").content_navigables.loadDelayMayHaveEnded(document);
+        }
+    }
+    const epoch = (getInternal(document) orelse return).parser_epoch;
+    if (@import("html").script_execution.pendingParserBlockingScriptReady(document)) {
+        if ((getInternal(document) orelse return).input_stream_manager) |stream| {
+            if (!stream.aborted and !stream.isExecutingScript()) stream.processInserted();
+        }
+    }
+    // Resumed script may remove its frame or replace its parser.
+    if ((had_engine and !realm.hasEngine()) or runtime.SlabAllocator.generationOf(document) != generation) return;
     const internal = getInternal(document) orelse return;
+    if (internal.parser_epoch != epoch) return;
+    if (internal.parsing_end_waiting_on_scripts) {
+        @import("html").script_execution.executeScriptsWhenParsingFinished(internal.allocator, document);
+        // A script can document.open(), ending this parser's "the end".
+        if ((had_engine and !realm.hasEngine()) or runtime.SlabAllocator.generationOf(document) != generation) return;
+        const current = getInternal(document) orelse return;
+        if (current.parser_epoch != epoch or !current.parsing_end_waiting_on_scripts) return;
+        if (@import("html").script_execution.parsingFinishedScriptsPending(document)) return;
+        lifecycleFinishLoading(document);
+        return;
+    }
     if (!internal.load_waiting_on_delay) return;
     queueLoadUnlessDelayed(document);
+}
+
+/// A task drop only relinquishes delivery ownership. Continuing the parser,
+/// running an already-ready ordered successor, or completing "the end" can
+/// run script, so each belongs to a later document task.
+fn lifecycleScriptDeliveryDiscarded(document: *runtime.Instance, removed_parser_blocker: bool) void {
+    const internal = getInternal(document) orelse return;
+    if (internal.script_delivery_continuation_suppressed or internal.active_parser_was_aborted or internal.destroyed) return;
+    // Initial preparation can be dropped before it joins an execution queue.
+    // With no parser or suspended lifecycle to wake, nothing is owed yet.
+    if (!internal.load_waiting_on_delay and !internal.parsing_end_waiting_on_scripts and
+        !(removed_parser_blocker and internal.active_parser != null) and
+        internal.scripts.scripts_to_execute_asap.items.len == 0 and
+        internal.scripts.scripts_to_execute_in_order_asap.items.len == 0) return;
+    const task = LifecycleTask{
+        .allocator = document.ctx.allocator,
+        .target = document,
+        .generation = runtime.SlabAllocator.generationOf(document),
+        .step = .resume_script_delivery,
+        .parser_epoch = internal.parser_epoch,
+        .had_engine = document.ctx.hasEngine(),
+        .removed_parser_blocker = removed_parser_blocker,
+    };
+    if (!canResumeScriptDelivery(&task)) return;
+    // No synchronous fallback: this hook can be running inside queueTask's
+    // allocation-failure drop. Losing this task to OOM never retries it from
+    // drop, nor turns an asynchronous completion into script on that stack.
+    const loop = document.ctx.getOptionalEventLoop() orelse return;
+    const queued = task.allocator.create(LifecycleTask) catch return;
+    queued.* = task;
+    loop.queueTask(.{
+        .callback = &runLifecycleTask,
+        .context = queued,
+        .drop = &dropLifecycleTask,
+        .document = document,
+        .document_generation = task.generation,
+    });
+}
+
+fn canResumeScriptDelivery(task: *const LifecycleTask) bool {
+    if (runtime.SlabAllocator.generationOf(task.target) != task.generation) return false;
+    const internal = getInternal(task.target) orelse return false;
+    if (internal.parser_epoch != task.parser_epoch or internal.script_delivery_continuation_suppressed or
+        internal.active_parser_was_aborted or internal.destroyed) return false;
+    if (task.had_engine and !task.target.ctx.hasEngine()) return false;
+    // Windowless native documents have no replacement navigable. A document
+    // with a Window must still be that navigable's fully active document.
+    return internal.default_view == null or isFullyActive(task.target);
+}
+
+fn resumeScriptDelivery(task: *LifecycleTask) void {
+    if (!canResumeScriptDelivery(task)) return;
+    const document = task.target;
+    const internal = getInternal(document).?;
+    if (task.removed_parser_blocker and internal.scripts.pending_parsing_blocking_script == null) {
+        if (internal.active_parser) |parser| {
+            // The removed script was the obstacle only while this parser's
+            // script-end-tag loop awaited it. A replacement blocker keeps its
+            // own pause, and abort/replacement never consumes this resume.
+            if (!parser.detached and !parser.input_stream.aborted and !parser.input_stream.isExecutingScript() and
+                parser.tree_builder.waiting_for_parser_blocking_script)
+            {
+                parser.retain();
+                defer parser.release();
+                parser.tree_builder.waiting_for_parser_blocking_script = false;
+                parser.tree_builder.parser_pause_flag = false;
+                parser.input_stream.processInserted();
+            }
+        }
+    }
+    // Resuming input and draining ready scripts can remove the document or
+    // call document.open(). Never complete another parser's suspended end.
+    if (!canResumeScriptDelivery(task)) return;
+    @import("html").script_execution.executeScriptsAsap(document.ctx.allocator, document);
+    if (!canResumeScriptDelivery(task)) return;
+    lifecycleLoadDelayMayHaveEnded(document);
 }
 
 /// dom.document_lifecycle: HTML "delay the load event" - one more thing
@@ -4052,6 +4441,9 @@ fn lifecycleMarkInitialAboutBlank(document: *runtime.Instance) void {
     // mode is "quirks".
     internal.mode = .quirks;
     internal.completely_loaded = true;
+    // "Create a new browsing context and document" marks its initial
+    // about:blank document ready for post-load tasks before populating it.
+    internal.ready_for_post_load_tasks = true;
     // "Current document readiness" is initially "complete" (HTML §3.1.1);
     // only "create and initialize a Document object" - navigation - makes
     // it "loading". This document never went through that.
@@ -4186,8 +4578,12 @@ fn unloadSteps(data: ?*anyopaque) void {
 /// fetches and worker owner sets are not tracked per document.
 fn lifecycleDestroy(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
+    internal.script_delivery_continuation_suppressed = true;
+    internal.render_blocking_elements.clear();
     internal.salvageable = false;
     internal.destroyed = true;
+    @import("html").script_execution.discardDocumentScripts(document);
+    discardDocumentParser(internal);
 }
 
 /// dom.document_lifecycle: set `document`'s about base URL (a copy).
@@ -4407,13 +4803,17 @@ fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisib
     fireEvent(document, document, "visibilitychange", true);
 }
 
-const LifecycleStep = enum { dom_content_loaded, load, container_load, declarative_refresh };
+const LifecycleStep = enum { dom_content_loaded, load, container_load, declarative_refresh, resume_script_delivery };
 
 const LifecycleTask = struct {
     allocator: std.mem.Allocator,
     target: *runtime.Instance,
     generation: u64,
     step: LifecycleStep,
+    /// Only delivery continuation captures the parser that lost its producer.
+    parser_epoch: u64 = 0,
+    had_engine: bool = false,
+    removed_parser_blocker: bool = false,
 };
 
 fn queueLifecycleTask(target: *runtime.Instance, step: LifecycleStep) void {
@@ -4444,6 +4844,12 @@ fn runLifecycleTask(context: ?*anyopaque) void {
     defer task.allocator.destroy(task);
     // Collected and its slot reissued: nothing is left to finish loading.
     if (runtime.SlabAllocator.generationOf(task.target) != task.generation) return;
+    if (task.step == .resume_script_delivery) {
+        if (!canResumeScriptDelivery(task)) return;
+        // Engine-less native documents still run from their queued task.
+        // A realm that used to have an engine is suppressed above instead.
+        if (!task.target.ctx.hasEngine()) return lifecycleTaskSteps(task);
+    }
     // A task runs from the event loop, in no realm: it runs in the target's.
     engine.runTaskInRealm(task.target.ctx, lifecycleTaskSteps, task) catch |err| {
         log.debug("document lifecycle task not run: {}", .{err});
@@ -4459,7 +4865,7 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
     // frame's container, for a document the frame no longer shows.
     switch (task.step) {
         .dom_content_loaded, .load, .declarative_refresh => if (!isShownByItsWindow(task.target)) return,
-        .container_load => {},
+        .container_load, .resume_script_delivery => {},
     }
 
     switch (task.step) {
@@ -4484,6 +4890,7 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
         },
         // A refresh set up while the document loaded starts waiting now.
         .declarative_refresh => armDeclarativeRefresh(task.target),
+        .resume_script_delivery => resumeScriptDelivery(task),
     }
 }
 
@@ -4492,11 +4899,11 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
 /// not replaced by anything.
 ///
 /// A navigation that makes a new Window leaves the old one's document in
-/// place, so asking the Window is not enough: an unloaded document - not
-/// salvageable, since Crane keeps no bfcache - is never fully active again.
+/// place, so asking the Window is not enough: a destroyed document is never
+/// fully active again. Being unsalvageable alone does not end activity.
 fn isShownByItsWindow(document: *runtime.Instance) bool {
     if (getInternal(document)) |internal| {
-        if (!internal.salvageable) return false;
+        if (internal.destroyed) return false;
     }
     const window = (get_defaultView(document) catch null) orelse return true;
     const shown = interfaces.Window.get_document(window) catch return true;
@@ -4755,6 +5162,9 @@ fn installScriptHooks() void {
         .add_import_mapping = &addImportMappingStep,
         .add_scoped_import_mapping = &addScopedImportMappingStep,
         .resolve_import_specifier = &resolveImportSpecifier,
+        .get_loader = &moduleLoaderOf,
+        .set_loader = &setModuleLoader,
+        .visit_realm_loaders = &visitRealmModuleLoaders,
     });
 }
 
@@ -4782,6 +5192,27 @@ fn moduleAllocator(instance: *runtime.Instance) ?std.mem.Allocator {
 
 fn setModuleStep(instance: *runtime.Instance, url: []const u8, module: *anyopaque) dom_document_modules.Error!void {
     return setModule(instance, url, module);
+}
+
+fn moduleLoaderOf(instance: *runtime.Instance) ?*anyopaque {
+    const internal = getInternal(instance) orelse return null;
+    return internal.module_loader;
+}
+
+fn setModuleLoader(instance: *runtime.Instance, loader: *anyopaque, dispose: dom_document_modules.DisposeFn) dom_document_modules.Error!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.module_loader != null) return error.InvalidStateError;
+    internal.module_loader = loader;
+    internal.dispose_module_loader = dispose;
+}
+
+fn visitRealmModuleLoaders(realm: runtime.Context, visit: dom_document_modules.VisitLoaderFn, data: ?*anyopaque) void {
+    var entries = Registry.iterator() orelse return;
+    while (entries.next()) |entry| {
+        const document: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+        if (document.ctx != realm) continue;
+        if (entry.internal.module_loader) |loader| visit(loader, data);
+    }
 }
 
 fn addImportMappingStep(instance: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) dom_document_modules.Error!void {
@@ -4876,26 +5307,17 @@ pub fn decrementUnloadCounter(instance: *runtime.Instance) void {
     }
 }
 
-/// Abort the active parser (e.g., due to navigation)
-/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#abort-a-parser
-pub fn abortParser(instance: *runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        internal.active_parser_was_aborted = true;
-        internal.insertion_point = null;
-        internal.input_stream_manager = null;
-    }
-}
-
 /// Check if the active parser was aborted
 pub fn wasParserAborted(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     return internal.active_parser_was_aborted;
 }
 
-/// Get the write buffer content (for document.write() in after-parsing mode)
+/// The active parser's input, including script-created writes.
 pub fn getWriteBuffer(instance: *runtime.Instance) []const u8 {
     const internal = getInternal(instance) orelse return "";
-    return internal.write_buffer.items;
+    const stream = internal.input_stream_manager orelse return "";
+    return stream.buffer.items;
 }
 
 /// Check if scripting is enabled
@@ -5232,14 +5654,16 @@ pub fn getPrefetchHintEagerness(instance: *runtime.Instance, url: []const u8) ?S
 /// Check if document has a style sheet that is blocking scripts
 /// Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
 ///
-/// "A Document has a style sheet that is blocking scripts if it has a
-/// pending parsing-blocking style sheet or a pending render-blocking element."
-///
-/// This should be called before executing parser-inserted scripts per
-/// HTML Standard §4.12.1.1 step 36.2.
+/// HTML 4.2.7: check this document's set, then its node navigable's
+/// immediate container document's set. Ancestors beyond that do not count.
 pub fn hasStyleSheetBlockingScripts(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
-    return internal.stylesheet_tracker.hasBlockingStylesheet();
+    if (internal.stylesheet_tracker.hasBlockingStylesheet() or @import("dom").style_sheet_owners.blocksScripts(instance)) return true;
+    const window = (get_defaultView(instance) catch null) orelse return false;
+    const container = @import("dom").navigable_container.of(window) orelse return false;
+    const container_document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return false;
+    const container_internal = getInternal(container_document) orelse return false;
+    return container_internal.stylesheet_tracker.hasBlockingStylesheet() or @import("dom").style_sheet_owners.blocksScripts(container_document);
 }
 
 /// Get the stylesheet blocking tracker for direct manipulation

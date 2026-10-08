@@ -10,6 +10,21 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
 
+- [An internal mutation keeps its caller's reaction scope](architecture-an-internal-mutation-keeps-its-callers-reaction-scope.md) - Use shared DOM algorithms inside the owning public operation's reaction boundary.
+
+- [A script-created parser outlives each write](architecture-a-script-created-parser-outlives-each-write.md) - Keep the script-created parser across consecutive document.write calls until the stream closes.
+- [Script delivery and queue execution need separate owners](architecture-script-delivery-and-queue-execution-need-separate-owners.md) - Keep queue membership and delivery eligibility separate until execution or deliberate discard.
+- [Module graphs share fetches and own discovery](architecture-module-graphs-share-fetches-and-own-discovery.md) - Share an in-flight fetch by URL while each graph discovers and completes its own dependencies.
+- [A tree teardown must return unwrapped node storage](architecture-a-tree-teardown-must-return-unwrapped-node-storage.md) - Resource cleanup and Instance/state storage release need explicit owners after child wrapper finalization.
+- [Container storage keeps its original allocator](architecture-container-storage-keeps-its-original-allocator.md) - Release retrieved container storage through its owner's allocator, independently of the output allocator.
+- [Complete input can still suspend its parser](architecture-complete-input-can-still-suspend-its-parser.md) - Navigation owns parser, loader, response bytes and EOF across every stylesheet wait.
+- [Asynchronous delivery does not defer fetch start](architecture-asynchronous-delivery-does-not-defer-fetch-start.md) - Queue completion when required while starting acquisition at the algorithm's prescribed point.
+- [Parserless documents need normal completion](architecture-parserless-documents-need-normal-completion.md) - Complete the owning document's state machine before notifying its container; do not infer parser absence from loading readiness.
+- [Rendering snapshots documents before callback maps](architecture-rendering-snapshots-documents-before-callback-maps.md) - Snapshot eligible documents before script and each document's callbacks when its turn begins; release permanently removed targets.
+- [Task drop must relinquish dependent owners](architecture-task-drop-must-relinquish-dependent-owners.md) - A dropped completion task must clear the work awaiting it, including preparations not yet enqueued.
+- [Shadow removal must walk shadow trees](architecture-shadow-removal-must-walk-shadow-trees.md) - Shadow-including lifecycle algorithms and allocation-failure fallbacks must traverse the same shadow edges in the same order.
+- [Native owner liveness differs from realm callability](architecture-native-owner-liveness-differs-from-realm-callability.md) - Detach live native owners independently of whether their realms can run callbacks.
+
 - [Share fragment parser state initialization](architecture-share-fragment-parser-state-initialization.md) - Reuse state transitions and test resulting trees.
 
 - [Parser reparenting must consult the live DOM](architecture-parser-reparenting-must-consult-the-live-dom.md) - Keep parser state for decisions and perform DOM moves against live relationships.
@@ -223,6 +238,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A callback can end its own environment](architecture-a-callback-can-end-its-own-environment.md) - Before freeing per-environment records at the environment's end, ask which of them a task is in the middle of using: any callback the task invokes can end the environment re-entrantly. Mark the record as the task's before the script runs, and let the end skip it.
 
 ### Spec Compliance
+
+- [Prepare scripts after batch connection](spec-compliance-script-preparation-runs-after-batch-connection.md) - Connect the parser-created batch before preparing scripts because preparation can execute script.
+- [Shared null defaults can hide caller semantics](spec-compliance-shared-null-defaults-can-hide-caller-semantics.md) - Keep absence distinct from present null and fix callers that need explicit null.
 
 - [Template fragment parsing uses the content registry](spec-compliance-template-fragment-parsing-uses-the-content-registry.md) - Derive registry from the intended insertion parent, not just the fragment context.
 

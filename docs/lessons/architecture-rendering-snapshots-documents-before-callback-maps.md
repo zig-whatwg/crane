@@ -1,0 +1,23 @@
+# Architecture: Rendering snapshots documents before callback maps
+
+**Date**: 2026-10-08
+**Lesson**: A rendering turn snapshots document eligibility before script, then snapshots each document's animation callback handles when that document's turn begins.
+
+**Why**: HTML's [update the rendering](https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering) collects fully active documents, orders parents before children and sibling containers in shadow-including tree order, and filters non-renderable documents before running callbacks. Its later per-document [run the animation frame callbacks](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#run-the-animation-frame-callbacks) algorithm obtains that document's callback handles. These are different snapshots with different boundaries. A destroyed target also differs from a live document temporarily excluded from rendering: no later rendering opportunity can invoke the former's callback owners.
+
+**What Happened**: Context's first render-blocking implementation selected one global callback batch in registration order. Review found that a child registered before its parent could run before the parent's removal callback. A parent registering a callback for an already eligible child deferred it incorrectly, because the global callback snapshot had already been taken. Collecting documents only from pending callbacks would also miss an eligible child receiving its first callback during the parent's turn.
+
+The eligibility predicate folded missing navigables into the same false result as hidden or render-blocked documents. A saved removed iframe Window remains callable while its realm lives on. Requests made after removal could therefore enqueue owned engine callbacks that no future rendering turn would invoke, rooting the removed realm and polling indefinitely. Clearing callbacks during removal alone cannot catch later requests.
+
+The first browser run also exposed a missing prerequisite: top-level parsing left the Document's content type empty, whereas iframe initialization supplied `text/html`. Native membership tests that seeded that value passed while top-level scripts acquired no blockers. The shared parser initializer now supplies `text/html` only for an empty type, before its first pump; caller-supplied XML and text types remain intact. Regression tests exercise the real initializer rather than manually supplying the prerequisite.
+
+**Fix**:
+
+1. Collect all eligible documents in the event loop before invoking script, including documents with no callbacks. Order their navigables by ancestry and their containers by shadow-including tree order, including closed shadow roots. Capture document and Window identities with slab generations.
+2. Keep callback owners pending until their document's turn. Reserve storage before transferring owners, then snapshot that document's handles. Parent registrations for a selected child's later turn run in the same frame; registrations during a document's own turn wait. A parent unblocking an excluded child cannot add it to this turn, and adding a blocker cannot remove an already eligible child.
+3. Revalidate target identity and destruction before invocation without recalculating rendering eligibility. A reused Window must not migrate the old Document's callback map to its replacement. Keep a dispatch guard across the whole rendering turn, and re-read state after script can cancel callbacks, remove a frame or replace timer state.
+4. Distinguish terminal targets from deferred documents. Release terminal request owners immediately while still advancing their handles; retire previously queued terminal owners without invoking them. Live hidden, inactive or blocked documents keep their callback owners. Verify ordering with WPT and retention with native owner tests and actual engine handle measurements; script-visible non-invocation alone cannot prove release.
+
+The primary-engine designs agree: Blink's [PageAnimator::GetAllDocuments and ServiceScriptedAnimations](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/page/page_animator.cc) collect documents globally before per-document execution, while [FrameRequestCallbackCollection::ExecuteFrameCallbacks and ExecuteFrameCallbacksImpl](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/dom/frame_request_callback_collection.cc) snapshot each document's map and check destruction during dispatch. Crane uses these designs through its own interfaces, hooks and ownership model.
+
+**Takeaway**: **Snapshot the documents before script and each document's callback map on its turn; temporary exclusion keeps owners, permanent target loss releases them.**

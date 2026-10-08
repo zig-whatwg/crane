@@ -12,8 +12,8 @@
 </p>
 
 > [!IMPORTANT]
-> Crane is pre-release. 266 of the 4,323 WPT files in the 0.1 worklist still block, it builds on
-> macOS (Apple Silicon) only, and its embedding APIs are not stable.
+> Crane is pre-release. The [live WPT results](https://zig-whatwg.github.io/crane/) track the remaining
+> conformance gaps. It builds on macOS (Apple Silicon) only, and its embedding APIs are not stable.
 
 ## About
 
@@ -32,37 +32,16 @@ leaves out is deliberate:
 
 ## Status
 
-Crane 0.1 means **zero blocking files** (no TIMEOUT, ERROR or CRASH) across the 4,323 WPT files in
-[`tests/wpt_0_1_worklist.txt`](tests/wpt_0_1_worklist.txt). The latest full sweep, main `703639a56`
-on 2026-09-29, as `zig build wpt-progress` reports it:
+Crane 0.1 means **zero blocking files** across
+[`tests/wpt_0_1_worklist.txt`](tests/wpt_0_1_worklist.txt). TIMEOUT, ERROR, CRASH and
+NONE-PASSED (a completed file with subtests but none passing) all block the gate.
 
-```
-4,323 of 4,323 sources run  |  266 blocking  |  2,132 clean
-subtests: 752,409 passing of 1,116,347 targeted  (67.40%)  |  files clean 49.32%
-```
+The [live results site](https://zig-whatwg.github.io/crane/) reports the measured main revision,
+blocking files, passing subtests, per-file failures and history. It also shows the pass rate outside
+`encoding/` and the mean per-file rate, so large encoding tests do not hide gaps elsewhere.
 
-| Area | Files | Blocking | Subtests passing |
-| :--- | ---: | ---: | ---: |
-| `html/semantics` · elements, forms, scripting, links | 1,127 | 111 | 34.0% |
-| `html/browsers` · windows, navigation, history, origins | 567 | 56 | 49.1% |
-| `navigation-api` | 414 | 15 | 71.0% |
-| `dom` | 374 | 21 | 76.1% |
-| `xhr` | 319 | 1 | 89.3% |
-| `html/webappapis` · timers, event loop, scripting | 277 | 16 | 87.8% |
-| `websockets` | 200 | 0 | 90.2% |
-| `html/dom` | 183 | 13 | 88.1% |
-| `fetch` | 176 | 1 | 93.0% |
-| `custom-elements` | 167 | 3 | 55.9% |
-| `encoding` | 149 | 20 | 71.4% |
-| `html/syntax` · the parser | 139 | 4 | 59.5% |
-| `streams` | 87 | 2 | 94.3% |
-| `cookiestore` | 53 | 0 | 82.2% |
-| `webidl` | 44 | 0 | 91.2% |
-| `url` | 32 | 2 | 77.6% |
-
-Most of `encoding`'s failing subtests wait on one feature in progress: decoding documents in their
-declared legacy encoding. `zig build wpt-progress` renders the live report, with per-area history
-and the [roadmap](docs/roadmap.toml), to `wpt-results/progress.html`.
+`zig build wpt-progress` regenerates the report and public site from main's journals, together with
+the [roadmap](docs/roadmap.toml). Lane results remain separate until their integration is verified.
 
 ## Building
 

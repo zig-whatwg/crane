@@ -118,6 +118,7 @@ done_when = """A navigated document gets a new Window, navigation runs as the \
 spec's tasks, and session history exists for features to build on."""
 areas = ["html/browsers/browsing-the-web/", "html/browsers/history/", "html/semantics/links/", "html/browsers/windows/", "navigation-api/"]
 progress = [
+  "46773ea0db - persistent document.write and navigation parsers retain their stream and loader through stylesheet waits; parserless documents complete their lifecycle; document abort owns fetch cancellation and task delivery (document.write lane)",
   "f03633d6a - frame and popup navigation runs as the spec's tasks (beforeunload, fetch via AsyncFetch, commit); frames delay their container's load event; unload/pagehide fire; markup <iframe src> navigates (navigation lane, increment 1)",
   "8f9eb9371, 88f09482e, 05a30200a, 4797fefa0, dd792cb0f (merged 505cfb9e3) - the about base URL, document.open() erases listeners, sessionStorage per traversable, document.domain sets the origin domain, a destroyed document's defaultView is null, and the Window keeps its Storage and CustomElementRegistry alive (navigation lane, increment 3)",
   "3c46ac8da (merged bd798db40) - the navigation API's hangs, window.close() with its definitely-close task, the Location setters, the window scroll methods, the storage event broadcast, POST form submission, BroadcastChannel, ImageData; named access returns the iframe element (navigation lane, batches 1-2)",
@@ -153,6 +154,7 @@ WebSockets and navigation all sit on it."""
 done_when = "Fetches complete on the event loop and response bodies stream."
 areas = ["fetch/", "xhr/"]
 progress = [
+  "46773ea0db - document-owned request registries cancel ordinary fetches, scripts, embedded content and hyperlink pings; module graphs share fetches and preserve discovery ownership; provisional XHR navigation keeps delivery eligible until actual replacement (document.write lane)",
   "70278c0d1 - window fetch() completes on the event loop: a curl multi scheduler pumped each turn (networking lane, increment 1)",
   "066da9ed2 - asynchronous XHR on the same scheduler, XHR handlers on EventTarget's map, fetch() abort steps (increment 2); worker fetch() async through the bound operation (9ec30ea8f)",
   "64e40148e - response bodies stream: headers first, a body pipe each clone reads, response.body filled by the network, XHR progress as bytes arrive (increment 3)",
@@ -685,3 +687,11 @@ needs = ["lifetime"]
 name = "Dynamic markup insertion (document.open / write)"
 areas = ["html/webappapis/dynamic-markup-insertion/"]
 needs = ["lifetime", "navigation"]
+
+[[lane]]
+name = "Persistent document.write and abort integration"
+area = "html/webappapis/dynamic-markup-insertion/"
+owner = "integrator"
+status = "done"
+branch = "lane/codex-docwrite"
+paths = ["src/html/scripted_parser.zig", "src/html/parser/", "src/html/dom_parser.zig", "src/dom/document_lifecycle.zig", "src/dom/document_fetches.zig", "src/webidl/impls/Document.zig", "tests/wpt/crane/dw-*"]

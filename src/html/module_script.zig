@@ -13,13 +13,11 @@
 //! The spec drives loading through ECMA-262's LoadRequestedModules, which calls
 //! the host's HostLoadImportedModule once per module request, asynchronously.
 //! V8 13.1 exposes no such hook for static imports: it resolves requests
-//! synchronously during Link, so this follows d8's shape (and Blink's older
-//! ModuleTreeLinker's): walk the graph first - resolve, fetch and parse every
-//! request, depth first, recording each module's children - then Link,
-//! answering each request from the recorded children. Crane's fetch is
-//! synchronous, which is what makes a depth-first walk equivalent to the
-//! spec's concurrent one: the first failure in DFS order is the one reported,
-//! as `choice-of-error-*` expect.
+//! synchronously during Link, so records are fetched and parsed before Link
+//! answers requests from recorded children. Document consumers use an
+//! AsyncModuleLoader, coalescing resource fetches and keeping each root's
+//! visited set and source-order error walk independent (Blink's
+//! ModuleTreeLinker design). Worker callers retain the synchronous walk.
 //!
 //! Where the engine has no modules (`engine.capabilities.module_scripts ==
 //! .unsupported`, JavaScriptCore's public API) no graph is ever made: a
@@ -83,6 +81,10 @@ pub const ModuleScript = struct {
 
     /// The parse error (OWNED), when `record` is null.
     parse_error: ?engine.Owned = null,
+    /// HostLoadImportedModule validates every static specifier before
+    /// fetching any child. Like a parse error, a validation error belongs to
+    /// this script and is reused by each root that imports it.
+    validation_error: ?engine.Owned = null,
 
     /// The error to rethrow (OWNED): set by "fetch the descendants of and
     /// link" when the graph cannot be linked, and reported instead of
@@ -102,9 +104,10 @@ pub const ModuleScript = struct {
 
     /// The script's fetch options, as far as an import() from it reads them
     /// (HTML "new descendant script fetch options"): its cryptographic nonce
-    /// (OWNED when not empty) and referrer policy.
+    /// (OWNED when not empty), referrer policy and render-blocking state.
     nonce: []const u8 = "",
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    render_blocking: bool = false,
 
     /// Depth-first walk state. `visiting` is set while this script's requests
     /// are being loaded, so a cycle back to it stops instead of recursing
@@ -143,17 +146,18 @@ pub const ModuleScript = struct {
             .base_url = owned_base_url,
             .nonce = if (options.nonce.len > 0) try allocator.dupe(u8, options.nonce) else "",
             .referrer_policy = options.referrer_policy,
+            .render_blocking = options.render_blocking,
         };
         track(self);
         return self;
     }
 
     /// HTML "new descendant script fetch options" for this script's fetch
-    /// options: its cryptographic nonce and referrer policy; integrity
-    /// metadata "", parser metadata "not-parser-inserted". Borrowed from the
+    /// options: its cryptographic nonce, referrer policy and render-blocking;
+    /// integrity metadata "", parser metadata "not-parser-inserted". Borrowed from the
     /// script.
     pub fn descendantFetchOptions(self: *const ModuleScript) FetchOptions {
-        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy };
+        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy, .render_blocking = self.render_blocking };
     }
 
     /// Release the script, its record and values, and its edge list.
@@ -164,6 +168,7 @@ pub const ModuleScript = struct {
             if (self.record) |record| engine.releaseModuleRecord(record);
         }
         if (self.parse_error) |value| value.release();
+        if (self.validation_error) |value| value.release();
         if (self.error_to_rethrow) |value| value.release();
         for (self.children.items) |child| self.allocator.free(child.specifier);
         self.children.deinit(self.allocator);
@@ -211,7 +216,7 @@ pub fn disposeEntry(value: *anyopaque) void {
 }
 
 /// HTML's script fetch options, as far as a module graph's requests use
-/// them: the cryptographic nonce, integrity metadata, parser metadata and
+/// them: cryptographic nonce, integrity, parser metadata, render-blocking and
 /// referrer policy (the credentials mode stays "same-origin", as before).
 /// Borrowed for as long as the graph is fetched.
 pub const FetchOptions = struct {
@@ -220,6 +225,7 @@ pub const FetchOptions = struct {
     /// section, which is not modelled, so descendants have none.
     integrity: []const u8 = "",
     parser_inserted: bool = false,
+    render_blocking: bool = false,
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
 };
 
@@ -348,13 +354,14 @@ pub const ClassicScript = struct {
     base_url: []const u8,
     /// Its fetch options, as far as an import() from it reads them (HTML
     /// "new descendant script fetch options"): the cryptographic nonce and
-    /// the referrer policy. Owned by whoever owns the script.
+    /// referrer policy and render-blocking. Owned by whoever owns the script.
     nonce: []const u8 = "",
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    render_blocking: bool = false,
 
     /// HTML "new descendant script fetch options" for this script's.
     pub fn descendantFetchOptions(self: *const ClassicScript) FetchOptions {
-        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy };
+        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy, .render_blocking = self.render_blocking };
     }
 };
 
@@ -499,6 +506,7 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     request.setIntegrityMetadata(options.integrity) catch return null;
     request.parser_metadata = if (options.parser_inserted) .parser_inserted else .not_parser_inserted;
     request.referrer_policy = options.referrer_policy;
+    request.render_blocking = options.render_blocking;
     request.destination = switch (module_type) {
         .javascript => .script,
         .json => .json,
@@ -843,6 +851,671 @@ pub fn fetchDescendantsAndLink(env: *const Environment, script: *ModuleScript) ?
     return script;
 }
 
+/// Per-root discovery state, independent of the shared module records. A
+/// cycle or a second edge to the same URL never adds another pending fetch.
+pub const GraphProgress = struct {
+    allocator: std.mem.Allocator,
+    visited: std.StringHashMap(void),
+    pending: usize = 0,
+
+    pub fn init(allocator: std.mem.Allocator) GraphProgress {
+        return .{ .allocator = allocator, .visited = std.StringHashMap(void).init(allocator) };
+    }
+
+    pub fn deinit(self: *GraphProgress) void {
+        self.cancel();
+        self.visited.deinit();
+    }
+
+    pub fn visit(self: *GraphProgress, key: []const u8) !bool {
+        if (self.visited.contains(key)) return false;
+        const owned = try self.allocator.dupe(u8, key);
+        errdefer self.allocator.free(owned);
+        try self.visited.put(owned, {});
+        self.pending += 1;
+        return true;
+    }
+
+    pub fn completeOne(self: *GraphProgress) bool {
+        std.debug.assert(self.pending > 0);
+        self.pending -= 1;
+        return self.pending == 0;
+    }
+
+    pub fn cancel(self: *GraphProgress) void {
+        var keys = self.visited.keyIterator();
+        while (keys.next()) |key| self.allocator.free(key.*);
+        self.visited.clearRetainingCapacity();
+        self.pending = 0;
+    }
+};
+
+/// HTML's asynchronous module-map callback lists and per-root graph linkers.
+/// Owned by Document; destroyed before that document's module-map records.
+/// All operations happen on its realm's event-loop thread.
+///
+/// Design reference: Blink core/loader/modulescript/module_tree_linker.cc,
+/// FetchDescendants / NotifyModuleLoadFinished / FindFirstParseError.
+pub const AsyncModuleLoader = struct {
+    allocator: std.mem.Allocator,
+    env: Environment,
+    document: *runtime.Instance,
+    document_generation: u64,
+    pending: std.StringHashMap(*SingleFetch),
+    graphs: std.ArrayListUnmanaged(*Graph) = .empty,
+
+    pub const Client = struct {
+        context: *anyopaque,
+        done: *const fn (context: *anyopaque, result: ?*ModuleScript) void,
+        /// A destroyed document or canceled graph produces no script event.
+        gone: *const fn (context: *anyopaque) void,
+        /// Lets parser replacement cancel just its own element's graph.
+        element: ?*runtime.Instance = null,
+    };
+
+    pub fn create(env: Environment, document: *runtime.Instance) !*AsyncModuleLoader {
+        // Queued payloads can outlive the document allocator on silent
+        // destruction. Only module records use the document's allocator.
+        const allocator = std.heap.c_allocator;
+        const self = try allocator.create(AsyncModuleLoader);
+        self.* = .{
+            .allocator = allocator,
+            .env = env,
+            .document = document,
+            .document_generation = runtime.SlabAllocator.generationOf(document),
+            .pending = std.StringHashMap(*SingleFetch).init(allocator),
+        };
+        // Resolution and request client data must survive the source element.
+        self.env.context_instance = document;
+        self.env.fetch_options = .{};
+        return self;
+    }
+
+    fn alive(self: *const AsyncModuleLoader) bool {
+        return runtime.SlabAllocator.generationOf(self.document) == self.document_generation and
+            self.env.realm().engine_ctx != null;
+    }
+
+    pub fn destroy(self: *AsyncModuleLoader) void {
+        self.discard();
+        self.graphs.deinit(self.allocator);
+        self.pending.deinit();
+        self.allocator.destroy(self);
+    }
+
+    pub fn prepareAbort(self: *AsyncModuleLoader) bool {
+        for (self.graphs.items) |graph| graph.cancel_requested = true;
+        return self.graphs.items.len != 0;
+    }
+
+    pub fn abortPrepared(self: *AsyncModuleLoader) void {
+        var index: usize = 0;
+        while (index < self.graphs.items.len) {
+            const graph = self.graphs.items[index];
+            if (!graph.cancel_requested) {
+                index += 1;
+                continue;
+            }
+            graph.cancel();
+        }
+    }
+
+    pub fn discard(self: *AsyncModuleLoader) void {
+        while (self.graphs.items.len > 0) self.graphs.items[self.graphs.items.len - 1].cancel();
+    }
+
+    pub fn cancelElement(self: *AsyncModuleLoader, element: *runtime.Instance) void {
+        var index: usize = 0;
+        while (index < self.graphs.items.len) {
+            const graph = self.graphs.items[index];
+            if (graph.client.element != element) {
+                index += 1;
+                continue;
+            }
+            graph.cancel();
+        }
+    }
+
+    /// Starts the root fetch now, but completes only through queued tasks,
+    /// after the element has joined its execution queue.
+    pub fn start(self: *AsyncModuleLoader, url: []const u8, module_type: ModuleType, inline_script: ?*ModuleScript, options: FetchOptions, client: Client) !void {
+        if (!supported) return error.NotSupported;
+        const loop = self.env.realm().getOptionalEventLoop() orelse return error.NotSupported;
+        const graph = try self.allocator.create(Graph);
+        errdefer self.allocator.destroy(graph);
+        const owned_url = try self.allocator.dupe(u8, url);
+        errdefer self.allocator.free(owned_url);
+        const nonce = try self.allocator.dupe(u8, options.nonce);
+        errdefer self.allocator.free(nonce);
+        const integrity = try self.allocator.dupe(u8, options.integrity);
+        errdefer self.allocator.free(integrity);
+        graph.* = .{
+            .allocator = self.allocator,
+            .loader = self,
+            .client = client,
+            .url = owned_url,
+            .module_type = module_type,
+            .inline_script = inline_script,
+            .options = options,
+            .progress = GraphProgress.init(self.allocator),
+        };
+        graph.options.nonce = nonce;
+        graph.options.integrity = integrity;
+        try self.graphs.append(self.allocator, graph);
+        graph.startRoot();
+        graph.task_queued = true;
+        // queueTask may drop and destroy the graph on allocation failure.
+        loop.queueTask(.{ .callback = Graph.runTask, .context = graph, .drop = Graph.dropTask });
+    }
+
+    fn forgetGraph(self: *AsyncModuleLoader, graph: *Graph) void {
+        for (self.graphs.items, 0..) |existing, index| {
+            if (existing != graph) continue;
+            _ = self.graphs.swapRemove(index);
+            break;
+        }
+    }
+
+    const Node = struct {
+        key: []const u8,
+        url: []const u8,
+        module_type: ModuleType,
+        script: ?*ModuleScript = null,
+        settled: bool = false,
+        expanded: bool = false,
+        searched: bool = false,
+        children: std.ArrayListUnmanaged(*Node) = .empty,
+    };
+
+    const Graph = struct {
+        allocator: std.mem.Allocator,
+        loader: ?*AsyncModuleLoader,
+        client: Client,
+        url: []const u8,
+        module_type: ModuleType,
+        inline_script: ?*ModuleScript,
+        options: FetchOptions,
+        progress: GraphProgress,
+        nodes: std.ArrayListUnmanaged(*Node) = .empty,
+        task_queued: bool = false,
+        cancel_requested: bool = false,
+        failed: bool = false,
+
+        fn destroy(self: *Graph) void {
+            for (self.nodes.items) |node| {
+                self.allocator.free(node.key);
+                self.allocator.free(node.url);
+                node.children.deinit(self.allocator);
+                self.allocator.destroy(node);
+            }
+            self.nodes.deinit(self.allocator);
+            self.progress.deinit();
+            self.allocator.free(self.url);
+            self.allocator.free(self.options.nonce);
+            self.allocator.free(self.options.integrity);
+            self.allocator.destroy(self);
+        }
+
+        fn cancel(self: *Graph) void {
+            const loader = self.loader orelse return;
+            self.loader = null;
+            loader.forgetGraph(self);
+            // Detach callbacks before freeing their graph nodes. A queued
+            // delivery keeps its SingleFetch allocation until callback/drop.
+            for (self.nodes.items) |node| {
+                if (loader.pending.get(node.key)) |single| single.removeWaiter(self);
+            }
+            const client = self.client;
+            if (!self.task_queued) self.destroy();
+            client.gone(client.context);
+        }
+
+        fn queue(self: *Graph) void {
+            if (self.task_queued) return;
+            const loader = self.loader orelse return;
+            const loop = loader.env.realm().getOptionalEventLoop() orelse return self.cancel();
+            self.task_queued = true;
+            loop.queueTask(.{ .callback = runTask, .context = self, .drop = dropTask });
+        }
+
+        fn dropTask(data: ?*anyopaque) void {
+            const self: *Graph = @ptrCast(@alignCast(data orelse return));
+            self.task_queued = false;
+            if (self.loader != null) self.cancel() else self.destroy();
+        }
+
+        fn runTask(data: ?*anyopaque) void {
+            const self: *Graph = @ptrCast(@alignCast(data orelse return));
+            // Remain task-owned while runTaskInRealm may re-enter cancellation.
+            const loader = self.loader orelse return self.destroy();
+            if (!loader.alive()) {
+                self.task_queued = false;
+                return self.cancel();
+            }
+            engine.runTaskInRealm(loader.env.realm(), processTask, self) catch {
+                self.task_queued = false;
+                return self.cancel();
+            };
+        }
+
+        fn startRoot(self: *Graph) void {
+            const loader = self.loader.?;
+            const root = self.addNode(self.url, self.module_type) catch {
+                self.failed = true;
+                return;
+            };
+            // HTML fetch-single steps 8-13 initiate the request before returning.
+            // File API 8.4: later revocation cannot cancel an already-started
+            // blob URL request. AsyncFetch.start never delivers client callbacks.
+            if (self.inline_script) |script| {
+                self.receive(root, script);
+            } else loader.fetchSingle(self, root, self.options);
+            // Fetch-inline step 2 and fetch-descendants step 5 start known
+            // imports through LoadRequestedModules before returning. A cached
+            // root (fetch-single step 5) has the same immediate continuation.
+            // This only starts requests; linking and client delivery stay queued.
+            self.expandReady();
+        }
+
+        fn processTask(data: ?*anyopaque) void {
+            const self: *Graph = @ptrCast(@alignCast(data.?));
+            self.expandReady();
+            if (self.failed or self.progress.pending == 0) return self.finish();
+            self.task_queued = false;
+        }
+
+        fn expandReady(self: *Graph) void {
+            // New cached children can be appended during this walk. Remote
+            // children come back through a later networking delivery task.
+            var index: usize = 0;
+            while (index < self.nodes.items.len) : (index += 1) {
+                const node = self.nodes.items[index];
+                if (!node.settled or node.expanded) continue;
+                node.expanded = true;
+                self.expand(node) catch {
+                    self.failed = true;
+                };
+            }
+        }
+
+        fn addNode(self: *Graph, url: []const u8, module_type: ModuleType) !*Node {
+            const key = try std.mem.concat(self.allocator, u8, &.{ module_type.keyPrefix(), url });
+            errdefer self.allocator.free(key);
+            for (self.nodes.items) |node| {
+                if (!std.mem.eql(u8, node.key, key)) continue;
+                self.allocator.free(key);
+                return node;
+            }
+            const node = try self.allocator.create(Node);
+            errdefer self.allocator.destroy(node);
+            const owned_url = try self.allocator.dupe(u8, url);
+            errdefer self.allocator.free(owned_url);
+            node.* = .{ .key = key, .url = owned_url, .module_type = module_type };
+            try self.nodes.append(self.allocator, node);
+            errdefer _ = self.nodes.pop();
+            _ = try self.progress.visit(key);
+            return node;
+        }
+
+        fn receive(self: *Graph, node: *Node, script: ?*ModuleScript) void {
+            node.settled = true;
+            node.script = script;
+            _ = self.progress.completeOne();
+            if (script == null) self.failed = true;
+        }
+
+        fn referrerFor(self: *const Graph, node: *Node) []const u8 {
+            if (self.nodes.items.len == 0 or self.nodes.items[0] == node) return "";
+            for (self.nodes.items) |parent| {
+                for (parent.children.items) |child| {
+                    if (child == node) return if (parent.script) |script| script.base_url else "";
+                }
+            }
+            return "";
+        }
+
+        fn expand(self: *Graph, node: *Node) !void {
+            const script = node.script orelse return;
+            // A graph's error to rethrow belongs to its root. This shared
+            // record can still be reached from another root whose source-
+            // order walk chooses a different descendant's parse error.
+            const record = script.record orelse return;
+            const loader = self.loader.?;
+            const env = &loader.env;
+            if (script.validation_error != null) return;
+            const requests = try engine.moduleRequests(record, self.allocator);
+            defer {
+                for (requests) |request| {
+                    self.allocator.free(request.specifier);
+                    if (request.type_attribute) |attribute| self.allocator.free(attribute);
+                }
+                self.allocator.free(requests);
+            }
+            var resolved = std.ArrayListUnmanaged(Request).empty;
+            defer {
+                for (resolved.items) |request| env.context_instance.ctx.allocator.free(request.url);
+                resolved.deinit(self.allocator);
+            }
+            // HostLoadImportedModule validates ALL this module's requests
+            // before fetching any of them, in their source order.
+            for (requests) |request| {
+                const url = resolveModuleSpecifier(env, request.specifier, script.base_url) orelse {
+                    script.validation_error = makeError(env, .type_error, "Failed to resolve module specifier");
+                    if (script.validation_error == null) self.failed = true;
+                    return;
+                };
+                const module_type = moduleTypeFromAttribute(request.type_attribute) orelse {
+                    env.context_instance.ctx.allocator.free(url);
+                    script.validation_error = makeError(env, .type_error, "Unsupported module type");
+                    if (script.validation_error == null) self.failed = true;
+                    return;
+                };
+                if (!env.moduleTypeAllowed(module_type)) {
+                    env.context_instance.ctx.allocator.free(url);
+                    script.validation_error = makeError(env, .type_error, "Unsupported module type");
+                    if (script.validation_error == null) self.failed = true;
+                    return;
+                }
+                resolved.append(self.allocator, .{ .specifier = request.specifier, .url = url, .module_type = module_type }) catch |err| {
+                    env.context_instance.ctx.allocator.free(url);
+                    return err;
+                };
+            }
+            for (resolved.items) |request| {
+                const child = try self.addNode(request.url, request.module_type);
+                try node.children.append(self.allocator, child);
+                if (!child.settled and loader.pending.get(child.key) == null) {
+                    loader.fetchSingle(self, child, script.descendantFetchOptions());
+                } else if (!child.settled) {
+                    try loader.pending.get(child.key).?.addWaiter(self, child);
+                }
+            }
+        }
+
+        fn firstError(node: *Node) ?engine.Owned {
+            if (node.searched) return null;
+            node.searched = true;
+            const script = node.script orelse return null;
+            if (script.parse_error) |value| return value;
+            if (script.validation_error) |value| return value;
+            // Only the script's own syntactic error can stop this walk.
+            // Its error_to_rethrow may describe a different root's graph.
+            for (node.children.items) |child| {
+                if (firstError(child)) |value| return value;
+            }
+            return null;
+        }
+
+        fn recordEdges(self: *Graph) !void {
+            const env = &self.loader.?.env;
+            for (self.nodes.items) |node| {
+                const script = node.script orelse continue;
+                const record = script.record orelse continue;
+                if (script.validation_error != null) continue;
+                const requests = try engine.moduleRequests(record, self.allocator);
+                defer {
+                    for (requests) |request| {
+                        self.allocator.free(request.specifier);
+                        if (request.type_attribute) |attribute| self.allocator.free(attribute);
+                    }
+                    self.allocator.free(requests);
+                }
+                for (node.children.items, 0..) |child, index| {
+                    const child_script = child.script orelse continue;
+                    const specifier = requests[index].specifier;
+                    var exists = false;
+                    for (script.children.items) |edge| {
+                        if (edge.module_type == child.module_type and std.mem.eql(u8, edge.specifier, specifier)) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (exists) continue;
+                    const owned_specifier = try env.allocator.dupe(u8, specifier);
+                    script.children.append(env.allocator, .{ .specifier = owned_specifier, .module_type = child.module_type, .script = child_script }) catch |err| {
+                        env.allocator.free(owned_specifier);
+                        return err;
+                    };
+                }
+                script.loaded = true;
+            }
+        }
+
+        fn finish(self: *Graph) void {
+            const loader = self.loader.?;
+            var result: ?*ModuleScript = if (self.failed or self.nodes.items.len == 0) null else self.nodes.items[0].script;
+            if (result) |script| {
+                const env = &loader.env;
+                if (firstError(self.nodes.items[0])) |value| {
+                    if (copyOf(env, value)) |copy| {
+                        script.setErrorToRethrow(copy);
+                        script.load_error = true;
+                    } else result = null;
+                } else {
+                    self.recordEdges() catch {
+                        result = null;
+                    };
+                    if (result != null) {
+                        if (link(env, script)) |value| script.setErrorToRethrow(value) else if (script.error_to_rethrow) |old| {
+                            old.release();
+                            script.error_to_rethrow = null;
+                        }
+                    }
+                }
+            }
+            // Null out all resource waiters before this root calls script.
+            loader.forgetGraph(self);
+            self.loader = null;
+            for (self.nodes.items) |node| {
+                if (loader.pending.get(node.key)) |single| single.removeWaiter(self);
+            }
+            const client = self.client;
+            self.destroy();
+            client.done(client.context, result);
+        }
+    };
+
+    const Waiter = struct { graph: *Graph, node: *Node };
+
+    const SingleFetch = struct {
+        allocator: std.mem.Allocator,
+        loader: ?*AsyncModuleLoader,
+        key: []const u8,
+        url: []const u8,
+        module_type: ModuleType,
+        options: FetchOptions,
+        referrer: []const u8,
+        waiters: std.ArrayListUnmanaged(Waiter) = .empty,
+        transport: ?*fetch.algorithms.AsyncFetch = null,
+        outcome: ?fetch.algorithms.FetchResult = null,
+        task_queued: bool = false,
+
+        fn destroy(self: *SingleFetch) void {
+            if (self.transport) |transport| transport.terminate();
+            if (self.outcome) |*outcome| outcome.deinit();
+            self.waiters.deinit(self.allocator);
+            self.allocator.free(self.key);
+            self.allocator.free(self.url);
+            self.allocator.free(self.options.nonce);
+            self.allocator.free(self.options.integrity);
+            self.allocator.free(self.referrer);
+            self.allocator.destroy(self);
+        }
+
+        fn addWaiter(self: *SingleFetch, graph: *Graph, node: *Node) !void {
+            for (self.waiters.items) |waiter| if (waiter.graph == graph and waiter.node == node) return;
+            try self.waiters.append(self.allocator, .{ .graph = graph, .node = node });
+        }
+
+        fn removeWaiter(self: *SingleFetch, graph: *Graph) void {
+            var index: usize = 0;
+            while (index < self.waiters.items.len) {
+                if (self.waiters.items[index].graph != graph) {
+                    index += 1;
+                    continue;
+                }
+                _ = self.waiters.swapRemove(index);
+            }
+            if (self.waiters.items.len != 0) return;
+            if (self.loader) |loader| _ = loader.pending.remove(self.key);
+            self.loader = null;
+            if (self.transport) |transport| {
+                self.transport = null;
+                transport.terminate();
+            }
+            if (!self.task_queued) self.destroy();
+        }
+
+        fn fetchAlive(context: *anyopaque) bool {
+            const self: *SingleFetch = @ptrCast(@alignCast(context));
+            const loader = self.loader orelse return false;
+            return loader.alive();
+        }
+
+        fn fetchGone(context: *anyopaque) void {
+            const self: *SingleFetch = @ptrCast(@alignCast(context));
+            self.transport = null;
+            if (self.loader) |loader| loader.discard();
+        }
+
+        fn fetched(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
+            const self: *SingleFetch = @ptrCast(@alignCast(context));
+            self.transport = null;
+            self.outcome = outcome catch null;
+            const loader = self.loader orelse return self.destroy();
+            const loop = loader.env.realm().getOptionalEventLoop() orelse return loader.discard();
+            self.task_queued = true;
+            loop.queueTask(.{ .callback = deliverTask, .context = self, .drop = dropTask });
+        }
+
+        fn dropTask(data: ?*anyopaque) void {
+            const self: *SingleFetch = @ptrCast(@alignCast(data orelse return));
+            if (self.loader) |loader| loader.discard();
+            self.destroy();
+        }
+
+        fn deliverTask(data: ?*anyopaque) void {
+            const self: *SingleFetch = @ptrCast(@alignCast(data orelse return));
+            defer self.destroy();
+            const loader = self.loader orelse return;
+            if (!loader.alive()) return loader.discard();
+            engine.runTaskInRealm(loader.env.realm(), deliver, self) catch loader.discard();
+        }
+
+        fn deliver(data: ?*anyopaque) void {
+            const self: *SingleFetch = @ptrCast(@alignCast(data.?));
+            const loader = self.loader.?;
+            // Remove the fetching entry before callbacks: a failed fetch can
+            // be retried from a rejection handler without joining this one.
+            _ = loader.pending.remove(self.key);
+            self.loader = null;
+            var env = loader.env;
+            env.fetch_options = self.options;
+            var script: ?*ModuleScript = null;
+            if (self.outcome) |outcome| script = createFromResponse(&env, self.url, self.module_type, outcome.response);
+            if (script) |created| {
+                if (!env.map.put(self.key, @ptrCast(created))) {
+                    created.destroy();
+                    script = null;
+                }
+            }
+            for (self.waiters.items) |waiter| {
+                waiter.graph.receive(waiter.node, script);
+                waiter.graph.queue();
+            }
+        }
+    };
+
+    fn fetchSingle(self: *AsyncModuleLoader, graph: *Graph, node: *Node, options: FetchOptions) void {
+        // HTML fetch-single steps 5-6: completed script or callback list.
+        if (self.env.map.get(node.key)) |entry| {
+            if (entry != fetch_failed) {
+                graph.receive(node, @ptrCast(@alignCast(entry)));
+                return;
+            }
+        }
+        if (self.pending.get(node.key)) |single| {
+            single.addWaiter(graph, node) catch {
+                graph.failed = true;
+            };
+            return;
+        }
+        self.startSingle(graph, node, options) catch {
+            graph.failed = true;
+        };
+    }
+
+    fn startSingle(self: *AsyncModuleLoader, graph: *Graph, node: *Node, options: FetchOptions) !void {
+        const single = try self.allocator.create(SingleFetch);
+        errdefer self.allocator.destroy(single);
+        const key = try self.allocator.dupe(u8, node.key);
+        errdefer self.allocator.free(key);
+        const url = try self.allocator.dupe(u8, node.url);
+        errdefer self.allocator.free(url);
+        const nonce = try self.allocator.dupe(u8, options.nonce);
+        errdefer self.allocator.free(nonce);
+        const integrity = try self.allocator.dupe(u8, options.integrity);
+        errdefer self.allocator.free(integrity);
+        const referrer = try self.allocator.dupe(u8, graph.referrerFor(node));
+        errdefer self.allocator.free(referrer);
+        single.* = .{ .allocator = self.allocator, .loader = self, .key = key, .url = url, .module_type = node.module_type, .options = options, .referrer = referrer };
+        single.options.nonce = nonce;
+        single.options.integrity = integrity;
+        try single.addWaiter(graph, node);
+        errdefer single.waiters.deinit(self.allocator);
+        try self.pending.put(key, single);
+        errdefer _ = self.pending.remove(key);
+
+        const request = try script_request.InternalRequest.init(self.allocator, url);
+        var request_owned = true;
+        defer if (request_owned) request.deinit();
+        request.mode = .cors;
+        request.credentials_mode = .same_origin;
+        request.destination = switch (node.module_type) {
+            .javascript => .script,
+            .json => .json,
+            .css => .style,
+        };
+        request.initiator_type = .script;
+        if (nonce.len > 0) try request.setCryptographicNonceMetadata(nonce);
+        try request.setIntegrityMetadata(integrity);
+        request.parser_metadata = if (options.parser_inserted) .parser_inserted else .not_parser_inserted;
+        request.referrer_policy = options.referrer_policy;
+        request.render_blocking = options.render_blocking;
+        try script_request.populateRequestFromClient(request, self.env.context_instance.ctx);
+        if (referrer.len > 0) try request.setReferrerUrl(referrer);
+        request_owned = false;
+        single.transport = try fetch.algorithms.AsyncFetch.start(self.allocator, request, .{}, fetch.network.scheduler.threadScheduler(), .{
+            .context = single,
+            .done = SingleFetch.fetched,
+            .alive = SingleFetch.fetchAlive,
+            .gone = SingleFetch.fetchGone,
+        });
+    }
+};
+
+/// HTML fetch-single processResponseConsumeBody, shared by the queued graph
+/// resource delivery. The created record's [[HostDefined]] stays stable.
+fn createFromResponse(env: *const Environment, url: []const u8, module_type: ModuleType, response: *fetch.internal.InternalResponse) ?*ModuleScript {
+    if (response.response_type == .@"error" or response.status < 200 or response.status >= 300) return null;
+    const body = if (response.body) |value| value.getBytes() else "";
+    const essence = mimeEssence(response.header_list.getFirstValue("content-type") orelse "");
+    const base_url = response.url() orelse url;
+    var response_env = env.*;
+    const policy = fetch.internal.policy_container.parseReferrerPolicyHeader(response.header_list.getFirstValue("referrer-policy"));
+    if (policy != .empty) response_env.fetch_options.referrer_policy = policy;
+    return switch (module_type) {
+        .javascript => if (isJavaScriptMimeTypeEssence(essence)) createJavaScriptModuleScript(&response_env, body, base_url) catch null else null,
+        .json => if (isJsonMimeTypeEssence(essence)) createJsonModuleScript(&response_env, body, base_url) catch null else null,
+        .css => blk: {
+            if (!std.mem.eql(u8, essence, "text/css")) break :blk null;
+            const text = css_rules.decodeUtf8(env.allocator, body) catch break :blk null;
+            defer env.allocator.free(text);
+            break :blk createCssModuleScript(&response_env, text, base_url) catch null;
+        },
+    };
+}
+
 /// LoadRequestedModules, depth first. Null on success.
 fn loadRequestedModules(env: *const Environment, script: *ModuleScript) ?LoadFailure {
     if (script.loaded or script.visiting) return null;
@@ -1042,6 +1715,110 @@ pub fn run(env: *const Environment, script: *ModuleScript) RunResult {
 // =============================================================================
 // Tests
 // =============================================================================
+
+test "an asynchronous graph counts a cycle once and two roots independently" {
+    const allocator = std.testing.allocator;
+    var first = GraphProgress.init(allocator);
+    defer first.deinit();
+    var second = GraphProgress.init(allocator);
+    defer second.deinit();
+    try std.testing.expect(try first.visit("js:https://example.test/a.mjs"));
+    try std.testing.expect(try first.visit("js:https://example.test/b.mjs"));
+    try std.testing.expect(!(try first.visit("js:https://example.test/a.mjs")));
+    try std.testing.expect(try second.visit("js:https://example.test/b.mjs"));
+    try std.testing.expectEqual(@as(usize, 2), first.pending);
+    try std.testing.expectEqual(@as(usize, 1), second.pending);
+    try std.testing.expect(!first.completeOne());
+    try std.testing.expect(second.completeOne());
+    try std.testing.expect(first.completeOne());
+}
+
+test "canceling graph progress releases every visited URL and remaining count" {
+    var progress = GraphProgress.init(std.testing.allocator);
+    defer progress.deinit();
+    try std.testing.expect(try progress.visit("js:https://example.test/root.mjs"));
+    try std.testing.expect(try progress.visit("json:https://example.test/data.json"));
+    progress.cancel();
+    try std.testing.expectEqual(@as(usize, 0), progress.pending);
+    try std.testing.expectEqual(@as(usize, 0), progress.visited.count());
+}
+
+test "canceling one module graph preserves a shared fetch until its last waiter ends" {
+    const Fixture = struct {
+        fn done(_: *anyopaque, _: ?*ModuleScript) void {
+            unreachable;
+        }
+        fn gone(data: *anyopaque) void {
+            const count: *usize = @ptrCast(@alignCast(data));
+            count.* += 1;
+        }
+        fn graph(loader: *AsyncModuleLoader, count: *usize) !*AsyncModuleLoader.Graph {
+            const allocator = loader.allocator;
+            const result = try allocator.create(AsyncModuleLoader.Graph);
+            errdefer allocator.destroy(result);
+            result.* = .{
+                .allocator = allocator,
+                .loader = loader,
+                .client = .{ .context = count, .done = done, .gone = gone },
+                .url = try allocator.dupe(u8, "https://example.test/module.mjs"),
+                .module_type = .javascript,
+                .inline_script = null,
+                .options = .{},
+                .progress = GraphProgress.init(allocator),
+            };
+            result.options.nonce = try allocator.dupe(u8, "");
+            result.options.integrity = try allocator.dupe(u8, "");
+            try loader.graphs.append(allocator, result);
+            return result;
+        }
+    };
+    const allocator = std.testing.allocator;
+    var loader: AsyncModuleLoader = .{
+        .allocator = allocator,
+        .env = undefined,
+        .document = undefined,
+        .document_generation = 0,
+        .pending = std.StringHashMap(*AsyncModuleLoader.SingleFetch).init(allocator),
+    };
+    defer loader.pending.deinit();
+    defer loader.graphs.deinit(allocator);
+    var count: usize = 0;
+    const first = try Fixture.graph(&loader, &count);
+    const second = try Fixture.graph(&loader, &count);
+    const first_node = try first.addNode(first.url, .javascript);
+    const second_node = try second.addNode(second.url, .javascript);
+    const single = try allocator.create(AsyncModuleLoader.SingleFetch);
+    single.* = .{
+        .allocator = allocator,
+        .loader = &loader,
+        .key = try allocator.dupe(u8, first_node.key),
+        .url = try allocator.dupe(u8, first.url),
+        .module_type = .javascript,
+        .options = .{ .nonce = try allocator.dupe(u8, ""), .integrity = try allocator.dupe(u8, "") },
+        .referrer = try allocator.dupe(u8, ""),
+    };
+    try single.addWaiter(first, first_node);
+    try single.addWaiter(first, first_node);
+    try single.addWaiter(second, second_node);
+    try loader.pending.put(single.key, single);
+    try std.testing.expectEqual(@as(usize, 2), single.waiters.items.len);
+    first.cancel();
+    try std.testing.expectEqual(@as(usize, 1), single.waiters.items.len);
+    try std.testing.expectEqual(@as(usize, 1), loader.pending.count());
+    try std.testing.expectEqual(@as(usize, 1), count);
+    // Last cancellation detaches queued payloads from the document. They
+    // remain owned only by their task, which may be dropped after teardown.
+    single.task_queued = true;
+    second.task_queued = true;
+    second.cancel();
+    try std.testing.expectEqual(@as(usize, 0), loader.pending.count());
+    try std.testing.expectEqual(@as(usize, 0), loader.graphs.items.len);
+    try std.testing.expectEqual(@as(usize, 2), count);
+    try std.testing.expect(single.loader == null);
+    try std.testing.expect(second.loader == null);
+    AsyncModuleLoader.SingleFetch.dropTask(single);
+    AsyncModuleLoader.Graph.dropTask(second);
+}
 
 test "mimeEssence strips parameters and case" {
     try std.testing.expectEqualStrings("text/javascript", mimeEssence("Text/JavaScript; charset=utf-8"));

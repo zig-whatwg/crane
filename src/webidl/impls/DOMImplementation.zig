@@ -193,6 +193,9 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     );
     errdefer interfaces.Document.deinit(document);
 
+    // HTML §3.1: DOMImplementation-created documents are ready immediately.
+    dom.document_lifecycle.markReadyForPostLoadTasks(document);
+
     // Set document type to XML
     try document_internals.setDocumentType(document, .xml);
 
@@ -278,6 +281,8 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
         ctx,
     );
     errdefer interfaces.Document.deinit(doc);
+
+    dom.document_lifecycle.markReadyForPostLoadTasks(doc);
 
     // Set document type to HTML
     try document_internals.setDocumentType(doc, .html);

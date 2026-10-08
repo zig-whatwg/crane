@@ -127,7 +127,12 @@ pub const InternalState = struct {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // "Abort a document" reaches a send()'s fetches through `live_pending`.
-    document_fetches.install(&abortFetchesIn);
+    document_fetches.install(.{
+        .discard = &abortFetchesIn,
+        .prepare_abort = &prepareDocumentAbort,
+        .abort = &abortDocumentFetches,
+        .prepare_navigation_document_abort = &prepareNavigationDocumentAbort,
+    });
 }
 
 /// Initialize instance (creates the instance)
@@ -611,8 +616,10 @@ fn openSteps(
     const xhr_state = getXHRState(instance);
 
     // Steps 5-6: "encoding-parsing a URL url, relative to this's relevant
-    // settings object". Borrowed from the realm - not ours to free.
+    // settings object". A Window's API base URL is its associated
+    // Document's base URL, including an initial about:blank's creator base.
     const base_url = relevantBaseURL(instance);
+    defer if (base_url) |base| instance.ctx.allocator.free(base);
 
     // Step 12 fires readystatechange only "if this's state is not opened" -
     // a second open() on an opened request changes nothing observable there.
@@ -696,17 +703,29 @@ fn currentGlobalIsWindow() bool {
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#api-base-url
 ///
-/// The realm's document URL: a Window's navigation records its document's
-/// URL there, and a worker its script URL, which is a worker's API base URL.
-/// (Not the Document's or the Location's: in a WPT [window] run those were
-/// measured as '' and 'about:blank'.)
-///
-/// Returns a BORROWED slice owned by the realm, so the caller must not free
-/// it.
-fn relevantBaseURL(instance: *runtime.Instance) ?[]const u8 {
+/// A Window's current document base URL; a worker's script URL. Owned by
+/// instance.ctx.allocator, as Request's apiBaseURL is. The Document getter
+/// includes about:blank and srcdoc fallback bases and the first base element.
+fn relevantBaseURL(instance: *runtime.Instance) ?[]u8 {
+    if (relevantDocument(instance)) |document| {
+        const base = interfaces.Node.get_baseURI(document) catch null;
+        if (base) |b| {
+            if (b.len > 0) return @constCast(b);
+            document.ctx.allocator.free(b);
+        }
+    }
     const url = instance.ctx.documentUrl() orelse return null;
     if (url.len == 0) return null;
-    return url;
+    return instance.ctx.allocator.dupe(u8, url) catch null;
+}
+
+/// The document associated with this request's relevant global at this
+/// moment. Capture it for each send: HTML may reuse the Window and realm.
+fn relevantDocument(instance: *runtime.Instance) ?*runtime.Instance {
+    const record = instance.ctx.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(global) catch null;
 }
 
 // =============================================================================
@@ -810,10 +829,15 @@ fn fireAt(
     // these, so they are trusted (DOM "fire an event": isTrusted true);
     // dispatchEvent() is script's, and resets it. The target - this XHR or
     // its upload object - is an EventTarget, this impl's ancestor.
-    _ = EventTargetImpl.dispatchTrusted(target, event) catch |err| {
+    const event_generation = runtime.SlabAllocator.generationOf(event);
+    const had_engine = ctx.hasEngine();
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ name, @errorName(err) });
     };
 
+    // A listener can destroy the frame, which retires its native objects
+    // even while wrappers are rooted. Context outlives realm teardown.
+    if ((had_engine and !ctx.hasEngine()) or runtime.SlabAllocator.generationOf(event) != event_generation) return;
     releaseEventIfUnwrapped(event, progress != null);
 }
 
@@ -967,6 +991,9 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     pending.* = .{
         .allocator = allocator,
         .instance = instance,
+        .context = instance.ctx,
+        .instance_generation = runtime.SlabAllocator.generationOf(instance),
+        .document = if (relevantDocument(instance)) |document| same_object.Link.to(document) else null,
         .body = if (effective_body != null) owned_body else null,
         .started_ms = clock.monotonicMillis(),
     };
@@ -1021,9 +1048,70 @@ fn abortFetchesIn(realm: runtime.Context) void {
         i -= 1;
         if (i >= live_pending.items.len) continue;
         const pending = live_pending.items[i];
-        if (pending.cancelled or pending.instance.ctx != realm) continue;
+        if (pending.context != realm or (pending.cancelled and !pending.abort_delivery_pending)) continue;
+        // Discard runs no script. A retired or engine-less realm can still
+        // own a native XHR whose pending link must be cleared before free.
+        if (!pending.nativeOwnerLive()) {
+            pending.cancel();
+            continue;
+        }
         const internal = getInternal(pending.instance);
         if (internal.pending_fetch == pending) internal.cancelFetch() else pending.cancel();
+    }
+}
+
+/// HTML "abort a document" step 2: snapshot requests before any owner's
+/// cancellation dispatches script. A new send from an abort listener is not
+/// part of the old request's cancellation.
+fn prepareDocumentAbort(document: *runtime.Instance) bool {
+    var marked = false;
+    for (live_pending.items) |pending| {
+        const owner = pending.document orelse continue;
+        if (owner.instance != document or !owner.isLive()) continue;
+        if (pending.cancelled or pending.complete) continue;
+        pending.document_abort_pending = true;
+        marked = true;
+    }
+    return marked;
+}
+
+/// Stated deviation from HTML navigate 24.3/abort-document step 2: navigation
+/// preserves XHR's loader, following Blink Document::Abort (parser only).
+/// Document::open then calls StopAllLoaders, so the same loader can still
+/// deliver an ordinary abort; actual replacement's ContextDestroyed/Dispose
+/// silently ends it. WebKit Document::open similarly stops loaders only
+/// when navigating, and XHR stop/internalAbort is silent on teardown. Gecko
+/// Document::Open stops the load group for a pending navigation, whereas
+/// XHR DispatchOrStoreEvent refuses a superseded owner global. These engines
+/// differ in transport timing; they distinguish explicit stop/open from
+/// actual replacement. Existing requests and an earlier stop's queued event
+/// stay independent of provisional navigation. Other document fetch owners
+/// abort normally at 24.3. The explicit call path also leaves reentrant
+/// stop/document.open observable without mutable navigation state.
+/// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/dom/document.cc
+/// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/xmlhttprequest/xml_http_request.cc
+/// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/Document.cpp
+/// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/xml/XMLHttpRequest.cpp
+/// https://github.com/mozilla/gecko-dev/blob/master/dom/base/Document.cpp
+/// https://github.com/mozilla/gecko-dev/blob/master/dom/xhr/XMLHttpRequestMainThread.cpp
+fn prepareNavigationDocumentAbort(_: *runtime.Instance) bool {
+    return false;
+}
+
+fn abortDocumentFetches(document: *runtime.Instance) void {
+    // Restart after each dispatch: it can end any other request, move the
+    // live entries, or start new work. Only the prepared requests are ended.
+    while (true) {
+        const next: ?*PendingFetch = blk: {
+            for (live_pending.items) |pending| {
+                if (!pending.document_abort_pending or pending.cancelled) continue;
+                const owner = pending.document orelse continue;
+                if (owner.instance == document and owner.isLive()) break :blk pending;
+            }
+            break :blk null;
+        };
+        const pending = next orelse return;
+        pending.abortForDocument();
     }
 }
 
@@ -1036,9 +1124,9 @@ fn abortFetchesIn(realm: runtime.Context) void {
 /// processBodyChunk, and its end to processEndOfBody. Nothing is read until
 /// a task runs, so events fire only at the top of a task.
 ///
-/// Two things hold it, each letting go once: the fetch, until it is over
-/// (`finished`), gone (`gone`) or ended here; and a queued task, until it
-/// runs (or its `drop`). The XMLHttpRequest's `pending_fetch` points at it
+/// The fetch holds it until it is over (`finished`), gone (`gone`) or ended
+/// here; a response task and a document-abort task each hold it until they
+/// run (or their `drop`). The XMLHttpRequest's `pending_fetch` points at it
 /// while it is the XHR's current request; `cancel` (abort(), open(), a later
 /// send(), deinit) ends that - the fetch is terminated and nothing more
 /// reaches the XHR.
@@ -1050,6 +1138,13 @@ fn abortFetchesIn(realm: runtime.Context) void {
 const PendingFetch = struct {
     allocator: std.mem.Allocator,
     instance: *runtime.Instance,
+    /// Context survives realm teardown; a wrapper pin alone does not keep
+    /// the native Instance alive when its frame is forcibly destroyed.
+    context: runtime.Context,
+    instance_generation: u64,
+    /// Request-start document identity, independent of Window realm reuse.
+    document: ?same_object.Link = null,
+    document_abort_pending: bool = false,
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// The fetch's outcome, from `done` until a task processes it.
     outcome: ?(fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) = null,
@@ -1069,6 +1164,15 @@ const PendingFetch = struct {
     complete: bool = false,
     fetch_holds: bool = true,
     task_queued: bool = false,
+    /// The document cancellation's networking task owns a separate hold
+    /// from any response task it superseded. open()/abort()/teardown clear
+    /// delivery, but its run/drop releases the hold.
+    abort_task_queued: bool = false,
+    abort_delivery_pending: bool = false,
+    /// Timer-only hosts use an owned zero-delay timer as their task queue.
+    /// Keep its own interface: a later call may enter a different realm.
+    abort_timer: ?runtime.TimerInterface = null,
+    abort_timer_id: runtime.TimerId = 0,
     /// A task of this request is on the stack (`run`, `timedOut`): it frees
     /// this when it returns. Script it runs can end the request - abort(),
     /// open(), or removing the frame whose document owns it
@@ -1096,7 +1200,21 @@ const PendingFetch = struct {
     /// context and empties its `engine_ctx`.
     fn alive(context: *anyopaque) bool {
         const self: *PendingFetch = @ptrCast(@alignCast(context));
-        return self.instance.ctx.engine_ctx != null;
+        return self.instanceLive();
+    }
+
+    fn instanceLive(self: *const PendingFetch) bool {
+        return self.context.hasEngine() and self.nativeOwnerLive();
+    }
+
+    /// A host's engine-less context can still own native XHR state. Realm
+    /// callability is needed for events, but not for clearing its pending
+    /// pointer. A generation can also survive explicit interface deinit:
+    /// require this type's own internal state before accessing that link.
+    fn nativeOwnerLive(self: *const PendingFetch) bool {
+        if (self.instance_generation == runtime.SlabAllocator.dead_generation or
+            runtime.SlabAllocator.generationOf(self.instance) != self.instance_generation) return false;
+        return self.instance.getState(State).own._internal != null;
     }
 
     /// The realm went away with the fetch in flight; the fetch is over.
@@ -1139,7 +1257,7 @@ const PendingFetch = struct {
     /// a realm that has one.)
     fn queueTask(self: *PendingFetch) void {
         if (self.task_queued or self.cancelled) return;
-        const loop = self.instance.ctx.getOptionalEventLoop() orelse return;
+        const loop = self.context.getOptionalEventLoop() orelse return;
         self.task_queued = true;
         loop.queueTask(.{ .callback = run, .context = self, .drop = drop });
     }
@@ -1150,11 +1268,21 @@ const PendingFetch = struct {
         const self: *PendingFetch = @ptrCast(@alignCast(context.?));
         self.task_queued = false;
         if (self.cancelled) return self.maybeFree();
+        if (!self.instanceLive()) {
+            // Once delivery loses its native owner there can be no future
+            // state transition to complete this request. End transport and
+            // its hold here rather than relying on a later fetch sweep.
+            self.running = true;
+            self.detach();
+            self.cancel();
+            self.running = false;
+            return self.maybeFree();
+        }
         // A task runs from the event loop, not from script: it enters the
         // realm itself (a worker's, whose agent is not the page's) and ends
         // as a task there does.
         self.running = true;
-        engine.runTaskInRealm(self.instance.ctx, taskSteps, self) catch {};
+        engine.runTaskInRealm(self.context, taskSteps, self) catch {};
         self.running = false;
         self.maybeFree();
     }
@@ -1234,6 +1362,16 @@ const PendingFetch = struct {
     /// deinit): the fetch is terminated, and nothing more reaches the XHR.
     fn cancel(self: *PendingFetch) void {
         self.cancelled = true;
+        self.abort_delivery_pending = false;
+        if (self.abort_timer_id != 0) {
+            const timer = self.abort_timer.?;
+            // A failed clear leaves the callback/drop owning its hold.
+            if (timer.clearTimeout(self.abort_timer_id)) {
+                self.abort_timer_id = 0;
+                self.abort_timer = null;
+                self.abort_task_queued = false;
+            }
+        }
         self.releasePipe();
         self.disarmTimeout();
         if (self.fetch) |f| {
@@ -1242,6 +1380,89 @@ const PendingFetch = struct {
             self.fetch_holds = false;
         }
         self.maybeFree();
+    }
+
+    /// HTML abort-a-document step 2 discards the old fetch delivery and
+    /// network data immediately. Fetch response handover step 5 and XHR
+    /// send's processResponse/handle-errors deliver the cancellation from a
+    /// networking task. Blink's HandleDidCancel posts a cancellable task;
+    /// InternalAbort (open/abort/Dispose) cancels that task. Unlike public
+    /// abort(), this does not synchronously change readyState or run the
+    /// final UNSENT reset.
+    fn abortForDocument(self: *PendingFetch) void {
+        self.document_abort_pending = false;
+        const was_running = self.running;
+        self.running = true;
+        // Keep pending_fetch attached: a later open()/abort() must be able
+        // to suppress this request's error task, even after transport ends.
+        self.cancel();
+        self.abort_delivery_pending = true;
+        self.abort_task_queued = true;
+        const document = self.document.?;
+        if (self.context.getOptionalEventLoop()) |loop| {
+            loop.queueTask(.{
+                .callback = runDocumentAbort,
+                .context = self,
+                .drop = dropDocumentAbort,
+                .document = document.instance,
+                .document_generation = document.generation,
+            });
+        } else if (self.context.getOptionalTimer()) |timer| {
+            self.abort_timer = timer;
+            self.abort_timer_id = timer.setTimeoutOwned(0, runDocumentAbort, self, dropDocumentAbort);
+            if (self.abort_timer_id == 0) dropDocumentAbort(self);
+        } else {
+            // A host that can no longer schedule cannot deliver an error.
+            // Discard safely, without inline events or a synthetic timer.
+            dropDocumentAbort(self);
+        }
+        self.running = was_running;
+        self.maybeFree();
+    }
+
+    fn runDocumentAbort(context: ?*anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context.?));
+        self.abort_timer_id = 0;
+        self.abort_timer = null;
+        self.abort_task_queued = false;
+        if (!self.abort_delivery_pending or !self.instanceLive()) {
+            self.abort_delivery_pending = false;
+            self.detach();
+            return self.maybeFree();
+        }
+        // An owned timer cannot enforce the event loop's runnable check.
+        // Both destinations retain the queued task's captured document.
+        const document = self.document.?;
+        if (!@import("dom").document_activity.fullyActive(document.instance, document.generation)) {
+            self.abort_delivery_pending = false;
+            self.detach();
+            return self.maybeFree();
+        }
+        self.abort_delivery_pending = false;
+        self.running = true;
+        self.detach();
+        engine.runTaskInRealm(self.context, documentAbortSteps, self) catch {};
+        self.running = false;
+        self.maybeFree();
+    }
+
+    fn dropDocumentAbort(context: ?*anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context.?));
+        self.abort_timer_id = 0;
+        self.abort_timer = null;
+        self.abort_task_queued = false;
+        self.abort_delivery_pending = false;
+        self.detach();
+        self.maybeFree();
+    }
+
+    fn documentAbortSteps(context: ?*anyopaque) void {
+        const self: *PendingFetch = @ptrCast(@alignCast(context.?));
+        const internal = getInternal(self.instance);
+        internal.releaseResponseValue(self.instance);
+        var processor = xhr.response.ResponseProcessor.init(&internal.xhr_state);
+        processor.continuation = .{ .context = self, .is_live = alive };
+        processor.handleAbort();
     }
 
     /// Stop listening to the body; the pipe itself is the response's.
@@ -1325,6 +1546,7 @@ const PendingFetch = struct {
 
     /// Unhook from the XMLHttpRequest, which is still there.
     fn detach(self: *PendingFetch) void {
+        if (!self.nativeOwnerLive()) return;
         const internal = getInternal(self.instance);
         if (internal.pending_fetch == self) internal.pending_fetch = null;
     }
@@ -1332,7 +1554,7 @@ const PendingFetch = struct {
     /// Free once nothing holds this: the fetch has let go, no task is
     /// queued, and there is nothing more to read.
     fn maybeFree(self: *PendingFetch) void {
-        if (self.fetch_holds or self.task_queued or self.running) return;
+        if (self.fetch_holds or self.task_queued or self.abort_task_queued or self.running) return;
         if (!self.cancelled and !self.complete) return;
         for (live_pending.items, 0..) |p, i| {
             if (p != self) continue;

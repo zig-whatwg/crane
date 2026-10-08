@@ -42,6 +42,8 @@ pub const InternalState = struct {
     text_tracks: ?*runtime.Instance = null,
     tracks_keep: same_object.KeptChild = .{},
     tracks: @import("html_core").media.track_selection.State = .{},
+    fetch_document: ?same_object.Link = null,
+    document_abort_pending: ?u64 = null,
 
     fn queue(self: *InternalState, kind: Kind, target: ?*runtime.Instance, name: ?[]const u8) !void {
         return self.activity.queue(@intFromEnum(kind), self.load.generation, target, name);
@@ -50,6 +52,7 @@ pub const InternalState = struct {
         _ = try self.queue(.event, null, name);
     }
     fn endFetch(self: *InternalState) void {
+        self.document_abort_pending = null;
         self.progress_timer.cancel();
         self.stall_timer.cancel();
         self.progress.reset();
@@ -182,6 +185,7 @@ pub const InternalState = struct {
         const setting = html.script_request.corsSettingFromAttribute(if (cors) |value| value.asSlice() else null);
         const destination: @import("fetch").internal.Destination = if (std.mem.eql(u8, instance.vtable.name, "HTMLAudioElement")) .audio else .video;
         const request = try common.requestFor(instance, self.load.currentSrc(), destination, setting);
+        self.fetch_document = if (common.documentOf(instance)) |document| same_object.Link.to(document) else null;
         self.activity.fetching = true;
         self.activity.sync();
         self.resource.start(request) catch {
@@ -304,7 +308,7 @@ pub fn installHooks() void {
     dom.media_elements.installMediaElement(delaysLoad, trackParentChanged, trackModeChanged);
     dom.mutation.registerInsertionStepsCallback(inserted) catch @panic("media insertion hook allocation");
     dom.mutation.registerRemovingStepsCallback(removed) catch @panic("media removing hook allocation");
-    dom.document_fetches.install(cancelRealm);
+    dom.document_fetches.install(.{ .discard = cancelRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
     dom.unloading_cleanup.install(cancelRealm);
 }
 fn cancelRealm(ctx: runtime.Context) void {
@@ -318,6 +322,75 @@ fn cancelRealm(ctx: runtime.Context) void {
         const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
         if (common.isMedia(instance)) data(instance).cancel();
     }
+}
+fn prepareDocumentAbort(document: *runtime.Instance) bool {
+    const registry = common.liveRegistry(document.ctx) orelse return false;
+    var canceled = false;
+    for (registry.entries.toSlice()) |entry| {
+        const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+        if (!common.isMedia(instance)) continue;
+        const self = data(instance);
+        const link = self.fetch_document orelse continue;
+        if (!self.activity.fetching or link.instance != document or !link.isLive()) continue;
+        self.document_abort_pending = self.load.generation;
+        canceled = true;
+    }
+    return canceled;
+}
+fn abortDocument(document: *runtime.Instance) void {
+    const registry = common.liveRegistry(document.ctx) orelse return;
+    while (true) {
+        const self: *InternalState = blk: {
+            for (registry.entries.toSlice()) |entry| {
+                const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+                if (!common.isMedia(instance)) continue;
+                const candidate = data(instance);
+                const link = candidate.fetch_document orelse continue;
+                if (candidate.document_abort_pending != null and link.instance == document and link.isLive()) break :blk candidate;
+            }
+            return;
+        };
+        const generation = self.document_abort_pending.?;
+        self.document_abort_pending = null;
+        if (generation != self.load.generation or !self.activity.fetching) continue;
+        const instance = self.activity.instance orelse continue;
+        engine.runInRealm(instance.ctx, documentAbortSteps, self) catch self.cancel();
+    }
+}
+fn documentAbortSteps(context: ?*anyopaque) void {
+    const self: *InternalState = @ptrCast(@alignCast(context.?));
+    const instance = self.activity.instance orelse return;
+    // User-aborted media fetching, steps 1–6. Only resource tasks are
+    // invalidated; text-track list notifications are independent of this load.
+    var task = self.activity.head;
+    while (task) |pending| : (task = pending.next) {
+        if (pending.resource_bound) pending.cancelled = true;
+    }
+    self.endFetch();
+    self.load.cancel();
+    self.load.error_code = .aborted;
+    self.load.phase = .failed;
+    const object = hooks.createError(instance.ctx, .aborted) catch {
+        self.cancel();
+        return;
+    };
+    self.error_object = object;
+    self.error_edge.hold(instance, object);
+    self.event("abort") catch {
+        self.cancel();
+        return;
+    };
+    if (self.load.ready == .nothing) {
+        self.load.network = .empty;
+        self.load.show_poster = true;
+        self.event("emptied") catch {
+            self.cancel();
+            return;
+        };
+    } else self.load.network = .idle;
+    self.unregister();
+    self.syncDelay();
+    self.activity.sync();
 }
 fn delaysLoad(document: *runtime.Instance) bool {
     const registry = common.liveRegistry(document.ctx) orelse return false;

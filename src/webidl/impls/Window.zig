@@ -3004,8 +3004,8 @@ pub fn call_stop(instance: *runtime.Instance) anyerror!void {
     // and nothing commits - which informs the navigation API about aborting
     // navigation. The top-level page has no navigation of Crane's to end:
     // its navigation API is informed directly (an intercepted navigation's
-    // navigate event is aborted either way). Step 3 of "stop loading",
-    // aborting the document, is not modelled, stated.
+    // navigate event is aborted either way). The same owner hook performs
+    // step 3, aborting the document and its descendants.
     if (get_document(instance)) |document| {
         @import("dom").content_navigables.stopLoading(document);
     } else |_| {}

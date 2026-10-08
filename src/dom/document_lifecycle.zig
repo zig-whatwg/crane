@@ -1,7 +1,6 @@
 //! A document's lifecycle (HTML §7.5, §13.2.7) as seen from outside Document:
-//! "the end" for a document whose parser finishes outside Document - the
-//! top-level document's (impls/HTMLParser) and a frame's (html/scripted_parser)
-//! - and the steps navigation takes on the document it is leaving: firing
+//! Active parser ownership and "the end" for navigation and written input,
+//! and the steps navigation takes on the document it is leaving: firing
 //! beforeunload, unloading it, and asking whether it is still loading.
 //!
 //! A document's readiness, page showing flag, unload counter, salvageable
@@ -19,9 +18,20 @@ const runtime = @import("runtime");
 
 /// What Document supplies.
 pub const Implementation = struct {
+    /// Rendering is a document lifecycle operation; share its installed table.
+    rendering: @import("document_rendering.zig").Implementation,
+    /// Only Document casts these parser pointers to the HTML owner type.
+    associate_parser: *const fn (document: *runtime.Instance, parser: *anyopaque) bool,
+    discard_parser: *const fn (document: *runtime.Instance, expected: ?*anyopaque) void,
+    parser_finished: *const fn (document: *runtime.Instance, parser: *anyopaque) void,
+    finish_without_parser: *const fn (document: *runtime.Instance) void,
     parsing_stopped: *const fn (document: *runtime.Instance) void,
     finish_loading: *const fn (document: *runtime.Instance) void,
     load_delay_may_have_ended: *const fn (document: *runtime.Instance) void,
+    script_delivery_discarded: *const fn (document: *runtime.Instance, removed_parser_blocker: bool) void,
+    delays_load_event: *const fn (document: *runtime.Instance) bool,
+    is_ready_for_post_load_tasks: *const fn (document: *runtime.Instance) bool,
+    mark_ready_for_post_load_tasks: *const fn (document: *runtime.Instance) void,
     is_completely_loaded: *const fn (document: *runtime.Instance) bool,
     is_initial_about_blank: *const fn (document: *runtime.Instance) bool,
     mark_initial_about_blank: *const fn (document: *runtime.Instance) void,
@@ -29,6 +39,11 @@ pub const Implementation = struct {
     fire_beforeunload: *const fn (document: *runtime.Instance) BeforeUnloadResult,
     unload: *const fn (document: *runtime.Instance) void,
     abort: *const fn (document: *runtime.Instance) void,
+    /// Navigation's provisional abort, before the replacement commits.
+    abort_for_navigation: *const fn (document: *runtime.Instance) void,
+    /// Abort a document and its descendants, step 3.2: propagate the
+    /// descendant's unsalvageable state to the root after its abort task.
+    propagate_abort: *const fn (parent: *runtime.Instance, child: *runtime.Instance) void,
     destroy: *const fn (document: *runtime.Instance) void,
     set_about_base_url: *const fn (document: *runtime.Instance, url: ?[]const u8) void,
     about_fallback_base_url: *const fn (document: *runtime.Instance) ?[]const u8,
@@ -57,6 +72,41 @@ pub fn install(impl: Implementation) void {
     implementation = impl;
 }
 
+/// The rendering seam shares this process-start table without mutable state
+/// of its own; all returned state still belongs to the queried Document.
+pub fn renderingImplementation() ?@import("document_rendering.zig").Implementation {
+    const impl = implementation orelse return null;
+    return impl.rendering;
+}
+
+/// Document acquires a parser reference independently of the initiating
+/// caller's reference, which stays alive through every parsing callback.
+pub fn associateParser(document: *runtime.Instance, parser: *anyopaque) bool {
+    const impl = implementation orelse return false;
+    return impl.associate_parser(document, parser);
+}
+
+/// Cancel the current parser, or only `expected` when supplied. This never
+/// runs normal EOF or loading completion, and cannot discard a replacement.
+pub fn discardParser(document: *runtime.Instance, expected: ?*anyopaque) void {
+    const impl = implementation orelse return;
+    impl.discard_parser(document, expected);
+}
+
+/// Actual EOF, once, with a pump reference held. Document detaches before
+/// running its guarded readiness and deferred script steps.
+pub fn parserFinished(document: *runtime.Instance, parser: *anyopaque) void {
+    const impl = implementation orelse return;
+    impl.parser_finished(document, parser);
+}
+
+/// Finish a received document for which navigation has no parser. This
+/// uses the same guarded "the end" steps, and cannot finish an active parser.
+pub fn finishWithoutParser(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.finish_without_parser(document);
+}
+
 /// "The end" step 3: the parser has stopped, and readiness becomes
 /// "interactive" - before the deferred scripts, which see it.
 pub fn parsingStopped(document: *runtime.Instance) void {
@@ -78,6 +128,36 @@ pub fn finishLoading(document: *runtime.Instance) void {
 pub fn loadDelayMayHaveEnded(document: *runtime.Instance) void {
     const impl = implementation orelse return;
     impl.load_delay_may_have_ended(document);
+}
+
+/// A delivery owner relinquished its preparation and load delay. Recheck
+/// the surviving document on a later task, including a parser whose blocker
+/// was removed. Task.drop may call this during allocation failure: this
+/// never runs script or lifecycle events synchronously, even without a loop.
+pub fn scriptDeliveryDiscarded(document: *runtime.Instance, removed_parser_blocker: bool) void {
+    const impl = implementation orelse return;
+    impl.script_delivery_discarded(document, removed_parser_blocker);
+}
+
+/// Whether anything delays this document's load event ("the end", step 8).
+/// A container asks this about its active document even when that document
+/// was opened after it became ready for post-load tasks.
+pub fn delaysLoadEvent(document: *runtime.Instance) bool {
+    const impl = implementation orelse return false;
+    return impl.delays_load_event(document);
+}
+
+/// HTML "ready for post-load tasks", independent of current readiness and
+/// completely-loaded time. Document.open does not reset this state.
+pub fn isReadyForPostLoadTasks(document: *runtime.Instance) bool {
+    const impl = implementation orelse return true;
+    return impl.is_ready_for_post_load_tasks(document);
+}
+
+/// DOMImplementation-created documents are ready immediately (HTML §3.1).
+pub fn markReadyForPostLoadTasks(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.mark_ready_for_post_load_tasks(document);
 }
 
 /// Whether `document` is "completely loaded": "completely finish loading" has
@@ -127,6 +207,21 @@ pub fn unload(document: *runtime.Instance) void {
 pub fn abort(document: *runtime.Instance) void {
     const impl = implementation orelse return;
     impl.abort(document);
+}
+
+/// Navigation's abort uses the same parser steps, while fetch owners can
+/// distinguish provisional loading from an explicit stop/document.open.
+pub fn abortForNavigation(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.abort_for_navigation(document);
+}
+
+/// HTML "abort a document and its descendants" step 3.2: if child's
+/// salvageable state is false, parent's becomes false as well. Neither
+/// document's activity changes merely because it cannot enter the bfcache.
+pub fn propagateAbort(parent: *runtime.Instance, child: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.propagate_abort(parent, child);
 }
 
 /// HTML "destroy" `document` (§7.5.5): it is no longer salvageable and its
@@ -211,14 +306,19 @@ test "without an installed implementation nothing is asked of a document" {
     implementation = null;
     // Never dereferenced: with no implementation nothing reads it.
     var document: runtime.Instance = undefined;
+    try std.testing.expect(!associateParser(&document, &document));
+    discardParser(&document, null);
+    parserFinished(&document, &document);
     parsingStopped(&document);
     finishLoading(&document);
     loadDelayMayHaveEnded(&document);
+    markReadyForPostLoadTasks(&document);
     delayLoadEvent(&document);
     undelayLoadEvent(&document);
     markInitialAboutBlank(&document);
     unload(&document);
     abort(&document);
+    propagateAbort(&document, &document);
     destroy(&document);
     setAboutBaseUrl(&document, "http://x.test/");
     declarativeRefresh(&document, "0; url=http://x.test/", null);
@@ -227,6 +327,8 @@ test "without an installed implementation nothing is asked of a document" {
     // is loaded, is no initial about:blank, is not unloading, and nobody
     // cancels leaving it.
     try std.testing.expect(isCompletelyLoaded(&document));
+    try std.testing.expect(isReadyForPostLoadTasks(&document));
+    try std.testing.expect(!delaysLoadEvent(&document));
     try std.testing.expect(!isInitialAboutBlank(&document));
     try std.testing.expect(!isUnloading(&document));
     try std.testing.expect(!fireBeforeUnload(&document).canceled);

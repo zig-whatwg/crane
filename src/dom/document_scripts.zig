@@ -19,9 +19,9 @@
 //! document exists; html's script_execution asks it. The shape of
 //! `document_lifecycle.zig`.
 //!
-//! The lists hold bare element pointers: the element's pending activity
-//! (engine.keepPlatformObjectAlive while its "mark as ready" task waits) is
-//! what keeps a listed element alive, never this state.
+//! The lists hold bare element pointers backed by independent owning values
+//! in script_element.State.execution_root. The queue keeps that root until
+//! execution or explicit discard; a fetch task ending does not release it.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
 //! Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-destructive-writes-counter

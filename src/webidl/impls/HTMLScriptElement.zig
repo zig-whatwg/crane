@@ -21,7 +21,7 @@ const HTMLScriptElement = interfaces.HTMLScriptElement;
 const HTMLElementImpl = @import("HTMLElement.zig");
 const NodeImpl = @import("Node.zig");
 
-// DOM mutation seam, for the insertion steps below.
+// DOM mutation seam, for the post-connection steps below.
 const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.NodeBase;
@@ -62,14 +62,18 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     // A script element that becomes connected must run "prepare the script
     // element", and one whose children change may too.
-    dom_module.mutation.registerInsertionStepsCallback(&scriptInsertionStepsCallback) catch |err| {
-        log.warn("script insertion steps not registered: {}", .{err});
+    dom_module.mutation.registerPostConnectionStepsCallback(&scriptPostConnectionStepsCallback) catch |err| {
+        log.warn("script post-connection steps not registered: {}", .{err});
     };
     dom_module.mutation.registerChildrenChangedCallback(&scriptChildrenChangedCallback) catch |err| {
         log.warn("script children changed steps not registered: {}", .{err});
     };
+    dom_module.mutation.registerRemovingStepsCallback(&scriptRemovingStepsCallback) catch |err| {
+        log.warn("script removing steps not registered: {}", .{err});
+    };
     // html's script processing model reaches its state.
     script_element_state.install(.{ .state = &getInternal });
+    @import("html").script_execution.installFetchHooks();
     // And a clone of one must not run again: the cloning steps copy "already
     // started" (HTML § 4.12.1.1).
     dom_module.cloning_steps.install(&cloningSteps);
@@ -80,7 +84,21 @@ pub fn installHooks() void {
         .mark_parser_inserted = &markParserInsertedStep,
         .mark_already_started = &markAlreadyStartedStep,
         .script_text = &scriptTextStep,
+        .delays_load_event = &scriptsDelayLoadEvent,
     });
+}
+
+/// HTML script processing model: a true delaying flag delays the
+/// preparation-time document, even after the element is moved or removed.
+fn scriptsDelayLoadEvent(document: *runtime.Instance) bool {
+    const generation = runtime.SlabAllocator.generationOf(document);
+    var entries = Registry.iterator() orelse return false;
+    while (entries.next()) |entry| {
+        const internal = entry.internal;
+        if (internal.delaying_the_load_event and internal.preparation_time_document == document and
+            internal.preparation_time_document_generation == generation) return true;
+    }
+    return false;
 }
 
 /// dom.script_elements: the element's script text (Trusted Types 4.1.2.1).
@@ -118,6 +136,8 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // Erase borrowed membership before this element's identity can end.
+    dom_module.document_rendering.unblock(instance);
     // Clean up internal state from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
@@ -246,15 +266,6 @@ pub fn get_async(instance: *runtime.Instance) anyerror!bool {
 /// True if the defer attribute is present.
 pub fn get_defer(instance: *runtime.Instance) anyerror!bool {
     return hasBooleanAttribute(instance, "defer");
-}
-
-/// Getter for blocking
-/// Spec: [SameObject, PutForwards=value, Reflect] readonly attribute DOMTokenList blocking;
-/// Returns the DOMTokenList for the blocking attribute.
-/// TODO: Implement DOMTokenList support
-pub fn get_blocking(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented; // Requires DOMTokenList implementation
 }
 
 /// Getter for crossOrigin
@@ -570,27 +581,46 @@ pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMStr
 // =============================================================================
 
 // =============================================================================
-// Insertion steps
+// Post-connection steps
 // =============================================================================
 
-/// The script element's insertion steps.
+/// HTML 3.1.6: becoming browsing-context disconnected unblocks rendering.
+/// The DOM invokes this for every shadow-including descendant, after clearing
+/// connectedness and before adoption changes the node document.
+fn scriptRemovingStepsCallback(node: *NodeBase, _: ?*NodeBase) void {
+    // The remove algorithm invokes these steps after detaching the subtree.
+    // A cached flag must not suppress cleanup for a shadow-tree descendant.
+    // State-preserving moves invoke moving steps instead of this callback.
+    if (node.node_type != 1) return;
+    const instance_ptr = instance_bridge.getInstance(node) orelse return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+    if (getInternal(instance) == null) return;
+    dom_module.document_rendering.unblock(instance);
+}
+
+/// The script element's HTML element post-connection steps.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
-/// "When a script element el that is not parser-inserted experiences one of the
-///  events listed in the following list, the user agent must immediately
-///  prepare the script element: ... The script element becomes connected."
+/// Step 1 returns for a parser-inserted script. Step 2 prepares the element.
+/// This phase follows the parent's children changed steps and the whole
+/// insertion batch, as WebKit ScriptElement::postConnectionSteps does:
+/// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/ScriptElement.cpp
 ///
 /// The parser is excluded exactly as the spec excludes it: both tree-building
 /// paths set the parser document on the element *before* appending it
 /// (`dom_tree_adapter.createElementNode` and `HTMLParser.createDomNodeFromTreeNode`),
 /// so `isParserInserted` is already true by the time this runs for them. That
-/// matters — the parser appends the script element while it is still EMPTY and
-/// only adds its text children afterwards, so preparing it here would mark a
-/// script with no source as already-started and silently kill it.
-fn scriptInsertionStepsCallback(node: *NodeBase) void {
+/// matters: the parser appends the script element while it is still empty,
+/// then prepares it at the end tag after adding its text children.
+fn scriptPostConnectionStepsCallback(node: *NodeBase) void {
     // ELEMENT_NODE only.
     if (node.node_type != 1) return;
     if (!std.ascii.eqlIgnoreCase(node.node_name, "script")) return;
+
+    // HTML element post-connection steps run only while the element is still
+    // connected. An earlier script in the atomically inserted batch may have
+    // removed this one before its turn.
+    if (!node.is_connected) return;
 
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
@@ -607,7 +637,7 @@ fn scriptInsertionStepsCallback(node: *NodeBase) void {
     const allocator = instance.ctx.allocator;
     _ = prepareScriptElement(allocator, instance) catch |err| {
         // A script that fails to prepare is not a document that fails to load.
-        log.debug("insertion steps: prepare failed: {}", .{err});
+        log.debug("post-connection steps: prepare failed: {}", .{err});
     };
 }
 
@@ -715,6 +745,15 @@ fn attributeChangeSteps(
 
     // Step 1.
     if (namespace != null) return;
+
+    // HTML 3.1.6: changing blocking so the element is no longer potentially
+    // render-blocking removes it. Adding a token never retroactively blocks.
+    // An implicit parser classic blocker keeps blocking after token removal.
+    if (std.mem.eql(u8, local_name, "blocking") and
+        !@import("html").script_execution.isPotentiallyRenderBlocking(element))
+    {
+        dom_module.document_rendering.unblock(element);
+    }
 
     if (std.mem.eql(u8, local_name, "async") and old_value == null and value != null) {
         internal.force_async = false;

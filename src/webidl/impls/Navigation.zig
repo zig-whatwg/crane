@@ -1644,7 +1644,15 @@ fn commit(instance: *runtime.Instance, internal: *InternalState, record: *EventR
             const url = interfaces.NavigationDestination.get_url(record.destination) catch return;
             defer record.destination.ctx.allocator.free(url);
             ensureHistoryTraversal(scope.window);
-            dom.history_traversal.urlAndHistoryUpdate(scope.window, url, record.classic_state, if (record.navigation_type == .push) .push else .replace);
+            // Commit step 7.2 deviation: an intercepted navigation without
+            // classic state clears it, as WPT navigate-intercept-history-state
+            // and all three engines require. Blink NavigateEvent::CommitNow /
+            // DocumentLoader::UpdateForSameDocumentNavigation, WebKit
+            // Navigation::setupInterceptionState / FrameLoader::updateURLAndHistory,
+            // and Gecko Navigation::CommitNavigateEvent / nsDocShell::UpdateURLAndHistory
+            // all install null state. An absent URL-update argument elsewhere
+            // (notably document.open) still means preserve the previous state.
+            dom.history_traversal.urlAndHistoryUpdate(scope.window, url, record.classic_state orelse .null, if (record.navigation_type == .push) .push else .replace);
         },
         .reload => sameDocumentNavigation(scope.window, .reload),
         .traverse => {

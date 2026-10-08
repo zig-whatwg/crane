@@ -314,10 +314,21 @@ fn runPostConnectionStepsForTrees(allocator: std.mem.Allocator, roots: []const *
 }
 
 /// Recursively run removing steps for a node and all its descendants
-fn runRemovingStepsRecursive(node: anytype, old_parent: anytype) void {
+fn runRemovingStepsRecursive(node: anytype, old_parent: anytype, parent_connected: bool) void {
     runRemovingSteps(node, old_parent);
+    if (parent_connected) enqueueCustomElementCallback(node, .disconnected, .none);
+    runRemovingStepsForDescendants(node, old_parent, parent_connected);
+}
+
+/// Allocation-free fallback for remove step 14, in the same shadow-including
+/// tree order as the collected list. Every callback receives the original
+/// ancestor that the subtree was removed from, including shadow descendants.
+fn runRemovingStepsForDescendants(node: anytype, old_parent: anytype, parent_connected: bool) void {
+    if (tree_helpers.shadowRootForHost(node)) |shadow| {
+        runRemovingStepsRecursive(shadow, old_parent, parent_connected);
+    }
     for (node.child_nodes.items()) |child| {
-        runRemovingStepsRecursive(child, node);
+        runRemovingStepsRecursive(child, old_parent, parent_connected);
     }
 }
 
@@ -373,15 +384,10 @@ fn isConnectedThroughShadow(node: anytype) bool {
 /// Uses sibling pointers instead of child_nodes.items() for safety during tree construction
 fn setConnectedRecursive(node: anytype, connected: bool) void {
     node.is_connected = connected;
-    // DOM connectedness follows the shadow-including root, including closed
-    // roots. Update a host's shadow tree before its light children.
-    if (node.node_type == ELEMENT_NODE) {
-        if (instance_bridge.getInstance(node)) |opaque_instance| {
-            const element: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
-            if (custom_elements.shadowRootOf(element)) |shadow| {
-                if (instance_bridge.getNodeBase(shadow)) |shadow_base| setConnectedRecursive(shadow_base, connected);
-            }
-        }
+    // Connectedness follows the shadow-including root, so a host changes its
+    // own root and all nested shadow trees before its ordinary descendants.
+    if (tree_helpers.shadowRootForHost(node)) |shadow| {
+        setConnectedRecursive(shadow, connected);
     }
     // Use first_child/next_sibling which are always safely initialized to null
     var child = node.first_child;
@@ -1657,19 +1663,17 @@ pub fn remove(
         var mut_descendants = descendants;
         defer mut_descendants.deinit();
 
-        // Step 14.1: Run the removing steps with descendant and null
+        // Step 14.1: Run removing steps with the original removed ancestor.
         // Step 14.2: Custom element disconnectedCallback
         for (mut_descendants.items()) |descendant| {
-            runRemovingSteps(descendant, null);
+            runRemovingSteps(descendant, parent);
 
             if (parent_connected) enqueueCustomElementCallback(descendant, .disconnected, .none);
         }
     } else |_| {
-        // If we can't allocate for shadow-including traversal,
-        // fall back to regular descendant traversal
-        for (node.child_nodes.items()) |descendant| {
-            runRemovingStepsRecursive(descendant, node);
-        }
+        // The node is already detached: allocation failure must not skip
+        // shadow descendant cleanup or repeat the root's removing steps.
+        runRemovingStepsForDescendants(node, parent, parent_connected);
     }
 
     // Step 15: transient registered observers on node, for every observer

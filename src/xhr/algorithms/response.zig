@@ -31,12 +31,25 @@ const ProgressEventData = event_support.ProgressEventData;
 pub const ResponseProcessor = struct {
     state: *XMLHttpRequestState,
     progress_tracker: ProgressTracker,
+    /// The embedding may retire native XHR state when an event listener
+    /// destroys its realm. Check the owner's saved Context/generation after
+    /// dispatch, before the next request-error step reads state. A null
+    /// continuation preserves callers whose state outlives their events.
+    continuation: ?struct {
+        context: *anyopaque,
+        is_live: *const fn (*anyopaque) bool,
+    } = null,
 
     pub fn init(state: *XMLHttpRequestState) ResponseProcessor {
         return .{
             .state = state,
             .progress_tracker = ProgressTracker.init(),
         };
+    }
+
+    fn mayContinue(self: *const ResponseProcessor) bool {
+        const continuation = self.continuation orelse return true;
+        return continuation.is_live(continuation.context);
     }
 
     /// `processResponse`, given a response.
@@ -193,6 +206,7 @@ pub const ResponseProcessor = struct {
 
         // Step 5: Fire an event named readystatechange.
         event_support.fireEvent(self.state.event_sink, .readystatechange);
+        if (!self.mayContinue()) return;
 
         // Step 6: If the upload complete flag is unset, then:
         if (!self.state.upload_complete_flag) {
@@ -204,7 +218,9 @@ pub const ResponseProcessor = struct {
                 const zero = ProgressEventData{ .lengthComputable = false, .loaded = 0, .total = 0 };
                 // Step 6.2.1 and 6.2.2
                 event_support.fireUploadProgressEvent(self.state.event_sink, event, zero);
+                if (!self.mayContinue()) return;
                 event_support.fireUploadProgressEvent(self.state.event_sink, .loadend, zero);
+                if (!self.mayContinue()) return;
             }
         }
 
@@ -212,6 +228,7 @@ pub const ResponseProcessor = struct {
 
         // Step 7: Fire a progress event named event at xhr with 0 and 0.
         event_support.fireProgressEvent(self.state.event_sink, event, zero);
+        if (!self.mayContinue()) return;
 
         // Step 8: Fire a progress event named loadend at xhr with 0 and 0.
         event_support.fireProgressEvent(self.state.event_sink, .loadend, zero);

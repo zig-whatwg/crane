@@ -275,6 +275,22 @@ pub const Tokenizer = struct {
                     return null;
                 }
                 self.current_char = self.consumeNextChar();
+                // Preprocessing can consume a final LF of CRLF without
+                // producing a character. A temporarily empty stream still
+                // suspends; this is not an EOF token for the current state.
+                if (self.current_char.isEof() and self.waitingForInput()) {
+                    self.suspended = true;
+                    return null;
+                }
+            }
+
+            // Multi-character decisions must wait while the available input
+            // is a prefix of their lookahead. Keep the current character for
+            // reconsumption; no state side effect has occurred yet.
+            if (self.lookaheadNeedsInput()) {
+                self.reconsume = true;
+                self.suspended = true;
+                return null;
             }
 
             // Process current state
@@ -296,6 +312,59 @@ pub const Tokenizer = struct {
                 return null;
             }
         }
+    }
+
+    fn lookaheadNeedsInput(self: *const Tokenizer) bool {
+        const stream = self.input_stream_manager orelse return false;
+        if (stream.endIsEof()) return false;
+        const cp = self.current_char.getCodepoint() orelse return false;
+        switch (self.state) {
+            .markup_declaration_open => {
+                if (cp == '-') return self.incompleteLookahead("--", false);
+                if (cp == 'd' or cp == 'D') return self.incompleteLookahead("DOCTYPE", true);
+                if (cp == '[') return self.incompleteLookahead("[CDATA[", false);
+            },
+            .after_doctype_name => {
+                if (cp == 'p' or cp == 'P') return self.incompleteLookahead("PUBLIC", true);
+                if (cp == 's' or cp == 'S') return self.incompleteLookahead("SYSTEM", true);
+            },
+            .named_character_reference => {
+                if (cp > 0x7f) return false;
+                var run: [max_character_reference_name_len + 1]u8 = undefined;
+                run[0] = @intCast(cp);
+                var len: usize = 1;
+                var at = self.input.position;
+                while (len < run.len and at < self.input.data.len) : (at += 1) {
+                    const c = self.input.data[at];
+                    if (c == ';' or !std.ascii.isAlphanumeric(c)) return false;
+                    run[len] = c;
+                    len += 1;
+                }
+                if (at != self.input.data.len or len == run.len) return false;
+                const prefix = run[0..len];
+                // The first not-yet-arrived character can extend the name,
+                // or suppress a semicolonless attribute match. Names are
+                // sorted; stop after the possible prefix range.
+                for (entities.entities) |entity| {
+                    if (std.mem.startsWith(u8, entity.name, prefix)) return true;
+                    if (std.mem.order(u8, entity.name, prefix) == .gt) break;
+                }
+            },
+            else => {},
+        }
+        return false;
+    }
+
+    /// `current_char` is the first character of the candidate; the input
+    /// starts after it. A mismatch is conclusive even in an incomplete
+    /// stream; only a matching prefix needs more input.
+    fn incompleteLookahead(self: *const Tokenizer, expected: []const u8, ignore_case: bool) bool {
+        const tail = self.input.data[self.input.position..];
+        const available = @min(tail.len, expected.len - 1);
+        for (tail[0..available], expected[1..][0..available]) |actual, wanted| {
+            if (if (ignore_case) std.ascii.toLower(actual) != std.ascii.toLower(wanted) else actual != wanted) return false;
+        }
+        return tail.len < expected.len - 1;
     }
 
     /// The token at the head of the queue, which must not be empty.

@@ -46,6 +46,7 @@ pub const InternalState = struct {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    @import("html").hyperlink_auditing.installDocumentAbort();
     // Its activation behaviour: following its hyperlink (dom.activation).
     @import("dom").activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
 }

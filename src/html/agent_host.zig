@@ -7,6 +7,8 @@ pub const AgentHost = struct {
     event_sources: @import("eventsource").Registry(*anyopaque, *anyopaque),
     media_elements: @import("media/root.zig").Registry(*anyopaque, *anyopaque),
     custom_elements: dom.custom_elements.AgentState,
+    embedded_contents: @import("eventsource").Registry(*anyopaque, *anyopaque),
+    hyperlink_pings: @import("eventsource").Registry(*anyopaque, *anyopaque),
 
     pub fn init(allocator: std.mem.Allocator) AgentHost {
         return .{
@@ -14,6 +16,8 @@ pub const AgentHost = struct {
             .event_sources = @import("eventsource").Registry(*anyopaque, *anyopaque).init(allocator),
             .media_elements = @import("media/root.zig").Registry(*anyopaque, *anyopaque).init(allocator),
             .custom_elements = dom.custom_elements.AgentState.init(allocator),
+            .embedded_contents = @import("eventsource").Registry(*anyopaque, *anyopaque).init(allocator),
+            .hyperlink_pings = @import("eventsource").Registry(*anyopaque, *anyopaque).init(allocator),
         };
     }
     pub fn deinit(self: *AgentHost) void {
@@ -21,5 +25,7 @@ pub const AgentHost = struct {
         self.event_sources.deinit();
         self.media_elements.deinit();
         self.custom_elements.deinit();
+        self.embedded_contents.deinit();
+        self.hyperlink_pings.deinit();
     }
 };

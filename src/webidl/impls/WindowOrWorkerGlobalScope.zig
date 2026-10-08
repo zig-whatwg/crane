@@ -305,6 +305,13 @@ const FetchCall = struct {
     /// context rather than freeing it, and empties it - `engine_ctx`
     /// becomes null - which is how `alive` tells that the realm is gone.
     ctx: runtime.Context,
+    /// The Window's document when this call starts. A realm can be reused
+    /// by a later document, whose requests an old abort must not touch.
+    document: ?same_object.Link = null,
+    document_abort_pending: bool = false,
+    /// Cancellation can invoke an upload stream's script; the active call
+    /// owns this record until that script returns.
+    canceling: usize = 0,
     /// p's capability, this call's until p is settled or its realm is
     /// gone. Keeping it keeps p, and so the realm, alive while the fetch
     /// is in flight.
@@ -626,7 +633,7 @@ const FetchCall = struct {
     }
 
     fn maybeRelease(self: *Self) void {
-        if (self.fetch_holds or self.task_holds) return;
+        if (self.fetch_holds or self.task_holds or self.canceling != 0) return;
         if (self.liveSignal()) |signal| abort_algorithms.remove(signal, self);
         self.signal = null;
         self.signal_pin.release();
@@ -675,22 +682,83 @@ const FetchCall = struct {
             // meant to outlive its document (a beacon, a fetch made in
             // unload; fetch/api/redirect/redirect-keepalive.any.js).
             if (call.keepalive) continue;
-            call.cancelForDocument();
+            call.cancelForDocument(false);
         }
     }
 
-    fn cancelForDocument(self: *Self) void {
+    /// Mark all fetch() calls before XHR/script-owner abort callbacks run.
+    fn prepareDocumentAbort(document: *runtime.Instance) bool {
+        var marked = false;
+        for (live.items) |call| {
+            if (call.document_aborted) continue;
+            const owner = call.document orelse continue;
+            if (owner.instance != document or !owner.isLive()) continue;
+            call.document_abort_pending = true;
+            marked = true;
+        }
+        return marked;
+    }
+
+    fn abortDocument(document: *runtime.Instance) void {
+        while (true) {
+            const next: ?*Self = blk: {
+                for (live.items) |call| {
+                    if (!call.document_abort_pending or call.document_aborted) continue;
+                    const owner = call.document orelse continue;
+                    if (owner.instance == document and owner.isLive()) break :blk call;
+                }
+                break :blk null;
+            };
+            const call = next orelse return;
+            call.document_abort_pending = false;
+            call.canceling += 1;
+            // A synchronous document.open switches realms without a task
+            // checkpoint. Promise reactions cannot run until script returns.
+            engine.runInRealm(call.ctx, documentAbortSteps, call) catch call.cancelForDocument(false);
+            call.canceling -= 1;
+            call.maybeRelease();
+        }
+    }
+
+    fn documentAbortSteps(context: ?*anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context.?));
+        self.cancelForDocument(true);
+    }
+
+    /// Live abort settles the promise/body with AbortError. Destruction
+    /// discards both silently. Detach signal callbacks and network state
+    /// before invoking stream cancellation, as Blink Loader::Abort does.
+    fn cancelForDocument(self: *Self, observable: bool) void {
+        if (self.document_aborted) return;
+        self.canceling += 1;
+        defer {
+            self.canceling -= 1;
+            self.maybeRelease();
+        }
         self.document_aborted = true;
         // A settle task still queued does nothing when it runs (or is
         // dropped): processResponse step 1's locallyAborted check.
         self.locally_aborted = true;
+        if (self.liveSignal()) |signal| abort_algorithms.remove(signal, self);
+        self.signal = null;
+        const reason: ?engine.Owned = if (observable)
+            engine.createDOMException(self.ctx, "AbortError", "The operation was aborted.") catch null
+        else
+            null;
+        defer if (reason) |r| r.release();
+        // Fetch "abort a fetch() call" step 1 precedes upload cancellation.
+        if (!self.settled) {
+            if (reason) |r| engine.rejectPromise(&self.capability, r.value) catch {};
+            self.settleResolver();
+        }
         // The body being read to be sent: its stream is canceled.
         if (self.upload) |u| {
             self.upload = null;
             if (self.pending_request) |r| r.deinit();
             self.pending_request = null;
             if (streams_js.Realm.ofContext(self.ctx) catch null) |r| {
-                if (r.undefinedValue() catch null) |v| {
+                const value = if (reason) |e| r.fromRuntime(e.value) catch null else r.undefinedValue() catch null;
+                if (value) |v| {
                     defer streams_js.dispose(v);
                     u.cancel(v);
                 }
@@ -699,11 +767,17 @@ const FetchCall = struct {
         }
         if (self.in_flight) |f| {
             self.in_flight = null;
-            f.terminate();
+            // "Abort a fetch() call" step 5: an already exposed response
+            // body receives the same error through its pipe, owning a hold
+            // of it until the body's source goes.
+            const held = if (reason) |r| fetch_body.AbortReason.create(self.ctx, r.value) else null;
+            f.terminateWith(if (held) |h|
+                .{ .kind = .aborted, .reason = h, .release_reason = fetch_body.AbortReason.release }
+            else
+                .{ .kind = .aborted });
             self.fetch_holds = false;
         }
         self.settleResolver();
-        self.maybeRelease();
     }
 };
 
@@ -711,7 +785,11 @@ const FetchCall = struct {
 /// by crane.Process through the generated mixin module (docs/instances.md):
 /// "abort a document" reaches fetch()'s calls through `FetchCall.live`.
 pub fn installHooks() void {
-    @import("dom").document_fetches.install(&FetchCall.abortIn);
+    @import("dom").document_fetches.install(.{
+        .discard = &FetchCall.abortIn,
+        .prepare_abort = &FetchCall.prepareDocumentAbort,
+        .abort = &FetchCall.abortDocument,
+    });
 }
 
 /// Operation: fetch
@@ -803,7 +881,13 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         fetched_request.deinit();
         return error.OutOfMemory;
     };
-    call.* = .{ .allocator = allocator, .ctx = instance.ctx, .capability = capability, .keepalive = fetched_request.keepalive };
+    call.* = .{
+        .allocator = allocator,
+        .ctx = instance.ctx,
+        .capability = capability,
+        .keepalive = fetched_request.keepalive,
+        .document = if (fetchDocument(instance.ctx)) |document| same_object.Link.to(document) else null,
+    };
     // Only HTTP(S) transmits a request body (HTTP-network fetch); a data:,
     // blob: or about: fetch never reads it, so neither does this - a stream
     // that never closes must not hold such a fetch up.
@@ -857,6 +941,14 @@ fn populateRequestFromClient(global: *runtime.Instance, request: *@import("fetch
     var client = try global_settings.requestClient(global);
     defer client.deinit();
     try @import("fetch").internal.populateRequestFromClient(request, client.request);
+}
+
+/// Request-start document of a Window; workers have no associated document.
+fn fetchDocument(ctx: runtime.Context) ?*runtime.Instance {
+    const record = ctx.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(global) catch null;
 }
 
 fn rejectWithTypeError(realm: runtime.Context, capability: *engine.PromiseCapability, message: []const u8) void {

@@ -374,6 +374,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Also used by DomTreeAdapter to clean up orphaned nodes that were never attached
 /// to the document tree.
 pub fn deinitNodeByType(instance: *runtime.Instance) void {
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    if (generation == runtime.SlabAllocator.dead_generation) return;
+    const ctx = instance.ctx;
+    const teardown_started = runtime.cleanup_coordinator.isContextTearingDown();
     // The teardown is recorded FIRST, before anything of the node runs - and
     // this is the check that it has not begun already (a collection's and a
     // tree's, or two trees'). platformObjectDestroyed below arms the node's
@@ -385,20 +389,21 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
     // frees one through dom.node_creation.destroyUninserted - was not.
     if (!runtime.instance_lifecycle.markCleanupStarted(instance)) return;
 
-    const generation = runtime.SlabAllocator.generationOf(instance);
-    const ctx = instance.ctx;
+    // A collected child's wrapper can leave its native storage to the tree.
+    // Return that storage after the complete type-specific resource teardown,
+    // only while the captured generation still names this same instance.
+    // Cached wrappers retain their existing storage owner until collection.
+    //
+    // Never query a wrapper cache during coordinated teardown: its map can
+    // still contain already-disposed entries. A retired originating realm
+    // also cannot prove absence of wrappers in another live realm. It keeps
+    // its agent identity after hasEngine becomes false (ContextData.agent,
+    // V8 retireEntry), unlike an engine-less native parser/test context.
     defer {
-        // A tree owns its unwrapped descendants, and nobody will finalize
-        // their storage after this cleanup. A wrapped node leaves that half
-        // to its wrapper's finalizer, like the root passed to onObjectFreed.
-        // During realm teardown the cache can be iterating freed entries:
-        // leave its storage phase alone instead of asking hasWrapper then.
-        // A deferred finalizer may have run while resources were released;
-        // its old generation must never free a slot that has since moved on.
         if (runtime.SlabAllocator.generationOf(instance) == generation and
             runtime.instance_lifecycle.isCleanedUp(instance) and
-            (!ctx.hasEngine() or
-                (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(instance))))
+            !teardown_started and !runtime.cleanup_coordinator.isContextTearingDown() and
+            (if (ctx.hasEngine()) !engine.hasWrapper(instance) else ctx.agent == null))
         {
             runtime.gc.releaseStorage(instance);
         }

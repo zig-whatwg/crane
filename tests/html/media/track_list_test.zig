@@ -87,6 +87,68 @@ test "trackElementParentChanged moves membership between two media lists" {
     hooks.trackElementParentChanged(element, b, null);
     try testing.expectEqual(@as(u32, 0), try interfaces.TextTrackList.get_length(b_list));
 }
+test "ancestor removal preserves track membership without another addtrack event" {
+    const Run = struct {
+        failure: ?anyerror = null,
+
+        fn thread(self: *@This()) void {
+            self.body() catch |err| {
+                self.failure = err;
+            };
+        }
+
+        fn body(_: *@This()) !void {
+            var browser = try @import("browser").Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+            defer browser.deinit();
+            try browser.navigate("about:blank", .window);
+            const page = browser.current_context orelse return error.TestUnexpectedResult;
+            try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "https://example.test/" });
+            try page.runScript(
+                \\globalThis.media = document.createElement('video');
+                \\globalThis.element = document.createElement('track');
+                \\element.id = 'captions';
+                \\globalThis.list = media.textTracks;
+                \\globalThis.added = 0;
+                \\globalThis.removed = 0;
+                \\list.addEventListener('addtrack', () => ++added);
+                \\list.addEventListener('removetrack', () => ++removed);
+                \\media.append(element);
+                \\if (element.parentNode !== media || list.length !== 1 || list.getTrackById('captions') !== element.track)
+                \\  throw new Error('initial synchronous membership: parent=' + (element.parentNode === media) +
+                \\    ', length=' + list.length + ', identity=' + (list.getTrackById('captions') === element.track));
+            );
+            _ = try browser.runEventLoopBlocking(10);
+            try page.runScript(
+                \\if (added !== 1 || removed !== 0 || list.length !== 1 || list.getTrackById('captions') !== element.track)
+                \\  throw new Error('initial membership after dispatch: added=' + added + ', removed=' + removed +
+                \\    ', length=' + list.length + ', identity=' + (list.getTrackById('captions') === element.track));
+                \\document.body.append(media);
+            );
+            _ = try browser.runEventLoopBlocking(10);
+            try page.runScript(
+                \\if (added !== 1 || removed !== 0) throw new Error('ancestor insertion changed membership');
+                \\media.remove();
+                \\if (element.parentNode !== media || list.length !== 1 || list.getTrackById('captions') !== element.track)
+                \\  throw new Error('ancestor removal changed the direct parent or membership');
+            );
+            _ = try browser.runEventLoopBlocking(10);
+            try page.runScript(
+                \\if (added !== 1 || removed !== 0) throw new Error('ancestor removal queued a membership event');
+                \\element.remove();
+                \\if (list.length !== 0 || list.getTrackById('captions') !== null)
+                \\  throw new Error('direct removal retained membership');
+            );
+            _ = try browser.runEventLoopBlocking(10);
+            try page.runScript(
+                \\if (added !== 1 || removed !== 1) throw new Error('direct removal lost its membership event');
+            );
+        }
+    };
+    var run: Run = .{};
+    const thread = try std.Thread.spawn(.{}, Run.thread, .{&run});
+    thread.join();
+    if (run.failure) |err| return err;
+}
 test "TrackEvent constructor initializes type flags and nullable track" {
     start();
     defer runtime.deinitializeRuntime();

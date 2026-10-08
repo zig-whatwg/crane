@@ -62,6 +62,10 @@ pub const ParserScriptContext = struct {
     /// The document being parsed.
     document: *runtime.Instance,
 
+    /// Checkpoint callbacks may destroy or replace the parser's document.
+    document_generation: u64 = 0,
+    had_engine: bool = false,
+
     /// Mapping from TreeNode pointers to DOM Element instances.
     /// This is populated by the DomTreeAdapter during incremental DOM conversion.
     tree_node_to_dom_map: *std.AutoHashMap(*TreeNode, *runtime.Instance),
@@ -79,6 +83,9 @@ pub const ParserScriptContext = struct {
     script_loader_fn: ?ScriptLoaderFn = null,
     script_loader_ctx: ?*anyopaque = null,
 
+    /// An owned parser driver can suspend and resume a blocking fetch.
+    can_suspend: bool = false,
+
     /// Create a new parser script context.
     pub fn init(
         allocator: Allocator,
@@ -92,6 +99,8 @@ pub const ParserScriptContext = struct {
             .allocator = allocator,
             .ctx = ctx,
             .document = document,
+            .document_generation = runtime.SlabAllocator.generationOf(document),
+            .had_engine = ctx.hasEngine(),
             .tree_node_to_dom_map = tree_node_to_dom_map,
             .tree_builder = tree_builder,
             .scripting_enabled = scripting_enabled,
@@ -114,6 +123,35 @@ pub const ParserScriptContext = struct {
         return self.tree_node_to_dom_map.get(tree_node);
     }
 };
+
+fn parserContextIsCurrent(ctx: *const ParserScriptContext) bool {
+    if (ctx.had_engine and !ctx.ctx.hasEngine()) return false;
+    if (runtime.SlabAllocator.generationOf(ctx.document) != ctx.document_generation) return false;
+    const stream = ctx.tree_builder.input_stream_manager orelse return false;
+    if (stream.aborted) return false;
+    const internal = document_internals.getInternal(ctx.document) orelse return false;
+    return !internal.destroyed and internal.input_stream_manager == stream;
+}
+
+/// HTML "text" script end-tag checkpoint, before pop or prepare. Crane has
+/// no speculative parser. Check the agent's actual execution context stack,
+/// since document.write can parse while script is running in another realm.
+///
+/// Design: WebKit HTMLScriptRunner::runScript checkpoints before preparation
+/// and retains its document across callbacks:
+/// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/html/parser/HTMLScriptRunner.cpp
+pub fn parserScriptEndCheckpoint(context: ?*anyopaque) bool {
+    const ctx: *ParserScriptContext = @ptrCast(@alignCast(context orelse return true));
+    if (!parserContextIsCurrent(ctx)) return false;
+    const agent = ctx.ctx.agent orelse return true;
+    if (!ctx.ctx.hasEngine() or engine.hasRunningScript(agent)) return true;
+    const pin = engine.retainValue(ctx.ctx, .{ .instance = ctx.document }) catch return false;
+    defer pin.release();
+    engine.performMicrotaskCheckpoint(agent) catch {};
+    // Mutation observers can open the document or remove its frame. An old
+    // tree's mappings must not be used after either change.
+    return parserContextIsCurrent(ctx);
+}
 
 /// The tree builder's script callback: what the parser does at a script's
 /// end tag, between the steps that raise and lower its script nesting level.
@@ -150,10 +188,11 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
     // loader returns is used as-is, EMPTY included (an empty script still
     // runs and fires load); null is a network error, which executing the
     // element turns into the error event.
-    const loader: ?script_execution.ParserScriptLoader = if (ctx.script_loader_fn != null) .{
+    const loader: ?script_execution.ParserScriptLoader = if (ctx.script_loader_fn != null or ctx.can_suspend) .{
         .context = ctx,
         .load = &loadForPrepare,
         .allocator = ctx.allocator,
+        .can_suspend = ctx.can_suspend,
     } else null;
     _ = script_execution.prepareScriptElementWithLoader(ctx.allocator, script_element, loader) catch {};
 
@@ -193,16 +232,49 @@ fn loadForPrepare(context: ?*anyopaque, src: []const u8) ?[]const u8 {
 /// document.write() must insert (document-write/script_013). The end-tag
 /// steps restore the old insertion point after this returns.
 fn runPendingParsingBlockingScripts(ctx: *ParserScriptContext) void {
-    if (script_execution.pendingParsingBlockingScript(ctx.document) == null) return;
+    if (!parserContextIsCurrent(ctx)) return;
+    if (script_execution.pendingParsingBlockingScript(ctx.document) == null) {
+        ctx.tree_builder.waiting_for_parser_blocking_script = false;
+        return;
+    }
+    ctx.tree_builder.waiting_for_parser_blocking_script = true;
     if (ctx.tree_builder.script_nesting_level > 1) {
         ctx.tree_builder.parser_pause_flag = true;
         return;
     }
     while (true) {
+        if (!script_execution.pendingParserBlockingScriptReady(ctx.document)) break;
         if (ctx.tree_builder.input_stream_manager) |stream| stream.setInsertionPointAtNextInputCharacter();
-        if (!script_execution.executePendingParserBlockingScript(ctx.allocator, ctx.document)) break;
+        // The response ended the pause BEFORE executing the script, so its
+        // own document.write can invoke the tokenizer at the insertion point.
+        ctx.tree_builder.waiting_for_parser_blocking_script = false;
+        ctx.tree_builder.parser_pause_flag = false;
+        const executed = script_execution.executePendingParserBlockingScript(ctx.allocator, ctx.document);
+        // A resumed script can open its document, stop navigation, or remove
+        // its frame. Never consult the old document again after cancellation.
+        if (!parserContextIsCurrent(ctx)) return;
+        if (!executed) break;
         ctx.tree_builder.parser_pause_flag = false;
     }
+    ctx.tree_builder.waiting_for_parser_blocking_script = script_execution.pendingParsingBlockingScript(ctx.document) != null;
+    if (ctx.tree_builder.waiting_for_parser_blocking_script)
+        ctx.tree_builder.parser_pause_flag = true;
+}
+
+/// Resume the script end-tag loop after an asynchronous parser-blocking
+/// response arrives. The owning parser calls this before reading more input.
+/// The insertion point and script nesting level are scoped across execution,
+/// including nested document.write calls and abrupt script completion.
+pub fn resumeAfterBlockingScript(ctx: *ParserScriptContext) void {
+    if (!parserContextIsCurrent(ctx)) return;
+    if (script_execution.pendingParsingBlockingScript(ctx.document) == null) return;
+    if (ctx.tree_builder.script_nesting_level != 0) return;
+    const stream = ctx.tree_builder.input_stream_manager;
+    if (stream) |input| input.pushInsertionPoint();
+    defer if (stream) |input| input.popInsertionPoint();
+    ctx.tree_builder.script_nesting_level += 1;
+    defer ctx.tree_builder.script_nesting_level -= 1;
+    runPendingParsingBlockingScripts(ctx);
 }
 
 // =============================================================================
@@ -337,6 +409,11 @@ pub fn documentMode(mode: html_core.parser.QuirksMode) document_internals.Mode {
 /// This adapter is called by the tree builder as nodes are created and modified,
 /// allowing scripts to access DOM elements that have already been parsed.
 pub const DomTreeAdapter = struct {
+    /// Transient adapters keep each mapped wrapper rooted until deinit.
+    /// A Document-owned persistent driver instead traces these wrappers
+    /// from its Document, allowing the entire unreachable graph to collect.
+    pub const OwnershipMode = enum { strong_roots, document_traced };
+
     allocator: Allocator,
     ctx: runtime.Context,
     document: *runtime.Instance,
@@ -350,6 +427,7 @@ pub const DomTreeAdapter = struct {
     unattached_nodes: std.AutoHashMap(*runtime.Instance, u64),
     /// Parser references survive removal by script until parsing ends. Owned
     /// values root wrappers; generations additionally guard forced realm teardown.
+    ownership_mode: OwnershipMode = .strong_roots,
     holds: std.ArrayList(engine.Owned) = .empty,
     generations: std.AutoHashMap(*TreeNode, u64),
     document_generation: u64,
@@ -411,14 +489,15 @@ pub const DomTreeAdapter = struct {
         const dom_node = try self.createDomNode(tree_node);
         errdefer if (dom_node != self.document and !engine.hasWrapper(dom_node)) dom.node_creation.destroyUninserted(dom_node);
 
-        if (self.ctx.hasEngine() and dom_node != self.document) {
+        if (self.ownership_mode == .strong_roots and self.ctx.hasEngine() and dom_node != self.document) {
             const owned = try engine.retainValue(self.ctx, .{ .instance = dom_node });
             errdefer owned.release();
             try self.holds.append(self.allocator, owned);
         }
 
         // Record unwrapped ownership BEFORE publishing the node. Wrapped
-        // nodes are held independently above and belong to engine cleanup. node_map is
+        // nodes are retained above or traced by the persistent driver and
+        // belong to engine cleanup. node_map is
         // keyed by TreeNode and a second create for the same TreeNode overwrites
         // it - `unattached_nodes` is keyed by instance and keeps both.
         if (dom_node != self.document and !engine.hasWrapper(dom_node)) {
@@ -528,9 +607,6 @@ pub const DomTreeAdapter = struct {
         // children-changed steps wait for its end tag too - is
         // parser-inserted.
         if (std.mem.eql(u8, local_name, "script")) dom.script_elements.markParserInserted(element, self.document);
-        // A style element updates its style block when the parser pops it
-        // (`domAdapterOnElementPopped`), not as it is inserted and filled.
-        if (std.mem.eql(u8, local_name, "style")) dom.style_sheet_owners.createdByParser(element);
         // An element type that acts when the parser pops its elements
         // (dom.finish_parsing_children) hears that this one is on the stack
         // of open elements - before its attributes are appended, so their
@@ -540,6 +616,10 @@ pub const DomTreeAdapter = struct {
         }
 
         for (tree_node.attributes.toSlice()) |attr| appendParsedAttribute(element, attr);
+
+        // HTML 4.2.7 records the token's stylesheet relationship and enabled
+        // state at creation, before its post-connection steps start a fetch.
+        if (is_html and (std.mem.eql(u8, local_name, "style") or std.mem.eql(u8, local_name, "link"))) dom.style_sheet_owners.createdByParser(element);
 
         return element;
     }

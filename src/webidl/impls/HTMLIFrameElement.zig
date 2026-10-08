@@ -165,6 +165,8 @@ pub fn installHooks() void {
         .delays_load_event = &iframesDelayLoadEvent,
         .run_load_event_steps = &contentNavigableLoadEventSteps,
         .stop_loading = &stopLoadingDocument,
+        .is_navigating = &documentIsNavigating,
+        .load_delay_may_have_ended = &childLoadDelayMayHaveEnded,
     });
     dom_module.attribute_change_steps.install("iframe", &iframeAttributeChangeSteps);
     dom_module.navigables.install(.{
@@ -445,15 +447,21 @@ fn parseHtmlForIframe(
     else
         null;
 
+    // Make the wrapper in its relevant realm before a parse can suspend or
+    // run lifecycle callbacks. The navigable already owns this document.
+    wrapInOwnRealm(document_instance);
+
     // The scripted parser builds the tree incrementally through the
     // DomTreeAdapter, so scripts can reach nodes already parsed.
     log.debug("[parseHtmlForIframe] time={d}ns calling parseHTMLWithScripting", .{clock.monotonicNanos()});
+    var parser_canceled = false;
     _ = scripted_parser.parseHTMLWithScripting(
         allocator,
         runtime_ctx,
         html_content,
         .{
             .scripting_enabled = scripting_enabled,
+            .parser_canceled = &parser_canceled,
             .window = window_instance,
             .document = document_instance,
             .script_loader = html_module.embedder_scripts.forRealm(runtime_ctx),
@@ -468,23 +476,10 @@ fn parseHtmlForIframe(
         log.warn("[parseHtmlForIframe] parsing stopped: {}", .{err});
     };
     log.debug("[parseHtmlForIframe] time={d}ns parseHTMLWithScripting DONE", .{clock.monotonicNanos()});
+    if (parser_canceled) return document_instance;
 
-    // HTML "the end": readiness "interactive" now the parser has stopped,
-    // then DOMContentLoaded, readiness "complete", load at the window and
-    // pageshow as tasks - the last of which queues the iframe's own load
-    // ("completely finish loading"), after everything the page posted.
-    dom_module.document_lifecycle.parsingStopped(document_instance);
-    // "The end" step 5: run the list of scripts that will execute when the
-    // document has finished parsing - every `defer` script and every
-    // parser-inserted module script. The frame's parse never did, so no
-    // module script in a frame ever ran.
-    if (scripting_enabled) {
-        html_module.script_execution.executeScriptsWhenParsingFinished(allocator, document_instance);
-    }
-    dom_module.document_lifecycle.finishLoading(document_instance);
-
-    // The Document's wrapper, made now in its own realm (see wrapInOwnRealm).
-    wrapInOwnRealm(document_instance);
+    // Initiation may have paused on a stylesheet. Its Document-owned parser
+    // runs "the end" only after actual EOF, including srcdoc and popups.
 
     return document_instance;
 }
@@ -1254,7 +1249,7 @@ fn navigableContext(integration: *IFrameIntegration) ?runtime.Context {
 /// Step 24.1: "checking if unloading is canceled" for the active document's
 /// inclusive descendant navigables - beforeunload at each, parents first.
 /// Step 24.2: canceled, or navigated again meanwhile, and this navigation
-/// ends. Step 24.3 (abort the active document) is not modelled.
+/// ends. Step 24.3 aborts the active document before the replacement fetch.
 fn runBeforeUnload(context: ?*anyopaque) void {
     const id = idOf(context);
     const record = navigationById(id) orelse return;
@@ -1285,7 +1280,9 @@ fn runBeforeUnload(context: ?*anyopaque) void {
         // it was being parsed, as browsers do (replace-before-load/*).
         for (documents.items) |entry| {
             if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
-            document_lifecycle.abort(entry.document);
+            // The explicit provisional path preserves live XHR loaders;
+            // a stop/open called by an owner callback remains observable.
+            document_lifecycle.abortForNavigation(entry.document);
         }
     }
     startFetch(navigationById(id) orelse return);
@@ -2016,7 +2013,7 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     if (record.traversal_entry == 0 and record.history_handling == .push) {
         if (integration.browsing_context) |bc| dom_module.navigation_api.entriesRemoved(@ptrCast(bc.getTop()));
     }
-    loadEventStepsIfNothingWill(integration);
+    finishParserlessNavigation(integration);
 }
 
 /// "Finalize a cross-document navigation" steps 5-10: the new document's
@@ -2162,15 +2159,14 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
     }
 }
 
-/// A document that never goes through the parser - an XML document, which
-/// has no parser yet - has no "the end" to finish loading it, so nothing
-/// would run its container's load event steps. Run them now.
-fn loadEventStepsIfNothingWill(integration: *IFrameIntegration) void {
+/// HTML §14.2: XML EOF uses the same "the end" as HTML. The XML parser is
+/// not implemented yet, but its received document still needs completion.
+/// Loading HTML may instead own a suspended parser; leave its EOF to it.
+fn finishParserlessNavigation(integration: *IFrameIntegration) void {
+    const content_type = integration.getLoadedContentType() orelse return;
+    if (html_module.navigation.document_type.classify(content_type) != .xml) return;
     const document = activeDocumentOf(integration) orelse return endLoadDelay(integration);
-    const readiness = interfaces.Document.get_readyState(document) catch return;
-    if (readiness != ._loading_) return;
-    const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return endLoadDelay(integration)));
-    if (!contentNavigableLoadEventSteps(element)) endLoadDelay(integration);
+    document_lifecycle.finishWithoutParser(document);
 }
 
 /// "Unload a document and its descendants": its child navigables' documents
@@ -2642,17 +2638,29 @@ fn endLoadDelay(integration: *IFrameIntegration) void {
     document_lifecycle.loadDelayMayHaveEnded(document);
 }
 
-/// dom.content_navigables: whether an iframe in `document` delays its load
-/// event - its content navigable is navigating, and has not yet run the
-/// iframe load event steps for it.
+/// HTML §4.8.5: a container delays its node document when its active
+/// document is not ready for post-load tasks, its navigable is delaying
+/// load events, or anything delays its active document's load event.
 fn iframesDelayLoadEvent(document: *runtime.Instance) bool {
     var children = dom_module.navigables.childNavigablesOf(document, std.heap.page_allocator);
     defer children.deinit(std.heap.page_allocator);
     for (children.items) |child| {
         const integration = integrationOfBrowsingContext(child.browsing_context) orelse continue;
         if (integration.delaying_load) return true;
+        const active = activeDocumentOf(integration) orelse continue;
+        if (!document_lifecycle.isReadyForPostLoadTasks(active) or document_lifecycle.delaysLoadEvent(active)) return true;
     }
     return false;
+}
+
+/// A resource in an active child document stopped delaying load, possibly
+/// without EOF or a new navigation. Its parent rechecks all three iframe
+/// delay conditions. Rechecking can run script; nothing is read afterward.
+fn childLoadDelayMayHaveEnded(document: *runtime.Instance) void {
+    const integration = navigableOfDocument(document) orelse return;
+    const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return));
+    const parent = interfaces.Node.get_ownerDocument(element) catch return;
+    document_lifecycle.loadDelayMayHaveEnded(parent orelse return);
 }
 
 /// dom.content_navigables: `container`'s load event steps - an iframe's
@@ -2680,20 +2688,45 @@ fn integrationOfContainer(container: *runtime.Instance) ?*IFrameIntegration {
 }
 
 /// dom.content_navigables: HTML "stop loading" the content navigable whose
-/// active document is `document` - steps 1-2: while its document is not
-/// unloading, a navigation ID ongoing is set to null, which ends that
-/// navigation (document.open() step 8). Step 3, aborting the document, is
-/// not modelled.
+/// active document is `document`. Only step 2's navigation cancellation is
+/// conditional on unloading; step 3 always aborts the document and descendants.
 fn stopLoadingDocument(document: *runtime.Instance) void {
-    const integration = navigableOfDocument(document) orelse return;
-    if (document_lifecycle.isUnloading(document)) return;
-    switch (integration.ongoing_navigation) {
-        .id => {
-            setOngoingNavigation(integration, .none);
-            endLoadDelay(integration);
-        },
-        else => {},
+    const generation = runtime.SlabAllocator.generationOf(document);
+    const pin = engine.retainValue(document.ctx, .{ .instance = document }) catch null;
+    defer if (pin) |held| held.release();
+    if (navigableOfDocument(document)) |integration| {
+        // Ending navigation can dispatch events which remove its frame.
+        // WebKit FrameLoader::stopAllLoaders retains its frame for this call.
+        integration.busy += 1;
+        defer finishBusy(integration);
+        if (!document_lifecycle.isUnloading(document)) switch (integration.ongoing_navigation) {
+            .id => {
+                setOngoingNavigation(integration, .none);
+                endLoadDelay(integration);
+            },
+            else => {},
+        };
     }
+    if (runtime.SlabAllocator.generationOf(document) != generation) return;
+    // "Abort a document and its descendants" steps 2-3: snapshot the
+    // descendants and queue each document's global task before aborting the
+    // root (step 4). Abort listeners may remove or replace descendants.
+    var documents = dom_module.navigables.inclusiveDescendantDocuments(document, document.ctx.allocator);
+    defer documents.deinit(document.ctx.allocator);
+    const descendant_start: usize = if (documents.items.len > 0) 1 else 0;
+    for (documents.items[descendant_start..]) |entry| {
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+        const descendant = navigableOfDocument(entry.document) orelse continue;
+        const context = descendant.browsing_context orelse continue;
+        html_module.document_abort.DescendantAbort.queue(document, entry.document, context.id);
+    }
+    document_lifecycle.abort(document);
+}
+
+/// Document.open step 8's condition, independent of Window.stop.
+fn documentIsNavigating(document: *runtime.Instance) bool {
+    const integration = navigableOfDocument(document) orelse return false;
+    return integration.ongoing_navigation == .id;
 }
 
 /// HTML "iframe load event steps" (§4.8.5): fire load at the element - and
@@ -2706,8 +2739,9 @@ fn stopLoadingDocument(document: *runtime.Instance) void {
 /// waits for that navigation too, as it does in browsers.
 fn runIframeLoadEventSteps(element: *runtime.Instance) void {
     const internal = getInternal(element) orelse return;
-    const was_delaying = internal.integration.delaying_load;
     internal.integration.delaying_load = false;
+    const realm = element.ctx;
+    const had_engine = realm.hasEngine();
     const generation = runtime.SlabAllocator.generationOf(element);
     // Step 2: "Let childDocument be element's content navigable's active
     // document." (Step 1 asserts there is a content navigable; step 4,
@@ -2721,19 +2755,23 @@ fn runIframeLoadEventSteps(element: *runtime.Instance) void {
     if (!muted) {
         // Step 5: "Set childDocument's iframe load in progress flag."
         const child_generation = if (child_document) |child| runtime.SlabAllocator.generationOf(child) else 0;
+        const child_realm = if (child_document) |child| child.ctx else null;
+        const child_had_engine = if (child_realm) |child_ctx| child_ctx.hasEngine() else false;
         if (child_document) |child| document_lifecycle.setIframeLoadInProgress(child, true);
         // Step 6: "Fire an event named load at element."
         fireLoadEventOnIframe(element);
         // Step 7: "Unset childDocument's iframe load in progress flag." The
         // handlers may have navigated the frame and dropped the document.
         if (child_document) |child| {
-            if (runtime.SlabAllocator.generationOf(child) == child_generation) document_lifecycle.setIframeLoadInProgress(child, false);
+            if ((!child_had_engine or child_realm.?.hasEngine()) and runtime.SlabAllocator.generationOf(child) == child_generation) {
+                document_lifecycle.setIframeLoadInProgress(child, false);
+            }
         }
     }
     // The handlers may have taken the element away.
-    if (!was_delaying or runtime.SlabAllocator.generationOf(element) != generation) return;
-    const NodeImpl = @import("Node.zig");
-    const document = NodeImpl.getOwnerDocument(element) orelse return;
+    if ((had_engine and !realm.hasEngine()) or runtime.SlabAllocator.generationOf(element) != generation) return;
+    // Written resource delays can end with no navigation delay flag set.
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
     document_lifecycle.loadDelayMayHaveEnded(document);
 }
 

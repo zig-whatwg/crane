@@ -73,6 +73,7 @@ const object_resource_type = html_core.navigation.object_resource_type;
 const navigate_steps = html_core.navigation.navigate_steps;
 const IFrameIntegration = html_core.IFrameIntegration;
 const AsyncFetch = fetch.algorithms.AsyncFetch;
+const LiveContents = @FieldType(html_core.agent_host.AgentHost, "embedded_contents");
 
 const log = std.log.scoped(.embedded_content);
 
@@ -98,6 +99,7 @@ pub const Represents = enum {
 /// `element_gone` and does nothing.
 pub const Content = struct {
     allocator: std.mem.Allocator,
+    ctx: runtime.Context,
     kind: Kind,
     element: *runtime.Instance,
     element_generation: u64,
@@ -117,6 +119,13 @@ pub const Content = struct {
     current: u64 = 0,
     /// The fetch in flight, for `current`.
     fetch: ?*Fetch = null,
+    fetch_document: ?*runtime.Instance = null,
+    fetch_document_generation: u64 = 0,
+    document_abort_pending: ?u64 = null,
+    /// Resource deliveries for `current`, excluding processing tasks and
+    /// stale work superseded by a later processing.
+    resource_tasks: u32 = 0,
+    registry: ?*LiveContents = null,
     /// How many tasks and fetches are pending. While any is, the element
     /// delays `delayed_document`'s load event and is kept alive.
     pending: u32 = 0,
@@ -145,6 +154,7 @@ pub fn create(allocator: std.mem.Allocator, element: *runtime.Instance, kind: Ki
     const content = try runtime.ArenaAllocator.get().create(Content);
     content.* = .{
         .allocator = allocator,
+        .ctx = element.ctx,
         .kind = kind,
         .element = element,
         .element_generation = runtime.SlabAllocator.generationOf(element),
@@ -157,7 +167,8 @@ pub fn create(allocator: std.mem.Allocator, element: *runtime.Instance, kind: Ki
 /// holds it.
 pub fn elementGone(content: *Content) void {
     content.element_gone = true;
-    content.current += 1;
+    advanceProcessing(content);
+    unregister(content);
     terminateFetch(content);
     // The element is going: nothing to keep alive, and its document - if
     // it is still there - is not waiting for it any more.
@@ -201,7 +212,7 @@ pub fn inserted(content: *Content) void {
 /// its child navigable is destroyed now (stated deviation: the spec's
 /// queued (re)determination would destroy it).
 pub fn removed(content: *Content) void {
-    content.current += 1;
+    advanceProcessing(content);
     terminateFetch(content);
     destroyNavigable(content);
     content.represents = if (content.kind == .object) .fallback else .nothing;
@@ -228,7 +239,7 @@ pub fn attributeChanged(content: *Content, local_name: []const u8) void {
             if (hasAttribute(content.element, "src") or hasAttribute(content.element, "type")) {
                 queueProcessing(content);
             } else {
-                content.current += 1;
+                advanceProcessing(content);
                 terminateFetch(content);
                 displayNoPlugin(content);
             }
@@ -305,6 +316,7 @@ const Task = struct {
 
     fn destroy(self: *Task) void {
         const content = self.content;
+        if (self.step != .process and self.id == content.current) content.resource_tasks -= 1;
         if (self.response) |*r| r.deinit(content.allocator);
         content.allocator.destroy(self);
         endPending(content);
@@ -316,7 +328,7 @@ const Task = struct {
 /// event loop - pending, so delaying the load event and keeping the element.
 fn queueTask(content: *Content, step: Step, id: u64, response: ?ResponseSummary) void {
     var summary = response;
-    const loop = content.element.ctx.getOptionalEventLoop() orelse {
+    const loop = content.ctx.getOptionalEventLoop() orelse {
         if (summary) |*r| r.deinit(content.allocator);
         return;
     };
@@ -326,16 +338,28 @@ fn queueTask(content: *Content, step: Step, id: u64, response: ?ResponseSummary)
     };
     task.* = .{ .content = content, .step = step, .id = id, .response = summary };
     content.ref();
-    beginPending(content);
+    beginPending(content) catch {
+        if (task.response) |*r| r.deinit(content.allocator);
+        content.allocator.destroy(task);
+        content.unref();
+        return;
+    };
+    if (step != .process and id == content.current) content.resource_tasks += 1;
     loop.queueTask(.{ .callback = &runTask, .context = task, .drop = &dropTask });
 }
 
 /// Queue the element's processing: a newer one supersedes whatever is
 /// queued or fetching.
 fn queueProcessing(content: *Content) void {
-    content.current += 1;
+    advanceProcessing(content);
     terminateFetch(content);
     queueTask(content, .process, content.current, null);
+}
+
+fn advanceProcessing(content: *Content) void {
+    content.current +%= 1;
+    content.resource_tasks = 0;
+    content.document_abort_pending = null;
 }
 
 fn dropTask(data: ?*anyopaque) void {
@@ -347,12 +371,12 @@ fn runTask(data: ?*anyopaque) void {
     const task: *Task = @ptrCast(@alignCast(data orelse return));
     defer task.destroy();
     const content = task.content;
+    if (!content.ctx.hasEngine()) return;
     if (!content.elementIsLive()) return;
     // A realm retired by a navigation runs none of its tasks, and the task
     // of a document that is no longer fully active does not run.
-    if (content.element.ctx.engine_ctx == null) return;
     if (!documentIsFullyActive(content.element)) return;
-    engine.runTaskInRealm(content.element.ctx, taskSteps, task) catch |err| {
+    engine.runTaskInRealm(content.ctx, taskSteps, task) catch |err| {
         log.debug("{s} task not run: {}", .{ @tagName(content.kind), err });
     };
 }
@@ -360,18 +384,17 @@ fn runTask(data: ?*anyopaque) void {
 fn taskSteps(data: ?*anyopaque) void {
     const task: *Task = @ptrCast(@alignCast(data.?));
     const content = task.content;
+    if (task.id != content.current) return;
     switch (task.step) {
         .fire_load => dom.navigables.fireSimpleEvent(content.element, "load"),
         .fire_error => dom.navigables.fireSimpleEvent(content.element, "error"),
         .process => {
-            if (task.id != content.current) return;
             switch (content.kind) {
                 .object => processObject(content, task.id),
                 .embed => setupEmbed(content, task.id),
             }
         },
         .response => {
-            if (task.id != content.current) return;
             if (task.response) |*response| switch (content.kind) {
                 .object => objectResponse(content, response),
                 .embed => embedResponse(content, response),
@@ -640,7 +663,7 @@ const Fetch = struct {
         const self: *Fetch = @ptrCast(@alignCast(context));
         const content = self.content;
         if (!content.elementIsLive() or self.id != content.current) return false;
-        if (content.element.ctx.engine_ctx == null) return false;
+        if (!content.ctx.hasEngine()) return false;
         return documentIsFullyActive(content.element);
     }
 
@@ -702,7 +725,13 @@ fn startFetch(content: *Content, id: u64, url: []const u8) !void {
     const record = try allocator.create(Fetch);
     record.* = .{ .content = content, .id = id };
     content.ref();
-    beginPending(content);
+    beginPending(content) catch |err| {
+        allocator.destroy(record);
+        content.unref();
+        return err;
+    };
+    content.fetch_document = interfaces.Node.get_ownerDocument(element) catch null;
+    content.fetch_document_generation = if (content.fetch_document) |document| runtime.SlabAllocator.generationOf(document) else 0;
     content.fetch = record;
     // The fetch owns the request from here, even when it fails to start.
     request_owned = false;
@@ -751,15 +780,20 @@ fn summarize(allocator: std.mem.Allocator, result: ?*fetch.algorithms.FetchResul
 
 /// One more task or fetch pending. The first delays the element's node
 /// document's load event and keeps the element alive.
-fn beginPending(content: *Content) void {
+fn beginPending(content: *Content) !void {
+    if (content.pending == 0) if (liveContents(content.ctx)) |registry| {
+        try registry.add(content, content.ctx);
+        content.registry = registry;
+    };
     content.pending += 1;
-    if (content.pending > 1) return;
-    if (interfaces.Node.get_ownerDocument(content.element) catch null) |document| {
+    // A document abort can end the old resource's delay while its stale
+    // delivery task is still pending. New work acquires its own delay.
+    if (content.delayed_document == null) if (interfaces.Node.get_ownerDocument(content.element) catch null) |document| {
         content.delayed_document = document;
         content.delayed_document_generation = runtime.SlabAllocator.generationOf(document);
         dom.document_lifecycle.delayLoadEvent(document);
-    }
-    if (content.element.ctx.engine_ctx != null) {
+    };
+    if (!content.kept_alive and content.ctx.hasEngine()) {
         engine.keepPlatformObjectAlive(content.element);
         content.kept_alive = true;
     }
@@ -770,9 +804,73 @@ fn endPending(content: *Content) void {
     if (content.pending == 0) return;
     content.pending -= 1;
     if (content.pending > 0) return;
+    unregister(content);
     if (content.kept_alive and content.elementIsLive()) engine.releasePlatformObject(content.element);
     content.kept_alive = false;
     endDelay(content);
+}
+
+fn unregister(content: *Content) void {
+    const registry = content.registry orelse return;
+    content.registry = null;
+    registry.remove(content);
+}
+
+fn liveContents(realm: runtime.Context) ?*LiveContents {
+    const agent = realm.agent orelse return null;
+    const host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    return &host.embedded_contents;
+}
+
+/// The shared owner for object and embed requests, installed with the
+/// HTMLObjectElement process hooks.
+pub fn installDocumentAbort() void {
+    dom.document_fetches.install(.{ .discard = discardRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
+}
+
+fn prepareDocumentAbort(document: *runtime.Instance) bool {
+    const registry = liveContents(document.ctx) orelse return false;
+    var canceled = false;
+    for (registry.entries.toSlice()) |entry| {
+        const content: *Content = @ptrCast(@alignCast(entry.instance));
+        const fetch_document = content.fetch_document orelse continue;
+        if (fetch_document != document or runtime.SlabAllocator.generationOf(fetch_document) != content.fetch_document_generation or
+            (content.fetch == null and content.resource_tasks == 0)) continue;
+        content.document_abort_pending = content.current;
+        canceled = true;
+    }
+    return canceled;
+}
+
+fn abortDocument(document: *runtime.Instance) void {
+    const registry = liveContents(document.ctx) orelse return;
+    while (true) {
+        const content = for (registry.entries.toSlice()) |entry| {
+            const candidate: *Content = @ptrCast(@alignCast(entry.instance));
+            if (candidate.fetch_document == document and candidate.document_abort_pending != null) break candidate;
+        } else return;
+        const generation = content.document_abort_pending.?;
+        content.document_abort_pending = null;
+        if (generation != content.current) continue;
+        advanceProcessing(content);
+        terminateFetch(content);
+        // Stale tasks retain their payloads until the loop runs or drops
+        // them, but no longer delay the document's load event.
+        endDelay(content);
+    }
+}
+
+fn discardRealm(realm: runtime.Context) void {
+    const registry = liveContents(realm) orelse return;
+    while (true) {
+        const content = for (registry.entries.toSlice()) |entry| {
+            if (entry.realm == @as(*anyopaque, @ptrCast(realm))) break @as(*Content, @ptrCast(@alignCast(entry.instance)));
+        } else return;
+        unregister(content);
+        advanceProcessing(content);
+        terminateFetch(content);
+        endDelay(content);
+    }
 }
 
 fn endDelay(content: *Content) void {

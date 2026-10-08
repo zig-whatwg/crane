@@ -333,9 +333,13 @@ fn urlAndHistoryUpdateOfWindow(window: *runtime.Instance, url: []const u8, seria
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
     const bc = activeNavigable(internal) orelse return;
-    const given: joint_history.SerializedState = serialized orelse .null;
+    const history = ensureEntries(bc) catch return;
+    const active = history.currentEntry(bc.id) orelse return;
+    // URL and history update steps 3 and 8: absent serializedData preserves
+    // both the old serialized state and the History object's cached value.
+    const given: joint_history.SerializedState = serialized orelse active.state;
     const data = given.clone(internal.allocator) catch return;
-    urlAndHistoryUpdate(internal, bc, window, url, data, handling) catch |err| {
+    urlAndHistoryUpdate(internal, bc, window, url, data, handling, serialized != null) catch |err| {
         log.debug("history: the URL and history update steps failed: {s}", .{@errorName(err)});
     };
 }
@@ -452,7 +456,7 @@ fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, ur
     // Step 10: "Run the URL and history update steps given document and
     // newURL, with serializedData set to serializedData and historyHandling
     // set to historyHandling."
-    try urlAndHistoryUpdate(internal, still, window, new_url, serialized, handling);
+    try urlAndHistoryUpdate(internal, still, window, new_url, serialized, handling, true);
 }
 
 /// `url` parsed relative to `document`'s base URL and serialized; owned.
@@ -478,6 +482,7 @@ fn urlAndHistoryUpdate(
     new_url: []const u8,
     serialized: joint_history.SerializedState,
     handling: joint_history.HistoryHandling,
+    restore_state: bool,
 ) !void {
     const history = try ensureEntries(bc);
     // The new entry's navigation API state is a fresh one (the URL and
@@ -485,7 +490,11 @@ fn urlAndHistoryUpdate(
     try history.commitSameDocument(bc.id, new_url, serialized, handling, .undefined);
     // Step 7: "Restore the history object state" - the next read deserializes
     // the new entry's state.
-    internal.has_state = false;
+    if (restore_state) {
+        internal.has_state = false;
+    } else if (history.currentEntry(bc.id)) |entry| {
+        internal.state_entry = entry.id;
+    }
     // Step 8: "Set document's URL to newURL."
     setDocumentUrl(window, new_url);
     // Step 9: "Update the navigation API entries for a same-document
