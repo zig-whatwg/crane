@@ -3194,6 +3194,12 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
     // Steps 1–2: an omitted member uses the document's registry; null stays null.
     const registry = init_data.customElementRegistry.getOrDefault(document_registry);
     if (registry) |value| {
+        // The member is a `CustomElementRegistry?`: WebIDL converts a value
+        // to an interface type only if it implements that interface (3.2.21),
+        // else TypeError. The binding hands interface-typed dictionary
+        // members over as any platform object, so the check is here; read
+        // as a registry, another object's state was a garbage cast (CE2-M1).
+        if (value.stateAs(interfaces.CustomElementRegistry.State) == null) return error.TypeError;
         if (!dom.custom_elements.isScoped(value) and value != document_registry) return error.NotSupportedError;
     }
     return attachShadow(instance, init_data, registry);
