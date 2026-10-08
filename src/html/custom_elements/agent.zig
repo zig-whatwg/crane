@@ -204,6 +204,14 @@ pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload
         }
 
         fn releaseRecords(self: *Self) void {
+            // Every `elements` entry has its record on `records` (enqueue puts
+            // both), so no records means an empty map - and clearing an empty
+            // map still memsets all of its metadata once it has ever grown
+            // (std.HashMap.clearRetainingCapacity): after one define() upgraded
+            // 100,000 elements, every later outermost [CEReactions] call paid
+            // that memset - appendChild and setAttribute ran 15-25% slower
+            // (CE-S2, measured with crane/lf1-scratch-ce-reactions-timing).
+            if (self.records == null) return;
             var current = self.records;
             self.records = null;
             self.elements.clearRetainingCapacity();
