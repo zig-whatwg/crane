@@ -1915,10 +1915,9 @@ fn getShadowIncludingRoot(node: anytype) @TypeOf(node) {
 fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
     const ancestor: *const NodeBase = @ptrCast(node);
     var current: *const NodeBase = @ptrCast(other);
-    // A shadow root chain is a handful deep; the bound only stops a corrupt
-    // tree from looping here.
-    var depth: usize = 0;
-    while (depth < 64) : (depth += 1) {
+    // DOM host-including inclusive ancestor: follow every fragment host.
+    // A fixed depth would permit a cycle through valid, deeply nested templates.
+    while (true) {
         if (tree_helpers.isInclusiveAncestor(current, ancestor)) return true;
         // B's root, and whether it is a shadow root with a host.
         var root = current;
@@ -1926,11 +1925,9 @@ fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
         if (root.node_type != DOCUMENT_FRAGMENT_NODE) return false;
         const root_opaque = instance_bridge.getInstance(@constCast(root)) orelse return false;
         const root_instance: *runtime.Instance = @ptrCast(@alignCast(root_opaque));
-        if (root_instance.stateAs(interfaces.ShadowRoot.State) == null) return false;
-        const host = interfaces.ShadowRoot.get_host(root_instance) catch return false;
+        const host = @import("template_contents.zig").host(root_instance) orelse return false;
         current = instance_bridge.getNodeBase(host) orelse return false;
     }
-    return false;
 }
 
 // Stub: Queue tree mutation record for NodeBase nodes
@@ -2613,10 +2610,15 @@ pub fn adopt(
             }
         }
 
-        // Step 3.3: Run adopting steps for each inclusive descendant
-        // TODO(HTML): Adopting steps are an extension point for other specs
-        // This would call HTML custom element adoption steps
-        // For now, this is a no-op
+        // DOM adopt, step 3.4: template contents are a separate hosted tree,
+        // so updating the ordinary descendants above does not reach them.
+        for (descendants.toSlice()) |desc| {
+            if (instance_bridge.getInstance(desc)) |opaque_instance| {
+                @import("template_contents.zig").adopted(@ptrCast(@alignCast(opaque_instance))) catch |err| {
+                    return if (err == error.OutOfMemory) error.OutOfMemory else error.NotSupportedError;
+                };
+            }
+        }
     }
 }
 

@@ -602,6 +602,30 @@ pub fn createRejectedPromise(realm: Context, reason: JSValue) Error!Owned {
 
 pub const reactToPromise = @import("protocol_promises.zig").reactToPromise;
 
+pub fn queueResolvedPromiseReaction(realm: Context, steps: *const engine.PromiseReactionSteps, data: ?*anyopaque) Error!void {
+    const isolate = realm_entry.agentOf(realm) orelse return error.OperationFailed;
+    var pending: struct {
+        realm: Context,
+        steps: *const engine.PromiseReactionSteps,
+        data: ?*anyopaque,
+        result: Error!void = error.OperationFailed,
+
+        fn run(raw: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            const promise = createResolvedPromise(self.realm, .undefined) catch |err| {
+                self.result = err;
+                return;
+            };
+            defer promise.release();
+            self.result = reactToPromise(self.realm, promise.value, self.steps, self.data);
+        }
+    } = .{ .realm = realm, .steps = steps, .data = data };
+    // V8's automatic policy may checkpoint when either nested API call
+    // leaves. Hold it off until both operations have returned to the host.
+    ffi.v8_RunWithMicrotasksSuppressed(isolate, @TypeOf(pending).run, &pending);
+    return pending.result;
+}
+
 /// A `.handle` is a Global either way it is tagged; the FFI leaves anything
 /// but a promise alone.
 pub fn markPromiseAsHandled(realm: Context, promise: JSValue) void {

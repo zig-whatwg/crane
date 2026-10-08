@@ -157,7 +157,11 @@ pub fn installHooks() void {
     dom_module.node_document.install(.{ .set = &setNodeDocumentHook });
     // And a parser's DOM adapter frees a node it made and never inserted
     // through `dom.node_creation`, as the tree teardown frees a child.
-    dom_module.node_creation.installNode(.{ .destroy_uninserted = &deinitNodeByType, .clone = &cloneANode });
+    dom_module.node_creation.installNode(.{
+        .destroy_uninserted = &deinitNodeByType,
+        .clone = &cloneANode,
+        .set_type = &setNodeType,
+    });
 }
 
 /// Initialize instance (creates the instance)
@@ -380,6 +384,25 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
     // tree's anyway (wrapper_cache treeOwns); a root - the parser's adapter
     // frees one through dom.node_creation.destroyUninserted - was not.
     if (!runtime.instance_lifecycle.markCleanupStarted(instance)) return;
+
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    const ctx = instance.ctx;
+    defer {
+        // A tree owns its unwrapped descendants, and nobody will finalize
+        // their storage after this cleanup. A wrapped node leaves that half
+        // to its wrapper's finalizer, like the root passed to onObjectFreed.
+        // During realm teardown the cache can be iterating freed entries:
+        // leave its storage phase alone instead of asking hasWrapper then.
+        // A deferred finalizer may have run while resources were released;
+        // its old generation must never free a slot that has since moved on.
+        if (runtime.SlabAllocator.generationOf(instance) == generation and
+            runtime.instance_lifecycle.isCleanedUp(instance) and
+            (!ctx.hasEngine() or
+                (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(instance))))
+        {
+            runtime.gc.releaseStorage(instance);
+        }
+    }
 
     // Its wrapper must not free it again (engine.platformObjectDestroyed).
     engine.platformObjectDestroyed(instance);
@@ -1287,20 +1310,23 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
         NodeType.COMMENT_NODE,
         NodeType.PROCESSING_INSTRUCTION_NODE,
         => {
-            const src_data = CharacterDataImpl.getData(node) orelse "";
-            const data_str = runtime.DOMString.initInterned(src_data);
+            // Clone a single node step 4 / create a node step 2: the copy is
+            // created in the destination node document's relevant realm.
+            const copy_ctx = if (document orelse node_internal.owner_document) |owner| owner.ctx else node.ctx;
+            var data_str = try interfaces.CharacterData.get_data(node);
+            defer data_str.deinit(node.ctx.allocator);
 
             const copy = switch (node_internal.node_type) {
                 NodeType.TEXT_NODE => try interfaces.Text.call_constructor(
-                    node.ctx,
+                    copy_ctx,
                     webidl.Opt(runtime.DOMString).passed(data_str),
                 ),
                 NodeType.COMMENT_NODE => try interfaces.Comment.call_constructor(
-                    node.ctx,
+                    copy_ctx,
                     webidl.Opt(runtime.DOMString).passed(data_str),
                 ),
                 NodeType.CDATA_SECTION_NODE => blk: {
-                    const cdata = try interfaces.CDATASection.init(allocator, node.ctx);
+                    const cdata = try interfaces.CDATASection.init(copy_ctx.allocator, copy_ctx);
                     errdefer runtime.Instance.deinit(cdata);
                     try setNodeType(cdata, NodeType.CDATA_SECTION_NODE);
                     try interfaces.CharacterData.set_data(cdata, data_str);
@@ -1952,7 +1978,11 @@ pub fn setNamespaceURI(instance: *runtime.Instance, uri: ?runtime.DOMString) !vo
 /// `dom.node_document`'s implementation: the same step, with the declared
 /// error set a function pointer needs.
 fn setNodeDocumentHook(node: *runtime.Instance, document: ?*runtime.Instance) dom_module.node_document.Error!void {
-    return setOwnerDocument(node, document);
+    try setOwnerDocument(node, document);
+    if (document != null) dom_module.template_contents.establish(node) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.InvalidStateError,
+    };
 }
 
 pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !void {

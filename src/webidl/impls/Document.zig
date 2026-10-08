@@ -102,6 +102,12 @@ pub const InternalState = struct {
     /// Cached DOMImplementation instance ([SameObject])
     implementation: ?*runtime.Instance,
 
+    /// HTML 4.12.3: one inert owner document per ordinary document. An inert
+    /// owner itself reuses its own document for nested templates.
+    template_owner_document: ?*runtime.Instance = null,
+    template_owner_generation: u64 = 0,
+    is_template_owner_document: bool = false,
+
     /// String interning pool for tag names, attribute names, etc.
     /// Provides memory savings and O(1) string comparison via pointer equality
     string_pool: std.StringHashMap(void),
@@ -612,6 +618,7 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
     @import("dom").custom_elements.installDocument(.{
         .set_registry = &setCustomElementRegistry,
         .ensure_global_registry = &ensureGlobalRegistry,
@@ -664,6 +671,25 @@ pub fn installHooks() void {
     installScriptHooks();
     // The event loop runs a task only while its document is fully active.
     @import("dom").document_activity.install(.{ .fully_active = &isFullyActive });
+}
+
+fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
+    const internal = getInternal(document) orelse return error.InvalidStateError;
+    // Appropriate template contents owner document, step 1.
+    if (internal.is_template_owner_document) return document;
+    if (internal.template_owner_document) |owner| return owner;
+    // Steps 1.1.1–1.1.3: create in the same realm, with no browsing context.
+    // WebKit Document::ensureTemplateDocument keeps this state per document.
+    const owner = try call_constructor(document.ctx);
+    errdefer deinit(owner);
+    const owner_internal = getInternal(owner) orelse return error.InvalidStateError;
+    owner_internal.is_template_owner_document = true;
+    owner_internal.doc_type = internal.doc_type;
+    owner_internal.scripting_enabled = false;
+    internal.template_owner_document = owner;
+    internal.template_owner_generation = runtime.SlabAllocator.generationOf(owner);
+    engine.traceChild(document, owner, .{ .name = "template owner document" });
+    return owner;
 }
 
 /// dom.document_activity: whether a task's document is fully active - "the
@@ -817,6 +843,13 @@ pub fn getBoundV8Wrapper(instance: *runtime.Instance) ?*anyopaque {
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up internal state from registry
     if (Registry.get(instance)) |internal| {
+        engine.forgetTracedChild(instance, .{ .name = "template owner document" });
+        if (internal.template_owner_document) |owner| {
+            if (runtime.SlabAllocator.generationOf(owner) == internal.template_owner_generation and
+                (!instance.ctx.hasEngine() or
+                    (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(owner))))
+                runtime.Instance.deinit(owner);
+        }
         releaseNativeGlobalRegistry(internal);
         internal.custom_element_registry.release(instance);
         internal.deinit();
@@ -3542,7 +3575,7 @@ pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!runtime.JSValue
 /// Steps:
 /// 1. If node is a document, throw "NotSupportedError"
 /// 2. If node is a shadow root, throw "HierarchyRequestError"
-/// 3. Adopt node into this document
+/// 3. Adopt node into this document (including hosted template fragments).
 /// 4. Return node
 pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
     // Step 1: Document nodes cannot be adopted

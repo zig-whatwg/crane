@@ -16,6 +16,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const DocumentFragment = interfaces.DocumentFragment;
+const dom = @import("dom");
+const engine = @import("engine");
 
 // Import related impls
 const NodeImpl = @import("Node.zig");
@@ -36,9 +38,10 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// Host element for shadow roots (null for regular document fragments)
-    /// Per DOM spec: A shadow root's host is always non-null
+    /// The template that owns this fragment, null for ordinary fragments.
+    /// ShadowRoot exposes its own host through the ShadowRoot interface.
     host: ?*runtime.Instance,
+    host_generation: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -56,6 +59,23 @@ pub const InternalState = struct {
 const utils = @import("webidl").utils;
 const Registry = utils.InstanceRegistry(InternalState);
 
+pub fn installHooks() void {
+    dom.template_contents.install(.{ .set_host = &setTemplateHost, .host = &templateHost });
+}
+
+fn setTemplateHost(fragment: *runtime.Instance, host: *runtime.Instance) !void {
+    const internal = Registry.get(fragment) orelse return error.InvalidStateError;
+    internal.host = host;
+    internal.host_generation = runtime.SlabAllocator.generationOf(host);
+    engine.traceChild(fragment, host, .{ .name = "template host" });
+}
+
+fn templateHost(fragment: *runtime.Instance) ?*runtime.Instance {
+    const internal = Registry.get(fragment) orelse return null;
+    const host = internal.host orelse return null;
+    return if (runtime.SlabAllocator.generationOf(host) == internal.host_generation) host else null;
+}
+
 /// Public function to get internal state (for other impls that need it)
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
@@ -71,20 +91,13 @@ pub fn init(
 ) !*runtime.Instance {
     // Chain to Node's init which chains to EventTarget
     // This properly initializes the entire inheritance chain
-    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    const instance = try interfaces.Node.initWithState(allocator, StateType, vtable, ctx);
+    errdefer interfaces.Node.deinit(instance);
 
     const ArenaAllocator = @import("runtime").ArenaAllocator;
 
     // Set the node type for this DocumentFragment
-    if (NodeImpl.getInternalState(instance)) |node_internal| {
-        node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
-        // CRITICAL: Also set the NodeBase's node_type for DOM algorithms
-        // that read directly from NodeBase (e.g., mutation.zig's isConnectedThroughShadow)
-        if (node_internal.node_base) |node_base| {
-            node_base.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
-        }
-    }
+    try dom.node_creation.setType(instance, interfaces.Node.get_DOCUMENT_FRAGMENT_NODE());
 
     // Initialize DocumentFragment's own internal state and register it
     // The registry owns this block, so `Registry.remove` returns it to the
@@ -105,12 +118,14 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 pub fn deinit(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
     if (Registry.get(instance)) |internal| {
+        engine.forgetTracedChild(instance, .{ .name = "template host" });
+        engine.forgetTracedChild(instance, .{ .name = "template owner document" });
         internal.deinit();
         // Remove from registry to prevent double-free
         Registry.remove(instance);
     }
     // Node cleanup happens via inheritance chain
-    NodeImpl.deinit(instance);
+    interfaces.Node.deinit(instance);
 }
 
 /// Constructor implementation

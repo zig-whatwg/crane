@@ -10,7 +10,7 @@
 //! start (its installHooks), and the algorithm runs every installed set. The same shape as `mutation.zig`'s
 //! insertion-steps registry.
 //!
-//! lint-impls: hook for HTMLScriptElement, Document
+//! lint-impls: hook for HTMLScriptElement, SVGScriptElement, HTMLTemplateElement, Document
 
 const std = @import("std");
 const process_start = @import("process_start.zig");

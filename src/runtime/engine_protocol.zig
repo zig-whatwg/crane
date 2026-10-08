@@ -1545,6 +1545,15 @@ pub inline fn reactToPromise(realm: Context, promise: JSValue, steps: *const Pro
     return impl.reactToPromise(realm, promise, steps, data);
 }
 
+/// HTML "queue a microtask" using an already fulfilled promise's reaction.
+/// Creating the promise and registering its reaction is one non-reentrant
+/// operation: no checkpoint may run between them or before this returns.
+/// On success exactly one reaction step (including `dropped`) owns `data`;
+/// on error none does. The fulfilled value is `undefined`.
+pub inline fn queueResolvedPromiseReaction(realm: Context, steps: *const PromiseReactionSteps, data: ?*anyopaque) Error!void {
+    return impl.queueResolvedPromiseReaction(realm, steps, data);
+}
+
 /// WebIDL "mark as handled". A value that is not a promise is left alone.
 pub inline fn markPromiseAsHandled(realm: Context, promise: JSValue) void {
     impl.markPromiseAsHandled(realm, promise);

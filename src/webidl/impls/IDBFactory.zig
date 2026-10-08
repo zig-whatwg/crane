@@ -415,8 +415,15 @@ const ConnectionTask = struct {
     fn schedule(self: *ConnectionTask) !void {
         if (self.queued or self.running or self.cancelled or self.phase == .finished) return;
         if (!self.realm.hasEngine()) return;
-        self.queued_task = try dom.indexeddb.queueDatabaseTask(self.realm, .{ .callback = run, .context = self, .drop = drop });
+        // A closing worker can invoke drop before queueDatabaseTask returns.
+        // Give the queue ownership first, and never touch self on success:
+        // drop may already have destroyed it.
         self.queued = true;
+        _ = dom.indexeddb.queueDatabaseTask(self.realm, .{ .callback = run, .context = self, .drop = drop }) catch |err| {
+            // A queue error never calls run/drop, so self is still ours.
+            self.queued = false;
+            return err;
+        };
     }
     fn run(data: ?*anyopaque) void {
         const self: *ConnectionTask = @ptrCast(@alignCast(data.?));
@@ -654,15 +661,19 @@ const ConnectionTask = struct {
         if (self.cancelled) self.destroy() else self.finish(false);
     }
     fn finish(self: *ConnectionTask, advance: bool) void {
-        if (!self.realm.hasEngine()) return self.destroy();
-        const internal_state = self.internal();
-        if (self.registered) for (internal_state.pending.items, 0..) |task, index| {
-            if (task != self) continue;
-            _ = internal_state.pending.orderedRemove(index);
-            self.registered = false;
-            break;
-        };
-        if (advance) advanceQueue(self.factory, self.origin, self.name);
+        // A task dropped after realm retirement still belongs to the
+        // factory's pending queue. Unlink it before releasing its roots so
+        // factory teardown cannot revisit a freed ConnectionTask.
+        if (self.registered) {
+            const internal_state = self.internal();
+            for (internal_state.pending.items, 0..) |task, index| {
+                if (task != self) continue;
+                _ = internal_state.pending.orderedRemove(index);
+                self.registered = false;
+                break;
+            }
+        }
+        if (advance and self.realm.hasEngine()) advanceQueue(self.factory, self.origin, self.name);
         self.destroy();
     }
     fn releaseRoots(self: *ConnectionTask) void {

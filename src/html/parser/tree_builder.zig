@@ -185,6 +185,11 @@ pub const TreeNode = struct {
     prev_sibling: ?*TreeNode,
     /// Next sibling
     next_sibling: ?*TreeNode,
+    /// Temporary ownership of a detached parser subtree (adoption agency).
+    detached_next: ?*TreeNode = null,
+    /// The intended parent at creation, before the node is attached. The DOM
+    /// adapter resolves foster locations against the live tree.
+    creation_location: ?TreeBuilder.InsertionLocation = null,
     /// Attributes (for elements)
     attributes: infra.List(Attribute),
     /// Text content (for text/comment nodes)
@@ -383,6 +388,7 @@ pub const TreeNode = struct {
 
     /// Append a child node.
     pub fn appendChild(self: *TreeNode, child: *TreeNode) void {
+        child.remove();
         child.parent = self;
         child.prev_sibling = self.last_child;
         child.next_sibling = null;
@@ -393,6 +399,27 @@ pub const TreeNode = struct {
             self.first_child = child;
         }
         self.last_child = child;
+    }
+
+    pub fn remove(self: *TreeNode) void {
+        const parent = self.parent orelse return;
+        if (self.prev_sibling) |previous| previous.next_sibling = self.next_sibling else parent.first_child = self.next_sibling;
+        if (self.next_sibling) |next| next.prev_sibling = self.prev_sibling else parent.last_child = self.prev_sibling;
+        self.parent = null;
+        self.prev_sibling = null;
+        self.next_sibling = null;
+    }
+
+    pub fn insertBefore(self: *TreeNode, child: *TreeNode, before: ?*TreeNode) void {
+        if (before == null) return self.appendChild(child);
+        if (before == child) return;
+        child.remove();
+        const reference = before.?;
+        child.parent = self;
+        child.next_sibling = reference;
+        child.prev_sibling = reference.prev_sibling;
+        if (reference.prev_sibling) |previous| previous.next_sibling = child else self.first_child = child;
+        reference.prev_sibling = child;
     }
 
     /// Add an attribute in no namespace.
@@ -550,6 +577,13 @@ pub const TreeBuilder = struct {
     /// The text node the parser has been appending to without telling the DOM
     /// adapter yet - see `flushPendingText`.
     pending_text: ?*TreeNode = null,
+    /// HTML in-body pre/listing/textarea: inspect exactly the next token.
+    /// This survives an input suspension, but not an intervening comment/tag.
+    skip_next_lf: bool = false,
+    detached_nodes: ?*TreeNode = null,
+    dom_adapter_on_inserted: ?*const fn (InsertionLocation, *TreeNode, ?*anyopaque) void = null,
+    dom_adapter_on_removed: ?*const fn (*TreeNode, ?*anyopaque) void = null,
+    dom_adapter_on_children_moved: ?*const fn (*TreeNode, *TreeNode, ?*anyopaque) void = null,
     /// An attribute was added to an element the adapter already made: a
     /// second <html> or <body> start tag's attributes, which "in body" adds
     /// to the existing element. Called with `dom_adapter_context`.
@@ -704,6 +738,19 @@ pub const TreeBuilder = struct {
         self.dom_adapter_on_mode_set = on_mode_set;
     }
 
+    /// Reparenting cannot be expressed as append notifications: scripts may
+    /// have moved the table, and the furthest block may have new children.
+    pub fn setDomAdapterTreeMutationCallbacks(
+        self: *TreeBuilder,
+        on_inserted: *const fn (InsertionLocation, *TreeNode, ?*anyopaque) void,
+        on_removed: *const fn (*TreeNode, ?*anyopaque) void,
+        on_children_moved: *const fn (*TreeNode, *TreeNode, ?*anyopaque) void,
+    ) void {
+        self.dom_adapter_on_inserted = on_inserted;
+        self.dom_adapter_on_removed = on_removed;
+        self.dom_adapter_on_children_moved = on_children_moved;
+    }
+
     /// Set the adapter's element-popped callback (see
     /// `dom_adapter_on_element_popped`); it shares `dom_adapter_context`.
     pub fn setDomAdapterPoppedCallback(self: *TreeBuilder, on_popped: ?*const fn (*TreeNode, ?*anyopaque) void) void {
@@ -750,7 +797,12 @@ pub const TreeBuilder = struct {
     pub fn deinit(self: *TreeBuilder) void {
         // Free all nodes (document tree)
         self.freeTree(self.document);
+        while (self.detached_nodes) |node| {
+            self.detached_nodes = node.detached_next;
+            node.deinit();
+        }
         self.open_elements.deinit();
+        while (self.active_formatting_elements.len > 0) self.removeFormattingAt(self.active_formatting_elements.len - 1);
         self.active_formatting_elements.deinit();
         self.template_insertion_modes.deinit();
         self.pending_table_char_tokens.deinit();
@@ -861,6 +913,13 @@ pub const TreeBuilder = struct {
 
     /// Process a single token.
     pub fn processToken(self: *TreeBuilder, token: Token) Allocator.Error!void {
+        // In-body pre/listing step 3 and textarea step 2. Text runs never
+        // contain LF; a character reference that emits LF is still a token
+        // to ignore. Fragment contexts alone do not set this flag.
+        if (self.skip_next_lf) {
+            self.skip_next_lf = false;
+            if (token == .character and token.character == 0x000A) return;
+        }
         // Tree construction dispatcher
         // HTML Standard §13.2.6: Check if we should use foreign content rules
         const use_foreign = self.shouldUseForeignContent(token);
@@ -1513,8 +1572,9 @@ pub const TreeBuilder = struct {
                 const name = tag.getTagName();
                 if (std.mem.eql(u8, name, "html")) {
                     // Create html element and append to document
-                    const html = try self.createElementForToken(tag, .html);
+                    const html = try self.createElementForToken(tag, .html, .{ .parent = self.document });
                     self.document.appendChild(html);
+                    self.releaseDetached(html);
 
                     // Notify DOM adapter of parent-child relationship
                     self.flushPendingText();
@@ -2038,8 +2098,24 @@ pub const TreeBuilder = struct {
     fn handleInBodyStartTag(self: *TreeBuilder, tag: TagToken) !void {
         const name = tag.getTagName();
 
+        // In-body start tags caption/col/colgroup/frame/head/tbody/td/tfoot/
+        // th/thead/tr: parse error, ignore. Other modes handle these before
+        // delegating here; in particular a template must not create a head.
+        if (std.StaticStringMap(void).initComptime(.{
+            .{ "caption", {} }, .{ "col", {} },   .{ "colgroup", {} },
+            .{ "frame", {} },   .{ "head", {} },  .{ "tbody", {} },
+            .{ "td", {} },      .{ "tfoot", {} }, .{ "th", {} },
+            .{ "thead", {} },   .{ "tr", {} },
+        }).has(name)) {
+            self.reportError(.invalid_first_character_of_tag_name);
+            return;
+        }
+
         if (std.mem.eql(u8, name, "html")) {
             self.reportError(.invalid_first_character_of_tag_name);
+
+            // "In body", html start tag: a template confines these attributes.
+            if (self.hasTemplateInStack()) return;
 
             // Add attributes from the token to the html element if they don't exist
             // HTML Standard §13.2.6.4.7: "Otherwise, for each attribute on the token,
@@ -2065,6 +2141,7 @@ pub const TreeBuilder = struct {
             try self.handleInHeadMode(Token{ .start_tag = tag });
         } else if (std.mem.eql(u8, name, "body")) {
             self.reportError(.invalid_first_character_of_tag_name);
+            if (self.hasTemplateInStack()) return;
 
             // Add attributes to body element if not already present
             // HTML Standard §13.2.6.4.7: Similar to html element handling
@@ -2079,19 +2156,90 @@ pub const TreeBuilder = struct {
             }
         } else if (std.mem.eql(u8, name, "frameset")) {
             self.reportError(.invalid_first_character_of_tag_name);
-            // Ignore unless frameset_ok
+            if (self.open_elements.len < 2 or !self.open_elements.get(1).?.hasTagName("body") or !self.frameset_ok) return;
+            // In-body frameset, steps 1–4. The removed body still belongs to
+            // the parser's detached-node list until parsing ends.
+            const body = self.open_elements.get(1).?;
+            self.flushPendingText();
+            body.remove();
+            self.keepDetached(body);
+            if (self.dom_adapter_on_removed) |callback| callback(body, self.dom_adapter_context);
+            while (self.open_elements.len > 1) _ = self.popCurrentNode();
+            _ = try self.insertHtmlElement(tag);
+            self.insertion_mode = .in_frameset;
+        } else if (std.mem.eql(u8, name, "form")) {
+            // "In body", form start tag: the pointer is ignored in templates.
+            const in_template = self.parsingTemplateContents();
+            if (self.form_element != null and !in_template) {
+                self.reportError(.invalid_first_character_of_tag_name);
+                return;
+            }
+            // Otherwise, steps 1–2.
+            try self.closePElementIfInButtonScope();
+            const form = try self.insertHtmlElement(tag);
+            if (!in_template) self.form_element = form;
+        } else if (std.mem.eql(u8, name, "noembed") or
+            (std.mem.eql(u8, name, "noscript") and self.scripting_enabled))
+        {
+            try self.parseGenericRawText(tag);
+        } else if (std.mem.eql(u8, name, "pre") or std.mem.eql(u8, name, "listing")) {
+            // In-body pre/listing, steps 1–4.
+            try self.closePElementIfInButtonScope();
+            _ = try self.insertHtmlElement(tag);
+            self.skip_next_lf = true;
+            self.frameset_ok = false;
+        } else if (std.mem.eql(u8, name, "textarea")) {
+            // In-body textarea, steps 1–6. The generic helper supplies the
+            // element, RCDATA state and original/text insertion modes.
+            try self.parseGenericRCDATA(tag);
+            self.skip_next_lf = true;
+            self.frameset_ok = false;
         } else if (isSpecialBlockElement(name)) {
             try self.closePElementIfInButtonScope();
             _ = try self.insertHtmlElement(tag);
         } else if (std.mem.eql(u8, name, "a")) {
-            // Check for active formatting element with same tag
+            // In-body anchor start, step 1: close the last active anchor after
+            // the marker, including one outside the current table scope.
+            var index = self.active_formatting_elements.len;
+            while (index > 0) {
+                index -= 1;
+                const entry = self.active_formatting_elements.get(index).?;
+                if (entry == .marker) break;
+                if (!entry.element.node.hasTagName("a")) continue;
+                const previous = entry.element.node;
+                self.reportError(.invalid_first_character_of_tag_name);
+                try self.adoptionAgencyAlgorithm("a");
+                if (self.formattingIndex(previous)) |position| self.removeFormattingAt(position);
+                if (self.openIndex(previous)) |position| _ = self.removeOpenElementAt(position);
+                break;
+            }
             try self.reconstructActiveFormattingElements();
+            const element = try self.insertHtmlElement(tag);
+            try self.pushOntoActiveFormattingElements(element, tag);
+        } else if (std.mem.eql(u8, name, "nobr")) {
+            try self.reconstructActiveFormattingElements();
+            if (self.hasElementInScope("nobr")) {
+                self.reportError(.invalid_first_character_of_tag_name);
+                try self.adoptionAgencyAlgorithm("nobr");
+                try self.reconstructActiveFormattingElements();
+            }
             const element = try self.insertHtmlElement(tag);
             try self.pushOntoActiveFormattingElements(element, tag);
         } else if (isFormattingElement(name)) {
             try self.reconstructActiveFormattingElements();
             const element = try self.insertHtmlElement(tag);
             try self.pushOntoActiveFormattingElements(element, tag);
+        } else if (std.mem.eql(u8, name, "applet") or std.mem.eql(u8, name, "marquee") or std.mem.eql(u8, name, "object")) {
+            try self.reconstructActiveFormattingElements();
+            _ = try self.insertHtmlElement(tag);
+            try self.active_formatting_elements.append(.marker);
+            self.frameset_ok = false;
+        } else if (std.mem.eql(u8, name, "table")) {
+            // In-body table start, steps 1–4.
+            if (self.quirks_mode != .quirks) try self.closePElementIfInButtonScope();
+            _ = try self.insertHtmlElement(tag);
+            self.frameset_ok = false;
+            self.insertion_mode = .in_table;
         } else if (std.mem.eql(u8, name, "br")) {
             try self.reconstructActiveFormattingElements();
             _ = try self.insertHtmlElement(tag);
@@ -2124,6 +2272,44 @@ pub const TreeBuilder = struct {
 
         if (std.mem.eql(u8, name, "template")) {
             try self.handleInHeadMode(Token{ .end_tag = tag });
+        } else if (std.mem.eql(u8, name, "br")) {
+            // In-body br end tag: parse error, discard attributes, then run
+            // the br start-tag steps (also reached after foreign breakout).
+            self.reportError(.invalid_first_character_of_tag_name);
+            var start = TagToken.init(self.allocator, false);
+            defer start.deinit();
+            for ("br") |byte| try start.appendToTagName(byte);
+            try self.handleInBodyStartTag(start);
+        } else if (std.mem.eql(u8, name, "form")) {
+            if (!self.parsingTemplateContents()) {
+                // "In body", form end tag, steps 1–6. Remove only the form
+                // from the stack; descendants stay open in malformed markup.
+                const form = self.form_element;
+                self.form_element = null;
+                if (form == null or !self.hasNodeInScope(form.?)) {
+                    self.reportError(.invalid_first_character_of_tag_name);
+                    return;
+                }
+                self.generateImpliedEndTags(null);
+                if (self.currentNode() != form) self.reportError(.invalid_first_character_of_tag_name);
+                for (self.open_elements.toSlice(), 0..) |node, index| {
+                    if (node == form.?) {
+                        _ = self.removeOpenElementAt(index);
+                        break;
+                    }
+                }
+            } else {
+                // Template branch, steps 1–4: leave the outer pointer alone.
+                if (!self.hasElementInScope("form")) {
+                    self.reportError(.invalid_first_character_of_tag_name);
+                    return;
+                }
+                self.generateImpliedEndTags(null);
+                if (self.currentNode()) |current| {
+                    if (!current.hasTagName("form")) self.reportError(.invalid_first_character_of_tag_name);
+                }
+                self.popUntilTagName("form");
+            }
         } else if (std.mem.eql(u8, name, "body")) {
             if (!self.hasElementInScope("body")) {
                 self.reportError(.invalid_first_character_of_tag_name);
@@ -2160,6 +2346,16 @@ pub const TreeBuilder = struct {
                 }
             }
             self.popUntilTagName("p");
+        } else if (std.mem.eql(u8, name, "applet") or std.mem.eql(u8, name, "marquee") or std.mem.eql(u8, name, "object")) {
+            if (!self.hasElementInScope(name)) {
+                self.reportError(.invalid_first_character_of_tag_name);
+                return;
+            }
+            // In-body object end, steps 1–4.
+            self.generateImpliedEndTags(null);
+            if (!self.currentNode().?.hasTagName(name)) self.reportError(.invalid_first_character_of_tag_name);
+            self.popUntilTagName(name);
+            self.clearActiveFormattingToMarker();
         } else if (isSpecialBlockElement(name)) {
             if (!self.hasElementInScope(name)) {
                 self.reportError(.invalid_first_character_of_tag_name);
@@ -2330,7 +2526,7 @@ pub const TreeBuilder = struct {
     /// HTML Standard §13.2.6.4.9
     fn handleInTableMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
-            .character => {
+            .character, .text_run => {
                 // Character token, if current node is table/tbody/template/tfoot/thead/tr
                 if (self.currentNode()) |current| {
                     if (current.hasTagName("table") or
@@ -2349,13 +2545,6 @@ pub const TreeBuilder = struct {
                     }
                 }
                 // Otherwise process as "anything else"
-                self.reportError(.invalid_first_character_of_tag_name);
-                self.foster_parenting = true;
-                try self.handleInBodyMode(token);
-                self.foster_parenting = false;
-            },
-            .text_run => {
-                // Text run in table - foster parent (text runs contain non-whitespace)
                 self.reportError(.invalid_first_character_of_tag_name);
                 self.foster_parenting = true;
                 try self.handleInBodyMode(token);
@@ -2442,11 +2631,12 @@ pub const TreeBuilder = struct {
                     }
                 } else if (std.mem.eql(u8, name, "form")) {
                     self.reportError(.invalid_first_character_of_tag_name);
-                    if (self.hasTemplateInStack() or self.form_element != null) {
+                    const in_template = self.parsingTemplateContents();
+                    if (self.form_element != null and !in_template) {
                         return; // Ignore
                     }
                     const form = try self.insertHtmlElement(tag);
-                    self.form_element = form;
+                    if (!in_template) self.form_element = form;
                     _ = self.popCurrentNode();
                 } else {
                     // Anything else
@@ -2530,7 +2720,7 @@ pub const TreeBuilder = struct {
                     self.foster_parenting = true;
                     for (0..self.pending_table_char_tokens.len) |i| {
                         const c = self.pending_table_char_tokens.get(i) orelse continue;
-                        try self.insertCharacter(c);
+                        try self.handleInBodyMode(.{ .character = c });
                     }
                     self.foster_parenting = false;
                 } else {
@@ -3499,15 +3689,18 @@ pub const TreeBuilder = struct {
     // =========================================================================
 
     /// Create element for token.
-    fn createElementForToken(self: *TreeBuilder, tag: TagToken, namespace: Namespace) !*TreeNode {
+    fn createElementForToken(self: *TreeBuilder, tag: TagToken, namespace: Namespace, intended: InsertionLocation) !*TreeNode {
         const name = tag.getTagName();
         const element = try TreeNode.initElement(self.allocator, name, namespace);
+        errdefer element.deinit();
+        element.creation_location = intended;
 
         // Copy attributes
         const attrs = tag.attributes.toSlice();
         for (attrs) |attr| {
             try element.addAttribute(attr.getName(), attr.getValue(), null);
         }
+        self.keepDetached(element);
 
         // Notify DOM adapter of element creation (for incremental DOM conversion)
         self.flushPendingText();
@@ -3520,7 +3713,7 @@ pub const TreeBuilder = struct {
 
     /// Insert HTML element for token.
     fn insertHtmlElement(self: *TreeBuilder, tag: TagToken) !*TreeNode {
-        const element = try self.createElementForToken(tag, .html);
+        const element = try self.createElementForToken(tag, .html, self.appropriateLocation(null));
         self.insertAtAppropriatePlace(element);
         try self.open_elements.append(element);
         return element;
@@ -3528,44 +3721,104 @@ pub const TreeBuilder = struct {
 
     /// Insert at the appropriate place.
     fn insertAtAppropriatePlace(self: *TreeBuilder, node: *TreeNode) void {
-        // For now, just append to current node
-        const parent = self.currentNode() orelse self.document;
-        parent.appendChild(node);
+        const location = self.appropriateLocation(null);
+        self.insertNodeAt(location, node);
+    }
 
-        // Notify DOM adapter of parent-child relationship (for incremental DOM conversion)
+    pub const InsertionLocation = struct {
+        parent: *TreeNode,
+        before: ?*TreeNode = null,
+        foster_table: ?*TreeNode = null,
+        foster_fallback: ?*TreeNode = null,
+        move: bool = false,
+    };
+
+    /// HTML appropriate place for inserting a node, steps 1–3. The TreeNode
+    /// models template contents as children; the DOM adapter resolves step 6.
+    fn appropriateLocation(self: *TreeBuilder, override: ?*TreeNode) InsertionLocation {
+        const target = override orelse self.currentNode() orelse self.document;
+        if (self.foster_parenting and target.namespace == .html and
+            (target.hasTagName("table") or target.hasTagName("tbody") or target.hasTagName("tfoot") or
+                target.hasTagName("thead") or target.hasTagName("tr")))
+        {
+            var i = self.open_elements.len;
+            while (i > 0) {
+                i -= 1;
+                const node = self.open_elements.get(i).?;
+                if (node.namespace != .html) continue;
+                if (node.hasTagName("template")) return .{ .parent = node };
+                if (node.hasTagName("table")) {
+                    const fallback = self.open_elements.get(i - 1).?;
+                    return .{
+                        .parent = node.parent orelse fallback,
+                        .before = if (node.parent != null) node else null,
+                        .foster_table = node,
+                        .foster_fallback = fallback,
+                    };
+                }
+            }
+            return .{ .parent = self.open_elements.get(0) orelse self.document };
+        }
+        return .{ .parent = target };
+    }
+
+    fn keepDetached(self: *TreeBuilder, node: *TreeNode) void {
+        var current = self.detached_nodes;
+        while (current) |entry| : (current = entry.detached_next) if (entry == node) return;
+        node.detached_next = self.detached_nodes;
+        self.detached_nodes = node;
+    }
+
+    fn releaseDetached(self: *TreeBuilder, node: *TreeNode) void {
+        var slot = &self.detached_nodes;
+        while (slot.*) |entry| {
+            if (entry == node) {
+                slot.* = entry.detached_next;
+                entry.detached_next = null;
+                return;
+            }
+            slot = &entry.detached_next;
+        }
+    }
+
+    fn insertNode(self: *TreeBuilder, parent: *TreeNode, node: *TreeNode, before: ?*TreeNode) void {
+        self.insertNodeAt(.{ .parent = parent, .before = before, .move = true }, node);
+    }
+
+    fn insertNodeAt(self: *TreeBuilder, location: InsertionLocation, node: *TreeNode) void {
         self.flushPendingText();
-        if (self.dom_adapter_on_child_appended) |callback| {
+        const parent = location.parent;
+        const before = location.before;
+        node.remove();
+        var ancestor: ?*TreeNode = parent;
+        while (ancestor) |value| : (ancestor = value.parent) {
+            if (value == node) {
+                self.keepDetached(node);
+                return;
+            }
+        }
+        if (before) |reference| if (reference.parent != parent) {
+            self.keepDetached(node);
+            return;
+        };
+        parent.insertBefore(node, before);
+        self.releaseDetached(node);
+        if (self.dom_adapter_on_inserted) |callback| {
+            callback(location, node, self.dom_adapter_context);
+        } else if (self.dom_adapter_on_child_appended) |callback| {
             callback(parent, node, self.dom_adapter_context);
         }
     }
 
     /// Insert a character.
     fn insertCharacter(self: *TreeBuilder, char: u21) !void {
-        const parent = self.currentNode() orelse self.document;
-
-        // Check if last child is a text node
-        if (parent.last_child) |last| {
-            if (last.node_type == .text) {
-                try last.appendChar(char);
-                self.markTextPending(last);
-                return;
-            }
-        }
-
-        // Create new text node
-        const text = try TreeNode.initText(self.allocator);
-        try text.appendChar(char);
-        parent.appendChild(text);
-
-        // Notify DOM adapter of new text node creation and parent-child relationship
-        self.flushPendingText();
-        if (self.dom_adapter_on_node_created) |callback| {
-            callback(text, self.dom_adapter_context);
-        }
-        self.flushPendingText();
-        if (self.dom_adapter_on_child_appended) |callback| {
-            callback(parent, text, self.dom_adapter_context);
-        }
+        var bytes: [4]u8 = undefined;
+        // Keep appendChar's non-scalar replacement behavior when inserting at
+        // the adjusted location. InputStream reports surrogate parse errors,
+        // but they are recoverable input, not an unreachable engine state.
+        const len = std.unicode.utf8Encode(char, &bytes) catch
+            return self.insertTextRun("\xef\xbf\xbd");
+        try self.insertTextRun(bytes[0..len]);
     }
 
     /// Insert a text run (batch of characters).
@@ -3573,10 +3826,12 @@ pub const TreeBuilder = struct {
     fn insertTextRun(self: *TreeBuilder, data: []const u8) !void {
         if (data.len == 0) return;
 
-        const parent = self.currentNode() orelse self.document;
-
-        // Check if last child is a text node
-        if (parent.last_child) |last| {
+        // Insert a character, steps 2–4: coalesce immediately BEFORE the
+        // adjusted insertion location, including foster-parented text.
+        const location = self.appropriateLocation(null);
+        if (location.parent.node_type == .document) return;
+        const previous = if (location.before) |reference| reference.prev_sibling else location.parent.last_child;
+        if (previous) |last| {
             if (last.node_type == .text) {
                 // Append entire slice at once (much faster than per-character)
                 try last.text_content.appendSlice(data);
@@ -3587,18 +3842,15 @@ pub const TreeBuilder = struct {
 
         // Create new text node with entire content at once
         const text = try TreeNode.initText(self.allocator);
+        errdefer text.deinit();
         try text.text_content.appendSlice(data);
-        parent.appendChild(text);
 
         // Notify DOM adapter of new text node creation and parent-child relationship
         self.flushPendingText();
         if (self.dom_adapter_on_node_created) |callback| {
             callback(text, self.dom_adapter_context);
         }
-        self.flushPendingText();
-        if (self.dom_adapter_on_child_appended) |callback| {
-            callback(parent, text, self.dom_adapter_context);
-        }
+        self.insertNodeAt(location, text);
     }
 
     /// Note that `node`'s text has grown without telling the DOM adapter.
@@ -3767,11 +4019,20 @@ pub const TreeBuilder = struct {
         while (i > 0) {
             i -= 1;
             const node = self.open_elements.get(i) orelse continue;
-            if (node.hasTagName(tag_name)) return true;
+            if (node.namespace == .html and node.hasTagName(tag_name)) return true;
+            if (isScopeBoundary(node)) return false;
+        }
+        return false;
+    }
 
-            if (node.local_name) |name| {
-                if (isGeneralScopeBoundary(name)) return false;
-            }
+    /// Scope tests naming a node (form/adoption agency) compare identity.
+    fn hasNodeInScope(self: *TreeBuilder, target: *TreeNode) bool {
+        var i = self.open_elements.len;
+        while (i > 0) {
+            i -= 1;
+            const node = self.open_elements.get(i) orelse continue;
+            if (node == target) return true;
+            if (isScopeBoundary(node)) return false;
         }
         return false;
     }
@@ -3791,11 +4052,8 @@ pub const TreeBuilder = struct {
         while (i > 0) {
             i -= 1;
             const node = self.open_elements.get(i) orelse continue;
-            if (node.hasTagName(tag_name)) return true;
-
-            if (node.local_name) |name| {
-                if (isButtonScopeBoundary(name)) return false;
-            }
+            if (node.namespace == .html and node.hasTagName(tag_name)) return true;
+            if (isScopeBoundary(node) or (node.namespace == .html and node.hasTagName("button"))) return false;
         }
         return false;
     }
@@ -3808,352 +4066,238 @@ pub const TreeBuilder = struct {
         }
     }
 
-    /// Push onto active formatting elements (Noah's Ark clause).
+    /// Copy the complete creation token. Reconstructed elements must retain
+    /// attributes even after script changes the original DOM element.
+    fn copyFormattingToken(self: *TreeBuilder, tag: TagToken) !TagToken {
+        var copy = TagToken.init(self.allocator, false);
+        errdefer copy.deinit();
+        for (tag.getTagName()) |byte| try copy.appendToTagName(byte);
+        for (tag.attributes.toSlice()) |attribute| {
+            try copy.startNewAttribute();
+            for (attribute.getName()) |byte| try copy.appendToAttributeName(byte);
+            for (attribute.getValue()) |byte| try copy.appendToAttributeValue(byte);
+        }
+        try copy.finishCurrentAttribute();
+        return copy;
+    }
+
+    fn sameFormattingToken(a: TagToken, b: TagToken) bool {
+        if (!std.mem.eql(u8, a.getTagName(), b.getTagName()) or a.attributes.len != b.attributes.len) return false;
+        for (a.attributes.toSlice()) |left| {
+            for (b.attributes.toSlice()) |right| {
+                if (std.mem.eql(u8, left.getName(), right.getName()) and
+                    std.mem.eql(u8, left.getValue(), right.getValue())) break;
+            } else return false;
+        }
+        return true;
+    }
+
+    fn removeFormattingAt(self: *TreeBuilder, index: usize) void {
+        var entry = self.active_formatting_elements.remove(index) catch unreachable;
+        if (entry == .element) entry.element.token.deinit();
+    }
+
+    fn formattingIndex(self: *TreeBuilder, node: *TreeNode) ?usize {
+        for (self.active_formatting_elements.toSlice(), 0..) |entry, index| {
+            if (entry == .element and entry.element.node == node) return index;
+        }
+        return null;
+    }
+
+    fn openIndex(self: *TreeBuilder, node: *TreeNode) ?usize {
+        for (self.open_elements.toSlice(), 0..) |open, index| {
+            if (open == node) return index;
+        }
+        return null;
+    }
+
+    /// HTML 13.2.4.3, push steps 1–2 (Noah's Ark).
     fn pushOntoActiveFormattingElements(self: *TreeBuilder, element: *TreeNode, tag: TagToken) !void {
-        // Count matching elements
         var count: usize = 0;
+        var earliest: ?usize = null;
         var i = self.active_formatting_elements.len;
         while (i > 0) {
             i -= 1;
-            const entry = self.active_formatting_elements.get(i) orelse continue;
-            switch (entry) {
-                .marker => break,
-                .element => |elem| {
-                    if (element.local_name != null and elem.node.local_name != null and
-                        std.mem.eql(u8, element.local_name.?, elem.node.local_name.?))
-                    {
-                        count += 1;
-                        if (count >= 3) {
-                            // Remove earliest such element
-                            _ = self.active_formatting_elements.remove(i) catch {};
-                            break;
-                        }
-                    }
-                },
+            const entry = self.active_formatting_elements.get(i).?;
+            if (entry == .marker) break;
+            if (entry.element.node.namespace == element.namespace and sameFormattingToken(entry.element.token, tag)) {
+                count += 1;
+                earliest = i;
             }
         }
-
-        // Copy tag token
-        var tag_copy = TagToken.init(self.allocator, false);
-        const name = tag.getTagName();
-        for (name) |c| {
-            try tag_copy.appendToTagName(c);
-        }
-
-        try self.active_formatting_elements.append(.{ .element = .{
-            .node = element,
-            .token = tag_copy,
-        } });
+        var copy = try self.copyFormattingToken(tag);
+        errdefer copy.deinit();
+        if (count >= 3) self.removeFormattingAt(earliest.?);
+        try self.active_formatting_elements.append(.{ .element = .{ .node = element, .token = copy } });
     }
 
-    /// Clear active formatting elements to last marker.
+    /// HTML 13.2.4.3, clear steps 1–4.
     fn clearActiveFormattingToMarker(self: *TreeBuilder) void {
         while (self.active_formatting_elements.len > 0) {
-            const entry = self.active_formatting_elements.remove(self.active_formatting_elements.len - 1) catch break;
-            switch (entry) {
-                .marker => break,
-                .element => |elem| {
-                    var e = elem;
-                    e.token.deinit();
-                },
-            }
+            const index = self.active_formatting_elements.len - 1;
+            const marker = self.active_formatting_elements.get(index).? == .marker;
+            self.removeFormattingAt(index);
+            if (marker) break;
         }
     }
 
-    /// Reconstruct active formatting elements.
-    /// Reconstruct the active formatting elements.
-    ///
-    /// HTML Standard §13.2.4.3: When the steps below require the UA to
-    /// reconstruct the active formatting elements, the UA must perform
-    /// the following steps.
+    /// HTML 13.2.4.3, reconstruction steps 1–10.
     fn reconstructActiveFormattingElements(self: *TreeBuilder) !void {
-        // 1. If there are no entries in the list of active formatting elements,
-        //    then there is nothing to reconstruct; stop this algorithm.
         if (self.active_formatting_elements.len == 0) return;
-
-        // 2. If the last (most recently added) entry in the list of active
-        //    formatting elements is a marker, or if it is an element that is
-        //    in the stack of open elements, then there is nothing to reconstruct;
-        //    stop this algorithm.
-        const last_idx = self.active_formatting_elements.len - 1;
-        const last = self.active_formatting_elements.get(last_idx) orelse return;
-        switch (last) {
-            .marker => return,
-            .element => |elem| {
-                // Check if element is in stack of open elements
-                for (self.open_elements.toSlice()) |open| {
-                    if (open == elem.node) return;
-                }
-            },
+        var index = self.active_formatting_elements.len;
+        // Rewind through unopened entries. A marker or an open node is the
+        // boundary; the first unopened entry is included, even at index zero.
+        while (index > 0) {
+            const previous = self.active_formatting_elements.get(index - 1).?;
+            if (previous == .marker or self.openIndex(previous.element.node) != null) break;
+            index -= 1;
         }
-
-        // 3. Let entry be the last (most recently added) element in the list
-        //    of active formatting elements.
-        var entry_idx: usize = last_idx;
-
-        // 4. Rewind: If there are no entries before entry in the list of active
-        //    formatting elements, then jump to the step labeled create.
-        rewind: while (entry_idx > 0) {
-            // 5. Let entry be the entry one earlier than entry in the list of
-            //    active formatting elements.
-            entry_idx -= 1;
-
-            // 6. If entry is neither a marker nor an element that is also in
-            //    the stack of open elements, go to the step labeled rewind.
-            const entry = self.active_formatting_elements.get(entry_idx) orelse break :rewind;
-            switch (entry) {
-                .marker => break :rewind,
-                .element => |elem| {
-                    // Check if element is in stack of open elements
-                    var in_stack = false;
-                    for (self.open_elements.toSlice()) |open| {
-                        if (open == elem.node) {
-                            in_stack = true;
-                            break;
-                        }
-                    }
-                    if (in_stack) break :rewind;
-                    // Otherwise continue rewinding
-                },
-            }
-        }
-
-        // 7. Advance: Let entry be the element one later than entry in the
-        //    list of active formatting elements.
-        // 8. Create: Insert an HTML element for the token for which the element
-        //    entry was created, to obtain new element.
-        // 9. Replace the entry for entry in the list with an entry for new element.
-        // 10. If the entry for new element in the list of active formatting
-        //     elements is not the last entry in the list, return to the step
-        //     labeled advance.
-        while (entry_idx < self.active_formatting_elements.len) {
-            // Advance to next entry
-            if (entry_idx < self.active_formatting_elements.len - 1) {
-                entry_idx += 1;
-            }
-
-            const entry = self.active_formatting_elements.get(entry_idx) orelse break;
-            switch (entry) {
-                .marker => break,
-                .element => |elem| {
-                    // Create: Insert an HTML element for the token
-                    const new_element = try self.createElementForToken(elem.token, .html);
-                    self.insertAtAppropriatePlace(new_element);
-                    try self.open_elements.append(new_element);
-
-                    // Replace the entry in the list with the new element
-                    // We need to update the node reference while keeping the same token
-                    const updated_entry = FormattingEntry{
-                        .element = .{
-                            .node = new_element,
-                            .token = elem.token,
-                        },
-                    };
-                    // Replace entry at index
-                    if (entry_idx < self.active_formatting_elements.len) {
-                        const slice = self.active_formatting_elements.toSliceMut();
-                        slice[entry_idx] = updated_entry;
-                    }
-
-                    // If this is the last entry, stop
-                    if (entry_idx >= self.active_formatting_elements.len - 1) break;
-                },
-            }
+        while (index < self.active_formatting_elements.len) : (index += 1) {
+            const token = self.active_formatting_elements.get(index).?.element.token;
+            const element = try self.insertHtmlElement(token);
+            self.active_formatting_elements.toSliceMut()[index].element.node = element;
         }
     }
 
-    /// Adoption agency algorithm.
-    ///
-    /// HTML Standard §13.2.6.4.7: This complex algorithm handles mis-nested
-    /// formatting elements like `<b><i></b></i>` by rearranging nodes.
-    ///
-    /// The algorithm has two main paths:
-    /// 1. Simple case: No furthest block - just pop elements
-    /// 2. Complex case: Rearrange nodes (the "adoption dance")
-    fn adoptionAgencyAlgorithm(self: *TreeBuilder, tag_name: []const u8) !void {
-        // Step 1: Outer loop counter
-        var outer_loop_counter: usize = 0;
-
-        // Step 2: Outer loop
-        while (outer_loop_counter < 8) : (outer_loop_counter += 1) {
-            // Step 3: Find formatting element - walk active formatting elements backwards
-            var formatting_element: ?*TreeNode = null;
+    /// HTML 13.2.6.4.7, adoption agency. Model the two independent structures:
+    /// the DOM tree and the open/formatting lists (WebKit HTMLTreeBuilder's
+    /// callTheAdoptionAgency also replaces entries rather than moving them).
+    fn adoptionAgencyAlgorithm(self: *TreeBuilder, subject: []const u8) !void {
+        // Steps 1–2.
+        if (self.currentNode()) |current| {
+            if (current.namespace == .html and current.hasTagName(subject) and self.formattingIndex(current) == null) {
+                _ = self.popCurrentNode();
+                return;
+            }
+        }
+        // Steps 3–4.2.
+        var outer: usize = 0;
+        while (outer < 8) : (outer += 1) {
+            // Step 4.3.
             var formatting_index: ?usize = null;
-
-            var i = self.active_formatting_elements.len;
-            while (i > 0) {
-                i -= 1;
-                const entry = self.active_formatting_elements.get(i) orelse continue;
-                switch (entry) {
-                    .marker => break, // Stop at marker
-                    .element => |elem| {
-                        if (elem.node.hasTagName(tag_name)) {
-                            formatting_element = elem.node;
-                            formatting_index = i;
-                            break;
-                        }
-                    },
-                }
-            }
-
-            // Step 4: If no formatting element found, process as "any other end tag"
-            if (formatting_element == null) {
-                try self.handleAnyOtherEndTag(tag_name);
-                return;
-            }
-
-            // Step 5: Check if formatting element is in stack of open elements
-            var stack_index: ?usize = null;
-            const elements = self.open_elements.toSlice();
-            for (elements, 0..) |elem, idx| {
-                if (elem == formatting_element) {
-                    stack_index = idx;
+            var search = self.active_formatting_elements.len;
+            while (search > 0) {
+                search -= 1;
+                const entry = self.active_formatting_elements.get(search).?;
+                if (entry == .marker) break;
+                if (entry.element.node.hasTagName(subject)) {
+                    formatting_index = search;
                     break;
                 }
             }
-
-            // Step 6: If formatting element not in stack, parse error & remove from list
-            if (stack_index == null) {
+            const initial_index = formatting_index orelse {
+                try self.handleAnyOtherEndTag(subject);
+                return;
+            };
+            const formatting = self.active_formatting_elements.get(initial_index).?.element.node;
+            // Steps 4.4–4.6.
+            const stack_index = self.openIndex(formatting) orelse {
                 self.reportError(.invalid_first_character_of_tag_name);
-                _ = self.active_formatting_elements.remove(formatting_index.?) catch {};
+                self.removeFormattingAt(initial_index);
+                return;
+            };
+            if (!self.hasNodeInScope(formatting)) {
+                self.reportError(.invalid_first_character_of_tag_name);
                 return;
             }
-
-            // Step 7: If formatting element not in scope, parse error & return
-            if (!self.hasElementInScope(tag_name)) {
-                self.reportError(.invalid_first_character_of_tag_name);
-                return;
-            }
-
-            // Step 8: If formatting element is not current node, parse error
-            if (formatting_element != self.currentNode()) {
-                self.reportError(.invalid_first_character_of_tag_name);
-            }
-
-            // Step 9: Find furthest block - special element below formatting element
-            var furthest_block: ?*TreeNode = null;
-            var furthest_block_index: ?usize = null;
-
-            const fe_stack_idx = stack_index.?;
-            var fb_i = fe_stack_idx + 1;
-            while (fb_i < self.open_elements.len) : (fb_i += 1) {
-                const elem = self.open_elements.get(fb_i) orelse continue;
-                if (self.isSpecialElement(elem)) {
-                    furthest_block = elem;
-                    furthest_block_index = fb_i;
+            if (self.currentNode() != formatting) self.reportError(.invalid_first_character_of_tag_name);
+            // Steps 4.7–4.8.
+            var block_index: ?usize = null;
+            var index = stack_index + 1;
+            while (index < self.open_elements.len) : (index += 1) {
+                if (self.isSpecialElement(self.open_elements.get(index).?)) {
+                    block_index = index;
                     break;
                 }
             }
-
-            // Step 10: If no furthest block, pop elements and remove from list (simple case)
-            if (furthest_block == null) {
-                // Pop until and including the formatting element
-                while (self.open_elements.len > fe_stack_idx) {
-                    if (self.popCurrentNode() == null) break;
-                }
-                _ = self.active_formatting_elements.remove(formatting_index.?) catch {};
+            const furthest_index = block_index orelse {
+                while (self.open_elements.len > stack_index) _ = self.popCurrentNode();
+                self.removeFormattingAt(initial_index);
                 return;
-            }
-
-            // Steps 11-21: Complex case - perform the adoption dance
-            // This handles mis-nested tags like <b><i></b></i>
-
-            // Step 11: Let common ancestor be the element immediately above formatting element
-            // (Used in full implementation for reparenting nodes)
-            _ = if (fe_stack_idx > 0)
-                self.open_elements.get(fe_stack_idx - 1)
-            else
-                null;
-
-            // Step 12: Let bookmark be formatting element's position in active formatting list
-            var bookmark = formatting_index.?;
-
-            // Step 13: Let node and lastNode be furthest block
-            var node_index = furthest_block_index.?;
-            var last_node = furthest_block.?;
-
-            // Step 14: Inner loop counter
-            var inner_loop_counter: usize = 0;
-
-            // Step 15: Inner loop
-            while (inner_loop_counter < 3) : (inner_loop_counter += 1) {
-                // Step 15.1: Decrement node index
-                if (node_index == 0) break;
+            };
+            const furthest = self.open_elements.get(furthest_index).?;
+            const ancestor = self.open_elements.get(stack_index - 1).?;
+            var bookmark = initial_index;
+            var node_index = furthest_index;
+            var last = furthest;
+            var inner: usize = 0;
+            // Steps 4.9–4.13.
+            while (true) {
+                inner += 1;
                 node_index -= 1;
-
-                // Step 15.2: Let node be element at node_index
-                const node = self.open_elements.get(node_index) orelse break;
-
-                // Step 15.3: If node is formatting element, break
-                if (node == formatting_element) break;
-
-                // Step 15.4: Check if node is in active formatting elements
-                var node_in_list: ?usize = null;
-                for (self.active_formatting_elements.toSlice(), 0..) |entry, idx| {
-                    switch (entry) {
-                        .element => |elem| {
-                            if (elem.node == node) {
-                                node_in_list = idx;
-                                break;
-                            }
-                        },
-                        .marker => {},
+                const node = self.open_elements.get(node_index).?;
+                if (node == formatting) break;
+                var active = self.formattingIndex(node);
+                if (inner > 3) {
+                    if (active) |position| {
+                        self.removeFormattingAt(position);
+                        if (position < bookmark) bookmark -= 1;
+                        active = null;
                     }
                 }
-
-                // Step 15.5: If node not in list, remove from stack and continue
-                if (node_in_list == null) {
+                const active_index = active orelse {
                     _ = self.removeOpenElementAt(node_index);
                     continue;
-                }
-
-                // Steps 15.6-15.7: Create replacement element and update references
-                // For simplicity in this implementation, we update bookmark
-                if (node_in_list.? < bookmark) {
-                    bookmark = node_in_list.?;
-                }
-
-                // Step 15.8: If last node is furthest block, update bookmark
-                if (last_node == furthest_block) {
-                    bookmark = node_in_list.? + 1;
-                    if (bookmark > self.active_formatting_elements.len) {
-                        bookmark = self.active_formatting_elements.len;
-                    }
-                }
-
-                // Step 15.9: Move last node into node (simplified - just update parent)
-                // In full implementation, would detach and re-attach
-                last_node = node;
+                };
+                const token = self.active_formatting_elements.get(active_index).?.element.token;
+                const replacement = try self.createElementForToken(token, .html, .{ .parent = ancestor });
+                self.active_formatting_elements.toSliceMut()[active_index].element.node = replacement;
+                self.open_elements.toSliceMut()[node_index] = replacement;
+                if (last == furthest) bookmark = active_index + 1;
+                self.insertNode(replacement, last, null);
+                last = replacement;
             }
-
-            // Steps 16-20: Insert last_node into common ancestor, create new element, etc.
-            // For this simplified implementation, we do the minimum viable work:
-
-            // Generate implied end tags excluding the formatting element
-            self.generateImpliedEndTags(tag_name);
-
-            // Pop until the formatting element (inclusive)
-            while (self.open_elements.len > fe_stack_idx) {
-                if (self.popCurrentNode() == null) break;
+            // Steps 4.14–4.16. The adapter repeats the validity checks against
+            // the live DOM, which script can have changed since tokenization.
+            var location = self.appropriateLocation(ancestor);
+            location.move = true;
+            self.insertNodeAt(location, last);
+            // Steps 4.17–4.19.
+            const current_index = self.formattingIndex(formatting).?;
+            const token = self.active_formatting_elements.get(current_index).?.element.token;
+            const replacement = try self.createElementForToken(token, .html, .{ .parent = furthest });
+            self.flushPendingText();
+            if (self.dom_adapter_on_children_moved) |callback| {
+                // Step 4.18 acts on ALL live children, including script's.
+                callback(furthest, replacement, self.dom_adapter_context);
+                while (furthest.first_child) |child| replacement.appendChild(child);
+            } else {
+                while (furthest.first_child) |child| self.insertNode(replacement, child, null);
             }
-
-            // Remove from active formatting elements
-            _ = self.active_formatting_elements.remove(formatting_index.?) catch {};
-
-            return;
+            self.insertNode(furthest, replacement, null);
+            // Step 4.20: transfer token ownership without copying or freeing it.
+            const entry = self.active_formatting_elements.remove(current_index) catch unreachable;
+            if (current_index < bookmark) bookmark -= 1;
+            // Removal leaves enough capacity for this insertion.
+            self.active_formatting_elements.insert(bookmark, .{ .element = .{ .node = replacement, .token = entry.element.token } }) catch unreachable;
+            // Step 4.21.
+            _ = self.removeOpenElementAt(self.openIndex(formatting).?);
+            self.open_elements.insert(self.openIndex(furthest).? + 1, replacement) catch unreachable;
         }
     }
 
     /// Reset insertion mode appropriately.
-    fn resetInsertionModeAppropriately(self: *TreeBuilder) void {
+    pub fn resetInsertionModeAppropriately(self: *TreeBuilder) void {
         var last = false;
         var i = self.open_elements.len;
         while (i > 0) {
             i -= 1;
-            const node = self.open_elements.get(i) orelse continue;
+            var node = self.open_elements.get(i) orelse continue;
 
             if (i == 0) {
                 last = true;
+                // Reset insertion mode, step 3: substitute the fragment's
+                // context at the root, including after a nested template ends.
+                if (self.fragment_context) |context| node = context;
+            }
+
+            // Each named element in steps 4–14 is in the HTML namespace.
+            if (node.namespace != .html) {
+                if (last) {
+                    self.insertion_mode = .in_body;
+                    return;
+                }
+                continue;
             }
 
             if (node.hasTagName("select")) {
@@ -4223,10 +4367,107 @@ pub const TreeBuilder = struct {
     /// Check if element is special.
     fn isSpecialElement(self: *TreeBuilder, node: *TreeNode) bool {
         _ = self;
-        if (node.local_name) |name| {
-            return isSpecialBlockElement(name) or isVoidElement(name);
-        }
-        return false;
+        if (node.namespace != .html) return isForeignScopeBoundary(node);
+        // HTML 13.2.4.2's special category is larger than block/void tags.
+        const special = std.StaticStringMap(void).initComptime(.{
+            .{ "address", {} },
+            .{ "applet", {} },
+            .{ "area", {} },
+            .{ "article", {} },
+            .{ "aside", {} },
+            .{ "base", {} },
+            .{ "basefont", {} },
+            .{ "bgsound", {} },
+            .{ "blockquote", {} },
+            .{ "body", {} },
+            .{ "br", {} },
+            .{ "button", {} },
+            .{ "caption", {} },
+            .{ "center", {} },
+            .{ "col", {} },
+            .{ "colgroup", {} },
+            .{ "dd", {} },
+            .{ "details", {} },
+            .{ "dir", {} },
+            .{ "div", {} },
+            .{ "dl", {} },
+            .{ "dt", {} },
+            .{ "embed", {} },
+            .{ "fieldset", {} },
+            .{ "figcaption", {} },
+            .{ "figure", {} },
+            .{ "footer", {} },
+            .{ "form", {} },
+            .{ "frame", {} },
+            .{ "frameset", {} },
+            .{ "h1", {} },
+            .{ "h2", {} },
+            .{ "h3", {} },
+            .{ "h4", {} },
+            .{ "h5", {} },
+            .{ "h6", {} },
+            .{ "head", {} },
+            .{ "header", {} },
+            .{ "hgroup", {} },
+            .{ "hr", {} },
+            .{ "html", {} },
+            .{ "iframe", {} },
+            .{ "img", {} },
+            .{ "input", {} },
+            .{ "keygen", {} },
+            .{ "li", {} },
+            .{ "link", {} },
+            .{ "listing", {} },
+            .{ "main", {} },
+            .{ "marquee", {} },
+            .{ "menu", {} },
+            .{ "meta", {} },
+            .{ "nav", {} },
+            .{ "noembed", {} },
+            .{ "noframes", {} },
+            .{ "noscript", {} },
+            .{ "object", {} },
+            .{ "ol", {} },
+            .{ "p", {} },
+            .{ "param", {} },
+            .{ "plaintext", {} },
+            .{ "pre", {} },
+            .{ "script", {} },
+            .{ "search", {} },
+            .{ "section", {} },
+            .{ "select", {} },
+            .{ "source", {} },
+            .{ "style", {} },
+            .{ "summary", {} },
+            .{ "table", {} },
+            .{ "tbody", {} },
+            .{ "td", {} },
+            .{ "template", {} },
+            .{ "textarea", {} },
+            .{ "tfoot", {} },
+            .{ "th", {} },
+            .{ "thead", {} },
+            .{ "title", {} },
+            .{ "tr", {} },
+            .{ "track", {} },
+            .{ "ul", {} },
+            .{ "wbr", {} },
+            .{ "xmp", {} },
+        });
+        return special.has(node.local_name orelse "");
+    }
+
+    fn isForeignScopeBoundary(node: *TreeNode) bool {
+        return switch (node.namespace) {
+            .html => false,
+            .mathml => node.hasTagName("mi") or node.hasTagName("mo") or node.hasTagName("mn") or
+                node.hasTagName("ms") or node.hasTagName("mtext") or node.hasTagName("annotation-xml"),
+            .svg => node.hasTagName("foreignObject") or node.hasTagName("desc") or node.hasTagName("title"),
+        };
+    }
+
+    fn isScopeBoundary(node: *TreeNode) bool {
+        return if (node.namespace == .html) isGeneralScopeBoundary(node.local_name orelse "") else isForeignScopeBoundary(node);
     }
 
     /// Clear the stack back to a table context.
@@ -4313,9 +4554,16 @@ pub const TreeBuilder = struct {
     /// Check if there's a template element in the stack.
     fn hasTemplateInStack(self: *TreeBuilder) bool {
         for (self.open_elements.toSlice()) |elem| {
-            if (elem.hasTagName("template")) return true;
+            if (elem.namespace == .html and elem.hasTagName("template")) return true;
         }
         return false;
+    }
+
+    /// HTML "parsing template contents" includes a template fragment context.
+    fn parsingTemplateContents(self: *TreeBuilder) bool {
+        if (self.hasTemplateInStack()) return true;
+        const context = self.fragment_context orelse return false;
+        return context.namespace == .html and context.hasTagName("template");
     }
 
     /// Check if a tag token has type="hidden" attribute.

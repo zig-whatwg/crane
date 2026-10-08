@@ -108,7 +108,7 @@ pub const InternalState = struct {
         // insertions before its stable section cannot advance its pointer twice.
         // Step 24 can delay document load again, so restore the live registry.
         try self.register();
-        for (self.activity.microtasks.items) |generation| if (generation == self.load.generation) return;
+        if (self.activity.hasStable(self.load.generation)) return;
         try self.activity.stable(self.load.generation, stable);
     }
     fn fail(self: *InternalState) void {
@@ -402,17 +402,9 @@ fn removed(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
         setCursor(self, before, if (before) |b| child(b, false) else child(owner, true));
     };
 }
-fn stable(context: ?*anyopaque) void {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(context.?));
-    const self = instance.getState(State).own._internal orelse return;
-    const generation = self.activity.beginStable() orelse return;
-    defer self.activity.endStable();
-    if (generation != self.load.generation or !instance.ctx.hasEngine()) return;
-    engine.runInRealm(instance.ctx, stableSteps, instance) catch self.cancel();
-}
-fn stableSteps(context: ?*anyopaque) void {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(context.?));
-    const self = data(instance);
+fn stable(context: *anyopaque, generation: u64) void {
+    const self: *InternalState = @ptrCast(@alignCast(context));
+    if (generation != self.load.generation) return;
     selection(self) catch self.cancel();
 }
 fn selection(self: *InternalState) !void {

@@ -10,6 +10,13 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
 
+- [Share fragment parser state initialization](architecture-share-fragment-parser-state-initialization.md) - Reuse state transitions and test resulting trees.
+
+- [Parser reparenting must consult the live DOM](architecture-parser-reparenting-must-consult-the-live-dom.md) - Keep parser state for decisions and perform DOM moves against live relationships.
+
+- [Stable continuations own their native record](architecture-stable-continuations-own-their-native-record.md) - Retain queued identity separately from the element and release it on completion or drop.
+- [A queue handoff may drop the task before return](architecture-a-queue-handoff-may-drop-the-task-before-return.md) - After transferring task ownership, treat the payload as already destroyed.
+
 - [Parsed records need platform objects at the binding](architecture-parsed-records-need-platform-objects-at-the-binding.md) - Convert representations at the owner boundary; a pointer cast cannot create a platform object or its lifetime.
 - [Cancelled reaction queues need stable element identities](architecture-cancelled-reaction-queues-need-stable-element-identities.md) - Cancel by stable identity so a reused slab address cannot inherit queued work.
 - [An activity bit cannot own two independent holds](architecture-an-activity-bit-cannot-own-two-independent-holds.md) - Root constructor returns independently across reactions and binding conversion; prove the exact GC window.
@@ -217,6 +224,10 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Spec Compliance
 
+- [Template fragment parsing uses the content registry](spec-compliance-template-fragment-parsing-uses-the-content-registry.md) - Derive registry from the intended insertion parent, not just the fragment context.
+
+- [Prescan bounds apply to the stream, not each attribute](spec-compliance-prescan-bounds-apply-to-the-stream-not-each-attribute.md) - Preserve complete values within the specified input window.
+
 - [Initialize document-owned state before descendants](spec-compliance-initialize-document-owned-state-before-descendants.md) - Establish persistent associations only after their owner is initialized.
 - [An enqueue step is not an execution guard](spec-compliance-an-enqueue-step-is-not-an-execution-guard.md) - Queue membership has observable effects; preserve the spec's placement of state guards.
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -303,6 +314,14 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Testing
 
+- [A shared suite can hide missing hook setup](testing-a-shared-suite-can-hide-missing-hook-setup.md) - Each test file owns its process-wide prerequisites.
+
+- [Shared algorithm migrations need caller context tests](testing-shared-algorithm-migrations-need-caller-context-tests.md) - Verify the nodes exist and retain the caller's realm and subtype state.
+
+- [Subtree cleanup must return native storage](testing-subtree-cleanup-must-return-native-storage.md) - Count live storage separately and prove repeated operations plateau.
+
+- [Parser fixtures need explicit and implicit document roots](testing-parser-fixtures-need-explicit-and-implicit-document-roots.md) - Reparenting tests must exercise both root ownership paths.
+
 - [Prove a benchmark reaches the feature](testing-prove-a-benchmark-reaches-the-feature.md) - Assert the feature precondition before treating measurements as evidence.
 - [Typed handle counters can drift on generic disposal](testing-typed-handle-counters-can-drift-on-generic-disposal.md) - Validate counter coverage against actual handle and heap measurements.
 - [Read JSONL with its record delimiter](testing-read-jsonl-with-its-record-delimiter.md) - Preserve Unicode line separators inside strings when splitting records.
@@ -372,6 +391,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A dom unit test that reaches an engine operation cannot link](testing-a-dom-unit-test-that-reaches-an-engine-operation-cannot-link.md) - Keep src/dom unit tests to logic that reaches no `engine.*` operation; split the pure step out and test it, and read "N undefined _v8_ symbols" in a dom test step as "a test reached the engine".
 
 ### Debugging
+
+- [Inspect the DOM before changing a serializer](debugging-inspect-the-dom-before-changing-a-serializer.md) - Locate the first incorrect representation before repairing a later result.
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
 - [An instrument can confound its own result](debugging-an-instrument-can-confound-its-own-result.md) - Keep the perturbation independent of the reporting cadence, and prefer a slope between adjacent samples over any per-unit average.
 - [`leaks --atExit` is the tool; attaching never works](debugging-leaks-atexit-is-the-tool-attaching-never-works.md) - If a memory tool looks broken, suspect your own teardown before the tool.

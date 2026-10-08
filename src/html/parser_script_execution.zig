@@ -24,6 +24,8 @@ const std = @import("std");
 const log = std.log.scoped(.parser_script_execution);
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const engine = @import("engine");
+const parser_mutation = @import("parser_dom_mutation.zig");
 const interfaces = @import("interfaces");
 const infra = @import("infra");
 
@@ -249,6 +251,27 @@ pub fn domAdapterOnChildAppended(parent: *TreeNode, child: *TreeNode, context: ?
     adapter.onChildAppended(parent, child) catch {};
 }
 
+pub fn domAdapterOnInserted(location: TreeBuilder.InsertionLocation, child: *TreeNode, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    if ((parser_mutation.insert(adapter, location, child) catch false) and adapter.unattached_nodes.count() != 0) {
+        if (adapter.getDomNode(child)) |node| _ = adapter.unattached_nodes.remove(node);
+    }
+}
+
+pub fn domAdapterOnRemoved(node: *TreeNode, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    const instance = adapter.getDomNode(node) orelse return;
+    parser_mutation.remove(instance) catch return;
+    if (adapter.getDomNode(node) == null) return;
+    if (!engine.hasWrapper(instance))
+        adapter.unattached_nodes.put(instance, runtime.SlabAllocator.generationOf(instance)) catch {};
+}
+
+pub fn domAdapterOnChildrenMoved(source: *TreeNode, destination: *TreeNode, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    parser_mutation.moveChildren(adapter, source, destination) catch {};
+}
+
 /// Static callback wrapper for onTextContentChanged.
 /// This is passed to tree_builder.setDomAdapterCallbacks().
 pub fn domAdapterOnTextContentChanged(tree_node: *TreeNode, context: ?*anyopaque) void {
@@ -260,7 +283,7 @@ pub fn domAdapterOnTextContentChanged(tree_node: *TreeNode, context: ?*anyopaque
 /// already made. Passed to tree_builder.setDomAdapterAttributeCallback().
 pub fn domAdapterOnAttributeAdded(tree_node: *TreeNode, attr: *const TreeNode.Attribute, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
-    const element = adapter.node_map.get(tree_node) orelse return;
+    const element = adapter.getDomNode(tree_node) orelse return;
     appendParsedAttribute(element, attr.*);
 }
 
@@ -268,6 +291,7 @@ pub fn domAdapterOnAttributeAdded(tree_node: *TreeNode, attr: *const TreeNode.At
 /// takes it. Passed to tree_builder.setDomAdapterModeCallback().
 pub fn domAdapterOnModeSet(mode: html_core.parser.QuirksMode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    if (!adapter.isAlive()) return;
     document_internals.setMode(adapter.document, documentMode(mode)) catch {};
 }
 
@@ -278,7 +302,7 @@ pub fn domAdapterOnModeSet(mode: html_core.parser.QuirksMode, context: ?*anyopaq
 pub fn domAdapterOnElementPopped(tree_node: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
     if (!tree_node.hasTagName("style")) return;
-    const element = adapter.node_map.get(tree_node) orelse return;
+    const element = adapter.getDomNode(tree_node) orelse return;
     dom.style_sheet_owners.poppedByParser(element);
 }
 
@@ -291,7 +315,7 @@ pub fn domAdapterOnChildrenFinished(tree_node: *TreeNode, context: ?*anyopaque) 
     const local_name = tree_node.local_name orelse return;
     if (!dom.finish_parsing_children.hasSteps(local_name)) return;
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
-    const element = adapter.node_map.get(tree_node) orelse return;
+    const element = adapter.getDomNode(tree_node) orelse return;
     dom.finish_parsing_children.finishedParsingChildren(element, local_name);
 }
 
@@ -320,16 +344,16 @@ pub const DomTreeAdapter = struct {
     /// Mapping from TreeNode pointers to DOM Element instances.
     node_map: std.AutoHashMap(*TreeNode, *runtime.Instance),
 
-    /// The DOM nodes this adapter created and has not yet seen attached to the
-    /// tree - the only ones it may free in `deinit`.
-    ///
-    /// A node is added on creation and dropped the moment `appendChild` succeeds,
-    /// because from then on it is V8's: the wrapper cache holds it and a weak
-    /// callback can return its Instance handle to the slab at any time. A pointer
-    /// to an attached node is therefore not safe to dereference later, let alone
-    /// deinit. An unattached node is unreachable from script, so nothing can have
-    /// wrapped or collected it and its pointer stays valid until we free it here.
-    unattached_nodes: std.AutoHashMap(*runtime.Instance, void),
+    /// Nodes created or detached by the parser. A successful insertion transfers
+    /// ownership to the DOM tree. At teardown only live, unwrapped orphans are
+    /// ours to destroy; wrapped nodes belong to the engine's collector.
+    unattached_nodes: std.AutoHashMap(*runtime.Instance, u64),
+    /// Parser references survive removal by script until parsing ends. Owned
+    /// values root wrappers; generations additionally guard forced realm teardown.
+    holds: std.ArrayList(engine.Owned) = .empty,
+    generations: std.AutoHashMap(*TreeNode, u64),
+    document_generation: u64,
+    had_engine: bool,
 
     /// The tree builder tells this adapter when an element leaves its stack
     /// of open elements (`domAdapterOnChildrenFinished`, wired by the
@@ -348,36 +372,24 @@ pub const DomTreeAdapter = struct {
             .ctx = ctx,
             .document = document,
             .node_map = std.AutoHashMap(*TreeNode, *runtime.Instance).init(allocator),
-            .unattached_nodes = std.AutoHashMap(*runtime.Instance, void).init(allocator),
+            .unattached_nodes = std.AutoHashMap(*runtime.Instance, u64).init(allocator),
+            .generations = std.AutoHashMap(*TreeNode, u64).init(allocator),
+            .document_generation = runtime.SlabAllocator.generationOf(document),
+            .had_engine = ctx.hasEngine(),
         };
     }
 
     pub fn deinit(self: *DomTreeAdapter) void {
-        // Free the DOM nodes this adapter created and never managed to attach.
-        //
-        // onNodeCreated creates a DOM node before the tree builder knows where it
-        // goes; onChildAppended attaches it. If appendChild fails (errors here are
-        // swallowed) or onChildAppended never runs for that node, nothing else will
-        // ever free it - attached nodes are freed by Document.deinit's tree walk.
-        //
-        // This iterates `unattached_nodes`, NOT `node_map`. node_map keeps an entry
-        // for every node the parser ever created, including the ones it attached,
-        // and an attached node belongs to V8: `Node.deinit` on an orphaned ancestor
-        // frees its whole subtree, a script can detach a node and drop it, and
-        // either way a weak callback returns the Instance handle to the slab, where
-        // the next allocation takes the address over. Deciding ownership from a
-        // reread of `getParent(dom_node)` therefore dereferenced pointers V8 had
-        // already recycled: on a large document the recycled slot belonged to a
-        // node of some other context, and markInstanceCleanedUp panicked with
-        // "incorrect alignment" reading its wrapper cache. `unattached_nodes` only
-        // ever holds nodes that no wrapper and no script can reach, so every
-        // pointer in it is still ours.
-        var it = self.unattached_nodes.keyIterator();
-        while (it.next()) |key| {
-            const dom_node = key.*;
+        // A realm can be torn down by script while parsing. Check the slab
+        // generation before dereferencing any saved pointer, including orphans.
+        // Release the parser's roots only after finishing native cleanup.
+        var it = self.unattached_nodes.iterator();
+        while (it.next()) |entry| {
+            const dom_node = entry.key_ptr.*;
+            if (runtime.SlabAllocator.generationOf(dom_node) != entry.value_ptr.*) continue;
 
             // The document is created and freed by the caller, never by us.
-            if (dom_node == self.document) continue;
+            if (dom_node == self.document or engine.hasWrapper(dom_node)) continue;
 
             // Belt: a node that somehow acquired a parent without going through
             // onChildAppended is attached, whatever this map says.
@@ -387,35 +399,47 @@ pub const DomTreeAdapter = struct {
 
         self.unattached_nodes.deinit();
         self.node_map.deinit();
+        self.generations.deinit();
+        for (self.holds.items) |owned| owned.release();
+        self.holds.deinit(self.allocator);
     }
 
     /// Called when a new node is created during parsing.
     /// Creates the corresponding DOM node and adds it to the map.
     pub fn onNodeCreated(self: *DomTreeAdapter, tree_node: *TreeNode) !void {
+        if (!self.isAlive()) return error.InvalidStateError;
         const dom_node = try self.createDomNode(tree_node);
+        errdefer if (dom_node != self.document and !engine.hasWrapper(dom_node)) dom.node_creation.destroyUninserted(dom_node);
 
-        // Record ownership BEFORE publishing the node, so a failing put below
-        // still leaves the node on the list `deinit` frees. Note that node_map is
+        if (self.ctx.hasEngine() and dom_node != self.document) {
+            const owned = try engine.retainValue(self.ctx, .{ .instance = dom_node });
+            errdefer owned.release();
+            try self.holds.append(self.allocator, owned);
+        }
+
+        // Record unwrapped ownership BEFORE publishing the node. Wrapped
+        // nodes are held independently above and belong to engine cleanup. node_map is
         // keyed by TreeNode and a second create for the same TreeNode overwrites
         // it - `unattached_nodes` is keyed by instance and keeps both.
-        if (dom_node != self.document) {
-            try self.unattached_nodes.put(dom_node, {});
+        if (dom_node != self.document and !engine.hasWrapper(dom_node)) {
+            try self.unattached_nodes.put(dom_node, runtime.SlabAllocator.generationOf(dom_node));
         }
         try self.node_map.put(tree_node, dom_node);
+        try self.generations.put(tree_node, runtime.SlabAllocator.generationOf(dom_node));
     }
 
     /// Called when a child is appended to a parent during parsing.
     /// Updates the DOM tree structure.
     /// When appending <html> to document, also sets document.documentElement.
     pub fn onChildAppended(self: *DomTreeAdapter, parent: *TreeNode, child: *TreeNode) !void {
-        const parent_dom = self.node_map.get(parent) orelse return;
-        const child_dom = self.node_map.get(child) orelse return;
+        const child_dom = self.getDomNode(child) orelse return;
 
         // Hand the child over to V8 only if it really was attached: a failed
         // append leaves it orphaned and still ours to free.
-        if (interfaces.Node.call_appendChild(parent_dom, child_dom)) |_| {
+        if (try parser_mutation.insert(self, .{ .parent = parent, .before = child.next_sibling, .move = true }, child)) {
             _ = self.unattached_nodes.remove(child_dom);
-        } else |_| {}
+        } else return;
+        if (!self.isAlive() or self.getDomNode(child) == null) return;
 
         // CRITICAL: If appending <html> to document, set documentElement
         // Per DOM spec, documentElement is the first Element child of the Document
@@ -430,7 +454,7 @@ pub const DomTreeAdapter = struct {
 
     /// Called when a node's text content changes during parsing.
     pub fn onTextContentChanged(self: *DomTreeAdapter, tree_node: *TreeNode) !void {
-        const dom_node = self.node_map.get(tree_node) orelse return;
+        const dom_node = self.getDomNode(tree_node) orelse return;
 
         // Update the DOM node's text content
         const text_content = tree_node.text_content.toSlice();
@@ -442,7 +466,15 @@ pub const DomTreeAdapter = struct {
 
     /// Get the DOM element for a TreeNode.
     pub fn getDomNode(self: *const DomTreeAdapter, tree_node: *TreeNode) ?*runtime.Instance {
-        return self.node_map.get(tree_node);
+        if (!self.isAlive()) return null;
+        const node = self.node_map.get(tree_node) orelse return null;
+        if (node == self.document) return node;
+        const generation = self.generations.get(tree_node) orelse return null;
+        return if (runtime.SlabAllocator.generationOf(node) == generation) node else null;
+    }
+
+    fn isAlive(self: *const DomTreeAdapter) bool {
+        return (!self.had_engine or self.ctx.hasEngine()) and runtime.SlabAllocator.generationOf(self.document) == self.document_generation;
     }
 
     /// Create a DOM node from a TreeNode.
@@ -459,6 +491,17 @@ pub const DomTreeAdapter = struct {
     fn createElementNode(self: *DomTreeAdapter, tree_node: *TreeNode) !*runtime.Instance {
         const local_name = tree_node.local_name orelse return error.InvalidStateError;
 
+        // Create an element for the token, step 3: determine the intended
+        // parent's document BEFORE creating an element or invoking its hooks.
+        const owner = if (tree_node.creation_location) |location| blk: {
+            const intended = (try parser_mutation.resolve(self, location)).parent;
+            break :blk if ((try interfaces.Node.get_nodeType(intended)) == interfaces.Node.get_DOCUMENT_NODE())
+                intended
+            else
+                (try interfaces.Node.get_ownerDocument(intended)) orelse self.document;
+        } else self.document;
+
+        // Check if this is an HTML element (most common case)
         const is_html = tree_node.namespace == .html;
         const ns_uri: []const u8 = switch (tree_node.namespace) {
             .html => "http://www.w3.org/1999/xhtml",
@@ -469,15 +512,17 @@ pub const DomTreeAdapter = struct {
         const is_value = parser_ce.isValue(tree_node);
         // This adapter is the incremental full-document parser, including
         // document.write. Fragment conversion uses HTMLParser's explicit bit.
-        const scope = try parser_ce.Scope.begin(self.document, local_name, ns_uri, is_value, false);
+        const scope = try parser_ce.Scope.begin(owner, local_name, ns_uri, is_value, false);
         defer scope.end();
         const element = try @import("custom_elements/creation.zig").create(.{
-            .document = self.document,
+            .document = owner,
             .local_name = local_name,
             .namespace = ns_uri,
             .is_value = is_value,
             .synchronous = scope.synchronous,
         });
+
+        errdefer if (!engine.hasWrapper(element)) dom.node_creation.destroyUninserted(element);
 
         // A script element - HTML's, or an SVG script, whose insertion and
         // children-changed steps wait for its end tag too - is

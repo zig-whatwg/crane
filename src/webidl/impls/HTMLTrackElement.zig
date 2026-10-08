@@ -242,17 +242,11 @@ fn cancelRealm(ctx: runtime.Context) void {
         if (std.mem.eql(u8, instance.vtable.name, "HTMLTrackElement")) data(instance).cancel();
     }
 }
-fn stable(context: ?*anyopaque) void {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(context.?));
-    const self = instance.getState(State).own._internal orelse return;
-    const generation = self.activity.beginStable() orelse return;
-    defer self.activity.endStable();
-    if (generation != self.generation or !instance.ctx.hasEngine()) return;
-    engine.runInRealm(instance.ctx, stableSteps, instance) catch self.cancel();
-}
-fn stableSteps(context: ?*anyopaque) void {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(context.?));
-    startFetch(instance) catch data(instance).cancel();
+fn stable(context: *anyopaque, generation: u64) void {
+    const self: *InternalState = @ptrCast(@alignCast(context));
+    if (generation != self.generation) return;
+    const instance = self.activity.instance orelse return;
+    startFetch(instance) catch self.cancel();
 }
 fn startFetch(instance: *runtime.Instance) !void {
     const self = data(instance);

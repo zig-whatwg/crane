@@ -216,8 +216,8 @@ pub const Resource = struct {
 };
 
 /// Pending activity belongs to an element, not to its realm's global. The
-/// native owner record outlives forced instance teardown until every task drops.
-/// Microtasks carry ONLY the element (Q2); their generations live in this record.
+/// native owner record outlives forced instance teardown until every task and
+/// stable-state continuation has completed or dropped.
 pub const Activity = struct {
     allocator: std.mem.Allocator,
     instance: ?*runtime.Instance,
@@ -227,7 +227,7 @@ pub const Activity = struct {
     free: *const fn (*anyopaque) void,
     head: ?*Task = null,
     tail: ?*Task = null,
-    microtasks: std.ArrayList(u64) = .empty,
+    microtasks: std.ArrayList(*StableContinuation) = .empty,
     running_stable: usize = 0,
     fetching: bool = false,
 
@@ -238,25 +238,33 @@ pub const Activity = struct {
         else
             engine.releasePlatformObject(instance);
     }
-    pub fn stable(self: *Activity, generation: u64, callback: engine.RealmSteps) !void {
+    /// HTML await-a-stable-state steps 1–2: enqueue one synchronous section.
+    /// The fulfilled reaction uses the engine's FIFO microtask queue and its
+    /// drop contract also releases the continuation if the realm ends.
+    pub fn stable(self: *Activity, generation: u64, callback: *const fn (*anyopaque, u64) void) !void {
         const instance = self.instance orelse return error.InvalidStateError;
-        const agent = instance.ctx.agent orelse return error.NotSupported;
-        try self.microtasks.append(self.allocator, generation);
-        self.sync();
-        engine.queueMicrotask(agent, callback, instance) catch |err| {
-            _ = self.microtasks.pop();
-            self.sync();
-            return err;
+        const realm = instance.ctx;
+        const continuation = try self.allocator.create(StableContinuation);
+        continuation.* = .{
+            .activity = self,
+            .realm = realm,
+            .instance_generation = runtime.SlabAllocator.generationOf(instance),
+            .generation = generation,
+            .callback = callback,
         };
-    }
-    pub fn beginStable(self: *Activity) ?u64 {
-        if (self.microtasks.items.len == 0) return null;
-        self.running_stable += 1;
-        return self.microtasks.orderedRemove(0);
-    }
-    pub fn endStable(self: *Activity) void {
-        self.running_stable -= 1;
+        errdefer self.allocator.destroy(continuation);
+        try self.microtasks.append(self.allocator, continuation);
         self.sync();
+        errdefer {
+            continuation.unlink();
+            self.sync();
+        }
+        try engine.queueResolvedPromiseReaction(realm, &StableContinuation.steps, continuation);
+    }
+    /// Whether this resource selection already has a pending stable section.
+    pub fn hasStable(self: *const Activity, generation: u64) bool {
+        for (self.microtasks.items) |continuation| if (continuation.generation == generation) return true;
+        return false;
     }
     pub fn queue(self: *Activity, kind: u16, generation: u64, target: ?*runtime.Instance, name: ?[]const u8) !void {
         const instance = self.instance orelse return error.InvalidStateError;
@@ -302,17 +310,75 @@ pub const Activity = struct {
             task.cancelled = true;
         }
     }
-    /// Realm teardown drops queued microtasks itself; no allocated payload rides
-    /// them. Queued tasks retain this native record and drop normally.
+    /// Queued tasks and continuations retain the owner after its element ends.
     pub fn detach(self: *Activity) void {
         const instance = self.instance;
         self.instance = null;
-        self.microtasks.deinit(self.allocator);
-        self.microtasks = .empty;
         if (instance) |object| engine.releasePlatformObject(object);
     }
     pub fn maybeFree(self: *Activity) void {
-        if (self.instance == null and self.head == null) self.free(self.owner);
+        if (self.instance == null and self.head == null and self.microtasks.items.len == 0 and self.running_stable == 0) self.free(self.owner);
+    }
+};
+
+/// Independently owned identity for a queued stable section. An element's slab
+/// slot may be reused while this record remains in the engine's queue.
+const StableContinuation = struct {
+    activity: *Activity,
+    realm: runtime.Context,
+    instance_generation: u64,
+    generation: u64,
+    callback: *const fn (*anyopaque, u64) void,
+
+    const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .dropped = dropped };
+
+    fn unlink(self: *StableContinuation) void {
+        for (self.activity.microtasks.items, 0..) |entry, index| {
+            if (entry == self) {
+                _ = self.activity.microtasks.orderedRemove(index);
+                return;
+            }
+        }
+        unreachable;
+    }
+
+    fn alive(self: *const StableContinuation) bool {
+        const instance = self.activity.instance orelse return false;
+        return self.realm.hasEngine() and
+            runtime.SlabAllocator.generationOf(instance) == self.instance_generation and
+            !runtime.instance_lifecycle.isCleanupStarted(instance);
+    }
+
+    fn begin(self: *StableContinuation) void {
+        self.activity.running_stable += 1;
+        self.unlink();
+    }
+
+    fn finish(self: *StableContinuation) void {
+        // Owner code may have retired the realm. Nothing after it returns
+        // may read the captured realm or element; the Activity alone survives.
+        const activity = self.activity;
+        activity.allocator.destroy(self);
+        activity.running_stable -= 1;
+        activity.sync();
+        activity.maybeFree();
+    }
+
+    fn fulfilled(data: ?*anyopaque, _: runtime.JSValue) void {
+        const self: *StableContinuation = @ptrCast(@alignCast(data.?));
+        self.begin();
+        defer self.finish();
+        if (!self.alive()) return;
+        // Promise reactions enter their registered realm. A second realm scope
+        // would itself outlive forced retirement from inside the callback.
+        self.callback(self.activity.owner, self.generation);
+    }
+
+    fn dropped(data: ?*anyopaque) void {
+        const self: *StableContinuation = @ptrCast(@alignCast(data.?));
+        self.begin();
+        defer self.finish();
+        if (self.alive()) self.activity.abort(self.activity.owner);
     }
 };
 

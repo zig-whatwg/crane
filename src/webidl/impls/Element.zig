@@ -546,7 +546,7 @@ pub fn installHooks() void {
         .node_at = &attrNodeAtHook,
     });
     // The parsers' "create an element" sets names through `dom.node_creation`.
-    dom.node_creation.installElement(.{ .set_names = &setNamesHook });
+    dom.node_creation.installElement(.{ .set_names = &setNamesHook, .is_value = &isValueHook });
     dom.custom_elements.installElement(.{
         .get = &customElementData,
         .initialize = &initializeCustomElement,
@@ -557,6 +557,11 @@ pub fn installHooks() void {
         .set_registry = &setCustomElementRegistry,
         .attach_shadow = &attachShadow,
     });
+}
+
+fn isValueHook(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    return if (internal.is_value) |value| value.asSlice() else null;
 }
 
 fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
@@ -764,7 +769,7 @@ pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         // Clone to transfer ownership to caller (interface layer will free)
         return try p.clone(instance.ctx.allocator);
     }
-    return runtime.DOMString.initEmpty();
+    return null;
 }
 
 /// Getter for localName
@@ -1009,139 +1014,18 @@ pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.
 /// DOM Parsing §3 - Returns the HTML serialization of the element's descendants
 /// Spec: https://w3c.github.io/DOM-Parsing/#dom-element-innerhtml
 ///
-/// Note: Simplified implementation - returns basic HTML structure.
-/// Full implementation requires complete HTML serialization algorithm.
 pub fn get_innerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = getInternal(instance) orelse return error.InvalidStateError;
-
-    // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
-    // The V8 property getter callback will free returned strings using instance.ctx.allocator
-    const allocator = instance.ctx.allocator;
-
-    // Build basic HTML from child elements using infra.List
-    var result = infra.List(u8).init(allocator);
-    errdefer result.deinit();
-
-    // Iterate through children and serialize
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        serializeNode(c, &result, allocator) catch return error.OutOfMemory;
-        child = NodeImpl.getNextSibling(c);
-    }
-
-    // Return as DOMString - toOwnedSlice uses the List's allocator (ctx.allocator)
-    const owned = result.toOwnedSlice() catch return error.OutOfMemory;
-    return runtime.DOMString.initOwned(owned);
+    return @import("html").serialization.fragment(instance, false);
 }
 
 /// Getter for outerHTML
 /// DOM Parsing §3 - Returns the HTML serialization of the element including itself
 /// Spec: https://w3c.github.io/DOM-Parsing/#dom-element-outerhtml
 ///
-/// Note: Simplified implementation - returns basic HTML structure.
-/// Full implementation requires complete HTML serialization algorithm.
 pub fn get_outerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = getInternal(instance) orelse return error.InvalidStateError;
-
-    // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
-    // The V8 property getter callback will free returned strings using instance.ctx.allocator
-    const allocator = instance.ctx.allocator;
-
-    var result = infra.List(u8).init(allocator);
-    errdefer result.deinit();
-
-    // Serialize this element including itself
-    serializeNode(instance, &result, allocator) catch return error.OutOfMemory;
-
-    // Return as DOMString - toOwnedSlice uses the List's allocator (ctx.allocator)
-    const owned = result.toOwnedSlice() catch return error.OutOfMemory;
-    return runtime.DOMString.initOwned(owned);
-}
-
-/// Internal helper to serialize a node to HTML
-fn serializeNode(node: *runtime.Instance, result: *infra.List(u8), allocator: std.mem.Allocator) !void {
-    _ = allocator;
-    const node_type = NodeImpl.getNodeType(node) orelse return;
-
-    switch (node_type) {
-        NodeImpl.NodeType.ELEMENT_NODE => {
-            // Get tag name
-            const elem_internal = getInternal(node);
-            if (elem_internal) |internal| {
-                const tag = internal.local_name.asSlice();
-
-                // Opening tag
-                try result.append('<');
-                try result.appendSlice(tag);
-
-                // Attributes
-                var attr_iter = internal.attributeIterator();
-                while (attr_iter.next()) |attr| {
-                    try result.append(' ');
-                    try result.appendSlice(attr.local_name);
-                    try result.appendSlice("=\"");
-                    // Escape attribute value
-                    for (attr.value) |c| {
-                        switch (c) {
-                            '"' => try result.appendSlice("&quot;"),
-                            '&' => try result.appendSlice("&amp;"),
-                            else => try result.append(c),
-                        }
-                    }
-                    try result.append('"');
-                }
-
-                try result.append('>');
-
-                // Children
-                var child = NodeImpl.getFirstChild(node);
-                while (child) |c| {
-                    try serializeNode(c, result, internal.allocator);
-                    child = NodeImpl.getNextSibling(c);
-                }
-
-                // Closing tag (skip for void elements)
-                const void_elements = [_][]const u8{ "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr" };
-                var is_void = false;
-                for (void_elements) |ve| {
-                    if (std.ascii.eqlIgnoreCase(tag, ve)) {
-                        is_void = true;
-                        break;
-                    }
-                }
-
-                if (!is_void) {
-                    try result.appendSlice("</");
-                    try result.appendSlice(tag);
-                    try result.append('>');
-                }
-            }
-        },
-        NodeImpl.NodeType.TEXT_NODE => {
-            // Get text content
-            const text = CharacterDataImpl.getData(node);
-            if (text) |t| {
-                // Escape text content
-                for (t) |c| {
-                    switch (c) {
-                        '<' => try result.appendSlice("&lt;"),
-                        '>' => try result.appendSlice("&gt;"),
-                        '&' => try result.appendSlice("&amp;"),
-                        else => try result.append(c),
-                    }
-                }
-            }
-        },
-        NodeImpl.NodeType.COMMENT_NODE => {
-            try result.appendSlice("<!--");
-            const text = CharacterDataImpl.getData(node);
-            if (text) |t| {
-                try result.appendSlice(t);
-            }
-            try result.appendSlice("-->");
-        },
-        else => {},
-    }
+    return @import("html").serialization.outer(instance);
 }
 
 /// Getter for scrollTop
@@ -2031,7 +1915,8 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     defer internal.allocator.free(compliant);
     const html_string: []const u8 = compliant;
 
-    const element_base = dom.instance_bridge.getNodeBase(@ptrCast(instance)) orelse return error.InvalidStateError;
+    const target = try dom.template_contents.insertionTarget(instance);
+    const element_base = dom.instance_bridge.getNodeBase(target) orelse return error.InvalidStateError;
 
     // The empty string parses to an empty fragment: replace all with nothing.
     if (html_string.len == 0) {
@@ -2052,8 +1937,7 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
 
     // Step 2: "If context is a template element, then set context to the
     // template element's template contents."
-    // TODO(template): the template contents fragment has no seam from here
-    // yet; the children land on the template element itself, as before.
+    // The target above also handles replacement by an empty fragment.
 
     // Step 3: "Replace all with fragment within context." One tree mutation
     // record for the whole change; removing each child and moving each
@@ -2062,15 +1946,8 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
 }
 
 /// Setter for outerHTML
-/// DOM Parsing §3.2 - Replaces the element with parsed HTML
+/// HTML §8.5.5 - Replaces the element with a parsed fragment.
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#the-outerhtml-property
-///
-/// Steps:
-/// 1. Let parent be this element's parent
-/// 2. If parent is null, return
-/// 3. If parent is a Document, throw a NoModificationAllowedError
-/// 4. Parse the string using the HTML fragment parsing algorithm with parent as context
-/// 5. Replace this element with the parsed nodes
 pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // HTML outerHTML setter step 1: "Let compliantString be the result of
@@ -2079,48 +1956,48 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     // outerHTML", and "script"."
     const compliant = try dom.trusted_types.compliantStringFor(internal.allocator, .html, instance, value, "Element outerHTML");
     defer internal.allocator.free(compliant);
-    const html_string: []const u8 = compliant;
 
-    // Step 1-2: Get parent, return if null
-    const parent = NodeImpl.getParent(instance) orelse return;
-
-    // Step 3: Check if parent is a Document (not allowed)
-    const parent_type = NodeImpl.getNodeType(parent) orelse return error.InvalidStateError;
-    if (parent_type == NodeImpl.NodeType.DOCUMENT_NODE) {
-        return error.HierarchyRequestError;
+    // Steps 2–4: only a detached element is a no-op; a Document parent is
+    // specifically NoModificationAllowedError, not HierarchyRequestError.
+    const parent = (try interfaces.Node.get_parentNode(instance)) orelse return;
+    const parent_type = try interfaces.Node.get_nodeType(parent);
+    if (parent_type == interfaces.Node.get_DOCUMENT_NODE()) {
+        return error.NoModificationAllowedError;
     }
 
-    // Import HTMLParser for fragment parsing
-    const HTMLParser = @import("HTMLParser.zig");
+    // Step 5: a fragment is not a parsing context element. Create the
+    // specified HTML body in this's node document, then reclaim it when the
+    // parse finishes (Gecko Element::SetOuterHTML uses the same context).
+    var temporary_body: ?*runtime.Instance = null;
+    defer if (temporary_body) |body| dom.node_creation.destroyUninserted(body);
+    const context = if (parent_type == interfaces.Node.get_DOCUMENT_FRAGMENT_NODE()) blk: {
+        const document = (try interfaces.Node.get_ownerDocument(instance)) orelse return error.InvalidStateError;
+        const body = try interfaces.Document.call_createElementNS(
+            document,
+            runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"),
+            runtime.DOMString.initInterned("body"),
+            webidl.Opt(runtime.JSValue).notPassed(),
+        );
+        temporary_body = body;
+        break :blk body;
+    } else parent;
 
-    // Step 4: Parse the HTML fragment using parent as context
-    const fragment = HTMLParser.parseFragment(
+    // Step 6: parse with the adjusted parent as context.
+    const fragment = @import("html").dom_parser.parseFragment(
         internal.allocator,
         instance.ctx,
-        html_string,
-        parent,
+        compliant,
+        context,
     ) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.NotSupportedError,
     };
+    defer dom.node_creation.destroyUninserted(fragment);
 
-    // Step 5: Replace this element with the parsed nodes
-    // Insert all children from fragment before this element, then remove this element
-    var fragment_child = NodeImpl.getFirstChild(fragment);
-    while (fragment_child) |fc| {
-        const next = NodeImpl.getNextSibling(fc);
-        // Remove from fragment
-        _ = interfaces.Node.call_removeChild(fragment, fc) catch break;
-        // Insert before this element
-        _ = interfaces.Node.call_insertBefore(parent, fc, instance) catch break;
-        fragment_child = next;
-    }
-
-    // Remove this element from parent
-    _ = interfaces.Node.call_removeChild(parent, instance) catch {};
-
-    // Clean up the fragment
-    interfaces.DocumentFragment.deinit(fragment);
+    // Step 7: one replacement, including its single child-list mutation
+    // record. Use this's actual parent after parsing, not the fictional body.
+    const actual_parent = (try interfaces.Node.get_parentNode(instance)) orelse return error.NotFoundError;
+    _ = try interfaces.Node.call_replaceChild(actual_parent, fragment, instance);
 }
 
 /// Setter for scrollTop
@@ -2883,30 +2760,8 @@ pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, op
 /// Returns the innerHTML with optional shadow roots serialized
 pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetHTMLOptions)) anyerror!runtime.DOMString {
     _ = options;
-    // get_innerHTML returns *const anyopaque which is a DOMString union
-    // We need to call the serialization directly here
     _ = getInternal(instance) orelse return error.InvalidStateError;
-
-    // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
-    // The V8 property getter callback will free returned strings using instance.ctx.allocator
-    const allocator = instance.ctx.allocator;
-
-    // Serialize all child nodes
-    var buffer = infra.List(u8).init(allocator);
-    defer buffer.deinit();
-
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        serializeNode(c, &buffer, allocator) catch return error.OutOfMemory;
-        child = NodeImpl.getNextSibling(c);
-    }
-
-    // Return the serialized HTML
-    const slice = buffer.items();
-    if (slice.len == 0) {
-        return runtime.DOMString.initEmpty();
-    }
-    return runtime.DOMString.initDupe(allocator, slice) catch return error.OutOfMemory;
+    return @import("html").serialization.fragment(instance, true);
 }
 
 /// Operation: getAttributeNode
