@@ -1337,8 +1337,10 @@ fn handleAttributeChanges(
     // Step 3: "Run the attribute change steps with element, attribute's local
     // name, oldValue, newValue, and attribute's namespace."
     attributeChangeSteps(instance, local_name, old_value, new_value, namespace);
+    // HTML 4.10.18.3 / 4.10.19.5: form, id and disabled can change a
+    // form-associated custom element's owner or disabled state.
     if (namespace == null and (std.mem.eql(u8, local_name, "form") or std.mem.eql(u8, local_name, "id") or std.mem.eql(u8, local_name, "disabled"))) {
-        dom.custom_elements.formTreeChanged(instance);
+        dom.custom_elements.formAttributeChanged(instance, local_name, old_value, new_value);
     }
 }
 

@@ -103,7 +103,6 @@ pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) !void 
 pub fn runChildrenChangedSteps(parent: anytype) void {
     // Cast to *NodeBase for callbacks (all DOM types have Node fields duplicated)
     const parent_node: *NodeBase = @ptrCast(parent);
-    if (instance_bridge.getInstance(parent_node)) |object| custom_elements.formTreeChanged(@ptrCast(@alignCast(object)));
 
     // Call all registered callbacks
     if (children_changed_callbacks) |*callbacks| {
@@ -1025,6 +1024,10 @@ pub fn insert(
         );
     }
 
+    // HTML element insertion steps: reset the form owner of what the
+    // inserted nodes carry in (CE2-S1: their subtrees, not the whole tree).
+    for (nodes[0..nodes_count]) |n| formSubtreeMoved(n, null, @ptrCast(parent));
+
     // Step 9: Run the children changed steps for parent
     runChildrenChangedSteps(parent);
 
@@ -1182,6 +1185,10 @@ pub fn appendChildren(
         null, // nextSibling is null since we're appending at end
     );
 
+    // HTML element insertion steps: reset the form owner of what the
+    // inserted nodes carry in (CE2-S1).
+    for (children) |inserted| formSubtreeMoved(inserted, null, @ptrCast(parent));
+
     // Step 9: Run children changed steps once for all insertions
     runChildrenChangedSteps(parent);
 
@@ -1332,6 +1339,10 @@ pub fn insertChildrenBefore(
         previousSibling,
         ref_child,
     );
+
+    // HTML element insertion steps: reset the form owner of what the
+    // inserted nodes carry in (CE2-S1).
+    for (children) |inserted| formSubtreeMoved(inserted, null, @ptrCast(parent));
 
     // Run children changed steps once
     runChildrenChangedSteps(parent);
@@ -1642,7 +1653,10 @@ pub fn remove(
     // Update is_connected for the removed node and all its descendants
     // A removed node is no longer connected to the document tree
     setConnectedRecursive(node, false);
-    if (instance_bridge.getInstance(@ptrCast(node))) |object| custom_elements.formTreeChanged(@ptrCast(@alignCast(object)));
+    // HTML element removing steps: reset the form owner of the removed
+    // subtree, and of the elements whose form attribute named an ID that
+    // left the tree (CE2-S1).
+    formSubtreeMoved(@ptrCast(node), @ptrCast(parent), null);
 
     // Step 8-10: Shadow DOM slot assignment
     // TODO: Implement when shadow DOM is fully integrated
@@ -1845,6 +1859,10 @@ pub fn move(
     // Step 19: If child is null, then append node to newParent's children
     // Step 20: Otherwise, insert node into newParent's children before child's index
     insertIntoChildrenList(node, new_parent, child);
+
+    // HTML element moving steps: reset the form owner once, in the new
+    // position (CE2-S1).
+    formSubtreeMoved(@ptrCast(node), @ptrCast(old_parent), @ptrCast(new_parent));
 
     // Step 20.1: Run children changed steps for newParent
     // (Node was added to newParent's children)
@@ -2438,6 +2456,18 @@ fn hasCustomElementDefinitions(node: anytype) bool {
     const object = instance_bridge.getInstance(@ptrCast(node)) orelse return false;
     const instance: *runtime.Instance = @ptrCast(@alignCast(object));
     return custom_elements.hasDefinitions(instance.ctx);
+}
+
+fn instanceOfNode(node: ?*NodeBase) ?*runtime.Instance {
+    const object = instance_bridge.getInstance(node orelse return null) orelse return null;
+    return @ptrCast(@alignCast(object));
+}
+
+/// HTML's element insertion, removing and moving steps reset the form owner
+/// (4.10.18.3); for form-associated custom elements that reset is kept
+/// (formAssociatedCallback), and runs only over what the mutation reached.
+fn formSubtreeMoved(node: *NodeBase, old_parent: ?*NodeBase, new_parent: ?*NodeBase) void {
+    custom_elements.formSubtreeMoved(instanceOfNode(node) orelse return, instanceOfNode(old_parent), instanceOfNode(new_parent));
 }
 
 fn runCustomElementInsertionSteps(node: *NodeBase) void {

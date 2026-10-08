@@ -157,7 +157,6 @@ pub fn installHooks() void {
         .cancel_element = html.custom_elements.cancelElement,
         .is_scoped = &isScoped,
         .associate_document = &associateDocument,
-        .form_tree_changed = html.custom_elements.formTreeChanged,
     });
     dom.unloading_cleanup.install(html.custom_elements.clearRealm);
 }

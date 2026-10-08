@@ -176,9 +176,15 @@ pub const OwnerSteps = struct {
     cancel_element: *const fn (*runtime.Instance) void,
     is_scoped: *const fn (*runtime.Instance) bool,
     associate_document: *const fn (*runtime.Instance, *runtime.Instance) anyerror!void,
-    form_tree_changed: *const fn (*runtime.Instance) void,
 };
-const Implementation = struct { element: ?ElementSteps = null, owner: ?OwnerSteps = null, document: ?DocumentSteps = null, shadow: ?ShadowSteps = null, html_element: ?HTMLElementSteps = null, internals: ?InternalsSteps = null, custom_states: ?CustomStateSteps = null, validity: ?ValiditySteps = null };
+/// HTML 4.10.18.3 "reset the form owner" and the disabled state of
+/// form-associated custom elements, where a mutation can change them
+/// (html/custom_elements/form_owner.zig; CE2-S1).
+pub const FormSteps = struct {
+    subtree_moved: *const fn (node: *runtime.Instance, old_parent: ?*runtime.Instance, new_parent: ?*runtime.Instance) void,
+    attribute_changed: *const fn (element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, new_value: ?[]const u8) void,
+};
+const Implementation = struct { form: ?FormSteps = null, element: ?ElementSteps = null, owner: ?OwnerSteps = null, document: ?DocumentSteps = null, shadow: ?ShadowSteps = null, html_element: ?HTMLElementSteps = null, internals: ?InternalsSteps = null, custom_states: ?CustomStateSteps = null, validity: ?ValiditySteps = null };
 // process-wide: immutable function pointers installed at process start; all mutable data belongs to elements or agents, so many Browsers and threads share no reaction state
 var implementation: Implementation = .{};
 
@@ -189,6 +195,10 @@ pub fn installElement(steps: ElementSteps) void {
 pub fn installOwner(steps: OwnerSteps) void {
     process_start.assertInstalling();
     implementation.owner = steps;
+}
+pub fn installForm(steps: FormSteps) void {
+    process_start.assertInstalling();
+    implementation.form = steps;
 }
 pub fn installDocument(steps: DocumentSteps) void {
     process_start.assertInstalling();
@@ -296,8 +306,14 @@ pub fn shadowAvailableToInternals(shadow: *runtime.Instance) bool {
 pub fn shadowKeepsRegistryNull(shadow: *runtime.Instance) bool {
     return (implementation.shadow orelse return false).keeps_registry_null(shadow);
 }
-pub fn formTreeChanged(root: *runtime.Instance) void {
-    (implementation.owner orelse return).form_tree_changed(root);
+/// `node` was inserted (`old_parent` null), removed (`new_parent` null) or
+/// moved; the tree is in its new shape.
+pub fn formSubtreeMoved(node: *runtime.Instance, old_parent: ?*runtime.Instance, new_parent: ?*runtime.Instance) void {
+    (implementation.form orelse return).subtree_moved(node, old_parent, new_parent);
+}
+/// An attribute in no namespace changed on `element`.
+pub fn formAttributeChanged(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, new_value: ?[]const u8) void {
+    (implementation.form orelse return).attribute_changed(element, local_name, old_value, new_value);
 }
 /// DOM's effective global custom element registry: a scoped registry yields null.
 pub fn effectiveGlobal(registry: ?*runtime.Instance) ?*runtime.Instance {

@@ -94,6 +94,10 @@ fn formAssociatedTarget(instance: *runtime.Instance) !*runtime.Instance {
 pub fn installHooks() void {
     ce.installInternals(.{ .set_target = &setTarget, .states = &statesIfCreated, .validity_flags = &validityFlags, .refresh_form = &refreshForm, .append_form_entries = &appendFormEntries, .validation_state = &form_associated.validationState, .disabled_state = &form_associated.customDisabledState });
     @import("dom").form_controls.install(.{ .is = &ce.isFormAssociated, .reset = &resetControl });
+    // CE2-S1: the mutations that can change a form-associated custom
+    // element's owner or disabled state reset just the elements they reach.
+    const form_owner = @import("html").custom_elements.form_owner;
+    ce.installForm(.{ .subtree_moved = &form_owner.subtreeMoved, .attribute_changed = &form_owner.attributeChanged });
 }
 
 fn resetControl(element: *runtime.Instance) void {
@@ -118,6 +122,9 @@ fn refreshForm(instance: *runtime.Instance) void {
         internal.disabled = disabled;
         @import("html").custom_elements.enqueueCallback(target, definition, .form_disabled, .{ .form_disabled = disabled }) catch {};
     }
+    // The ID its form attribute names is now the one to watch (HTML
+    // 4.10.18.3's ID-target resets), or none.
+    @import("html").custom_elements.form_owner.observe(target);
 }
 
 fn statesIfCreated(instance: *runtime.Instance) ?*runtime.Instance {
