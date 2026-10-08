@@ -198,8 +198,8 @@ test "L2: a rescued root keeps a subtree whose nodes have no wrapper" {
     const page = try Page.open();
     defer page.close();
     const chain = try Chain.make(page);
-    var held: ?protocol.Owned = try protocol.retainValue(page.realm, .{ .instance = chain.root });
-    defer if (held) |owned| owned.release();
+    const held = try protocol.retainValue(page.realm, .{ .instance = chain.root });
+    defer held.release();
     try page.collect();
     try testing.expect(!protocol.hasWrapper(chain.leaf));
     try testing.expect(chain.alive(0) and chain.alive(1) and chain.alive(2));

@@ -133,18 +133,105 @@ test "a suspended parser reaches EOF after the initiating owner returned" {
     try std.testing.expect(dom.document_internals.getInternal(document).?.active_parser == null);
 }
 
-test "a DOM adapter defaults to transient strong roots" {
-    interfaces.process_hooks.startHooksForTest();
+/// A window realm with an engine, made the way a page's is, for the adapter
+/// tests below: its Document is the window's.
+const EngineRealm = struct {
+    host: @import("html_core").agent_host.AgentHost,
+    agent: *engine.Agent,
+    realm: runtime.Context,
+    capture: WindowCapture,
+    document: *runtime.Instance,
+
+    fn open(self: *EngineRealm, allocator: std.mem.Allocator) !void {
+        self.host = @import("html_core").agent_host.AgentHost.init(allocator);
+        errdefer self.host.deinit();
+        self.agent = try engine.createAgent(.{
+            .can_block = false,
+            .from_snapshot = false,
+            .allocator = allocator,
+            .host = &self.host,
+            .hooks = &.{},
+        });
+        errdefer engine.destroyAgent(self.agent);
+        self.capture = .{};
+        self.realm = try engine.createWindowRealm(&.{
+            .agent = self.agent,
+            .allocator = allocator,
+            .from_snapshot = false,
+            .timer = null,
+            .create_global_object = WindowCapture.create,
+            .host = &self.capture,
+        });
+        const window = self.capture.window orelse return error.NoWindow;
+        self.document = try interfaces.Document.init(allocator, self.realm);
+        dom.window_globals.setDocument(window, self.document);
+        dom.document_browsing_context.setWindow(self.document, window);
+    }
+
+    fn close(self: *EngineRealm) void {
+        engine.destroyWindowRealm(self.realm, .global_detached);
+        engine.destroyAgent(self.agent);
+        self.host.deinit();
+    }
+};
+
+fn expectTransientAdapterDefaults() !void {
     const allocator = std.testing.allocator;
     runtime.initializeRuntime(allocator);
     defer runtime.deinitializeRuntime();
-    var ctx = try runtime.ContextData.init(allocator, .{});
-    defer ctx.deinit();
-    const document = try interfaces.Document.init(allocator, &ctx);
-    defer interfaces.Document.deinit(document);
-    var adapter = html.parser_script_execution.DomTreeAdapter.init(allocator, &ctx, document);
-    defer adapter.deinit();
-    try std.testing.expectEqual(.strong_roots, adapter.ownership_mode);
+    interfaces.process_hooks.startHooksForTest();
+    try engine.initializeEngine(.{});
+    var page: EngineRealm = undefined;
+    try page.open(allocator);
+    defer page.close();
+
+    // An adapter no scripted parser owns: no rescuer, so nothing is rooted
+    // on its behalf.
+    var adapter = html.parser_script_execution.DomTreeAdapter.init(allocator, page.realm, page.document);
+    var adapter_live = true;
+    defer if (adapter_live) adapter.deinit();
+    try std.testing.expect(adapter.rescuer == null);
+
+    const TreeNode = @import("html_core").parser.TreeNode;
+    var tree_nodes: [3]*TreeNode = undefined;
+    var made: usize = 0;
+    defer for (tree_nodes[0..made]) |tree_node| tree_node.deinit();
+    var created: [3]*runtime.Instance = undefined;
+    var generations: [3]u64 = undefined;
+    for ([_][]const u8{ "div", "span", "p" }, 0..) |local_name, i| {
+        tree_nodes[i] = try TreeNode.initElement(allocator, local_name, .html);
+        made += 1;
+        try adapter.onNodeCreated(tree_nodes[i]);
+        created[i] = adapter.getDomNode(tree_nodes[i]) orelse return error.NoDOMNode;
+        generations[i] = runtime.SlabAllocator.generationOf(created[i]);
+        // No wrapper and no root per created node (parser holds design 5.1,
+        // 5.4: only an element its creation wrapped is held, until its first
+        // insertion attempt).
+        try std.testing.expect(!engine.hasWrapper(created[i]));
+    }
+    try std.testing.expectEqual(@as(usize, 0), adapter.pending.items.len);
+
+    // An aborted transient parse: nothing was inserted. Its unwrapped
+    // orphans are the adapter's alone, and it frees them.
+    adapter.deinit();
+    adapter_live = false;
+    for (created, generations) |node, generation| {
+        try std.testing.expect(runtime.SlabAllocator.generationOf(node) != generation);
+    }
+}
+
+test "an adapter no scripted parser owns roots nothing per node and frees its orphans" {
+    const Run = struct {
+        fn run(result: *?anyerror) void {
+            expectTransientAdapterDefaults() catch |err| {
+                result.* = err;
+            };
+        }
+    };
+    var result: ?anyerror = null;
+    const thread = try std.Thread.spawn(.{}, Run.run, .{&result});
+    thread.join();
+    if (result) |err| return err;
 }
 
 const WindowCapture = struct {
@@ -196,14 +283,15 @@ fn expectDocumentTracedParser() !void {
     try std.testing.expect(!parser.input_stream.eof_processed);
     const current = parser.tree_builder.currentNode() orelse return error.NoCurrentNode;
     const instance = parser.adapter.getDomNode(current) orelse return error.NoCurrentDOMNode;
-    try std.testing.expect(engine.hasWrapper(instance));
-    // An independent Owned root makes the suspended Document/parser/node
-    // cycle permanently reachable. Its nodes must instead be Document edges.
-    try std.testing.expectEqual(@as(usize, 0), parser.adapter.holds.items.len);
-    try std.testing.expectEqual(.document_traced, parser.adapter.ownership_mode);
+    // The parser holds its open elements natively (parser holds design
+    // 5.1): no wrapper, no pending hold, no rescued root, and so no
+    // independent root keeping the suspended Document/parser graph.
+    try std.testing.expect(!engine.hasWrapper(instance));
+    try std.testing.expectEqual(@as(usize, 0), parser.adapter.pending.items.len);
+    try std.testing.expectEqual(@as(usize, 0), parser.rescues.items.len);
 }
 
-test "a suspended DocumentParser traces wrappers without independent roots" {
+test "a suspended DocumentParser holds its open elements with no wrapper and no root" {
     const Run = struct {
         fn run(result: *?anyerror) void {
             expectDocumentTracedParser() catch |err| {

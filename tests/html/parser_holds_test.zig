@@ -44,11 +44,17 @@ fn collect(browser: *browser_mod.Browser) !void {
 }
 
 fn openBrowser() !*browser_mod.Browser {
+    return openPage("<!doctype html><body></body>", "about:blank");
+}
+
+/// A Browser whose page is `markup`, loaded once into the navigation's fresh
+/// document (a load never reuses a document that has children here).
+fn openPage(markup: []const u8, url: []const u8) !*browser_mod.Browser {
     const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     errdefer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
-    try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });
+    try page.loadHTML(markup, .{ .base_url = url });
     return browser;
 }
 
@@ -81,10 +87,9 @@ const Saved = struct {
 };
 
 fn untouchedNodesStayUnwrapped() !void {
-    const browser = try openBrowser();
+    const browser = try openPage("<!doctype html><body><div id=a><p id=b><span id=c>text</span></p></div><script>window.done = 1;</script>", "about:blank");
     defer browser.deinit();
     const page = browser.current_context.?;
-    try page.loadHTML("<!doctype html><body><div id=a><p id=b><span id=c>text</span></p></div><script>window.done = 1;</script>", .{ .base_url = "about:blank" });
     const document = page.document_instance orelse return error.NoDocument;
     for ([_][]const u8{ "a", "b", "c" }) |id| {
         if (engine.hasWrapper(try byId(document, id))) {
@@ -213,10 +218,9 @@ test "the head element pointer holds a popped head that script removes" {
 }
 
 fn frameRemovedWithRescuedRoot() !void {
-    const browser = try openBrowser();
+    const browser = try openPage("<!doctype html><body><iframe id=f></iframe></body>", "http://example.test/holds");
     defer browser.deinit();
     const page = browser.current_context.?;
-    try page.loadHTML("<!doctype html><body><iframe id=f></iframe></body>", .{ .base_url = "http://example.test/holds" });
     _ = try browser.runEventLoopBlocking(20);
     try page.runScript(
         \\const frameDocument = document.getElementById('f').contentDocument;
@@ -238,4 +242,67 @@ fn frameRemovedWithRescuedRoot() !void {
 
 test "a removed frame's suspended parser frees its rescued roots without a leak" {
     try onFreshThread(frameRemovedWithRescuedRoot);
+}
+
+const DiscardedOnStack = struct {
+    browser: *browser_mod.Browser,
+    parser: *scripted_parser.DocumentParser,
+    held: [2]Saved,
+    calls: usize = 0,
+    rescues_seen: usize = 0,
+    alive_after_collection: bool = false,
+
+    fn steps(data: ?*anyopaque, _: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
+        const self: *DiscardedOnStack = @ptrCast(@alignCast(data.?));
+        self.calls += 1;
+        // document.open has discarded the old parser, and replace all removed
+        // its tree; the parser is still on the native stack, unreleased.
+        engine.requestGarbageCollection(self.browser.getAgent().?);
+        engine.requestGarbageCollection(self.browser.getAgent().?);
+        self.rescues_seen = self.parser.rescues.items.len;
+        self.alive_after_collection = self.held[0].alive() and self.held[1].alive();
+        return .undefined;
+    }
+};
+
+fn discardedParserOnTheStackStillHolds() !void {
+    const browser = try openBrowser();
+    defer browser.deinit();
+    const page = browser.current_context.?;
+    try page.runScript("document.open(); document.write('<!doctype html><body><div id=held><span id=deep>')");
+    const document = page.document_instance orelse return error.NoDocument;
+    const parser = try activeParser(document);
+    var probe: DiscardedOnStack = .{
+        .browser = browser,
+        .parser = parser,
+        .held = .{ Saved.of(try byId(document, "held")), Saved.of(try byId(document, "deep")) },
+    };
+    const callback: engine.BuiltinFunction = .{ .steps = DiscardedOnStack.steps, .data = &probe };
+    try engine.defineBuiltinFunction(document.ctx, "collectWhileDiscarded", 0, &callback);
+    // A reaction to the parser's own insertion opens the document: the
+    // writing parser is discarded while its write still runs it. It keeps
+    // its stack - and so its holds - until it is released (design 5.6), and
+    // the removing steps of the open's replace all still ask it.
+    try page.runScript(
+        \\customElements.define('x-open', class extends HTMLElement {
+        \\  connectedCallback() {
+        \\    if (window.opened) return;
+        \\    window.opened = true;
+        \\    document.open();
+        \\    collectWhileDiscarded();
+        \\  }
+        \\});
+        \\document.write('<x-open></x-open><b id=after>after</b>');
+    );
+    try testing.expectEqual(@as(usize, 1), probe.calls);
+    try testing.expectEqual(@as(usize, 1), probe.rescues_seen);
+    try testing.expect(probe.alive_after_collection);
+    // The write returned and released the old parser: its tree is garbage.
+    try collect(browser);
+    try testing.expect(!probe.held[0].alive());
+    try page.runScript("document.close()");
+}
+
+test "a discarded parser still on the native stack holds its nodes across a collection until it is released" {
+    try onFreshThread(discardedParserOnTheStackStillHolds);
 }

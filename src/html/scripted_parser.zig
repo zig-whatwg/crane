@@ -61,6 +61,15 @@ const parser_scripts = @import("parser_script_execution.zig");
 const DomTreeAdapter = parser_scripts.DomTreeAdapter;
 const ParserScriptContext = parser_scripts.ParserScriptContext;
 
+/// The Browser's live parsers and the removing steps that rescue a tree
+/// script detaches from under one (tmp/plans/parser-holds-design.md 5.3).
+pub const holds = @import("parser_holds.zig");
+
+/// Installed once, at process start, by crane.Process.
+pub fn installHooks() void {
+    holds.installHooks();
+}
+
 /// Error type for HTML parsing operations
 pub const ParseError = error{
     OutOfMemory,
@@ -234,7 +243,18 @@ const ByteStreamDecoding = struct {
 /// Design: WebKit HTMLDocumentParser::insert / finish / shouldDelayEnd:
 /// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/html/parser/HTMLDocumentParser.cpp
 pub const DocumentParser = struct {
-    const trace_slot: engine.TracedSlot = .{ .name = "document-parser:nodes" };
+    /// The one fixed Document member under which every parser of the
+    /// Document keeps the roots it rescued: a dense, collectible JS array.
+    pub const kept_roots_slot: engine.TracedSlot = .{ .name = "document-parser:kept-roots" };
+
+    /// A tree root this parser rooted because script (or a failed insertion)
+    /// detached a tree containing a node it holds: the node, its slab
+    /// generation, and its index in the Document's kept-roots container.
+    pub const Rescue = struct {
+        node: *runtime.Instance,
+        generation: u64,
+        index: usize,
+    };
 
     allocator: Allocator,
     ctx: runtime.Context,
@@ -251,13 +271,25 @@ pub const DocumentParser = struct {
     original_bytes: ?[]u8 = null,
     byte_stream_decoding: ?ByteStreamDecoding = null,
     owned_loader: ?OwnedScriptLoader = null,
-    /// One fixed Document member owns a fresh collectible array per parser.
-    /// Only active native calls keep independent roots; suspension keeps none.
-    owns_trace_slot: bool = false,
-    traced_node_count: usize = 0,
+    /// The parser holds the nodes its own structures name - the stack of
+    /// open elements, the head and form element pointers - natively, with no
+    /// wrapper (design 5.1; Blink's HTMLConstructionSite::Trace). A held node
+    /// is safe while its tree's root is this parser's Document or one of
+    /// these rescued roots, each rooted from the Document's kept-roots
+    /// container until `release` clears it (5.2, 5.3).
+    rescues: std.ArrayListUnmanaged(Rescue) = .empty,
+    /// One past the highest kept-roots index this parser reserved
+    /// (`ParserRegistry.reserveSlot`).
+    kept_slot_end: usize = 0,
+    /// The Browser's live parsers, which the removing steps consult; null in
+    /// a realm without an engine or a Browser scope.
+    registry: ?*holds.ParserRegistry = null,
+    /// Only active native calls root the Document; a suspended parser keeps
+    /// no independent root, so an unreachable Document/parser graph collects.
     active_calls: usize = 0,
     active_document: ?engine.Owned = null,
-    active_nodes: ?engine.Owned = null,
+    /// A terminal failure (an allocation in node creation or a rescue):
+    /// input is discarded and parsing never resumes.
     trace_failure: ?anyerror = null,
     failed_processor_calls: usize = 0,
     /// Document owns one reference. Initiation and each write/close/resume
@@ -356,10 +388,9 @@ pub const DocumentParser = struct {
         self.input_stream.script_nesting_level = &self.tree_builder.script_nesting_level;
         self.adapter = DomTreeAdapter.init(allocator, ctx, document);
         errdefer self.adapter.deinit();
-        // A suspended Document/parser/node graph must remain collectible.
-        // nodeCreated traces each wrapper from the Document; independent
-        // adapter roots would keep that graph alive after script drops it.
-        self.adapter.ownership_mode = .document_traced;
+        // An element whose parser insertion fails is rescued (design 5.3,
+        // trigger 2): it may be or become held, parentless.
+        self.adapter.rescuer = .{ .context = self, .rescue = &rescueFromAdapter };
         try self.adapter.node_map.put(self.tree_builder.document, document);
         self.tree_builder.setDomAdapterCallbacks(
             @ptrCast(&self.adapter),
@@ -404,6 +435,16 @@ pub const DocumentParser = struct {
             .after_process = &afterProcess,
             .abort = &abortProcessor,
         };
+        errdefer if (self.owned_loader) |*loader| loader.deinit();
+        // The removing steps find this parser through its Browser's registry.
+        // A realm with an engine but no Browser scope (a bare test realm) has
+        // no registry: its parser rescues only failed insertions.
+        if (self.had_engine) {
+            if (holds.ParserRegistry.of(ctx)) |registry| {
+                try registry.register(self);
+                self.registry = registry;
+            } else log.debug("parser in a realm without a Browser scope: removals are not rescued", .{});
+        }
         return self;
     }
 
@@ -411,43 +452,9 @@ pub const DocumentParser = struct {
         const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
         const self: *DocumentParser = @fieldParentPtr("adapter", adapter);
         if (self.trace_failure != null) return;
-        adapter.onNodeCreated(node) catch |err| {
-            self.failedNode(node, err);
-            return;
-        };
-        const instance = adapter.getDomNode(node) orelse return;
-        if (instance == self.document or !self.ctx.hasEngine()) return;
-        if (runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return;
-        // A parser reference is a collector edge from its document, like
-        // Blink HTMLTreeBuilder::Trace visiting its open-element stack.
-        // A detached node must survive until this parser releases it, while
-        // an unreachable document/parser/node cycle must remain collectable.
-        const nodes = self.active_nodes orelse {
-            self.failedNode(node, error.InvalidStateError);
-            return;
-        };
-        // defineOwnProperty allocates the numeric key before converting its
-        // value. Root a newly wrapped node before any of those allocations.
-        const node_hold = engine.retainValue(self.ctx, .{ .instance = instance }) catch |err| {
-            self.failedNode(node, err);
-            return;
-        };
-        defer node_hold.release();
-        var index_buffer: [32]u8 = undefined;
-        const index = std.fmt.bufPrint(&index_buffer, "{d}", .{self.traced_node_count}) catch unreachable;
-        engine.defineOwnProperty(self.ctx, nodes.borrow(), index, node_hold.borrow(), .{
-            .writable = true,
-            .enumerable = true,
-            .configurable = true,
-        }) catch |err| {
-            self.failedNode(node, err);
-            return;
-        };
-        self.traced_node_count += 1;
-        // Defining the array member makes the wrapper and transfers it to the
-        // collector, even if its later DOM insertion is rejected. The
-        // adapter must never directly destroy a wrapped parser-held node.
-        if (engine.hasWrapper(instance)) _ = adapter.unattached_nodes.remove(instance);
+        // No wrapper and no engine call per node: the parser's structures are
+        // its holds (design 5.1).
+        adapter.onNodeCreated(node) catch |err| self.failedNode(node, err);
     }
 
     fn failedNode(self: *DocumentParser, node: *TreeNode, err: anyerror) void {
@@ -469,9 +476,9 @@ pub const DocumentParser = struct {
         self.input_stream.discardInput();
     }
 
-    /// Protect native parser state and its wrappers across an entire call,
-    /// including callbacks, input-limit restoration and final native cleanup.
-    /// A suspended parser keeps only its collectible Document edge.
+    /// Protect native parser state across an entire call, including
+    /// callbacks, input-limit restoration and final native cleanup. The
+    /// outermost call roots the Document; a suspended parser roots nothing.
     pub const ActiveCall = struct {
         parser: *DocumentParser,
 
@@ -480,21 +487,16 @@ pub const DocumentParser = struct {
             std.debug.assert(parser.active_calls > 0);
             parser.active_calls -= 1;
             const document = if (parser.active_calls == 0) parser.active_document else null;
-            const nodes = if (parser.active_calls == 0) parser.active_nodes else null;
-            if (parser.active_calls == 0) {
-                parser.active_document = null;
-                parser.active_nodes = null;
-            }
-            // release may destroy parser. The extracted roots stay alive
+            if (parser.active_calls == 0) parser.active_document = null;
+            // release may destroy parser. The extracted root stays alive
             // through adapter cleanup; nothing below dereferences parser.
             parser.release();
-            if (nodes) |held| held.release();
             if (document) |held| held.release();
         }
     };
 
     /// Fallibly acquire active-call ownership before anything can run script.
-    /// Nested calls share the outer roots, but each owns a native reference.
+    /// Nested calls share the outer root, but each owns a native reference.
     pub fn protect(self: *DocumentParser) !ActiveCall {
         if (self.trace_failure) |err| return err;
         return self.protectForCleanup();
@@ -508,28 +510,7 @@ pub const DocumentParser = struct {
             const document = try engine.retainValue(self.ctx, .{ .instance = self.document });
             errdefer document.release();
             if (!self.isCurrent()) return error.InvalidStateError;
-            const nodes = if (self.owns_trace_slot)
-                engine.tracedValue(self.document, trace_slot) orelse return error.OutOfMemory
-            else blk: {
-                const made = try engine.createSequenceOfValues(self.ctx, &.{});
-                errdefer made.release();
-                engine.traceValue(self.document, made.borrow(), trace_slot);
-                // traceValue is infallible at the protocol boundary. Prove
-                // publication while the constructor hold still roots the bag.
-                const published = engine.tracedValue(self.document, trace_slot) orelse {
-                    engine.forgetTracedChild(self.document, trace_slot);
-                    return error.OutOfMemory;
-                };
-                defer published.release();
-                if (!engine.sameValue(self.ctx, made.borrow(), published.borrow())) {
-                    engine.forgetTracedChild(self.document, trace_slot);
-                    return error.InvalidStateError;
-                }
-                self.owns_trace_slot = true;
-                break :blk made;
-            };
             self.active_document = document;
-            self.active_nodes = nodes;
         }
         self.active_calls += 1;
         self.retain();
@@ -545,7 +526,9 @@ pub const DocumentParser = struct {
         if (self.references != 0) return;
         std.debug.assert(self.pump_depth == 0);
         std.debug.assert(self.active_calls == 0);
-        if (!self.document_destroyed) self.forgetParserReferences();
+        self.releaseRescues();
+        if (self.registry) |registry| registry.unregister(self);
+        self.registry = null;
         self.adapter.deinit();
         self.tree_builder.deinit();
         self.input_stream.deinit();
@@ -560,17 +543,21 @@ pub const DocumentParser = struct {
     /// The document clears its association before dropping its reference.
     pub fn detach(self: *DocumentParser) void {
         if (self.detached) return;
-        self.forgetParserReferences();
+        // Holds and rescues stay until release: frames still unwinding through
+        // this parser may work on its stack - abort step 4 pops it after a
+        // readiness listener replaced the parser - and the removing steps keep
+        // asking it (design 5.6; Blink's HTMLConstructionSite::Detach keeps
+        // the stack "because HTMLConstructionSite might be on the callstack").
         self.detached = true;
         self.input_stream.aborted = true;
         self.input_stream.insertion_point = null;
     }
 
-    /// Document's wrapper owns its traced edges. A collector teardown lets
-    /// those die with the wrapper, without manipulating edges during GC.
+    /// Document's wrapper owns its kept-roots container. A collector
+    /// teardown lets it die with the wrapper, without engine calls during GC;
+    /// the rescue list is then freed natively at release.
     pub fn detachForDocumentDestruction(self: *DocumentParser) void {
         self.document_destroyed = true;
-        self.owns_trace_slot = false;
         // Teardown never runs parser callbacks or script. Destroying the
         // private tree below releases its stack storage without observable
         // finished-parsing-children steps against a retired document.
@@ -579,19 +566,139 @@ pub const DocumentParser = struct {
         self.input_stream.insertion_point = null;
     }
 
-    fn forgetParserReferences(self: *DocumentParser) void {
-        // A frame can retire its realm while a written script still holds
-        // this parser on the stack. The saved context remains allocated;
-        // do not dereference a document the collector has already recycled.
-        if (!self.owns_trace_slot) return;
-        self.owns_trace_slot = false;
-        if (!self.ctx.hasEngine()) return;
-        if (runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return;
-        const internal = document_internals.getInternal(self.document) orelse return;
-        // discardDocumentParser clears active_parser before detach. The
-        // epoch still identifies the edge; a successor has a different one.
-        if (internal.parser_epoch != self.document_epoch) return;
-        engine.forgetTracedChild(self.document, trace_slot);
+    /// Whether this parser can still touch its Document's engine objects:
+    /// the Document is the one it was made for, not destroyed, and its realm
+    /// has an engine. Never true during a collector teardown of the Document
+    /// (`detachForDocumentDestruction` runs first).
+    fn documentEngineUsable(self: *const DocumentParser) bool {
+        if (self.document_destroyed or !self.ctx.hasEngine()) return false;
+        if (runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return false;
+        const internal = document_internals.getInternal(self.document) orelse return false;
+        return !internal.destroyed;
+    }
+
+    /// The node `tree_node` names, as the DOM's tree node, if it is alive.
+    fn heldBase(self: *const DocumentParser, tree_node: *TreeNode) ?*dom.NodeBase {
+        const instance = self.adapter.getDomNode(tree_node) orelse return null;
+        if (instance == self.document) return null;
+        return dom.instance_bridge.getNodeBase(instance);
+    }
+
+    /// Whether `root` - left parentless by a removal - is a host-including
+    /// inclusive ancestor of a node this parser holds (design 5.3). The
+    /// stack is normally a parent chain, so an entry whose parent is the
+    /// previous entry shares its (negative) answer: O(stack depth).
+    pub fn holdsNodeUnder(self: *const DocumentParser, root: *dom.NodeBase) bool {
+        if (self.document_destroyed or !self.adapter.isAlive()) return false;
+        const held = self.tree_builder.heldNodes();
+        var previous: ?*dom.NodeBase = null;
+        for (held.stack) |tree_node| {
+            const base = self.heldBase(tree_node) orelse continue;
+            if (previous == null or base.parent_node != previous) {
+                if (holds.isUnderRoot(base, root, previous)) return true;
+            }
+            previous = base;
+        }
+        for ([_]?*TreeNode{ held.head, held.form }) |pointer| {
+            const tree_node = pointer orelse continue;
+            const base = self.heldBase(tree_node) orelse continue;
+            if (holds.isUnderRoot(base, root, null)) return true;
+        }
+        return false;
+    }
+
+    /// Rescue(P, R), design 5.3: root `root`'s wrapper from the Document's
+    /// kept-roots container until this parser is released. At most one
+    /// wrapper, never one per node: by L2 the root's wrapper keeps its whole
+    /// tree, wherever script moves the root later. Runs no script.
+    pub fn rescue(self: *DocumentParser, root: *runtime.Instance) void {
+        const generation = runtime.SlabAllocator.generationOf(root);
+        // Step 1: once per root.
+        for (self.rescues.items) |kept| {
+            if (kept.node == root and kept.generation == generation) return;
+        }
+        // Step 2: a failed parser, a destroyed document or a realm without an
+        // engine rescues nothing; generation checks govern from there (H9).
+        if (self.trace_failure != null) return;
+        if (!self.documentEngineUsable() or !root.ctx.hasEngine()) return;
+        self.rescues.ensureUnusedCapacity(self.allocator, 1) catch |err| return self.failRescue(err);
+        // Step 5, first half: the index, before any engine allocation.
+        const index = if (self.registry) |registry| registry.reserveSlot(self) else blk: {
+            self.kept_slot_end += 1;
+            break :blk self.kept_slot_end - 1;
+        };
+        // Step 3: the root's wrapper, made if it has none, held from here on.
+        const wrapper = engine.retainValue(self.ctx, .{ .instance = root }) catch |err| return self.failRescue(err);
+        defer wrapper.release();
+        // Step 4: the Document's container.
+        const container = self.keptRootsContainer() catch |err| return self.failRescue(err);
+        defer container.release();
+        // Step 5: a dense numeric own property - no prototype setter runs.
+        var index_buffer: [32]u8 = undefined;
+        const key = std.fmt.bufPrint(&index_buffer, "{d}", .{index}) catch unreachable;
+        engine.defineOwnProperty(self.ctx, container.borrow(), key, wrapper.borrow(), .{
+            .writable = true,
+            .enumerable = true,
+            .configurable = true,
+        }) catch |err| return self.failRescue(err);
+        // Step 6.
+        self.rescues.appendAssumeCapacity(.{ .node = root, .generation = generation, .index = index });
+    }
+
+    /// Step 7: a rescue that cannot be made stops the parser, as a failed
+    /// node creation does; every later reference goes through generation
+    /// checks.
+    fn failRescue(self: *DocumentParser, err: anyerror) void {
+        log.warn("parser rescue failed, parsing stops: {}", .{err});
+        self.trace_failure = err;
+        self.input_stream.discardInput();
+    }
+
+    fn rescueFromAdapter(context: ?*anyopaque, root: *runtime.Instance) void {
+        const self: *DocumentParser = @ptrCast(@alignCast(context orelse return));
+        self.retain();
+        defer self.release();
+        self.rescue(root);
+    }
+
+    /// The Document's kept-roots container, OWNED: made on first use and
+    /// published under the fixed member, verified by reading it back while
+    /// the constructor's hold still roots it (traceValue reports no error).
+    fn keptRootsContainer(self: *DocumentParser) !engine.Owned {
+        if (engine.tracedValue(self.document, kept_roots_slot)) |existing| return existing;
+        const made = try engine.createSequenceOfValues(self.ctx, &.{});
+        errdefer made.release();
+        engine.traceValue(self.document, made.borrow(), kept_roots_slot);
+        const published = engine.tracedValue(self.document, kept_roots_slot) orelse {
+            engine.forgetTracedChild(self.document, kept_roots_slot);
+            return error.OutOfMemory;
+        };
+        defer published.release();
+        if (!engine.sameValue(self.ctx, made.borrow(), published.borrow())) {
+            engine.forgetTracedChild(self.document, kept_roots_slot);
+            return error.InvalidStateError;
+        }
+        return made;
+    }
+
+    /// At release: clear this parser's slots, so its rescued trees live only
+    /// as long as script reaches them. Only while the Document and its realm
+    /// are usable; otherwise the container is gone with the Document's
+    /// wrapper or the realm, and the list is freed natively.
+    fn releaseRescues(self: *DocumentParser) void {
+        defer self.rescues.clearAndFree(self.allocator);
+        if (self.rescues.items.len == 0 or !self.documentEngineUsable()) return;
+        const container = engine.tracedValue(self.document, kept_roots_slot) orelse return;
+        defer container.release();
+        for (self.rescues.items) |kept| {
+            var index_buffer: [32]u8 = undefined;
+            const key = std.fmt.bufPrint(&index_buffer, "{d}", .{kept.index}) catch unreachable;
+            engine.defineOwnProperty(self.ctx, container.borrow(), key, .undefined, .{
+                .writable = true,
+                .enumerable = true,
+                .configurable = true,
+            }) catch {};
+        }
     }
 
     fn retainProcessor(context: *anyopaque) void {

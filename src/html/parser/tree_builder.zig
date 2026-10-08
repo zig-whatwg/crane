@@ -849,6 +849,23 @@ pub const TreeBuilder = struct {
         }
     }
 
+    /// The nodes the tree builder's own structures name: the stack of open
+    /// elements (topmost first) and the head and form element pointers. The
+    /// live parser holds exactly these (HTML 13.2.4; Blink's
+    /// HTMLConstructionSite::Trace visits the same structures). Active
+    /// formatting entries are not here: the parser touches one as a DOM node
+    /// only after finding it on the stack (adoption agency steps 4.4-4.6).
+    pub const HeldNodes = struct {
+        stack: []const *TreeNode,
+        head: ?*TreeNode,
+        form: ?*TreeNode,
+    };
+
+    /// A read-only view of the held nodes, valid until the next push or pop.
+    pub fn heldNodes(self: *const TreeBuilder) HeldNodes {
+        return .{ .stack = self.open_elements.items(), .head = self.head_element, .form = self.form_element };
+    }
+
     /// Get the current node (bottommost in stack of open elements).
     pub fn currentNode(self: *TreeBuilder) ?*TreeNode {
         if (self.open_elements.len > 0) {

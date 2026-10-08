@@ -325,9 +325,13 @@ pub fn domAdapterOnChildAppended(parent: *TreeNode, child: *TreeNode, context: ?
 
 pub fn domAdapterOnInserted(location: TreeBuilder.InsertionLocation, child: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
-    if ((parser_mutation.insert(adapter, location, child) catch false) and adapter.unattached_nodes.count() != 0) {
-        if (adapter.getDomNode(child)) |node| _ = adapter.unattached_nodes.remove(node);
-    }
+    const inserted = parser_mutation.insert(adapter, location, child) catch false;
+    if (inserted) {
+        if (adapter.unattached_nodes.count() != 0) {
+            if (adapter.getDomNode(child)) |node| _ = adapter.unattached_nodes.remove(node);
+        }
+    } else adapter.keepFailedInsertion(child);
+    adapter.endPendingHold(child);
 }
 
 pub fn domAdapterOnRemoved(node: *TreeNode, context: ?*anyopaque) void {
@@ -409,10 +413,21 @@ pub fn documentMode(mode: html_core.parser.QuirksMode) document_internals.Mode {
 /// This adapter is called by the tree builder as nodes are created and modified,
 /// allowing scripts to access DOM elements that have already been parsed.
 pub const DomTreeAdapter = struct {
-    /// Transient adapters keep each mapped wrapper rooted until deinit.
-    /// A Document-owned persistent driver instead traces these wrappers
-    /// from its Document, allowing the entire unreachable graph to collect.
-    pub const OwnershipMode = enum { strong_roots, document_traced };
+    /// An element created wrapped - a custom element or a customized
+    /// built-in, constructed synchronously - held from its creation until its
+    /// first insertion attempt ends (design 5.4, H2).
+    pub const PendingHold = struct {
+        tree_node: *TreeNode,
+        owned: engine.Owned,
+    };
+
+    /// The owning parser's rescue (design 5.3, trigger 2), for an element
+    /// whose insertion failed: it is parentless, or in a tree its Document
+    /// does not keep, and may be or become held.
+    pub const Rescuer = struct {
+        context: ?*anyopaque,
+        rescue: *const fn (?*anyopaque, *runtime.Instance) void,
+    };
 
     allocator: Allocator,
     ctx: runtime.Context,
@@ -425,10 +440,13 @@ pub const DomTreeAdapter = struct {
     /// ownership to the DOM tree. At teardown only live, unwrapped orphans are
     /// ours to destroy; wrapped nodes belong to the engine's collector.
     unattached_nodes: std.AutoHashMap(*runtime.Instance, u64),
-    /// Parser references survive removal by script until parsing ends. Owned
-    /// values root wrappers; generations additionally guard forced realm teardown.
-    ownership_mode: OwnershipMode = .strong_roots,
-    holds: std.ArrayList(engine.Owned) = .empty,
+    /// No hold per node: the parser's own structures are its holds. Only an
+    /// element wrapped at its creation is held, until its first insertion
+    /// attempt (usually empty).
+    pending: std.ArrayListUnmanaged(PendingHold) = .empty,
+    rescuer: ?Rescuer = null,
+    /// Every mapped node's slab generation: realm teardown and the collector
+    /// can free a node the map still names.
     generations: std.AutoHashMap(*TreeNode, u64),
     document_generation: u64,
     had_engine: bool,
@@ -478,8 +496,8 @@ pub const DomTreeAdapter = struct {
         self.unattached_nodes.deinit();
         self.node_map.deinit();
         self.generations.deinit();
-        for (self.holds.items) |owned| owned.release();
-        self.holds.deinit(self.allocator);
+        for (self.pending.items) |held| held.owned.release();
+        self.pending.deinit(self.allocator);
     }
 
     /// Called when a new node is created during parsing.
@@ -489,15 +507,9 @@ pub const DomTreeAdapter = struct {
         const dom_node = try self.createDomNode(tree_node);
         errdefer if (dom_node != self.document and !engine.hasWrapper(dom_node)) dom.node_creation.destroyUninserted(dom_node);
 
-        if (self.ownership_mode == .strong_roots and self.ctx.hasEngine() and dom_node != self.document) {
-            const owned = try engine.retainValue(self.ctx, .{ .instance = dom_node });
-            errdefer owned.release();
-            try self.holds.append(self.allocator, owned);
-        }
-
         // Record unwrapped ownership BEFORE publishing the node. Wrapped
-        // nodes are retained above or traced by the persistent driver and
-        // belong to engine cleanup. node_map is
+        // nodes belong to engine cleanup (a pending hold, a rescue, or script
+        // that wrapped them). node_map is
         // keyed by TreeNode and a second create for the same TreeNode overwrites
         // it - `unattached_nodes` is keyed by instance and keeps both.
         if (dom_node != self.document and !engine.hasWrapper(dom_node)) {
@@ -515,7 +527,14 @@ pub const DomTreeAdapter = struct {
 
         // Hand the child over to V8 only if it really was attached: a failed
         // append leaves it orphaned and still ours to free.
-        if (try parser_mutation.insert(self, .{ .parent = parent, .before = child.next_sibling, .move = true }, child)) {
+        const inserted = parser_mutation.insert(self, .{ .parent = parent, .before = child.next_sibling, .move = true }, child) catch |err| {
+            self.keepFailedInsertion(child);
+            self.endPendingHold(child);
+            return err;
+        };
+        if (!inserted) self.keepFailedInsertion(child);
+        self.endPendingHold(child);
+        if (inserted) {
             _ = self.unattached_nodes.remove(child_dom);
         } else return;
         if (!self.isAlive() or self.getDomNode(child) == null) return;
@@ -543,6 +562,35 @@ pub const DomTreeAdapter = struct {
         interfaces.CharacterData.set_data(dom_node, dom_string) catch {};
     }
 
+    /// After a failed parser insertion of an element (design 5.3, trigger 2):
+    /// rescue the root of the tree it is in, unless that is the Document -
+    /// a pre-insert error leaves it parentless, and a reaction may have put
+    /// it in a tree nothing else keeps. Rare and script-induced: one wrapper
+    /// until the parser ends.
+    pub fn keepFailedInsertion(self: *DomTreeAdapter, tree_node: *TreeNode) void {
+        if (tree_node.node_type != .element) return;
+        const rescuer = self.rescuer orelse return;
+        const node = self.getDomNode(tree_node) orelse return;
+        const base = dom.instance_bridge.getNodeBase(node) orelse return;
+        const root_base = @import("parser_holds.zig").hostIncludingRoot(base);
+        const document_base = dom.instance_bridge.getNodeBase(self.document);
+        if (document_base != null and root_base == document_base.?) return;
+        const root_opaque = dom.instance_bridge.getInstance(root_base) orelse return;
+        rescuer.rescue(rescuer.context, @ptrCast(@alignCast(root_opaque)));
+    }
+
+    /// The first insertion attempt of `tree_node` has ended: its pending
+    /// hold, if it has one, goes. A failed attempt was rescued first.
+    pub fn endPendingHold(self: *DomTreeAdapter, tree_node: *TreeNode) void {
+        if (self.pending.items.len == 0) return;
+        for (self.pending.items, 0..) |held, i| {
+            if (held.tree_node != tree_node) continue;
+            const owned = self.pending.swapRemove(i).owned;
+            owned.release();
+            return;
+        }
+    }
+
     /// Get the DOM element for a TreeNode.
     pub fn getDomNode(self: *const DomTreeAdapter, tree_node: *TreeNode) ?*runtime.Instance {
         if (!self.isAlive()) return null;
@@ -552,7 +600,7 @@ pub const DomTreeAdapter = struct {
         return if (runtime.SlabAllocator.generationOf(node) == generation) node else null;
     }
 
-    fn isAlive(self: *const DomTreeAdapter) bool {
+    pub fn isAlive(self: *const DomTreeAdapter) bool {
         return (!self.had_engine or self.ctx.hasEngine()) and runtime.SlabAllocator.generationOf(self.document) == self.document_generation;
     }
 
@@ -602,6 +650,19 @@ pub const DomTreeAdapter = struct {
         });
 
         errdefer if (!engine.hasWrapper(element)) dom.node_creation.destroyUninserted(element);
+
+        // Design 5.4: an element its creation wrapped (a synchronously
+        // constructed custom element or customized built-in) is parentless
+        // and collectible until it is inserted. Hold it BEFORE its attributes
+        // are appended and `scope.end()` runs its reactions - which, or the
+        // checkpoint after them, can drop `this` and collect. retainValue
+        // returns the existing wrapper; an unwrapped element needs no hold
+        // (the collector never frees an unwrapped root).
+        if (self.ctx.hasEngine() and engine.hasWrapper(element)) {
+            try self.pending.ensureUnusedCapacity(self.allocator, 1);
+            const owned = try engine.retainValue(self.ctx, .{ .instance = element });
+            self.pending.appendAssumeCapacity(.{ .tree_node = tree_node, .owned = owned });
+        }
 
         // A script element - HTML's, or an SVG script, whose insertion and
         // children-changed steps wait for its end tag too - is

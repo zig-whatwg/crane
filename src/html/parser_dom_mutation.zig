@@ -59,14 +59,20 @@ pub fn insert(adapter: anytype, location: TreeBuilder.InsertionLocation, child: 
     const saved_node = SavedNode.init(node);
     const saved_parent = SavedNode.init(target.parent);
     const saved_before: ?SavedNode = if (target.before) |before| SavedNode.init(before) else null;
-    // A live foster parent may have been created by script. Removal can run
-    // reactions, so keep both ends alive until the following insertion, like
-    // HTMLConstructionSite's owning references across its reparent task.
-    var parent_hold: ?engine.Owned = if (location.move and node.ctx.hasEngine()) try engine.retainValue(target.parent.ctx, .{ .instance = target.parent }) else null;
+    // Only a real move - a node with a live parent - runs a removal, and
+    // with it reactions. A fresh node has no parent: nothing is held for it
+    // (the parser's structures hold what it needs; design 5.4). For a move,
+    // keep both ends alive until the following insertion, like
+    // HTMLConstructionSite's owning references across its reparent task: a
+    // live foster parent may have been created by script, and a moved node
+    // the parser does not hold is in no parser structure. (A held moved node
+    // is also rescued by the removal itself.)
+    const moving = location.move and (try interfaces.Node.get_parentNode(node)) != null;
+    var parent_hold: ?engine.Owned = if (moving and node.ctx.hasEngine()) try engine.retainValue(target.parent.ctx, .{ .instance = target.parent }) else null;
     defer if (parent_hold) |*held| held.release();
-    var node_hold: ?engine.Owned = if (location.move and node.ctx.hasEngine()) try engine.retainValue(node.ctx, .{ .instance = node }) else null;
+    var node_hold: ?engine.Owned = if (moving and node.ctx.hasEngine()) try engine.retainValue(node.ctx, .{ .instance = node }) else null;
     defer if (node_hold) |*held| held.release();
-    if (location.move) try remove(node);
+    if (moving) try remove(node);
     if (!saved_node.alive() or !saved_parent.alive()) return false;
     if (saved_before) |before| if (!before.alive()) return false;
     // A removal callback may have reattached it. Normal parser insertion also

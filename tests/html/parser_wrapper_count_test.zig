@@ -77,11 +77,26 @@ fn measure(browser: *browser_mod.Browser) !Sample {
     return .{ .wrappers = try wrapperEntries(), .used_heap = engine.heapStatistics(agent).used };
 }
 
-fn navigationParse(browser: *browser_mod.Browser, count: usize) !Sample {
+/// The page's parse of `count` paragraphs, checked to have reached its end:
+/// a parse that stopped early would make no wrappers either.
+fn expectParsed(context: *browser_mod.Context, count: usize, comptime query: []const u8) !void {
+    const parsed = try context.evaluateScriptToString(query, testing.allocator);
+    defer testing.allocator.free(parsed);
+    var expected: [32]u8 = undefined;
+    try testing.expectEqualStrings(try std.fmt.bufPrint(&expected, "{d} true", .{count}), parsed);
+}
+
+/// A navigation parse into a fresh Browser's fresh document (one Browser per
+/// sample, so both start from the same objects).
+fn navigationSample(count: usize) !Sample {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;
     const markup = try page(testing.allocator, count);
     defer testing.allocator.free(markup);
     try context.loadHTML(markup, .{ .base_url = "about:blank" });
+    try expectParsed(context, count, "document.getElementsByTagName('p').length + ' ' + window.parsed");
     return measure(browser);
 }
 
@@ -94,18 +109,14 @@ fn writtenParse(browser: *browser_mod.Browser, count: usize) !Sample {
         \\document.close();
     , .{count});
     try context.runScript(script);
+    try expectParsed(context, count, "document.getElementsByTagName('p').length + ' ' + window.parsed");
     return measure(browser);
 }
 
 fn noWrapperPerParsedNode() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
-    defer browser.deinit();
-    try browser.navigate("about:blank", .window);
-    // Warm the page's own objects (the window, the document, the harness of
-    // the loader) so the first sample is not the cold one.
-    _ = try navigationParse(browser, small);
-    const before = try navigationParse(browser, small);
-    const after = try navigationParse(browser, large);
+    _ = try navigationSample(small);
+    const before = try navigationSample(small);
+    const after = try navigationSample(large);
     if (after.wrappers - before.wrappers >= wrapper_slack) {
         std.debug.print("C1 navigation: {d} wrappers after {d} nodes, {d} after {d}\n", .{ before.wrappers, small * 2, after.wrappers, large * 2 });
         return error.WrapperPerParsedNode;
@@ -141,12 +152,9 @@ test "C1: a document.write parse makes no wrapper per parsed node" {
 const heap_bytes_per_node_limit: usize = 16;
 
 fn noHeapPerParsedNode() !void {
-    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
-    defer browser.deinit();
-    try browser.navigate("about:blank", .window);
-    _ = try navigationParse(browser, small);
-    const before = try navigationParse(browser, small);
-    const after = try navigationParse(browser, large);
+    _ = try navigationSample(small);
+    const before = try navigationSample(small);
+    const after = try navigationSample(large);
     const nodes = (large - small) * 2;
     const grown = after.used_heap -| before.used_heap;
     if (grown > nodes * heap_bytes_per_node_limit) {
@@ -159,18 +167,25 @@ test "C2: a parse leaves no V8 heap per parsed node after a full collection" {
     try onFreshThread(noHeapPerParsedNode);
 }
 
+/// The same parse into a frame's document, by the frame document's own
+/// parser in the frame's realm: the parent opens it and writes the markup,
+/// and nothing in either realm touches the frame's nodes.
 fn frameParse(browser: *browser_mod.Browser, count: usize) !Sample {
     const context = browser.current_context orelse return error.NoPage;
-    var out: std.ArrayListUnmanaged(u8) = .empty;
-    defer out.deinit(testing.allocator);
-    try out.appendSlice(testing.allocator, "<!doctype html><body><iframe srcdoc=\"&lt;!doctype html&gt;&lt;body&gt;");
-    for (0..count) |_| try out.appendSlice(testing.allocator, "&lt;p&gt;a&lt;/p&gt;");
-    try out.appendSlice(testing.allocator, "&lt;script&gt;window.parsed = true;&lt;/script&gt;\"></iframe></body>");
-    try context.loadHTML(out.items, .{ .base_url = "http://example.test/frame-parse" });
+    var buffer: [512]u8 = undefined;
+    const script = try std.fmt.bufPrint(&buffer,
+        \\{{
+        \\  document.body.replaceChildren();
+        \\  const frame = document.body.appendChild(document.createElement('iframe'));
+        \\  const frameDocument = frame.contentDocument;
+        \\  frameDocument.open();
+        \\  frameDocument.write('<!doctype html><body>' + '<p>a</p>'.repeat({d}) + '<script>window.parsed = true;<\/script>');
+        \\  frameDocument.close();
+        \\}}
+    , .{count});
+    try context.runScript(script);
     _ = try browser.runEventLoopBlocking(20);
-    const parsed = try context.evaluateScriptToString("String(document.querySelector('iframe').contentWindow.parsed)", testing.allocator);
-    defer testing.allocator.free(parsed);
-    try testing.expectEqualStrings("true", parsed);
+    try expectParsed(context, count, "(() => { const f = document.querySelector('iframe'); return f.contentDocument.getElementsByTagName('p').length + ' ' + f.contentWindow.parsed; })()");
     return measure(browser);
 }
 
@@ -178,6 +193,8 @@ fn noWrapperPerFrameNode() !void {
     const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
+    const context = browser.current_context orelse return error.NoPage;
+    try context.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://example.test/frame-parse" });
     _ = try frameParse(browser, small);
     const before = try frameParse(browser, small);
     const after = try frameParse(browser, large);

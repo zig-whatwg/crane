@@ -1,5 +1,8 @@
 //! Parser-held nodes follow the Document's collectible graph, while active
 //! parser calls keep detached nodes safe across replacement and collection.
+//! The parser holds its structures' nodes natively and roots only the root of
+//! a tree script detaches (tmp/plans/parser-holds-design.md 5.3), under the
+//! Document's fixed `document-parser:kept-roots` member.
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
@@ -55,7 +58,9 @@ fn detachedNodeUntilEOF() !void {
     try collect(browser);
     try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(node));
     try testing.expectEqual(node, try currentNode(parser));
-    try testing.expectEqual(@as(usize, 0), parser.adapter.holds.items.len);
+    // One rescued root, and no adapter hold per node.
+    try testing.expectEqual(@as(usize, 1), parser.rescues.items.len);
+    try testing.expectEqual(@as(usize, 0), parser.adapter.pending.items.len);
     try page.runScript("document.write('still parsed</div>')");
     var text = try interfaces.Node.get_textContent(node);
     defer if (text) |*value| value.deinit(testing.allocator);
@@ -113,7 +118,14 @@ fn unreachableSuspendedCycle() !void {
     const node = try currentNode(parser);
     const node_generation = runtime.SlabAllocator.generationOf(node);
     try testing.expect(!parser.input_stream.eof_processed);
-    try testing.expectEqual(@as(usize, 0), parser.adapter.holds.items.len);
+    try testing.expectEqual(@as(usize, 0), parser.adapter.pending.items.len);
+    // A rescued root lives in the graph too: its slot is the Document's.
+    // (The created document already has an html element, so the parser's
+    // own html failed to insert and was rescued as well.)
+    const rescued_before = parser.rescues.items.len;
+    const parent = (try interfaces.Node.get_parentNode(node)) orelse return error.NoParent;
+    _ = try interfaces.Node.call_removeChild(parent, node);
+    try testing.expectEqual(rescued_before + 1, parser.rescues.items.len);
     parser.release();
     initiating_owner = false;
     document_owner.?.release();
