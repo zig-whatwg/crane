@@ -190,6 +190,18 @@ pub const TreeNode = struct {
     /// The intended parent at creation, before the node is attached. The DOM
     /// adapter resolves foster locations against the live tree.
     creation_location: ?TreeBuilder.InsertionLocation = null,
+    /// The DOM node a DOM adapter made for this tree node - typed opaquely,
+    /// as html_core does not import runtime - and that node's slab generation
+    /// when it was made: the adapter's one mapping, read only generation-
+    /// checked (parser holds design 7.3). `dom_revoked` withdraws it after a
+    /// failed creation step.
+    dom_node: ?*anyopaque = null,
+    dom_generation: u64 = 0,
+    dom_revoked: bool = false,
+    /// This tree node's place in its adapter's orphan list - DOM nodes the
+    /// adapter made, or the parser removed, unwrapped and not taken by an
+    /// insertion, which the adapter frees at its end - or `not_an_orphan`.
+    dom_orphan_index: u32 = not_an_orphan,
     /// Attributes (for elements)
     attributes: infra.List(Attribute),
     /// Text content (for text/comment nodes)
@@ -204,6 +216,9 @@ pub const TreeNode = struct {
     force_quirks: bool,
     /// Allocator
     allocator: Allocator,
+
+    /// `dom_orphan_index` of a tree node in no adapter's orphan list.
+    pub const not_an_orphan: u32 = std.math.maxInt(u32);
 
     pub const NodeType = enum {
         document,

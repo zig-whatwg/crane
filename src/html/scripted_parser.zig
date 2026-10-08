@@ -391,7 +391,7 @@ pub const DocumentParser = struct {
         // An element whose parser insertion fails is rescued (design 5.3,
         // trigger 2): it may be or become held, parentless.
         self.adapter.rescuer = .{ .context = self, .rescue = &rescueFromAdapter };
-        try self.adapter.node_map.put(self.tree_builder.document, document);
+        self.adapter.mapDocument(self.tree_builder.document);
         self.tree_builder.setDomAdapterCallbacks(
             @ptrCast(&self.adapter),
             &nodeCreated,
@@ -413,7 +413,7 @@ pub const DocumentParser = struct {
             allocator,
             ctx,
             document,
-            &self.adapter.node_map,
+            &self.adapter,
             &self.tree_builder,
             options.scripting_enabled,
         );
@@ -461,17 +461,12 @@ pub const DocumentParser = struct {
         // The callback cannot return an error. Revoke this node's published
         // mapping before later callbacks for the same token can use it. An
         // unwrapped orphan stays with the adapter; a made wrapper is GC-owned.
-        if (self.adapter.node_map.fetchRemove(node)) |entry| {
-            const generation: ?u64 = if (self.adapter.generations.get(node)) |recorded|
-                recorded
-            else
-                self.adapter.unattached_nodes.get(entry.value);
-            if (generation) |expected| {
-                if (runtime.SlabAllocator.generationOf(entry.value) == expected and engine.hasWrapper(entry.value))
-                    _ = self.adapter.unattached_nodes.remove(entry.value);
-            }
+        if (node.dom_node) |opaque_node| {
+            const instance: *runtime.Instance = @ptrCast(@alignCast(opaque_node));
+            if (runtime.SlabAllocator.generationOf(instance) == node.dom_generation and engine.hasWrapper(instance))
+                self.adapter.removeOrphan(node);
         }
-        _ = self.adapter.generations.remove(node);
+        node.dom_revoked = true;
         self.trace_failure = err;
         self.input_stream.discardInput();
     }

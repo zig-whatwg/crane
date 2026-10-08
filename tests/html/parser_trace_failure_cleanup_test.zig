@@ -27,6 +27,14 @@ const Loader = struct {
     }
 };
 
+/// The tree nodes the adapter has mapped to DOM nodes (TreeNode.dom_node).
+fn mappedCount(node: anytype) usize {
+    var count: usize = if (node.dom_node != null) 1 else 0;
+    var child = node.first_child;
+    while (child) |c| : (child = c.next_sibling) count += mappedCount(c);
+    return count;
+}
+
 fn exercise() !void {
     interfaces.process_hooks.startHooksForTest();
     runtime.initializeRuntime(std.testing.allocator);
@@ -95,9 +103,9 @@ fn exercise() !void {
     try std.testing.expectEqual(error.OutOfMemory, parser.trace_failure.?);
     try std.testing.expectEqual(@as(usize, 2), loader.references);
     try std.testing.expectEqual(@as(usize, 0), loader.releases);
-    const mapped_nodes = parser.adapter.node_map.count();
+    const mapped_nodes = mappedCount(parser.tree_builder.document);
     parser.input_stream.processInserted();
-    try std.testing.expectEqual(mapped_nodes, parser.adapter.node_map.count());
+    try std.testing.expectEqual(mapped_nodes, mappedCount(parser.tree_builder.document));
     try std.testing.expect(!parser.input_stream.eof_processed);
     try std.testing.expectEqual(error.OutOfMemory, parser.trace_failure.?);
     // The final ActiveCall release drops the parser's acquired loader. Its
