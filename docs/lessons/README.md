@@ -242,6 +242,8 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Spec Compliance
 
+- [Check the XHR send flag when abort is delivered](spec-compliance-check-the-xhr-send-flag-when-abort-is-delivered.md) - A queued document abort must recheck completed request state before touching its response or firing errors.
+
 - [Prepare scripts after batch connection](spec-compliance-script-preparation-runs-after-batch-connection.md) - Connect the parser-created batch before preparing scripts because preparation can execute script.
 - [Shared null defaults can hide caller semantics](spec-compliance-shared-null-defaults-can-hide-caller-semantics.md) - Keep absence distinct from present null and fix callers that need explicit null.
 

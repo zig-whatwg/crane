@@ -1069,6 +1069,9 @@ fn prepareDocumentAbort(document: *runtime.Instance) bool {
         const owner = pending.document orelse continue;
         if (owner.instance != document or !owner.isLive()) continue;
         if (pending.cancelled or pending.complete) continue;
+        // XHR "handle errors", step 1: a terminal callback can stop the
+        // document before PendingFetch has returned from response delivery.
+        if (!pending.nativeOwnerLive() or !getXHRState(pending.instance).send_flag) continue;
         pending.document_abort_pending = true;
         marked = true;
     }
@@ -1459,6 +1462,9 @@ const PendingFetch = struct {
     fn documentAbortSteps(context: ?*anyopaque) void {
         const self: *PendingFetch = @ptrCast(@alignCast(context.?));
         const internal = getInternal(self.instance);
+        // XHR "handle errors", step 1, at delivery time: the request can
+        // finish after document abort queues us, before this task runs.
+        if (!internal.xhr_state.send_flag) return;
         internal.releaseResponseValue(self.instance);
         var processor = xhr.response.ResponseProcessor.init(&internal.xhr_state);
         processor.continuation = .{ .context = self, .is_live = alive };
