@@ -951,7 +951,7 @@ pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Spec: https://html.spec.whatwg.org/#dom-element-customelementregistry
 ///
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.value;
+    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.get();
 }
 
 /// Getter for onfullscreenchange
@@ -3227,7 +3227,7 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     // Step 3: "If element's local name is a valid custom element name, or
     // element's is value is non-null": if its definition's disable shadow is
     // true, throw a NotSupportedError DOMException.
-    if (dom.custom_elements.lookup(internal.custom_element_registry.value, namespace, local_name, if (internal.is_value) |value| value.asSlice() else null)) |definition| {
+    if (dom.custom_elements.lookup(internal.custom_element_registry.get(), namespace, local_name, if (internal.is_value) |value| value.asSlice() else null)) |definition| {
         if (definition.disable_shadow) return error.NotSupportedError;
     }
 

@@ -35,11 +35,44 @@ pub const ElementSteps = struct {
     attach_shadow: *const fn (*runtime.Instance, ShadowRootInit, ?*runtime.Instance) anyerror!*runtime.Instance,
 };
 pub const RegistrySelection = union(enum) { default, explicit: ?*runtime.Instance };
+/// A platform object kept by a native pointer that an engine edge keeps
+/// alive: its slab generation and its realm beside it, so that a lost edge -
+/// a replaced wrapper, a teardown order - reads as gone (`get` answers null)
+/// rather than as a freed or reissued object. The shape of
+/// CustomElementRegistry's ScopedDocument.isLive; the docs' Instance contract
+/// ("keep that realm's Context beside it and check it before every
+/// dereference").
+pub const KeptInstance = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+    realm: runtime.Context,
+
+    pub fn of(instance: *runtime.Instance) KeptInstance {
+        return .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance), .realm = instance.ctx };
+    }
+
+    /// The instance while it is the one kept: not freed (its slot's
+    /// generation moved on), not torn down, and its realm not ended. A
+    /// context that never had an engine (native parsing, engine-free tests)
+    /// has no realm to end; a retired realm keeps its agent (Node.zig's
+    /// storage rule draws the same line).
+    pub fn get(self: KeptInstance) ?*runtime.Instance {
+        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
+        if (runtime.instance_lifecycle.isCleanedUp(self.instance)) return null;
+        if (!self.realm.hasEngine() and self.realm.agent != null) return null;
+        return self.instance;
+    }
+};
+
 /// A native association plus an engine-traced edge, never a persistent root.
 /// A document/element can outlive its browsing context; defaultView is not its
 /// registry. Blink's Document/ElementRareData/ShadowRoot trace the same edge.
+/// Read it with `get`: the edge is what keeps the registry, and a registry
+/// whose edge was lost reads null (CE2-M2). `value` is the raw pointer, for
+/// readers not converted yet (Document, ShadowRoot).
 pub const RegistryAssociation = struct {
     value: ?*runtime.Instance = null,
+    kept: ?KeptInstance = null,
     traced: bool = false,
 
     pub fn set(self: *RegistryAssociation, owner: *runtime.Instance, value: ?*runtime.Instance) void {
@@ -50,6 +83,12 @@ pub const RegistryAssociation = struct {
             }
         } else self.release(owner);
         self.value = value;
+        self.kept = if (value) |registry| KeptInstance.of(registry) else null;
+    }
+    /// The registry, or null: none was set, or the one set is gone.
+    pub fn get(self: *const RegistryAssociation) ?*runtime.Instance {
+        const kept = self.kept orelse return null;
+        return kept.get();
     }
     pub fn release(self: *RegistryAssociation, owner: *runtime.Instance) void {
         if (self.traced) engine.forgetTracedChild(owner, .{ .name = "customElementRegistry" });
