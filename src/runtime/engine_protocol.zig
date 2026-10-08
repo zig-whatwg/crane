@@ -1023,7 +1023,9 @@ pub inline fn performMicrotaskCheckpoint(agent: *Agent) Error!void {
 /// the surrounding agent's event loop's microtask queue, whichever realm the
 /// caller is in. `data` BORROWED until then; a microtask still queued when
 /// the agent is torn down is dropped. The steps run with no realm entered:
-/// what needs one enters it (runInRealm).
+/// what needs one enters it (runInRealm). There is no dropped end: a
+/// microtask that never runs never tells the host, so `data` that must be
+/// freed goes through `queueRealmMicrotask` instead.
 pub inline fn queueMicrotask(agent: *Agent, steps: RealmSteps, data: ?*anyopaque) Error!void {
     return impl.queueMicrotask(agent, steps, data);
 }
@@ -1545,13 +1547,33 @@ pub inline fn reactToPromise(realm: Context, promise: JSValue, steps: *const Pro
     return impl.reactToPromise(realm, promise, steps, data);
 }
 
-/// HTML "queue a microtask" using an already fulfilled promise's reaction.
-/// Creating the promise and registering its reaction is one non-reentrant
-/// operation: no checkpoint may run between them or before this returns.
-/// On success exactly one reaction step (including `dropped`) owns `data`;
-/// on error none does. The fulfilled value is `undefined`.
-pub inline fn queueResolvedPromiseReaction(realm: Context, steps: *const PromiseReactionSteps, data: ?*anyopaque) Error!void {
-    return impl.queueResolvedPromiseReaction(realm, steps, data);
+/// HTML "queue a microtask" (8.1.7.2) whose steps belong to `realm`: on
+/// success, exactly ONE of `steps.fulfilled` and `steps.dropped` runs, once,
+/// and owns `data` (`steps.rejected` is never called; the value given to
+/// `fulfilled` is undefined). Use this, not `queueMicrotask`, for a microtask
+/// that hands the engine host data: `queueMicrotask` has no dropped end, and
+/// its data leaks when its microtask never runs.
+/// - Run: `fulfilled` at the next microtask checkpoint of `realm`'s agent, in
+///   FIFO order with every other microtask of that agent (`queueMicrotask`'s
+///   included), on the agent's thread. No checkpoint runs inside this call -
+///   none between queuing and returning, whatever the engine's automatic
+///   checkpoint policy - so the caller finishes its own steps first.
+/// - Realm end: queued when `realm` ends, `dropped` runs during the realm's
+///   end, before the realm's objects are torn down, on the thread ending it
+///   (the agent's). A checkpoint after that runs nothing of it.
+/// - Agent end: an agent's realms end before it does (`destroyAgent`), so a
+///   microtask still queued is dropped as at its realm's end.
+/// - Queue discarded (a terminated checkpoint - V8 deletes the rest of its
+///   queue - or a collection that took the job's promise with it): `dropped`
+///   runs after the collector takes the orphaned job, in the engine's second
+///   weak pass on the agent's thread, never during the collection - or at the
+///   realm's end if that comes first.
+/// `dropped` never runs script. On error (an ended realm, no memory) neither
+/// step runs and `data` stays the caller's. V8 implements it as a reaction to
+/// an already-fulfilled promise, with checkpoints suppressed across both API
+/// calls (protocol.zig); tests/v8/realm_microtask_test.zig pins the contract.
+pub inline fn queueRealmMicrotask(realm: Context, steps: *const PromiseReactionSteps, data: ?*anyopaque) Error!void {
+    return impl.queueRealmMicrotask(realm, steps, data);
 }
 
 /// WebIDL "mark as handled". A value that is not a promise is left alone.

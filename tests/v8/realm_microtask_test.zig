@@ -1,4 +1,4 @@
-//! `engine.queueResolvedPromiseReaction`: HTML "queue a microtask" scoped to
+//! `engine.queueRealmMicrotask`: HTML "queue a microtask" scoped to
 //! a realm, with the protocol's exactly-once terminal contract (PR-M2,
 //! tmp/analysis/fix-list.md; AGENTS.md "The engine boundary" rule 6).
 //!
@@ -142,7 +142,7 @@ test "the steps run at the agent's next checkpoint, never inside the call that q
     var continuation: Continuation = .{};
     // From the host, outside any script: the depth at which V8's automatic
     // policy checkpoints when an API call returns.
-    try protocol.queueResolvedPromiseReaction(w, &Continuation.steps, &continuation);
+    try protocol.queueRealmMicrotask(w, &Continuation.steps, &continuation);
     try std.testing.expectEqual(@as(usize, 0), continuation.total());
     // Other host work that enters V8 and returns to depth 0 does not run it
     // either: it waits for the checkpoint.
@@ -165,7 +165,7 @@ test "it is a microtask like any other: first in, first out with engine.queueMic
     var b: Continuation = .{ .log = &log, .mark = 'b' };
     var c: Plain = .{ .log = &log, .mark = 'c' };
     try protocol.queueMicrotask(w.agent.?, Plain.run, &a);
-    try protocol.queueResolvedPromiseReaction(w, &Continuation.steps, &b);
+    try protocol.queueRealmMicrotask(w, &Continuation.steps, &b);
     try protocol.queueMicrotask(w.agent.?, Plain.run, &c);
     try std.testing.expectEqualStrings("", log.slice());
     try protocol.performMicrotaskCheckpoint(w.agent.?);
@@ -176,7 +176,7 @@ test "it is a microtask like any other: first in, first out with engine.queueMic
 test "queued when its realm ends: dropped exactly once, and a later checkpoint runs nothing" {
     const w = try windowRealm();
     var continuation: Continuation = .{};
-    try protocol.queueResolvedPromiseReaction(w, &Continuation.steps, &continuation);
+    try protocol.queueRealmMicrotask(w, &Continuation.steps, &continuation);
     protocol.destroyWindowRealm(w, .global_detached);
     try std.testing.expectEqual(@as(usize, 1), continuation.dropped);
     try std.testing.expectEqual(@as(usize, 1), continuation.total());
@@ -234,7 +234,7 @@ test "queued when the agent's queue is discarded under it: dropped exactly once,
     var abort: Abort = .{ .agent = w.agent.? };
     var continuation: Continuation = .{};
     try queueAbortingCheckpoint(w, &abort);
-    try protocol.queueResolvedPromiseReaction(w, &Continuation.steps, &continuation);
+    try protocol.queueRealmMicrotask(w, &Continuation.steps, &continuation);
     protocol.performMicrotaskCheckpoint(w.agent.?) catch {};
     protocol.resumeScripts(w.agent.?);
     try std.testing.expect(abort.ran);
@@ -255,7 +255,7 @@ test "on a realm that has ended it fails, runs neither step, and the data stays 
     const w = try windowRealm();
     protocol.destroyWindowRealm(w, .global_detached);
     var continuation: Continuation = .{};
-    try std.testing.expect(std.meta.isError(protocol.queueResolvedPromiseReaction(w, &Continuation.steps, &continuation)));
+    try std.testing.expect(std.meta.isError(protocol.queueRealmMicrotask(w, &Continuation.steps, &continuation)));
     const isolate = try agent();
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
     collect();
@@ -268,16 +268,16 @@ test "run, dropped by the realm's end, or dropped with the queue: no global hand
         fn run(ends: *[3]Continuation) !void {
             const w = try windowRealm();
             // Run.
-            try protocol.queueResolvedPromiseReaction(w, &Continuation.steps, &ends[0]);
+            try protocol.queueRealmMicrotask(w, &Continuation.steps, &ends[0]);
             try protocol.performMicrotaskCheckpoint(w.agent.?);
             // Discarded with the queue.
             var abort: Abort = .{ .agent = w.agent.? };
             try queueAbortingCheckpoint(w, &abort);
-            try protocol.queueResolvedPromiseReaction(w, &Continuation.steps, &ends[1]);
+            try protocol.queueRealmMicrotask(w, &Continuation.steps, &ends[1]);
             protocol.performMicrotaskCheckpoint(w.agent.?) catch {};
             protocol.resumeScripts(w.agent.?);
             // Queued when the realm ends.
-            try protocol.queueResolvedPromiseReaction(w, &Continuation.steps, &ends[2]);
+            try protocol.queueRealmMicrotask(w, &Continuation.steps, &ends[2]);
             protocol.destroyWindowRealm(w, .global_detached);
         }
     }.run;

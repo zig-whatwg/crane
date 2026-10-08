@@ -397,7 +397,7 @@ pub fn reactToPromise(_: Context, _: JSValue, _: *const engine.PromiseReactionSt
     return error.NotSupported;
 }
 
-pub fn queueResolvedPromiseReaction(_: Context, _: *const engine.PromiseReactionSteps, _: ?*anyopaque) Error!void {
+pub fn queueRealmMicrotask(_: Context, _: *const engine.PromiseReactionSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }
 pub fn markPromiseAsHandled(_: Context, _: JSValue) void {}
