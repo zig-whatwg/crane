@@ -345,26 +345,17 @@ pub fn decrementUnloadCounter(instance: *runtime.Instance) void {
     }
 }
 
-/// Abort the active parser (e.g., due to navigation).
-/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#abort-a-parser
-pub fn abortParser(instance: *runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        internal.active_parser_was_aborted = true;
-        internal.insertion_point = null;
-        internal.input_stream_manager = null;
-    }
-}
-
 /// Check if the active parser was aborted.
 pub fn wasParserAborted(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     return internal.active_parser_was_aborted;
 }
 
-/// Get the write buffer content (for document.write() in after-parsing mode).
+/// The active parser's input, including script-created writes.
 pub fn getWriteBuffer(instance: *runtime.Instance) []const u8 {
     const internal = getInternal(instance) orelse return "";
-    return internal.write_buffer.items;
+    const stream = internal.input_stream_manager orelse return "";
+    return stream.buffer.items;
 }
 
 /// Check if scripting is enabled.

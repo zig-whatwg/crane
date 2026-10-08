@@ -213,6 +213,9 @@ pub const media_runtime = @import("media/runtime.zig");
 /// child navigable (HTML 4.8.6, 4.8.7).
 pub const embedded_content = @import("embedded_content.zig");
 
+/// Queued tasks for aborting a document's descendant navigables.
+pub const document_abort = @import("document_abort.zig");
+
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing
 pub const scripted_parser = @import("scripted_parser.zig");

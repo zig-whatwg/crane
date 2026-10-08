@@ -1326,12 +1326,14 @@ pub const Context = struct {
             null;
 
         // Parse HTML into the existing document (already registered in V8)
+        var parser_canceled = false;
         _ = HTMLParser.parseHTMLWithScripting(
             self.allocator,
             runtime_ctx,
             html_content,
             .{
                 .scripting_enabled = options.scripting_enabled,
+                .parser_canceled = &parser_canceled,
                 .base_url = options.base_url,
                 .script_loader = script_loader,
                 .existing_document = document,
@@ -1341,6 +1343,7 @@ pub const Context = struct {
             log.debug("HTML parse error: {}\n", .{err});
             return error.ParseError;
         };
+        if (parser_canceled) return;
 
         // Initialize browsing contexts for any iframes in the document
         // This is necessary for window.frames[N] to work properly

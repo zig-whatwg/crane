@@ -309,15 +309,12 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
             document_lifecycle.destroy(entry.document);
         }
     }
-    const was_delaying = integration.delaying_load;
     // Its realm ends at a task of its own.
     if (integration.state != .discarded) queueRemovedFrameRealmEnd(container, integration);
     integration.onRemovedFromDocument();
-    // The node document may have been waiting on this navigable's
-    // navigation to fire its load event. It has no content navigable now.
-    if (was_delaying) {
-        if (interfaces.Node.get_ownerDocument(container) catch null) |document| document_lifecycle.loadDelayMayHaveEnded(document);
-    }
+    // Navigation and resources in an already-ready, document.open-created
+    // stream both delay the parent. There is no content navigable now.
+    if (interfaces.Node.get_ownerDocument(container) catch null) |document| document_lifecycle.loadDelayMayHaveEnded(document);
 }
 
 /// HTML "destroy a child navigable", for the documents: the active

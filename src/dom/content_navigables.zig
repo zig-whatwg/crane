@@ -30,6 +30,10 @@ pub const Implementation = struct {
     /// HTML "stop loading" the navigable whose active document is
     /// `document`, if a container owns one: its ongoing navigation ends.
     stop_loading: *const fn (document: *runtime.Instance) void,
+    /// Document.open step 8's condition: ongoing navigation is an ID.
+    is_navigating: *const fn (document: *runtime.Instance) bool,
+    /// A resource in an active child document stopped delaying its load.
+    load_delay_may_have_ended: *const fn (document: *runtime.Instance) void,
 };
 
 var implementation: ?Implementation = null;
@@ -47,6 +51,13 @@ pub fn delaysLoadEvent(document: *runtime.Instance) bool {
     return impl.delays_load_event(document);
 }
 
+/// A child's resource delay ended, including one in a script-created parser
+/// that has not reached EOF. Its container document may now finish loading.
+pub fn loadDelayMayHaveEnded(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.load_delay_may_have_ended(document);
+}
+
 /// "Completely finish loading" step 4's task: the load event steps of
 /// `container`. False when no installed container owns it.
 pub fn runLoadEventSteps(container: *runtime.Instance) bool {
@@ -54,11 +65,18 @@ pub fn runLoadEventSteps(container: *runtime.Instance) bool {
     return impl.run_load_event_steps(container);
 }
 
-/// HTML "stop loading" `document`'s node navigable - the document open
-/// steps' step 8 - when a navigable container holds it.
+/// HTML "stop loading" `document`'s node navigable, including aborting the
+/// document and its descendants. Window.stop uses this unconditionally.
 pub fn stopLoading(document: *runtime.Instance) void {
     const impl = implementation orelse return;
     impl.stop_loading(document);
+}
+
+/// The document open steps, step 8: stop only if this document's node
+/// navigable has an ongoing navigation ID. Ordinary open preserves fetches.
+pub fn stopLoadingIfNavigating(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    if (impl.is_navigating(document)) impl.stop_loading(document);
 }
 
 test "without an installed implementation nothing delays a load event" {
@@ -69,5 +87,7 @@ test "without an installed implementation nothing delays a load event" {
     var document: runtime.Instance = undefined;
     try @import("std").testing.expect(!delaysLoadEvent(&document));
     try @import("std").testing.expect(!runLoadEventSteps(&document));
+    loadDelayMayHaveEnded(&document);
     stopLoading(&document);
+    stopLoadingIfNavigating(&document);
 }

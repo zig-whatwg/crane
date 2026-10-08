@@ -21,7 +21,7 @@ const HTMLScriptElement = interfaces.HTMLScriptElement;
 const HTMLElementImpl = @import("HTMLElement.zig");
 const NodeImpl = @import("Node.zig");
 
-// DOM mutation seam, for the insertion steps below.
+// DOM mutation seam, for the post-connection steps below.
 const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.NodeBase;
@@ -62,14 +62,15 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     // A script element that becomes connected must run "prepare the script
     // element", and one whose children change may too.
-    dom_module.mutation.registerInsertionStepsCallback(&scriptInsertionStepsCallback) catch |err| {
-        log.warn("script insertion steps not registered: {}", .{err});
+    dom_module.mutation.registerPostConnectionStepsCallback(&scriptPostConnectionStepsCallback) catch |err| {
+        log.warn("script post-connection steps not registered: {}", .{err});
     };
     dom_module.mutation.registerChildrenChangedCallback(&scriptChildrenChangedCallback) catch |err| {
         log.warn("script children changed steps not registered: {}", .{err});
     };
     // html's script processing model reaches its state.
     script_element_state.install(.{ .state = &getInternal });
+    @import("html").script_execution.installFetchHooks();
     // And a clone of one must not run again: the cloning steps copy "already
     // started" (HTML § 4.12.1.1).
     dom_module.cloning_steps.install(&cloningSteps);
@@ -80,7 +81,21 @@ pub fn installHooks() void {
         .mark_parser_inserted = &markParserInsertedStep,
         .mark_already_started = &markAlreadyStartedStep,
         .script_text = &scriptTextStep,
+        .delays_load_event = &scriptsDelayLoadEvent,
     });
+}
+
+/// HTML script processing model: a true delaying flag delays the
+/// preparation-time document, even after the element is moved or removed.
+fn scriptsDelayLoadEvent(document: *runtime.Instance) bool {
+    const generation = runtime.SlabAllocator.generationOf(document);
+    var entries = Registry.iterator() orelse return false;
+    while (entries.next()) |entry| {
+        const internal = entry.internal;
+        if (internal.delaying_the_load_event and internal.preparation_time_document == document and
+            internal.preparation_time_document_generation == generation) return true;
+    }
+    return false;
 }
 
 /// dom.script_elements: the element's script text (Trusted Types 4.1.2.1).
@@ -570,27 +585,32 @@ pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMStr
 // =============================================================================
 
 // =============================================================================
-// Insertion steps
+// Post-connection steps
 // =============================================================================
 
-/// The script element's insertion steps.
+/// The script element's HTML element post-connection steps.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
-/// "When a script element el that is not parser-inserted experiences one of the
-///  events listed in the following list, the user agent must immediately
-///  prepare the script element: ... The script element becomes connected."
+/// Step 1 returns for a parser-inserted script. Step 2 prepares the element.
+/// This phase follows the parent's children changed steps and the whole
+/// insertion batch, as WebKit ScriptElement::postConnectionSteps does:
+/// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/ScriptElement.cpp
 ///
 /// The parser is excluded exactly as the spec excludes it: both tree-building
 /// paths set the parser document on the element *before* appending it
 /// (`dom_tree_adapter.createElementNode` and `HTMLParser.createDomNodeFromTreeNode`),
 /// so `isParserInserted` is already true by the time this runs for them. That
-/// matters — the parser appends the script element while it is still EMPTY and
-/// only adds its text children afterwards, so preparing it here would mark a
-/// script with no source as already-started and silently kill it.
-fn scriptInsertionStepsCallback(node: *NodeBase) void {
+/// matters: the parser appends the script element while it is still empty,
+/// then prepares it at the end tag after adding its text children.
+fn scriptPostConnectionStepsCallback(node: *NodeBase) void {
     // ELEMENT_NODE only.
     if (node.node_type != 1) return;
     if (!std.ascii.eqlIgnoreCase(node.node_name, "script")) return;
+
+    // HTML element post-connection steps run only while the element is still
+    // connected. An earlier script in the atomically inserted batch may have
+    // removed this one before its turn.
+    if (!node.is_connected) return;
 
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
@@ -607,7 +627,7 @@ fn scriptInsertionStepsCallback(node: *NodeBase) void {
     const allocator = instance.ctx.allocator;
     _ = prepareScriptElement(allocator, instance) catch |err| {
         // A script that fails to prepare is not a document that fails to load.
-        log.debug("insertion steps: prepare failed: {}", .{err});
+        log.debug("post-connection steps: prepare failed: {}", .{err});
     };
 }
 

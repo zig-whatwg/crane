@@ -31,6 +31,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const module_script = @import("module_script.zig");
 const ScriptText = @import("dom").script_elements.ScriptText;
 
@@ -104,6 +105,8 @@ pub const State = struct {
     /// The preparation-time document - prevents cross-document execution
     /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#preparation-time-document
     preparation_time_document: ?*runtime.Instance,
+    /// The preparation-time document's slab slot can be reused after it dies.
+    preparation_time_document_generation: u64 = 0,
 
     /// Force async flag - initially true, set false by parser
     /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-force-async
@@ -136,6 +139,16 @@ pub const State = struct {
     /// Steps to run when the result is ready (for async/deferred scripts)
     /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#steps-to-run-when-the-result-is-ready
     steps_to_run_when_ready: ?*const fn (*runtime.Instance) void,
+
+    /// The document script queue's independent wrapper root. The queue takes
+    /// it into a local before execution, or releases it when discarded. A
+    /// response task's pending activity ends before an out-of-order deferred
+    /// script can run, so that task's shared flag cannot own this root.
+    execution_root: ?engine.Owned = null,
+
+    /// Part of the current document-abort snapshot. Abort callbacks may
+    /// enqueue new scripts, which must remain outside that snapshot.
+    discard_on_abort: bool = false,
 
     /// Cached script source text (for inline scripts), owned here.
     cached_source_text: ?[]const u8,
@@ -173,11 +186,21 @@ pub const State = struct {
     }
 
     pub fn deinit(self: *State) void {
+        // Normal cleanup is the document queue's discard/execution path.
+        // Explicit destruction of the element may still end its queue root.
+        if (self.takeExecutionRoot()) |root| root.release();
         if (self.cached_source_text) |text| self.allocator.free(text);
         if (self.script_url) |url| self.allocator.free(url);
         self.script_text.deinit();
         self.cached_source_text = null;
         self.script_url = null;
+    }
+
+    /// Transfer the queue's root to its executor or discard step, exactly once.
+    pub fn takeExecutionRoot(self: *State) ?engine.Owned {
+        const root = self.execution_root;
+        self.execution_root = null;
+        return root;
     }
 
     /// Keep a copy of `text` as the element's cached source text, freeing the

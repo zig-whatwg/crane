@@ -229,6 +229,9 @@ pub const ScriptLoader = struct {
 pub const ScriptingParseOptions = struct {
     /// Enable scripting (executes scripts during parsing)
     scripting_enabled: bool = true,
+    /// Set when parser callbacks cancel the parse. The caller must skip
+    /// any further access to the returned document, whose realm may be gone.
+    parser_canceled: ?*bool = null,
     /// Base URL for resolving relative URLs
     base_url: []const u8 = "",
     /// Script loader for external scripts (null = no external script loading)
@@ -265,6 +268,7 @@ pub fn parseHTMLWithScripting(
     html: []const u8,
     options: ScriptingParseOptions,
 ) ParseError!*runtime.Instance {
+    if (options.parser_canceled) |canceled| canceled.* = false;
     // The document: the one navigation already registered in V8, so the
     // page's scripts see it - emptied of a previous run's tree - or a new one.
     if (options.existing_document) |existing| {
@@ -274,8 +278,10 @@ pub fn parseHTMLWithScripting(
     // The parse: html_mod.scripted_parser is the one parser every document
     // with scripting uses - this page's, a frame's, a script-created one's -
     // with its input stream for document.write().
+    var parser_canceled = false;
     const document = html_mod.scripted_parser.parseHTMLWithScripting(allocator, ctx, html, .{
         .scripting_enabled = options.scripting_enabled,
+        .parser_canceled = &parser_canceled,
         .document = options.existing_document,
         .script_loader = if (options.script_loader) |loader| .{
             .context = loader.context,
@@ -290,6 +296,11 @@ pub fn parseHTMLWithScripting(
         error.TreeBuilderError => error.TreeBuilderError,
         error.InvalidInput => error.InvalidInput,
     };
+
+    if (parser_canceled) {
+        if (options.parser_canceled) |canceled| canceled.* = true;
+        return document;
+    }
 
     // HTML §13.2.7 "the end" step 3: the parser has stopped - readiness
     // "interactive", before the deferred scripts, which see it.

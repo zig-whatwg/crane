@@ -31,6 +31,8 @@ pub const Implementation = struct {
     mark_already_started: *const fn (element: *runtime.Instance) void,
     /// The element's script text, if it is an HTML script element.
     script_text: ?*const fn (element: *runtime.Instance) ?*ScriptText = null,
+    /// A prepared HTML script's flag delays its preparation-time document.
+    delays_load_event: *const fn (document: *runtime.Instance) bool,
 };
 
 /// Trusted Types 4.1.2.1: a script element's "script text" - "A string,
@@ -107,6 +109,13 @@ pub fn markAlreadyStarted(element: *runtime.Instance) void {
     if (svgFlags(element)) |flags| flags.already_started = true;
 }
 
+/// HTML "delaying the load event" on any prepared HTML script element,
+/// including elements removed from their document or executing off a queue.
+pub fn delaysLoadEvent(document: *runtime.Instance) bool {
+    const impl = implementation orelse return false;
+    return impl.delays_load_event(document);
+}
+
 /// `element`'s script text (Trusted Types 4.1.2.1), if it is an HTML or SVG
 /// script element.
 pub fn scriptTextOf(element: *runtime.Instance) ?*ScriptText {
@@ -165,4 +174,5 @@ test "without an installed implementation the steps do nothing" {
     markParserInserted(&element, &document);
     markAlreadyStarted(&element);
     try @import("std").testing.expect(svgFlags(&element) == null);
+    try @import("std").testing.expect(!delaysLoadEvent(&document));
 }

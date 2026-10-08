@@ -22,6 +22,9 @@ pub const Implementation = struct {
     parsing_stopped: *const fn (document: *runtime.Instance) void,
     finish_loading: *const fn (document: *runtime.Instance) void,
     load_delay_may_have_ended: *const fn (document: *runtime.Instance) void,
+    delays_load_event: *const fn (document: *runtime.Instance) bool,
+    is_ready_for_post_load_tasks: *const fn (document: *runtime.Instance) bool,
+    mark_ready_for_post_load_tasks: *const fn (document: *runtime.Instance) void,
     is_completely_loaded: *const fn (document: *runtime.Instance) bool,
     is_initial_about_blank: *const fn (document: *runtime.Instance) bool,
     mark_initial_about_blank: *const fn (document: *runtime.Instance) void,
@@ -29,6 +32,9 @@ pub const Implementation = struct {
     fire_beforeunload: *const fn (document: *runtime.Instance) BeforeUnloadResult,
     unload: *const fn (document: *runtime.Instance) void,
     abort: *const fn (document: *runtime.Instance) void,
+    /// Abort a document and its descendants, step 3.2: propagate the
+    /// descendant's unsalvageable state to the root after its abort task.
+    propagate_abort: *const fn (parent: *runtime.Instance, child: *runtime.Instance) void,
     destroy: *const fn (document: *runtime.Instance) void,
     set_about_base_url: *const fn (document: *runtime.Instance, url: ?[]const u8) void,
     about_fallback_base_url: *const fn (document: *runtime.Instance) ?[]const u8,
@@ -80,6 +86,27 @@ pub fn loadDelayMayHaveEnded(document: *runtime.Instance) void {
     impl.load_delay_may_have_ended(document);
 }
 
+/// Whether anything delays this document's load event ("the end", step 8).
+/// A container asks this about its active document even when that document
+/// was opened after it became ready for post-load tasks.
+pub fn delaysLoadEvent(document: *runtime.Instance) bool {
+    const impl = implementation orelse return false;
+    return impl.delays_load_event(document);
+}
+
+/// HTML "ready for post-load tasks", independent of current readiness and
+/// completely-loaded time. Document.open does not reset this state.
+pub fn isReadyForPostLoadTasks(document: *runtime.Instance) bool {
+    const impl = implementation orelse return true;
+    return impl.is_ready_for_post_load_tasks(document);
+}
+
+/// DOMImplementation-created documents are ready immediately (HTML §3.1).
+pub fn markReadyForPostLoadTasks(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.mark_ready_for_post_load_tasks(document);
+}
+
 /// Whether `document` is "completely loaded": "completely finish loading" has
 /// run for it.
 pub fn isCompletelyLoaded(document: *runtime.Instance) bool {
@@ -127,6 +154,14 @@ pub fn unload(document: *runtime.Instance) void {
 pub fn abort(document: *runtime.Instance) void {
     const impl = implementation orelse return;
     impl.abort(document);
+}
+
+/// HTML "abort a document and its descendants" step 3.2: if child's
+/// salvageable state is false, parent's becomes false as well. Neither
+/// document's activity changes merely because it cannot enter the bfcache.
+pub fn propagateAbort(parent: *runtime.Instance, child: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.propagate_abort(parent, child);
 }
 
 /// HTML "destroy" `document` (§7.5.5): it is no longer salvageable and its
@@ -214,11 +249,13 @@ test "without an installed implementation nothing is asked of a document" {
     parsingStopped(&document);
     finishLoading(&document);
     loadDelayMayHaveEnded(&document);
+    markReadyForPostLoadTasks(&document);
     delayLoadEvent(&document);
     undelayLoadEvent(&document);
     markInitialAboutBlank(&document);
     unload(&document);
     abort(&document);
+    propagateAbort(&document, &document);
     destroy(&document);
     setAboutBaseUrl(&document, "http://x.test/");
     declarativeRefresh(&document, "0; url=http://x.test/", null);
@@ -227,6 +264,8 @@ test "without an installed implementation nothing is asked of a document" {
     // is loaded, is no initial about:blank, is not unloading, and nobody
     // cancels leaving it.
     try std.testing.expect(isCompletelyLoaded(&document));
+    try std.testing.expect(isReadyForPostLoadTasks(&document));
+    try std.testing.expect(!delaysLoadEvent(&document));
     try std.testing.expect(!isInitialAboutBlank(&document));
     try std.testing.expect(!isUnloading(&document));
     try std.testing.expect(!fireBeforeUnload(&document).canceled);
