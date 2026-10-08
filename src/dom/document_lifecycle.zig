@@ -22,6 +22,7 @@ pub const Implementation = struct {
     associate_parser: *const fn (document: *runtime.Instance, parser: *anyopaque) bool,
     discard_parser: *const fn (document: *runtime.Instance, expected: ?*anyopaque) void,
     parser_finished: *const fn (document: *runtime.Instance, parser: *anyopaque) void,
+    finish_without_parser: *const fn (document: *runtime.Instance) void,
     parsing_stopped: *const fn (document: *runtime.Instance) void,
     finish_loading: *const fn (document: *runtime.Instance) void,
     load_delay_may_have_ended: *const fn (document: *runtime.Instance) void,
@@ -85,6 +86,13 @@ pub fn discardParser(document: *runtime.Instance, expected: ?*anyopaque) void {
 pub fn parserFinished(document: *runtime.Instance, parser: *anyopaque) void {
     const impl = implementation orelse return;
     impl.parser_finished(document, parser);
+}
+
+/// Finish a received document for which navigation has no parser. This
+/// uses the same guarded "the end" steps, and cannot finish an active parser.
+pub fn finishWithoutParser(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.finish_without_parser(document);
 }
 
 /// "The end" step 3: the parser has stopped, and readiness becomes

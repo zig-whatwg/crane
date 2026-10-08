@@ -2004,7 +2004,7 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     if (record.traversal_entry == 0 and record.history_handling == .push) {
         if (integration.browsing_context) |bc| dom_module.navigation_api.entriesRemoved(@ptrCast(bc.getTop()));
     }
-    loadEventStepsIfNothingWill(integration);
+    finishParserlessNavigation(integration);
 }
 
 /// "Finalize a cross-document navigation" steps 5-10: the new document's
@@ -2150,15 +2150,14 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
     }
 }
 
-/// A document that never goes through the parser - an XML document, which
-/// has no parser yet - has no "the end" to finish loading it, so nothing
-/// would run its container's load event steps. Run them now.
-fn loadEventStepsIfNothingWill(integration: *IFrameIntegration) void {
+/// HTML §14.2: XML EOF uses the same "the end" as HTML. The XML parser is
+/// not implemented yet, but its received document still needs completion.
+/// Loading HTML may instead own a suspended parser; leave its EOF to it.
+fn finishParserlessNavigation(integration: *IFrameIntegration) void {
+    const content_type = integration.getLoadedContentType() orelse return;
+    if (html_module.navigation.document_type.classify(content_type) != .xml) return;
     const document = activeDocumentOf(integration) orelse return endLoadDelay(integration);
-    const readiness = interfaces.Document.get_readyState(document) catch return;
-    if (readiness != ._loading_) return;
-    const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return endLoadDelay(integration)));
-    if (!contentNavigableLoadEventSteps(element)) endLoadDelay(integration);
+    document_lifecycle.finishWithoutParser(document);
 }
 
 /// "Unload a document and its descendants": its child navigables' documents

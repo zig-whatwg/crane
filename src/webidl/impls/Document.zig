@@ -629,6 +629,7 @@ pub fn installHooks() void {
         .associate_parser = &lifecycleAssociateParser,
         .discard_parser = &lifecycleDiscardParser,
         .parser_finished = &lifecycleParserFinished,
+        .finish_without_parser = &lifecycleFinishWithoutParser,
         .parsing_stopped = &lifecycleParsingStopped,
         .finish_loading = &lifecycleFinishLoading,
         .load_delay_may_have_ended = &lifecycleLoadDelayMayHaveEnded,
@@ -4119,6 +4120,15 @@ fn lifecycleParsingStopped(document: *runtime.Instance) void {
     engine.runInRealm(document.ctx, becomeInteractive, document) catch |err| {
         log.debug("readystatechange (interactive) not fired: {}", .{err});
     };
+}
+
+/// HTML XML parsing uses the same end steps (§14.2, §13.2.7). Until the
+/// navigation XML parser exists, its received empty document still needs
+/// readiness, queued lifecycle events, and ready-for-post-load state.
+fn lifecycleFinishWithoutParser(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    if (internal.active_parser != null or internal.ready_state != ._loading_) return;
+    theEnd(document);
 }
 
 fn becomeInteractive(data: ?*anyopaque) void {
