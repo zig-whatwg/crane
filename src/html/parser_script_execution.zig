@@ -424,6 +424,32 @@ pub const DomTreeAdapter = struct {
         rescue: *const fn (?*anyopaque, *runtime.Instance) void,
     };
 
+    /// What a node's creation can have done before the adapter asks whether
+    /// it has a wrapper.
+    pub const Creation = enum {
+        /// A custom element definition matched the element's token (HTML
+        /// "create an element for a token": "will execute script"): its
+        /// constructor, and the reactions to its attributes, ran script that
+        /// can have wrapped it.
+        may_have_run_script,
+        /// No definition matched, or the node is a text, comment or doctype
+        /// node: no script ran between the creation and the check.
+        ran_no_script,
+    };
+
+    /// Whether the adapter must ask the engine if a node it just made has a
+    /// wrapper. An ownership predicate, so an allowlist whose default is the
+    /// safe answer (AGENTS.md "Memory"): only a creation KNOWN to have run no
+    /// script is skipped - nothing can have made a wrapper for a node no
+    /// script has seen - and an unknown creation is asked.
+    pub fn mustCheckWrapper(creation: ?Creation) bool {
+        const known = creation orelse return true;
+        return switch (known) {
+            .ran_no_script => false,
+            .may_have_run_script => true,
+        };
+    }
+
     pub const Orphan = struct {
         node: *runtime.Instance,
         generation: u64,
@@ -449,6 +475,9 @@ pub const DomTreeAdapter = struct {
     /// attempt (usually empty).
     pending: std.ArrayListUnmanaged(PendingHold) = .empty,
     rescuer: ?Rescuer = null,
+    /// What the node being created can have done (`mustCheckWrapper`); set by
+    /// the create step, consumed by onNodeCreated.
+    last_creation: ?Creation = null,
     document_generation: u64,
     had_engine: bool,
 
@@ -527,7 +556,10 @@ pub const DomTreeAdapter = struct {
     /// Creates the corresponding DOM node and adds it to the map.
     pub fn onNodeCreated(self: *DomTreeAdapter, tree_node: *TreeNode) !void {
         if (!self.isAlive()) return error.InvalidStateError;
+        self.last_creation = null;
         const dom_node = try self.createDomNode(tree_node);
+        const creation = self.last_creation;
+        self.last_creation = null;
         // A tree node is mapped once; should it be made again, an unwrapped
         // orphan of the first creation is still the adapter's to free.
         if (tree_node.dom_orphan_index != TreeNode.not_an_orphan) {
@@ -545,7 +577,8 @@ pub const DomTreeAdapter = struct {
         // Wrapped nodes belong to engine cleanup (a pending hold, a rescue,
         // or script that wrapped them); an unwrapped one is the adapter's
         // until an insertion takes it.
-        if (dom_node != self.document and !engine.hasWrapper(dom_node)) try self.addOrphan(tree_node);
+        if (dom_node != self.document and !(mustCheckWrapper(creation) and engine.hasWrapper(dom_node)))
+            try self.addOrphan(tree_node);
     }
 
     /// Called when a child is appended to a parent during parsing.
@@ -666,6 +699,9 @@ pub const DomTreeAdapter = struct {
         // This adapter is the incremental full-document parser, including
         // document.write. Fragment conversion uses HTMLParser's explicit bit.
         const scope = try parser_ce.Scope.begin(owner, local_name, ns_uri, is_value, false);
+        // Scope.begin found a definition exactly when this creation will
+        // execute script.
+        const creation: Creation = if (scope.synchronous) .may_have_run_script else .ran_no_script;
         defer scope.end();
         const element = try @import("custom_elements/creation.zig").create(.{
             .document = owner,
@@ -684,7 +720,7 @@ pub const DomTreeAdapter = struct {
         // checkpoint after them, can drop `this` and collect. retainValue
         // returns the existing wrapper; an unwrapped element needs no hold
         // (the collector never frees an unwrapped root).
-        if (self.ctx.hasEngine() and engine.hasWrapper(element)) {
+        if (mustCheckWrapper(creation) and self.ctx.hasEngine() and engine.hasWrapper(element)) {
             try self.pending.ensureUnusedCapacity(self.allocator, 1);
             const owned = try engine.retainValue(self.ctx, .{ .instance = element });
             self.pending.appendAssumeCapacity(.{ .tree_node = tree_node, .owned = owned });
@@ -708,6 +744,7 @@ pub const DomTreeAdapter = struct {
         // state at creation, before its post-connection steps start a fetch.
         if (is_html and (std.mem.eql(u8, local_name, "style") or std.mem.eql(u8, local_name, "link"))) dom.style_sheet_owners.createdByParser(element);
 
+        self.last_creation = creation;
         return element;
     }
 
@@ -723,6 +760,7 @@ pub const DomTreeAdapter = struct {
 
         node_document.set(text, self.document) catch {};
 
+        self.last_creation = .ran_no_script;
         return text;
     }
 
@@ -738,6 +776,7 @@ pub const DomTreeAdapter = struct {
 
         node_document.set(comment, self.document) catch {};
 
+        self.last_creation = .ran_no_script;
         return comment;
     }
 
@@ -749,6 +788,7 @@ pub const DomTreeAdapter = struct {
 
         node_document.set(doctype, self.document) catch {};
 
+        self.last_creation = .ran_no_script;
         return doctype;
     }
 };

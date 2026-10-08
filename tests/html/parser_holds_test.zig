@@ -306,3 +306,74 @@ fn discardedParserOnTheStackStillHolds() !void {
 test "a discarded parser still on the native stack holds its nodes across a collection until it is released" {
     try onFreshThread(discardedParserOnTheStackStillHolds);
 }
+
+test "the wrapper check is skipped only for a creation known to have run no script" {
+    const DomTreeAdapter = @import("html").parser_script_execution.DomTreeAdapter;
+    // The default is the safe answer: an unknown creation is asked.
+    try testing.expect(DomTreeAdapter.mustCheckWrapper(null));
+    try testing.expect(DomTreeAdapter.mustCheckWrapper(.may_have_run_script));
+    try testing.expect(!DomTreeAdapter.mustCheckWrapper(.ran_no_script));
+}
+
+const PendingProbe = struct {
+    parser: *scripted_parser.DocumentParser,
+    seen: [4]usize = .{ 0, 0, 0, 0 },
+    count: usize = 0,
+
+    fn steps(data: ?*anyopaque, _: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
+        const self: *PendingProbe = @ptrCast(@alignCast(data.?));
+        if (self.count < self.seen.len) self.seen[self.count] = self.parser.adapter.pending.items.len;
+        self.count += 1;
+        return .undefined;
+    }
+};
+
+fn creationsThatRanScriptAreChecked() !void {
+    const browser = try openBrowser();
+    defer browser.deinit();
+    const page = browser.current_context.?;
+    try page.runScript("document.open(); document.write('<!doctype html><body><span id=open>')");
+    const document = page.document_instance orelse return error.NoDocument;
+    var probe: PendingProbe = .{ .parser = try activeParser(document) };
+    const callback: engine.BuiltinFunction = .{ .steps = PendingProbe.steps, .data = &probe };
+    try engine.defineBuiltinFunction(document.ctx, "pendingNow", 0, &callback);
+    try page.runScript(
+        \\customElements.define('x-def', class extends HTMLElement {
+        \\  static observedAttributes = ['a'];
+        \\  attributeChangedCallback() { pendingNow(); }
+        \\});
+        \\customElements.define('x-builtin', class extends HTMLParagraphElement {
+        \\  static observedAttributes = ['a'];
+        \\  attributeChangedCallback() { pendingNow(); }
+        \\}, { extends: 'p' });
+        \\document.write('<x-def a=1 id=x></x-def><p is=x-builtin a=1 id=b></p>' +
+        \\  '<div id=plain a=1>t<!--c--></div><template id=tp><b>in</b></template>' +
+        \\  '<p is=x-unknown id=nodef></p><svg><circle id=c></circle></svg>');
+    );
+    // A token with a definition, autonomous or customized built-in (is=),
+    // will execute script: its wrapper is checked, found, and held from
+    // creation through the reactions to its attributes.
+    try testing.expectEqual(@as(usize, 2), probe.count);
+    try testing.expectEqual(@as(usize, 1), probe.seen[0]);
+    try testing.expectEqual(@as(usize, 1), probe.seen[1]);
+    try testing.expect(engine.hasWrapper(try byId(document, "x")));
+    try testing.expect(engine.hasWrapper(try byId(document, "b")));
+    // Inserted: no pending hold and no orphan is left.
+    try testing.expectEqual(@as(usize, 0), probe.parser.adapter.pending.items.len);
+    try testing.expectEqual(@as(usize, 0), probe.parser.adapter.orphans.items.len);
+    // No definition, or not an element: no script ran, nothing wrapped them.
+    const plain = try byId(document, "plain");
+    for ([_]*runtime.Instance{
+        plain,
+        (try interfaces.Node.get_firstChild(plain)).?,
+        (try interfaces.Node.get_lastChild(plain)).?,
+        try byId(document, "tp"),
+        try byId(document, "nodef"),
+        try byId(document, "c"),
+    }) |node| try testing.expect(!engine.hasWrapper(node));
+    try page.runScript("document.close()");
+}
+
+test "a creation that ran script keeps its wrapper check and pending hold; one that ran none skips it" {
+    try onFreshThread(creationsThatRanScriptAreChecked);
+}
