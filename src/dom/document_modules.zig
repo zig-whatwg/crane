@@ -27,6 +27,7 @@ pub const Error = error{ InvalidStateError, OutOfMemory };
 
 /// Frees one module map value, when the Document goes.
 pub const DisposeFn = *const fn (module: *anyopaque) void;
+pub const VisitLoaderFn = *const fn (loader: *anyopaque, data: ?*anyopaque) void;
 
 /// What Document supplies.
 pub const Implementation = struct {
@@ -42,6 +43,9 @@ pub const Implementation = struct {
     add_import_mapping: *const fn (document: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) Error!void,
     add_scoped_import_mapping: *const fn (document: *runtime.Instance, scope_prefix: []const u8, specifier: []const u8, resolved_url: []const u8) Error!void,
     resolve_import_specifier: *const fn (document: *runtime.Instance, specifier: []const u8, referrer_url: []const u8) ?[]const u8,
+    get_loader: ?*const fn (document: *runtime.Instance) ?*anyopaque = null,
+    set_loader: ?*const fn (document: *runtime.Instance, loader: *anyopaque, dispose: DisposeFn) Error!void = null,
+    visit_realm_loaders: ?*const fn (realm: runtime.Context, visit: VisitLoaderFn, data: ?*anyopaque) void = null,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -77,6 +81,28 @@ pub fn setModule(document: *runtime.Instance, key: []const u8, module: *anyopaqu
 pub fn setModuleDisposeFunction(document: *runtime.Instance, dispose: ?DisposeFn) void {
     const impl = implementation orelse return;
     impl.set_module_dispose_function(document, dispose);
+}
+
+/// The document owns its asynchronous module loader until teardown, before
+/// releasing the module records that the loader's graphs reference.
+pub fn getLoader(document: *runtime.Instance) ?*anyopaque {
+    const impl = implementation orelse return null;
+    const get = impl.get_loader orelse return null;
+    return get(document);
+}
+
+pub fn setLoader(document: *runtime.Instance, loader: *anyopaque, dispose: DisposeFn) Error!void {
+    const impl = implementation orelse return error.InvalidStateError;
+    const set = impl.set_loader orelse return error.InvalidStateError;
+    try set(document, loader, dispose);
+}
+
+/// Includes old documents retained when a Window's realm is reused. The
+/// callback must not run script or mutate the document registry.
+pub fn visitRealmLoaders(realm: runtime.Context, visit: VisitLoaderFn, data: ?*anyopaque) void {
+    const impl = implementation orelse return;
+    const visit_loaders = impl.visit_realm_loaders orelse return;
+    visit_loaders(realm, visit, data);
 }
 
 /// Whether `document` already took an import map (later ones are ignored).

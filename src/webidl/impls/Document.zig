@@ -290,6 +290,8 @@ pub const InternalState = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-map
     /// Key: module specifier (resolved URL), Value: V8 Module handle
     module_map: std.StringHashMap(*anyopaque),
+    module_loader: ?*anyopaque = null,
+    dispose_module_loader: ?dom_document_modules.DisposeFn = null,
 
     /// Import map for the document (type="importmap")
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map
@@ -513,6 +515,10 @@ pub const InternalState = struct {
 
         // Module map - dispose module handles and free keys
         {
+            if (self.module_loader) |loader| {
+                self.module_loader = null;
+                if (self.dispose_module_loader) |dispose| dispose(loader);
+            }
             var mod_it = self.module_map.iterator();
             while (mod_it.next()) |entry| {
                 // Dispose module handle using stored function pointer
@@ -4826,6 +4832,9 @@ fn installScriptHooks() void {
         .add_import_mapping = &addImportMappingStep,
         .add_scoped_import_mapping = &addScopedImportMappingStep,
         .resolve_import_specifier = &resolveImportSpecifier,
+        .get_loader = &moduleLoaderOf,
+        .set_loader = &setModuleLoader,
+        .visit_realm_loaders = &visitRealmModuleLoaders,
     });
 }
 
@@ -4853,6 +4862,27 @@ fn moduleAllocator(instance: *runtime.Instance) ?std.mem.Allocator {
 
 fn setModuleStep(instance: *runtime.Instance, url: []const u8, module: *anyopaque) dom_document_modules.Error!void {
     return setModule(instance, url, module);
+}
+
+fn moduleLoaderOf(instance: *runtime.Instance) ?*anyopaque {
+    const internal = getInternal(instance) orelse return null;
+    return internal.module_loader;
+}
+
+fn setModuleLoader(instance: *runtime.Instance, loader: *anyopaque, dispose: dom_document_modules.DisposeFn) dom_document_modules.Error!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.module_loader != null) return error.InvalidStateError;
+    internal.module_loader = loader;
+    internal.dispose_module_loader = dispose;
+}
+
+fn visitRealmModuleLoaders(realm: runtime.Context, visit: dom_document_modules.VisitLoaderFn, data: ?*anyopaque) void {
+    var entries = Registry.iterator() orelse return;
+    while (entries.next()) |entry| {
+        const document: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+        if (document.ctx != realm) continue;
+        if (entry.internal.module_loader) |loader| visit(loader, data);
+    }
 }
 
 fn addImportMappingStep(instance: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) dom_document_modules.Error!void {
