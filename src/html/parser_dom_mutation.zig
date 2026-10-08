@@ -42,9 +42,17 @@ pub fn resolve(adapter: anytype, location: TreeBuilder.InsertionLocation) !Locat
             before = null;
         }
     }
+    // Step 6 can only apply to a template: the TreeNode parent is an HTML
+    // template, or - foster parenting - the table's live parent, which script
+    // can have made anything. Skip the template lookup otherwise.
+    if (location.foster_table == null and !isHtmlTemplate(location.parent)) return .{ .parent = parent, .before = before };
     const target = try dom.template_contents.insertionTarget(parent);
     if (target != parent) before = null;
     return .{ .parent = target, .before = before };
+}
+
+fn isHtmlTemplate(node: *const TreeNode) bool {
+    return node.node_type == .element and node.namespace == .html and node.hasTagName("template");
 }
 
 pub fn remove(node: *runtime.Instance) !void {
