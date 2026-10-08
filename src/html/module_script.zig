@@ -971,8 +971,8 @@ pub const AsyncModuleLoader = struct {
         }
     }
 
-    /// Starts inertly: even a cached root or an inline parse failure is
-    /// completed only by the queued task, after its element joined its queue.
+    /// Starts the root fetch now, but completes only through queued tasks,
+    /// after the element has joined its execution queue.
     pub fn start(self: *AsyncModuleLoader, url: []const u8, module_type: ModuleType, inline_script: ?*ModuleScript, options: FetchOptions, client: Client) !void {
         if (!supported) return error.NotSupported;
         const loop = self.env.realm().getOptionalEventLoop() orelse return error.NotSupported;
@@ -997,7 +997,9 @@ pub const AsyncModuleLoader = struct {
         graph.options.nonce = nonce;
         graph.options.integrity = integrity;
         try self.graphs.append(self.allocator, graph);
+        graph.startRoot();
         graph.task_queued = true;
+        // queueTask may drop and destroy the graph on allocation failure.
         loop.queueTask(.{ .callback = Graph.runTask, .context = graph, .drop = Graph.dropTask });
     }
 
@@ -1091,19 +1093,33 @@ pub const AsyncModuleLoader = struct {
             };
         }
 
+        fn startRoot(self: *Graph) void {
+            const loader = self.loader.?;
+            const root = self.addNode(self.url, self.module_type) catch {
+                self.failed = true;
+                return;
+            };
+            // HTML fetch-single steps 8-13 initiate the request before returning.
+            // File API 8.4: later revocation cannot cancel an already-started
+            // blob URL request. AsyncFetch.start never delivers client callbacks.
+            if (self.inline_script) |script| {
+                self.receive(root, script);
+            } else loader.fetchSingle(self, root, self.options);
+            // Fetch-inline step 2 and fetch-descendants step 5 start known
+            // imports through LoadRequestedModules before returning. A cached
+            // root (fetch-single step 5) has the same immediate continuation.
+            // This only starts requests; linking and client delivery stay queued.
+            self.expandReady();
+        }
+
         fn processTask(data: ?*anyopaque) void {
             const self: *Graph = @ptrCast(@alignCast(data.?));
-            const loader = self.loader.?;
-            if (self.nodes.items.len == 0) {
-                const root = self.addNode(self.url, self.module_type) catch {
-                    self.failed = true;
-                    return self.finish();
-                };
-                if (self.inline_script) |script| {
-                    self.receive(root, script);
-                } else loader.fetchSingle(self, root, self.options);
-            }
+            self.expandReady();
+            if (self.failed or self.progress.pending == 0) return self.finish();
+            self.task_queued = false;
+        }
 
+        fn expandReady(self: *Graph) void {
             // New cached children can be appended during this walk. Remote
             // children come back through a later networking delivery task.
             var index: usize = 0;
@@ -1115,8 +1131,6 @@ pub const AsyncModuleLoader = struct {
                     self.failed = true;
                 };
             }
-            if (self.failed or self.progress.pending == 0) return self.finish();
-            self.task_queued = false;
         }
 
         fn addNode(self: *Graph, url: []const u8, module_type: ModuleType) !*Node {
