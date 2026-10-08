@@ -16,7 +16,8 @@
 //!
 //! Not modelled, stated: the style sheet is not parsed into CSSOM, so
 //! `sheet` is null and `disabled` has no sheet to disable; render-blocking
-//! and the script-blocking style sheet set are not kept. HTML names the XML parser
+//! is not kept. Critical imports of parser-created stylesheets block scripts.
+//! HTML names the XML parser
 //! too, but Crane has none (DOMParser's XML types are a TODO): only the HTML
 //! parser drivers make style elements. The fragment parser's (innerHTML)
 //! elements are not marked, and update as they are inserted and filled.
@@ -60,6 +61,8 @@ pub const InternalState = struct {
     /// The HTML parser made the element and has not yet popped it off its
     /// stack of open elements: until it does, the element is not updated.
     parser_inserting: bool = false,
+    parser_document: ?*runtime.Instance = null,
+    parser_document_generation: u64 = 0,
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -70,8 +73,9 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
-    dom_module.style_sheet_owners.installLoadDelay(&style_sheet_loading.delaysLoadEvent);
+    dom_module.style_sheet_owners.installLoadDelay(.{ .delays = &style_sheet_loading.delaysLoadEvent, .blocks_scripts = &style_sheet_loading.blocksScripts });
     dom_module.style_sheet_owners.installParserSteps(.{ .created = &createdByParser, .popped = &poppedByParser });
+    dom_module.attribute_change_steps.install("style", &attributeChangeSteps);
     dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch |err| {
         log.warn("style insertion steps not registered: {}", .{err});
     };
@@ -130,10 +134,9 @@ fn updateStyleBlock(element: *runtime.Instance) void {
     // 2. If element has an associated CSS style sheet, remove the CSS style
     // sheet in question. A load still fetching its critical subresources
     // ends; an event already queued for it still fires.
-    if (internal.load != 0) {
-        style_sheet_loading.abandon(internal.load);
-        internal.load = 0;
-    }
+    const previous_load = internal.load;
+    internal.load = 0;
+    defer if (previous_load != 0) style_sheet_loading.abandon(previous_load);
     // 3. If element is not connected, then return.
     if (!(interfaces.Node.get_isConnected(element) catch false)) return;
     // 4. If element's type attribute is present and its value is neither the
@@ -162,7 +165,10 @@ fn updateStyleBlock(element: *runtime.Instance) void {
     // 6. Create a CSS style sheet - its text, the element's child text
     // content - and, once its critical subresources are fetched, queue the
     // task that fires load or error at the element.
-    internal.load = style_sheet_loading.startStyle(element, text) orelse 0;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    const parser_created = internal.parser_document == document and
+        runtime.SlabAllocator.generationOf(document) == internal.parser_document_generation;
+    internal.load = style_sheet_loading.startStyle(element, text, parser_created) orelse 0;
 }
 
 /// The element's nonce attribute, when it has a non-empty one: what CSP
@@ -234,6 +240,8 @@ fn childrenChangedSteps(parent: *NodeBase) void {
 fn createdByParser(element: *runtime.Instance) void {
     const internal = getInternal(element) orelse return;
     internal.parser_inserting = true;
+    internal.parser_document = interfaces.Node.get_ownerDocument(element) catch null;
+    internal.parser_document_generation = if (internal.parser_document) |document| runtime.SlabAllocator.generationOf(document) else 0;
 }
 
 /// dom.style_sheet_owners: "The element is popped off the stack of open
@@ -242,6 +250,13 @@ fn poppedByParser(element: *runtime.Instance) void {
     const internal = getInternal(element) orelse return;
     internal.parser_inserting = false;
     updateStyleBlock(element);
+}
+
+fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    _ = old_value;
+    _ = value;
+    if (namespace != null or getInternal(element) == null or !std.mem.eql(u8, local_name, "media")) return;
+    if (interfaces.Node.get_ownerDocument(element) catch null) |document| style_sheet_loading.queueBlockingMayHaveEnded(document);
 }
 
 // ============================================================================

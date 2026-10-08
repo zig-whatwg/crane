@@ -18,7 +18,8 @@
 //! resources, and a modulepreload no module map, so what they fetched is
 //! fetched again by its consumer; alternative style sheets are fetched as any other; the style
 //! sheet itself is not parsed into CSSOM, so `sheet` is null;
-//! render-blocking and the script-blocking style sheet set are not kept.
+//! render-blocking is not kept. Parser-created enabled stylesheets enter
+//! their document's script-blocking set until their load event finishes.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -57,6 +58,12 @@ pub const InternalState = struct {
     /// The stylesheet link's load (`style_sheet_loading`), by id, while it
     /// fetches or its event waits; 0 when there is none.
     load: u64 = 0,
+    /// HTML 4.2.7: these are creation-time facts, unaffected by later rel
+    /// or disabled changes. Adoption into another document is excluded.
+    parser_document: ?*runtime.Instance = null,
+    parser_document_generation: u64 = 0,
+    enabled_at_creation: bool = false,
+    explicitly_enabled: bool = false,
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -67,9 +74,11 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    style_sheet_loading.installDocumentAbort();
     dom_module.attribute_change_steps.install("link", &attributeChangeSteps);
-    dom_module.style_sheet_owners.installLoadDelay(&style_sheet_loading.delaysLoadEvent);
-    dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch |err| {
+    dom_module.style_sheet_owners.installLoadDelay(.{ .delays = &style_sheet_loading.delaysLoadEvent, .blocks_scripts = &style_sheet_loading.blocksScripts });
+    dom_module.style_sheet_owners.installLinkParserSteps(&createdByParser);
+    dom_module.mutation.registerPostConnectionStepsCallback(&insertionSteps) catch |err| {
         log.warn("link insertion steps not registered: {}", .{err});
     };
     dom_module.mutation.registerRemovingStepsCallback(&removingSteps) catch |err| {
@@ -128,10 +137,11 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// steps.
 fn fetchAndProcess(element: *runtime.Instance) void {
     const internal = getInternal(element) orelse return;
-    if (internal.load != 0) {
-        style_sheet_loading.cancel(internal.load);
-        internal.load = 0;
-    }
+    // Establish the replacement before releasing the old blocker: releasing
+    // can resume a parser script, which must see the new sheet's membership.
+    const previous_load = internal.load;
+    internal.load = 0;
+    defer if (previous_load != 0) style_sheet_loading.cancel(previous_load);
     // "Browsing-context connected": connected, and its document has a
     // browsing context.
     if (!(interfaces.Node.get_isConnected(element) catch false)) return;
@@ -156,7 +166,7 @@ fn fetchAndProcess(element: *runtime.Instance) void {
             // The linked resource fetch setup steps, step 1: "If el's
             // disabled attribute is set, then return false."
             if (attribute(element, "disabled") != null) return;
-            internal.load = style_sheet_loading.startLink(element, options) orelse 0;
+            internal.load = style_sheet_loading.startLink(element, options, parserSheetEnabled(internal, document)) orelse 0;
         },
         .modulepreload => {
             // Step 2: "Let destination be the current state of el's as
@@ -183,6 +193,28 @@ fn fetchAndProcess(element: *runtime.Instance) void {
 /// fetched as the first of those.)
 fn linkType(element: *runtime.Instance) LinkType {
     return relLinkType(attribute(element, "rel"));
+}
+
+/// The attributes are the parser token's, before connection starts a load.
+fn createdByParser(element: *runtime.Instance) void {
+    const internal = getInternal(element) orelse return;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    internal.parser_document = document;
+    internal.parser_document_generation = runtime.SlabAllocator.generationOf(document);
+    internal.enabled_at_creation = linkType(element) == .stylesheet and
+        attribute(element, "href") != null and attribute(element, "href").?.len != 0 and
+        attribute(element, "disabled") == null and !isAlternate(element, internal);
+}
+
+fn parserSheetEnabled(internal: *const InternalState, document: *runtime.Instance) bool {
+    return internal.enabled_at_creation and internal.parser_document == document and
+        runtime.SlabAllocator.generationOf(document) == internal.parser_document_generation;
+}
+
+fn isAlternate(element: *runtime.Instance, internal: *const InternalState) bool {
+    const rel = attribute(element, "rel") orelse return false;
+    const title = attribute(element, "title") orelse return false;
+    return title.len != 0 and hasToken(rel, "alternate") and !internal.explicitly_enabled;
 }
 
 const LinkType = enum { none, stylesheet, preload, modulepreload };
@@ -322,20 +354,27 @@ fn attributeChangeSteps(
 ) void {
     if (namespace != null) return;
     // An SVG or other element named "link" is not this element.
-    if (getInternal(element) == null) return;
+    const internal = getInternal(element) orelse return;
     if (eqlOptional(old_value, value)) return;
+    if (std.mem.eql(u8, local_name, "disabled") and old_value != null and value == null) internal.explicitly_enabled = true;
     const refetch = if (std.mem.eql(u8, local_name, "href") or
         std.mem.eql(u8, local_name, "crossorigin") or
         std.mem.eql(u8, local_name, "disabled") or
         std.mem.eql(u8, local_name, "as"))
         true
     else if (std.mem.eql(u8, local_name, "rel"))
-        relLinkType(old_value) != relLinkType(value)
+        relLinkType(old_value) != relLinkType(value) or
+            (old_value != null and value != null and hasToken(old_value.?, "alternate") != hasToken(value.?, "alternate"))
     else if (std.mem.eql(u8, local_name, "type"))
         typeAllows(element, old_value) != typeAllows(element, value)
     else
         false;
-    if (!refetch) return;
+    if (!refetch) {
+        if (std.mem.eql(u8, local_name, "media")) {
+            if (interfaces.Node.get_ownerDocument(element) catch null) |document| style_sheet_loading.queueBlockingMayHaveEnded(document);
+        }
+        return;
+    }
     if (!(interfaces.Node.get_isConnected(element) catch false)) return;
     fetchAndProcess(element);
 }
@@ -376,8 +415,9 @@ fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     const instance = linkOf(node) orelse return;
     const internal = getInternal(instance) orelse return;
     if (internal.load == 0) return;
-    style_sheet_loading.cancel(internal.load);
+    const load = internal.load;
     internal.load = 0;
+    style_sheet_loading.cancel(load);
 }
 
 /// The link element `node` is, if it is one: a brand check on its instance,

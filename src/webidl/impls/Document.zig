@@ -5512,14 +5512,16 @@ pub fn getPrefetchHintEagerness(instance: *runtime.Instance, url: []const u8) ?S
 /// Check if document has a style sheet that is blocking scripts
 /// Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
 ///
-/// "A Document has a style sheet that is blocking scripts if it has a
-/// pending parsing-blocking style sheet or a pending render-blocking element."
-///
-/// This should be called before executing parser-inserted scripts per
-/// HTML Standard §4.12.1.1 step 36.2.
+/// HTML 4.2.7: check this document's set, then its node navigable's
+/// immediate container document's set. Ancestors beyond that do not count.
 pub fn hasStyleSheetBlockingScripts(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
-    return internal.stylesheet_tracker.hasBlockingStylesheet();
+    if (internal.stylesheet_tracker.hasBlockingStylesheet() or @import("dom").style_sheet_owners.blocksScripts(instance)) return true;
+    const window = (get_defaultView(instance) catch null) orelse return false;
+    const container = @import("dom").navigable_container.of(window) orelse return false;
+    const container_document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return false;
+    const container_internal = getInternal(container_document) orelse return false;
+    return container_internal.stylesheet_tracker.hasBlockingStylesheet() or @import("dom").style_sheet_owners.blocksScripts(container_document);
 }
 
 /// Get the stylesheet blocking tracker for direct manipulation

@@ -43,6 +43,8 @@ const engine = @import("engine");
 const fetch = @import("fetch");
 const css = @import("css");
 const dom = @import("dom");
+const stylesheet_blocking = @import("html_core").stylesheet_blocking;
+const BrowsingContext = @import("html_core").BrowsingContext;
 
 const AsyncFetch = fetch.algorithms.AsyncFetch;
 
@@ -115,6 +117,12 @@ const Load = struct {
     /// The event is not to fire: the element fetches again (a link whose
     /// href changed), or is gone. The queued task only ends the load.
     superseded: bool = false,
+    document_abort_pending: bool = false,
+    /// Static eligibility for the node document's script-blocking style
+    /// sheet set: enabled at parser creation. Root and media are current
+    /// conditions, checked by blocksScripts. Completion, cancellation and
+    /// removal end eligibility with the load.
+    blocks_scripts: bool = false,
 
     fn elementIsLive(self: *const Load) bool {
         return runtime.SlabAllocator.generationOf(self.element) == self.element_generation;
@@ -167,9 +175,181 @@ pub fn delaysLoadEvent(document: *runtime.Instance) bool {
         // "A user agent must not delay the load event for this link type"
         // - preload and modulepreload.
         if (load.kind == .preload or load.kind == .modulepreload) continue;
-        if (load.document == document and load.documentIsLive()) return true;
+        if (!load.superseded and load.document == document and load.documentIsLive()) return true;
     }
     return false;
+}
+
+/// HTML 4.2.7: this document's own script-blocking style sheet set. A load
+/// stays in the set through its load/error event, including critical imports.
+/// Superseded or abandoned sheets count as given up, and no longer block.
+pub fn blocksScripts(document: *runtime.Instance) bool {
+    for (loads.items) |load| {
+        if (!load.blocks_scripts or load.superseded or load.document != document or !load.documentIsLive() or !load.elementIsLive()) continue;
+        if (connectedToDocument(load.element, document) and mediaMatches(load.element)) return true;
+    }
+    return false;
+}
+
+fn connectedToDocument(element: *runtime.Instance, document: *runtime.Instance) bool {
+    // A connected shadow-tree sheet does not have the document as its root.
+    return (interfaces.Node.call_getRootNode(element, webidl.Opt(dictionaries.GetRootNodeOptions).notPassed()) catch return false) == document;
+}
+
+/// Uses the existing stylesheet predicate's media portion only. Its stated
+/// limitation remains: exact "print" is excluded; other queries currently
+/// assume a match. Window.matchMedia and MediaQueryList remain unimplemented.
+fn mediaMatches(element: *runtime.Instance) bool {
+    const media = interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("media")) catch null;
+    return stylesheet_blocking.isBlockingStylesheet("stylesheet", if (media) |value| value.asSlice() else null, false, null);
+}
+
+/// Wake a document waiting on stylesheets and its immediate child documents,
+/// whose readiness also checks this document's set (HTML 4.2.7 steps 3-4).
+/// Snapshot and pin all children before running any script. Each callback
+/// can destroy a sibling frame or replace its active document.
+pub fn blockingMayHaveEnded(document: *runtime.Instance) void {
+    const realm = document.ctx;
+    const generation = runtime.SlabAllocator.generationOf(document);
+    const parent_pin: ?engine.Owned = if (realm.hasEngine()) engine.retainValue(realm, .{ .instance = document }) catch return else null;
+    defer if (parent_pin) |pin| pin.release();
+    const allocator = realm.allocator;
+    const Child = struct {
+        document: *runtime.Instance,
+        generation: u64,
+        realm: runtime.Context,
+        navigable_id: u64,
+        pin: engine.Owned,
+    };
+    var snapshot: std.ArrayListUnmanaged(Child) = .empty;
+    defer {
+        for (snapshot.items) |child| child.pin.release();
+        snapshot.deinit(allocator);
+    }
+    var children = dom.navigables.childNavigablesOf(document, allocator);
+    defer children.deinit(allocator);
+    for (children.items) |child| {
+        const child_document: *runtime.Instance = @ptrCast(@alignCast(child.browsing_context.getActiveDocument() orelse continue));
+        if (!child_document.ctx.hasEngine()) continue;
+        const pin = engine.retainValue(child_document.ctx, .{ .instance = child_document }) catch continue;
+        snapshot.append(allocator, .{
+            .document = child_document,
+            .generation = runtime.SlabAllocator.generationOf(child_document),
+            .realm = child_document.ctx,
+            .navigable_id = child.browsing_context.id,
+            .pin = pin,
+        }) catch {
+            pin.release();
+            break;
+        };
+    }
+    dom.document_lifecycle.loadDelayMayHaveEnded(document);
+    for (snapshot.items) |child| {
+        if (parent_pin != null and !realm.hasEngine()) return;
+        if (runtime.SlabAllocator.generationOf(document) != generation) return;
+        if (!child.realm.hasEngine() or runtime.SlabAllocator.generationOf(child.document) != child.generation) continue;
+        const navigable = BrowsingContext.byId(child.navigable_id) orelse continue;
+        if (navigable.orphaned or navigable.is_closed or navigable.getActiveDocument() != @as(?*anyopaque, @ptrCast(child.document))) continue;
+        const window = (interfaces.Document.get_defaultView(child.document) catch null) orelse continue;
+        const container = dom.navigable_container.of(window) orelse continue;
+        if ((interfaces.Node.get_ownerDocument(container) catch null) != document) continue;
+        dom.document_lifecycle.loadDelayMayHaveEnded(child.document);
+    }
+}
+
+/// A mutation may remove a blocker while ordinary JavaScript is still
+/// running. The pending parser resumes from a task after that script returns,
+/// rather than nested inside an attribute setter or removal operation.
+pub fn queueBlockingMayHaveEnded(document: *runtime.Instance) void {
+    const realm = document.ctx;
+    const loop = realm.getOptionalEventLoop() orelse return blockingMayHaveEnded(document);
+    if (!realm.hasEngine()) return;
+    const allocator = realm.allocator;
+    const task = allocator.create(BlockingWake) catch return;
+    const pin = engine.retainValue(realm, .{ .instance = document }) catch {
+        allocator.destroy(task);
+        return;
+    };
+    task.* = .{
+        .document = document,
+        .generation = runtime.SlabAllocator.generationOf(document),
+        .realm = realm,
+        .allocator = allocator,
+        .pin = pin,
+    };
+    loop.queueTask(.{ .callback = &BlockingWake.run, .context = task, .drop = &BlockingWake.drop, .document = document, .document_generation = task.generation });
+}
+
+const BlockingWake = struct {
+    document: *runtime.Instance,
+    generation: u64,
+    realm: runtime.Context,
+    allocator: std.mem.Allocator,
+    pin: engine.Owned,
+
+    fn run(context: ?*anyopaque) void {
+        const self: *@This() = @ptrCast(@alignCast(context orelse return));
+        defer self.destroy();
+        if (!self.realm.hasEngine() or runtime.SlabAllocator.generationOf(self.document) != self.generation) return;
+        blockingMayHaveEnded(self.document);
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *@This() = @ptrCast(@alignCast(context orelse return));
+        self.destroy();
+    }
+
+    fn destroy(self: *@This()) void {
+        self.pin.release();
+        self.allocator.destroy(self);
+    }
+};
+
+/// The element owner installs this shared loader's cancellation hooks once.
+pub fn installDocumentAbort() void {
+    dom.document_fetches.install(.{ .discard = discardRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
+}
+fn prepareDocumentAbort(document: *runtime.Instance) bool {
+    var canceled = false;
+    for (loads.items) |load| {
+        if (load.superseded or load.document != document or !load.documentIsLive()) continue;
+        if (load.in_flight == 0 and !load.event_queued) continue;
+        load.document_abort_pending = true;
+        canceled = true;
+    }
+    return canceled;
+}
+fn abortDocument(document: *runtime.Instance) void {
+    while (true) {
+        const load: *Load = blk: {
+            for (loads.items) |candidate| {
+                if (candidate.document_abort_pending and candidate.document == document and candidate.documentIsLive()) break :blk candidate;
+            }
+            return;
+        };
+        load.document_abort_pending = false;
+        // Abort owns parser readiness from here: releasing its last sheet
+        // must not execute the script the document is about to discard.
+        terminateFetches(load);
+        load.blocks_scripts = false;
+        if (load.event_queued) load.superseded = true else release(load, .teardown);
+    }
+}
+fn discardRealm(realm: runtime.Context) void {
+    var index: usize = 0;
+    while (index < loads.items.len) {
+        const load = loads.items[index];
+        if (load.realm != realm) {
+            index += 1;
+            continue;
+        }
+        load.document_abort_pending = false;
+        terminateFetches(load);
+        if (load.event_queued) {
+            load.superseded = true;
+            index += 1;
+        } else release(load, .teardown);
+    }
 }
 
 /// HTML "default fetch and process the linked resource" for `element`, a
@@ -177,10 +357,13 @@ pub fn delaysLoadEvent(document: *runtime.Instance) bool {
 /// request from its options, fetch it, and then its critical subresources.
 /// The load's id, or null when there is nothing to fetch ("If request is
 /// null, then return": the href does not parse) - and then no event fires.
-pub fn startLink(element: *runtime.Instance, options: LinkOptions) ?u64 {
+pub fn startLink(element: *runtime.Instance, options: LinkOptions, parser_sheet_enabled: bool) ?u64 {
     // "Create a link request", step 1: "Assert: options's href is not the
     // empty string" - the caller returns before an empty one.
-    return startLinkFetch(element, .stylesheet, options, .style);
+    const id = startLinkFetch(element, .stylesheet, options, .style) orelse return null;
+    const load = find(id) orelse return null;
+    load.blocks_scripts = parser_sheet_enabled;
+    return id;
 }
 
 /// HTML "fetch and process the linked resource" for `element`, a link
@@ -239,13 +422,16 @@ fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, 
 /// element whose style sheet is `text`: fetch the sheet's critical
 /// subresources, then fire its event. The load's id, or null when none
 /// could start (no event fires).
-pub fn startStyle(element: *runtime.Instance, text: []const u8) ?u64 {
+pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: bool) ?u64 {
     const load = newLoad(element, .style) orelse return null;
     // The sheet's location is null: its imports resolve against the node
     // document's base URL (CSSOM "style sheet base URL").
     const base = interfaces.Node.get_baseURI(load.document) catch null;
     defer if (base) |b| load.document.ctx.allocator.free(b);
     fetchImports(load, null, text, base);
+    // Without critical subresources the rules are immediately available
+    // to script (HTML 4.2.7), even though the load event runs in a task.
+    load.blocks_scripts = parser_created and load.in_flight > 0;
     // "If the style sheet has no critical subresources, once the style sheet
     // has been parsed and processed": now.
     if (load.in_flight == 0) complete(load);
@@ -281,9 +467,10 @@ pub fn cancel(id: u64) void {
     terminateFetches(load);
     if (load.event_queued) {
         load.superseded = true;
+        if (load.documentIsLive()) queueBlockingMayHaveEnded(load.document);
         return;
     }
-    release(load, .settled);
+    release(load, .mutation);
 }
 
 /// A style element's sheet is removed ("update a style block" step 2): a
@@ -292,9 +479,13 @@ pub fn cancel(id: u64) void {
 /// already queued still fires it: the task is in the queue.
 pub fn abandon(id: u64) void {
     const load = find(id) orelse return;
-    if (load.event_queued) return;
+    if (load.event_queued) {
+        load.blocks_scripts = false;
+        if (load.documentIsLive()) queueBlockingMayHaveEnded(load.document);
+        return;
+    }
     terminateFetches(load);
-    release(load, .settled);
+    release(load, .mutation);
 }
 
 /// `element` is being destroyed: every load it has ends.
@@ -368,6 +559,8 @@ const Ending = enum {
     /// The event fired, or the element ended the load: the document, which
     /// may be waiting for it at "the end" step 8, is told.
     settled,
+    /// A mutation ended the load; resume only after its caller returns.
+    mutation,
     /// The element, its realm or its event loop is going away: teardown,
     /// in which nothing is queued for the document any more.
     teardown,
@@ -391,7 +584,11 @@ fn release(load: *Load, ending: Ending) void {
     const document = load.document;
     const document_live = load.documentIsLive();
     load.allocator.destroy(load);
-    if (document_live and ending == .settled) dom.document_lifecycle.loadDelayMayHaveEnded(document);
+    if (document_live) switch (ending) {
+        .settled => blockingMayHaveEnded(document),
+        .mutation => queueBlockingMayHaveEnded(document),
+        .teardown => {},
+    };
 }
 
 /// Every fetch has ended: queue the task that fires the event.

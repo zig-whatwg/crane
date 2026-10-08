@@ -553,9 +553,6 @@ pub const DomTreeAdapter = struct {
         // children-changed steps wait for its end tag too - is
         // parser-inserted.
         if (std.mem.eql(u8, local_name, "script")) dom.script_elements.markParserInserted(element, self.document);
-        // A style element updates its style block when the parser pops it
-        // (`domAdapterOnElementPopped`), not as it is inserted and filled.
-        if (std.mem.eql(u8, local_name, "style")) dom.style_sheet_owners.createdByParser(element);
         // An element type that acts when the parser pops its elements
         // (dom.finish_parsing_children) hears that this one is on the stack
         // of open elements - before its attributes are appended, so their
@@ -565,6 +562,10 @@ pub const DomTreeAdapter = struct {
         }
 
         for (tree_node.attributes.toSlice()) |attr| appendParsedAttribute(element, attr);
+
+        // HTML 4.2.7 records the token's stylesheet relationship and enabled
+        // state at creation, before its post-connection steps start a fetch.
+        if (is_html and (std.mem.eql(u8, local_name, "style") or std.mem.eql(u8, local_name, "link"))) dom.style_sheet_owners.createdByParser(element);
 
         return element;
     }

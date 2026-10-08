@@ -1,5 +1,5 @@
 //! What an element that owns a style sheet - a `link` or a `style` element -
-//! owes its node document, and what the HTML parser tells a style element.
+//! owes its node document, and what the HTML parser tells those elements.
 //!
 //! HTML 4.2.4.3 and 4.2.6: while a link element's style sheet, or a style
 //! element's, loads with its critical subresources (its @import rules), the
@@ -26,9 +26,12 @@ const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
-/// Whether a style sheet an element in `document` loads delays its load
-/// event.
-pub const LoadDelay = *const fn (document: *runtime.Instance) bool;
+/// Queries over the owners' live loads: the document's load-event delay
+/// and its own script-blocking style sheet set.
+pub const LoadDelay = struct {
+    delays: *const fn (document: *runtime.Instance) bool,
+    blocks_scripts: *const fn (document: *runtime.Instance) bool,
+};
 
 /// What the style element does when the parser creates and pops it.
 pub const ParserSteps = struct {
@@ -37,6 +40,8 @@ pub const ParserSteps = struct {
     /// The parser popped `element` off its stack of open elements, its
     /// text inserted.
     popped: *const fn (element: *runtime.Instance) void,
+    /// The parser made a link, with all token attributes installed.
+    link_created: ?*const fn (element: *runtime.Instance) void = null,
 };
 
 var load_delay: ?LoadDelay = null;
@@ -51,20 +56,42 @@ pub fn installLoadDelay(delay: LoadDelay) void {
 /// Called by the style element. Idempotent.
 pub fn installParserSteps(steps: ParserSteps) void {
     process_start.assertInstalling();
+    const link_created = if (parser_steps) |old| old.link_created else null;
     parser_steps = steps;
+    if (parser_steps.?.link_created == null) parser_steps.?.link_created = link_created;
+}
+
+/// Called by the link element. Keeps the style element's parser hooks.
+pub fn installLinkParserSteps(created: *const fn (element: *runtime.Instance) void) void {
+    process_start.assertInstalling();
+    if (parser_steps == null) parser_steps = .{ .created = &ignoreParserStep, .popped = &ignoreParserStep };
+    parser_steps.?.link_created = created;
+}
+
+fn ignoreParserStep(element: *runtime.Instance) void {
+    _ = element;
 }
 
 /// "The end" step 8: whether a style sheet an element in `document` loads
 /// still delays its load event.
 pub fn delaysLoadEvent(document: *runtime.Instance) bool {
     const delay = load_delay orelse return false;
-    return delay(document);
+    return delay.delays(document);
 }
 
-/// The HTML parser created `element`, a style element in the HTML namespace.
+/// Whether `document`'s own script-blocking style sheet set is nonempty.
+/// Document additionally checks its immediate container document's set.
+pub fn blocksScripts(document: *runtime.Instance) bool {
+    const delay = load_delay orelse return false;
+    return delay.blocks_scripts(document);
+}
+
+/// The HTML parser created `element`, a style or link element in the HTML
+/// namespace, and appended all token attributes before connection.
 pub fn createdByParser(element: *runtime.Instance) void {
     const steps = parser_steps orelse return;
     steps.created(element);
+    if (steps.link_created) |created| created(element);
 }
 
 /// The HTML parser popped `element`, a style element it created, off its
@@ -86,6 +113,7 @@ test "without installed implementations nothing delays a load event, and the par
     // Never dereferenced: with no implementation nothing reads it.
     var node: runtime.Instance = undefined;
     try @import("std").testing.expect(!delaysLoadEvent(&node));
+    try @import("std").testing.expect(!blocksScripts(&node));
     createdByParser(&node);
     poppedByParser(&node);
 }
@@ -113,10 +141,11 @@ test "the installed implementations answer" {
         load_delay = saved_delay;
         parser_steps = saved_steps;
     }
-    installLoadDelay(&testDelays);
+    installLoadDelay(.{ .delays = &testDelays, .blocks_scripts = &testDelays });
     installParserSteps(.{ .created = &testCreated, .popped = &testPopped });
     var node: runtime.Instance = undefined;
     try @import("std").testing.expect(delaysLoadEvent(&node));
+    try @import("std").testing.expect(blocksScripts(&node));
     test_popped = 0;
     poppedByParser(&node);
     try @import("std").testing.expectEqual(@as(usize, 1), test_popped);
