@@ -231,6 +231,7 @@ fn loadForPrepare(context: ?*anyopaque, src: []const u8) ?[]const u8 {
 /// document.write() must insert (document-write/script_013). The end-tag
 /// steps restore the old insertion point after this returns.
 fn runPendingParsingBlockingScripts(ctx: *ParserScriptContext) void {
+    if (!parserContextIsCurrent(ctx)) return;
     if (script_execution.pendingParsingBlockingScript(ctx.document) == null) {
         ctx.tree_builder.waiting_for_parser_blocking_script = false;
         return;
@@ -247,7 +248,11 @@ fn runPendingParsingBlockingScripts(ctx: *ParserScriptContext) void {
         // own document.write can invoke the tokenizer at the insertion point.
         ctx.tree_builder.waiting_for_parser_blocking_script = false;
         ctx.tree_builder.parser_pause_flag = false;
-        if (!script_execution.executePendingParserBlockingScript(ctx.allocator, ctx.document)) break;
+        const executed = script_execution.executePendingParserBlockingScript(ctx.allocator, ctx.document);
+        // A resumed script can open its document, stop navigation, or remove
+        // its frame. Never consult the old document again after cancellation.
+        if (!parserContextIsCurrent(ctx)) return;
+        if (!executed) break;
         ctx.tree_builder.parser_pause_flag = false;
     }
     ctx.tree_builder.waiting_for_parser_blocking_script = script_execution.pendingParsingBlockingScript(ctx.document) != null;
@@ -260,6 +265,7 @@ fn runPendingParsingBlockingScripts(ctx: *ParserScriptContext) void {
 /// The insertion point and script nesting level are scoped across execution,
 /// including nested document.write calls and abrupt script completion.
 pub fn resumeAfterBlockingScript(ctx: *ParserScriptContext) void {
+    if (!parserContextIsCurrent(ctx)) return;
     if (script_execution.pendingParsingBlockingScript(ctx.document) == null) return;
     if (ctx.tree_builder.script_nesting_level != 0) return;
     const stream = ctx.tree_builder.input_stream_manager;

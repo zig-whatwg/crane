@@ -1229,13 +1229,10 @@ pub const Context = struct {
 
     /// Script loader callback type for external script loading
     /// Returns script content for the given URL, or null if loading failed
-    pub const ScriptLoaderFn = *const fn (ctx: *anyopaque, url: []const u8) ?[]const u8;
+    pub const ScriptLoaderFn = @import("html").parser_script_execution.ScriptLoaderFn;
 
     /// Script loader interface for customizing how external scripts are loaded
-    pub const ScriptLoader = struct {
-        context: *anyopaque,
-        loadScript: ScriptLoaderFn,
-    };
+    pub const ScriptLoader = @import("html").scripted_parser.ScriptLoader;
 
     /// Options for HTML loading
     pub const LoadHTMLOptions = struct {
@@ -1317,13 +1314,6 @@ pub const Context = struct {
 
         // Create HTMLParser script loader
         const HTMLParser = impls.HTMLParser;
-        const script_loader: ?HTMLParser.ScriptLoader = if (options.script_loader) |loader|
-            HTMLParser.ScriptLoader{
-                .context = loader.context,
-                .loadScript = @ptrCast(loader.loadScript),
-            }
-        else
-            null;
 
         // Parse HTML into the existing document (already registered in V8)
         var parser_canceled = false;
@@ -1335,7 +1325,7 @@ pub const Context = struct {
                 .scripting_enabled = options.scripting_enabled,
                 .parser_canceled = &parser_canceled,
                 .base_url = options.base_url,
-                .script_loader = script_loader,
+                .script_loader = options.script_loader,
                 .existing_document = document,
                 .byte_stream = options.byte_stream,
             },
@@ -1381,7 +1371,7 @@ pub const Context = struct {
             const element = try interfaces.HTMLCollection.call_item(iframes, i);
             if (element) |iframe_elem| {
                 // Access contentWindow to trigger IFrameIntegration.ensureBrowsingContext
-                _ = impls.HTMLIFrameElement.get_contentWindow(iframe_elem) catch |err| {
+                _ = interfaces.HTMLIFrameElement.get_contentWindow(iframe_elem) catch |err| {
                     log.debug("Warning: Failed to initialize iframe {d}: {}\n", .{ i, err });
                 };
             }

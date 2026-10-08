@@ -52,8 +52,16 @@ pub fn unregister() void {
 /// behaviour for every build but the WPT runner's.
 pub fn forRealm(realm: runtime.Context) ?scripted_parser.ScriptLoader {
     if (registered == null) return null;
-    return .{ .context = @ptrCast(realm), .loadScript = &load };
+    return .{ .context = @ptrCast(realm), .loadScript = &load, .retain = &retainRealm, .release = &releaseRealm };
 }
+
+// ContextData remains allocated and inert until its agent ends: the engine
+// adapter's retirement clears engine/realm/loop before saving retired storage.
+// Documents and parsers tear down before that storage drains. Parser resume
+// validates realm liveness before invoking this borrowed realm loader; these
+// lifetime callbacks never dereference the realm or the registered embedder.
+fn retainRealm(_: ?*anyopaque) void {}
+fn releaseRealm(_: ?*anyopaque) void {}
 
 /// `ScriptLoader.loadScript`: the registered loader, given the realm the
 /// loader was made for.

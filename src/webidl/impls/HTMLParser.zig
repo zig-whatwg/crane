@@ -53,7 +53,6 @@ const NodeImpl = @import("Node.zig");
 // Import script execution module from html module
 const html_mod = @import("html");
 const node_document = @import("dom").node_document;
-const script_execution = html_mod.script_execution;
 
 // Import parser script execution for incremental DOM building
 const parser_script_execution = html_mod.parser_script_execution;
@@ -185,6 +184,8 @@ pub fn parseHTML(
 /// const loader = ScriptLoader{
 ///     .context = &my_context,
 ///     .loadScript = typedLoader,
+///     .retain = &retainContext,
+///     .release = &releaseContext,
 /// };
 /// ```
 pub fn TypedScriptLoader(comptime Context: type) type {
@@ -212,18 +213,7 @@ pub fn TypedScriptLoader(comptime Context: type) type {
 /// For type-safe loading, prefer TypedScriptLoader(Context) which provides
 /// compile-time type checking. This legacy interface is kept for compatibility
 /// and for cases where the context type cannot be known at compile time.
-pub const ScriptLoader = struct {
-    /// Opaque context pointer passed to load callback
-    context: ?*anyopaque,
-    /// Load an external script by URL, returns script content
-    /// Returns null on failure
-    loadScript: *const fn (?*anyopaque, []const u8) ?[]const u8,
-
-    /// Load a script and return its content (or null on failure)
-    pub fn load(self: ScriptLoader, url: []const u8) ?[]const u8 {
-        return self.loadScript(self.context, url);
-    }
-};
+pub const ScriptLoader = html_mod.scripted_parser.ScriptLoader;
 
 /// Options for HTML parsing with scripting support
 pub const ScriptingParseOptions = struct {
@@ -261,7 +251,7 @@ pub const ScriptingParseOptions = struct {
 /// @param ctx Runtime context for DOM instances
 /// @param html The HTML string to parse
 /// @param options Scripting parse options
-/// @return A Document instance containing the parsed DOM tree with executed scripts
+/// @return The Document, possibly still loading while its parser waits.
 pub fn parseHTMLWithScripting(
     allocator: Allocator,
     ctx: runtime.Context,
@@ -272,6 +262,7 @@ pub fn parseHTMLWithScripting(
     // The document: the one navigation already registered in V8, so the
     // page's scripts see it - emptied of a previous run's tree - or a new one.
     if (options.existing_document) |existing| {
+        @import("dom").document_lifecycle.discardParser(existing, null);
         document_internals.clearChildren(existing);
     }
 
@@ -283,10 +274,7 @@ pub fn parseHTMLWithScripting(
         .scripting_enabled = options.scripting_enabled,
         .parser_canceled = &parser_canceled,
         .document = options.existing_document,
-        .script_loader = if (options.script_loader) |loader| .{
-            .context = loader.context,
-            .loadScript = loader.loadScript,
-        } else null,
+        .script_loader = options.script_loader,
         .base_url = options.base_url,
         .byte_stream = options.byte_stream,
     }) catch |err| return switch (err) {
@@ -302,19 +290,8 @@ pub fn parseHTMLWithScripting(
         return document;
     }
 
-    // HTML §13.2.7 "the end" step 3: the parser has stopped - readiness
-    // "interactive", before the deferred scripts, which see it.
-    @import("dom").document_lifecycle.parsingStopped(document);
-
-    // Step 5: the scripts that execute when the document has finished parsing.
-    if (options.scripting_enabled) {
-        script_execution.executeScriptsWhenParsingFinished(allocator, document);
-    }
-
-    // Steps 6 and 9: DOMContentLoaded, then readiness "complete", load at the
-    // window and pageshow - each queued as the task the spec makes it.
-    @import("dom").document_lifecycle.finishLoading(document);
-
+    // A stylesheet wait can return before EOF. Document's active parser
+    // owns both continuation and eventual "the end"; initiation does not.
     return document;
 }
 

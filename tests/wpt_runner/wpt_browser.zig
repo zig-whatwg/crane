@@ -50,6 +50,7 @@ const clock = @import("clock");
 /// The JavaScript engine, for one operation: abortRunningScript at a run's
 /// ceiling (script_deadline.zig), when the engine has it.
 const engine = @import("engine");
+const runtime = @import("runtime");
 const script_deadline = @import("script_deadline.zig");
 
 const log = std.log.scoped(.wpt_browser);
@@ -300,18 +301,6 @@ pub const WptBrowser = struct {
         self.armScriptDeadline(deadline);
         defer _ = self.endScriptDeadline();
 
-        // The origin this document actually came from. A `.https.` test is
-        // served from :8443 over TLS, and every same-origin check downstream -
-        // blob URLs, worker scripts, subresource URLs - has to agree with it.
-        const origin = originOfUrl(test_url) orelse WPT_ORIGIN;
-
-        // Create script loader context for external script loading
-        const loader_ctx = ScriptLoaderContext{
-            .wpt_browser = self,
-            .test_path = test_path,
-            .origin = origin,
-        };
-
         // Phase clocks. `waitForCompletion` measures itself, but on a page of
         // synchronous subtests it starts after the work is already done, so on
         // its own it makes the most expensive files look free. Timing the two
@@ -334,6 +323,12 @@ pub const WptBrowser = struct {
 
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
+        const realm = ctx.realm orelse return error.NoContext;
+        // The harness can finish while parsing still waits on a sheet. The
+        // run and the persistent parser hold independent context references.
+        const loader_ctx = try self.allocator.create(ScriptLoaderContext);
+        loader_ctx.* = .{ .allocator = self.allocator, .wpt_browser = self, .realm = realm };
+        defer ScriptLoaderContext.release(loader_ctx);
 
         // Load testharness.js BEFORE loading the page
         // This ensures testharness globals are available when scripts in HTML execute
@@ -345,8 +340,10 @@ pub const WptBrowser = struct {
         // The script loader handles external script loading (also via HTTP for absolute URLs)
         ctx.loadPageWithOptions(.{
             .script_loader = .{
-                .context = @ptrCast(@constCast(&loader_ctx)),
+                .context = loader_ctx,
                 .loadScript = scriptLoaderCallback,
+                .retain = &ScriptLoaderContext.retain,
+                .release = &ScriptLoaderContext.release,
             },
         }) catch |err| {
             // A load its ceiling aborted is a run that timed out: the wait
@@ -386,11 +383,21 @@ pub const WptBrowser = struct {
 
     /// Script loader context for HTML parsing
     const ScriptLoaderContext = struct {
+        allocator: std.mem.Allocator,
         wpt_browser: *WptBrowser,
-        test_path: []const u8,
-        /// The document's origin, so subresources are fetched from the same
-        /// scheme and port the document was. Borrowed from the test URL.
-        origin: []const u8,
+        realm: runtime.Context,
+        references: usize = 1,
+
+        fn retain(context: ?*anyopaque) void {
+            const self: *ScriptLoaderContext = @ptrCast(@alignCast(context.?));
+            self.references += 1;
+        }
+
+        fn release(context: ?*anyopaque) void {
+            const self: *ScriptLoaderContext = @ptrCast(@alignCast(context.?));
+            self.references -= 1;
+            if (self.references == 0) self.allocator.destroy(self);
+        }
     };
 
     /// The embedder's script loader for the parser: it answers only for
@@ -407,8 +414,9 @@ pub const WptBrowser = struct {
     /// `<script src>` ever reached Fetch's MIME type and nosniff checks, a
     /// `<base href>` was ignored, and a data: URL was fetched as a path. (The
     /// WebIDLParser.js -> webidl2.js rewrite it applied is wpt serve's own.)
-    fn scriptLoaderCallback(ctx_ptr: *anyopaque, url: []const u8) ?[]const u8 {
-        const loader_ctx: *const ScriptLoaderContext = @ptrCast(@alignCast(ctx_ptr));
+    fn scriptLoaderCallback(ctx_ptr: ?*anyopaque, url: []const u8) ?[]const u8 {
+        const loader_ctx: *const ScriptLoaderContext = @ptrCast(@alignCast(ctx_ptr orelse return null));
+        if (!loader_ctx.realm.hasEngine()) return null;
         const self = loader_ctx.wpt_browser;
 
         if (std.mem.eql(u8, url, "/resources/testharness.js") or
@@ -421,9 +429,7 @@ pub const WptBrowser = struct {
         // testdriver.js's vendor hook: Crane's, with its natives defined on
         // the test realm first (test_driver.zig).
         if (std.mem.eql(u8, url, test_driver.vendor_path)) {
-            const ctx = self.browser.current_context orelse return null;
-            const realm = ctx.realm orelse return null;
-            self.test_driver.defineNatives(realm);
+            self.test_driver.defineNatives(loader_ctx.realm);
             return self.allocator.dupe(u8, test_driver.vendor_js) catch null;
         }
         return null;

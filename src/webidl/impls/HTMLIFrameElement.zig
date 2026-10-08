@@ -440,6 +440,10 @@ fn parseHtmlForIframe(
     else
         null;
 
+    // Make the wrapper in its relevant realm before a parse can suspend or
+    // run lifecycle callbacks. The navigable already owns this document.
+    wrapInOwnRealm(document_instance);
+
     // The scripted parser builds the tree incrementally through the
     // DomTreeAdapter, so scripts can reach nodes already parsed.
     log.debug("[parseHtmlForIframe] time={d}ns calling parseHTMLWithScripting", .{clock.monotonicNanos()});
@@ -467,22 +471,8 @@ fn parseHtmlForIframe(
     log.debug("[parseHtmlForIframe] time={d}ns parseHTMLWithScripting DONE", .{clock.monotonicNanos()});
     if (parser_canceled) return document_instance;
 
-    // HTML "the end": readiness "interactive" now the parser has stopped,
-    // then DOMContentLoaded, readiness "complete", load at the window and
-    // pageshow as tasks - the last of which queues the iframe's own load
-    // ("completely finish loading"), after everything the page posted.
-    dom_module.document_lifecycle.parsingStopped(document_instance);
-    // "The end" step 5: run the list of scripts that will execute when the
-    // document has finished parsing - every `defer` script and every
-    // parser-inserted module script. The frame's parse never did, so no
-    // module script in a frame ever ran.
-    if (scripting_enabled) {
-        html_module.script_execution.executeScriptsWhenParsingFinished(allocator, document_instance);
-    }
-    dom_module.document_lifecycle.finishLoading(document_instance);
-
-    // The Document's wrapper, made now in its own realm (see wrapInOwnRealm).
-    wrapInOwnRealm(document_instance);
+    // Initiation may have paused on a stylesheet. Its Document-owned parser
+    // runs "the end" only after actual EOF, including srcdoc and popups.
 
     return document_instance;
 }

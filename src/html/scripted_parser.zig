@@ -70,11 +70,38 @@ pub const ParseError = error{
 };
 
 /// The embedder's loader for parser-inserted external scripts: content for a
-/// URL, owned by the caller's allocator, or null to let the fetch happen as
-/// usual.
+/// URL, owned by the parser's allocator, or null to fetch as usual. The
+/// descriptor is borrowed; a persistent parser acquires its context. Every
+/// caller must supply retention and release, including static contexts.
 pub const ScriptLoader = struct {
     context: ?*anyopaque,
     loadScript: parser_scripts.ScriptLoaderFn,
+    retain: *const fn (?*anyopaque) void,
+    release: *const fn (?*anyopaque) void,
+
+    pub fn load(self: ScriptLoader, url: []const u8) ?[]const u8 {
+        return self.loadScript(self.context, url);
+    }
+
+    pub fn acquire(self: ScriptLoader) OwnedScriptLoader {
+        self.retain(self.context);
+        return .{ .loader = self };
+    }
+};
+
+/// One acquired context reference. Move into its owner once; never copy it.
+pub const OwnedScriptLoader = struct {
+    loader: ?ScriptLoader,
+
+    pub fn load(self: *const OwnedScriptLoader, url: []const u8) ?[]const u8 {
+        return (self.loader orelse unreachable).load(url);
+    }
+
+    pub fn deinit(self: *OwnedScriptLoader) void {
+        const loader = self.loader orelse unreachable;
+        self.loader = null;
+        loader.release(loader.context);
+    }
 };
 
 /// Options for HTML parsing
@@ -199,77 +226,116 @@ const ByteStreamDecoding = struct {
     }
 };
 
-/// The tree builder's hook for document.write(): process the characters it
-/// inserted, up to the insertion point (the stream has set that limit).
-fn processInsertedCharacters(context: *anyopaque) void {
-    const tree_builder: *TreeBuilder = @ptrCast(@alignCast(context));
-    tree_builder.parse() catch |err| std.log.scoped(.scripted_parser).warn("document.write(): the parser stopped: {}", .{err});
-}
-
-fn abortParserCharacters(context: *anyopaque) void {
-    const tree_builder: *TreeBuilder = @ptrCast(@alignCast(context));
-    tree_builder.abort();
-}
-
-/// The parser created by document.open(). Its tokenizer, tree construction
-/// state and DOM adapter have stable addresses until the parser is detached.
-/// A write pumps this same parser; only close marks its input complete.
+/// A document's active parser. Its tokenizer, tree construction state and
+/// DOM adapter have stable addresses across a stylesheet wait or a write.
+/// Navigation supplies complete input; document.open waits for close's EOF.
 ///
 /// Design: WebKit HTMLDocumentParser::insert / finish / shouldDelayEnd:
 /// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/html/parser/HTMLDocumentParser.cpp
-pub const ScriptCreatedParser = struct {
+pub const DocumentParser = struct {
     allocator: Allocator,
     ctx: runtime.Context,
     document: *runtime.Instance,
     document_generation: u64,
+    document_epoch: u64 = 0,
+    had_engine: bool,
     input_stream: InputStreamManager,
     tokenizer: Tokenizer,
     tree_builder: TreeBuilder,
     adapter: DomTreeAdapter,
     script_context: ParserScriptContext,
+    base_url: []u8,
+    original_bytes: ?[]u8 = null,
+    byte_stream_decoding: ?ByteStreamDecoding = null,
+    owned_loader: ?OwnedScriptLoader = null,
     traced_slots: @import("infra").List([]u8),
-    /// The document owns one reference. A write/close holds another across
-    /// every callback and the input stream's insertion-limit restoration.
+    /// Document owns one reference. Initiation and each write/close/resume
+    /// hold another across callbacks and insertion-limit restoration.
     references: usize = 1,
     pump_depth: usize = 0,
     detached: bool = false,
     document_destroyed: bool = false,
     eof_processed: bool = false,
-    on_finished: *const fn (*runtime.Instance, *ScriptCreatedParser) void,
+    on_finished: *const fn (*runtime.Instance, *DocumentParser) void,
 
     pub fn create(
         allocator: Allocator,
         ctx: runtime.Context,
         document: *runtime.Instance,
         scripting_enabled: bool,
-        on_finished: *const fn (*runtime.Instance, *ScriptCreatedParser) void,
-    ) !*ScriptCreatedParser {
-        const self = try allocator.create(ScriptCreatedParser);
+        on_finished: *const fn (*runtime.Instance, *DocumentParser) void,
+    ) !*DocumentParser {
+        return createWithInput(allocator, ctx, document, "", .{ .scripting_enabled = scripting_enabled }, true, on_finished);
+    }
+
+    /// Copies all input retained beyond initiation, including original bytes
+    /// needed by a meta encoding change after a parser-blocking stylesheet.
+    pub fn createComplete(allocator: Allocator, ctx: runtime.Context, document: *runtime.Instance, html: []const u8, options: ParseOptions) !*DocumentParser {
+        var decoded: ?[]u8 = null;
+        defer if (decoded) |input| allocator.free(input);
+        var sniffed: ?encoding_sniffing.Result = null;
+        if (options.byte_stream) |stream| {
+            const result = encoding_sniffing.sniff(html, .{
+                .transport = if (stream.content_type) |ct| encoding_sniffing.transportEncoding(allocator, ct) else null,
+                .parent = if (stream.parent_encoding) |name| encoding_sniffing.lookup(name) else null,
+            });
+            sniffed = result;
+            try document_internals.setEncoding(document, encoding_sniffing.canonicalName(result.encoding));
+            decoded = try encoding_sniffing.decode(allocator, html, result.encoding);
+        }
+        const self = try createWithInput(allocator, ctx, document, decoded orelse html, options, false, &navigationFinished);
+        errdefer self.release();
+        if (sniffed) |result| {
+            self.original_bytes = try allocator.dupe(u8, html);
+            self.byte_stream_decoding = .{
+                .allocator = allocator,
+                .bytes = self.original_bytes.?,
+                .encoding = result.encoding,
+                .confidence = result.confidence,
+                .document = document,
+                .input_stream = &self.input_stream,
+                .decoded_len = self.input_stream.buffer.items.len,
+            };
+            self.tree_builder.change_the_encoding = .{ .context = @ptrCast(&self.byte_stream_decoding.?), .change = &ByteStreamDecoding.change };
+        }
+        return self;
+    }
+
+    fn navigationFinished(document: *runtime.Instance, self: *DocumentParser) void {
+        dom.document_lifecycle.parserFinished(document, self);
+    }
+
+    fn createWithInput(allocator: Allocator, ctx: runtime.Context, document: *runtime.Instance, input: []const u8, options: ParseOptions, script_created: bool, on_finished: *const fn (*runtime.Instance, *DocumentParser) void) !*DocumentParser {
+        const self = try allocator.create(DocumentParser);
         errdefer allocator.destroy(self);
+        const base_url = try allocator.dupe(u8, options.base_url);
+        errdefer allocator.free(base_url);
         self.* = .{
             .allocator = allocator,
             .ctx = ctx,
             .document = document,
             .document_generation = runtime.SlabAllocator.generationOf(document),
-            .input_stream = try InputStreamManager.init(allocator, ""),
+            .had_engine = ctx.hasEngine(),
+            .input_stream = try InputStreamManager.init(allocator, input),
             .tokenizer = undefined,
             .tree_builder = undefined,
             .adapter = undefined,
             .script_context = undefined,
+            .base_url = base_url,
             .traced_slots = @import("infra").List([]u8).init(allocator),
             .on_finished = on_finished,
         };
         errdefer self.input_stream.deinit();
         // HTML 8.4.1 steps 16-17: no implicit EOF, insertion just before
         // the end of an initially empty input stream.
-        self.input_stream.complete = false;
-        self.input_stream.insertion_point = 0;
+        self.input_stream.complete = !script_created;
+        self.input_stream.insertion_point = if (script_created) 0 else null;
         self.tokenizer = Tokenizer.initWithStreamManager(allocator, &self.input_stream);
         errdefer self.tokenizer.deinit();
         self.input_stream.attach(&self.tokenizer);
         self.tree_builder = try TreeBuilder.initWithStreamManager(allocator, &self.tokenizer, &self.input_stream);
         errdefer self.tree_builder.deinit();
-        self.tree_builder.scripting_enabled = scripting_enabled;
+        self.tree_builder.scripting_enabled = options.scripting_enabled;
         self.input_stream.script_nesting_level = &self.tree_builder.script_nesting_level;
         self.adapter = DomTreeAdapter.init(allocator, ctx, document);
         errdefer self.adapter.deinit();
@@ -292,11 +358,18 @@ pub const ScriptCreatedParser = struct {
             document,
             &self.adapter.node_map,
             &self.tree_builder,
-            scripting_enabled,
+            options.scripting_enabled,
         );
-        self.script_context.can_suspend = true;
+        // Preserve the embedder override before navigation classic fetches.
+        // Persistent state permits stylesheet waits independently of this.
+        self.script_context.can_suspend = script_created;
+        self.script_context.setBaseUrl(self.base_url);
+        if (options.script_loader) |loader| {
+            self.owned_loader = loader.acquire();
+            self.script_context.setScriptLoader(loader.loadScript, loader.context);
+        }
         self.tree_builder.setScriptEndCheckpointCallback(&parser_scripts.parserScriptEndCheckpoint, &self.script_context);
-        if (scripting_enabled) self.tree_builder.setScriptExecutionCallback(&parser_scripts.parserScriptCallback, &self.script_context);
+        if (options.scripting_enabled) self.tree_builder.setScriptExecutionCallback(&parser_scripts.parserScriptCallback, &self.script_context);
         self.input_stream.processor = .{
             .context = self,
             .process = &process,
@@ -311,7 +384,7 @@ pub const ScriptCreatedParser = struct {
     fn nodeCreated(node: *TreeNode, context: ?*anyopaque) void {
         parser_scripts.domAdapterOnNodeCreated(node, context);
         const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
-        const self: *ScriptCreatedParser = @fieldParentPtr("adapter", adapter);
+        const self: *DocumentParser = @fieldParentPtr("adapter", adapter);
         const instance = adapter.getDomNode(node) orelse return;
         if (instance == self.document or !self.ctx.hasEngine()) return;
         if (runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return;
@@ -319,7 +392,7 @@ pub const ScriptCreatedParser = struct {
         // Blink HTMLTreeBuilder::Trace visiting its open-element stack.
         // A detached node must survive until this parser releases it, while
         // an unreachable document/parser/node cycle must remain collectable.
-        const slot = std.fmt.allocPrint(self.allocator, "script-created-parser:{x}", .{@intFromPtr(node)}) catch return;
+        const slot = std.fmt.allocPrint(self.allocator, "document-parser:{x}", .{@intFromPtr(node)}) catch return;
         self.traced_slots.append(slot) catch {
             self.allocator.free(slot);
             return;
@@ -331,11 +404,11 @@ pub const ScriptCreatedParser = struct {
         if (@import("engine").hasWrapper(instance)) _ = adapter.unattached_nodes.remove(instance);
     }
 
-    pub fn retain(self: *ScriptCreatedParser) void {
+    pub fn retain(self: *DocumentParser) void {
         self.references += 1;
     }
 
-    pub fn release(self: *ScriptCreatedParser) void {
+    pub fn release(self: *DocumentParser) void {
         self.references -= 1;
         if (self.references != 0) return;
         std.debug.assert(self.pump_depth == 0);
@@ -344,6 +417,9 @@ pub const ScriptCreatedParser = struct {
         self.tree_builder.deinit();
         self.input_stream.deinit();
         self.tokenizer.deinit();
+        if (self.owned_loader) |*loader| loader.deinit();
+        if (self.original_bytes) |bytes| self.allocator.free(bytes);
+        self.allocator.free(self.base_url);
         for (self.traced_slots.toSlice()) |slot| self.allocator.free(slot);
         self.traced_slots.deinit();
         self.allocator.destroy(self);
@@ -351,7 +427,7 @@ pub const ScriptCreatedParser = struct {
 
     /// Stop an old parser without freeing a pump a script has reentered.
     /// The document clears its association before dropping its reference.
-    pub fn detach(self: *ScriptCreatedParser) void {
+    pub fn detach(self: *DocumentParser) void {
         if (self.detached) return;
         self.detached = true;
         self.input_stream.aborted = true;
@@ -360,7 +436,7 @@ pub const ScriptCreatedParser = struct {
 
     /// Document's wrapper owns its traced edges. A collector teardown lets
     /// those die with the wrapper, without manipulating edges during GC.
-    pub fn detachForDocumentDestruction(self: *ScriptCreatedParser) void {
+    pub fn detachForDocumentDestruction(self: *DocumentParser) void {
         self.document_destroyed = true;
         // Teardown never runs parser callbacks or script. Destroying the
         // private tree below releases its stack storage without observable
@@ -370,7 +446,7 @@ pub const ScriptCreatedParser = struct {
         self.input_stream.insertion_point = null;
     }
 
-    fn forgetParserReferences(self: *ScriptCreatedParser) void {
+    fn forgetParserReferences(self: *DocumentParser) void {
         // A frame can retire its realm while a written script still holds
         // this parser on the stack. The saved context remains allocated;
         // do not dereference a document the collector has already recycled.
@@ -380,53 +456,65 @@ pub const ScriptCreatedParser = struct {
     }
 
     fn retainProcessor(context: *anyopaque) void {
-        const self: *ScriptCreatedParser = @ptrCast(@alignCast(context));
+        const self: *DocumentParser = @ptrCast(@alignCast(context));
         self.retain();
     }
 
     fn releaseProcessor(context: *anyopaque) void {
-        const self: *ScriptCreatedParser = @ptrCast(@alignCast(context));
+        const self: *DocumentParser = @ptrCast(@alignCast(context));
         self.release();
     }
 
     fn afterProcess(context: *anyopaque) void {
-        const self: *ScriptCreatedParser = @ptrCast(@alignCast(context));
+        const self: *DocumentParser = @ptrCast(@alignCast(context));
         self.finishIfPossible() catch |err| log.warn("document.close(): the parser stopped: {}", .{err});
     }
 
     fn abortProcessor(context: *anyopaque) void {
-        const self: *ScriptCreatedParser = @ptrCast(@alignCast(context));
+        const self: *DocumentParser = @ptrCast(@alignCast(context));
         self.tree_builder.abort();
     }
 
     fn process(context: *anyopaque) void {
-        const self: *ScriptCreatedParser = @ptrCast(@alignCast(context));
+        const self: *DocumentParser = @ptrCast(@alignCast(context));
         self.pump() catch |err| log.warn("document.write(): the parser stopped: {}", .{err});
     }
 
-    fn pump(self: *ScriptCreatedParser) !void {
+    fn pump(self: *DocumentParser) !void {
         if (self.detached or self.eof_processed) return;
+        if (!self.isCurrent()) {
+            self.detach();
+            return;
+        }
         self.pump_depth += 1;
         defer self.pump_depth -= 1;
         parser_scripts.resumeAfterBlockingScript(&self.script_context);
-        if (self.detached) return;
+        if (self.detached or !self.isCurrent()) return;
         try self.tree_builder.parse();
+    }
+
+    fn isCurrent(self: *const DocumentParser) bool {
+        if (self.document_destroyed or (self.had_engine and !self.ctx.hasEngine())) return false;
+        if (runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return false;
+        const internal = document_internals.getInternal(self.document) orelse return false;
+        return !internal.destroyed and internal.active_parser == self and internal.parser_epoch == self.document_epoch;
     }
 
     /// Called after the input stream restored a write's stop position. A
     /// nested close only marks EOF; the outermost write finishes the parser.
-    pub fn finishIfPossible(self: *ScriptCreatedParser) !void {
+    pub fn finishIfPossible(self: *DocumentParser) !void {
         if (self.detached or self.eof_processed or !self.input_stream.complete or self.pump_depth != 0) return;
+        if (!self.isCurrent()) return;
         const internal = document_internals.getInternal(self.document) orelse return;
         if (internal.scripts.pending_parsing_blocking_script != null) return;
         try self.pump();
-        if (self.detached or !self.input_stream.eof_processed) return;
+        if (self.detached or !self.isCurrent() or !self.input_stream.eof_processed) return;
         self.eof_processed = true;
         self.on_finished(self.document, self);
     }
 
     /// HTML 8.4.2 steps 4-6. EOF is explicit and can only be processed once.
-    pub fn close(self: *ScriptCreatedParser) !void {
+    pub fn close(self: *DocumentParser) !void {
         self.input_stream.complete = true;
         try self.finishIfPossible();
     }
@@ -435,8 +523,8 @@ pub const ScriptCreatedParser = struct {
 /// Parse an HTML document, building its DOM as it goes and running its
 /// scripts at their end tags - the complete-input driver for the top-level
 /// page (HTMLParser.parseHTMLWithScripting) and a frame (HTMLIFrameElement).
-/// Script-created documents use ScriptCreatedParser to retain the same stages
-/// across successive writes.
+/// Both navigation and script-created documents retain these stages across
+/// waits and successive writes. The Document owns eventual completion.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/parsing.html
 ///
@@ -445,7 +533,7 @@ pub const ScriptCreatedParser = struct {
 /// document.write() inserts into: while the parser runs, the document holds
 /// the stream, a script the parser runs has an insertion point, and what it
 /// writes is parsed before write() returns (the document write steps, step
-/// 11). "The end" is the caller's.
+/// 11). Returning may mean a stylesheet wait; only actual EOF runs "the end".
 /// Whether `url` matches about:srcdoc: "about:srcdoc", with nothing after it
 /// but a query or a fragment.
 ///
@@ -483,131 +571,26 @@ pub fn parseHTMLWithScripting(
         dom.document_browsing_context.setWindow(document, window);
     }
 
-    // A byte stream: HTML §13.2.3.2 "determining the character encoding".
-    // "The document's character encoding must immediately be set to the value
-    // returned from this algorithm, at the same time as the user agent uses
-    // the returned value to select the decoder to use for the input byte
-    // stream."
-    var decoded: ?[]u8 = null;
-    defer if (decoded) |d| allocator.free(d);
-    var sniffed: ?encoding_sniffing.Result = null;
-    if (options.byte_stream) |byte_stream| {
-        const result = encoding_sniffing.sniff(html, .{
-            .transport = if (byte_stream.content_type) |ct| encoding_sniffing.transportEncoding(allocator, ct) else null,
-            .parent = if (byte_stream.parent_encoding) |name| encoding_sniffing.lookup(name) else null,
-        });
-        sniffed = result;
-        document_internals.setEncoding(document, encoding_sniffing.canonicalName(result.encoding)) catch return error.OutOfMemory;
-        decoded = encoding_sniffing.decode(allocator, html, result.encoding) catch return error.OutOfMemory;
-    }
-    const input = decoded orelse html;
+    // The initiating call holds its own reference through callbacks. The
+    // association acquires another, so either EOF or a reentrant open can
+    // release Document's ownership without freeing this invocation's state.
+    const parser = DocumentParser.createComplete(allocator, ctx, document, html, options) catch return error.OutOfMemory;
+    defer parser.release();
+    if (!dom.document_lifecycle.associateParser(document, parser)) return error.InvalidStateError;
+    errdefer if ((!had_engine or ctx.hasEngine()) and
+        runtime.SlabAllocator.generationOf(document) == document_generation)
+        dom.document_lifecycle.discardParser(document, parser);
+    parser.pump() catch return error.TreeBuilderError;
+    parser.finishIfPossible() catch return error.TreeBuilderError;
 
-    // Step 2: the input stream, and the tokenizer reading it.
-    var input_stream = InputStreamManager.init(allocator, input) catch return error.OutOfMemory;
-    defer input_stream.deinit();
-    var tokenizer = Tokenizer.initWithStreamManager(allocator, &input_stream);
-    defer tokenizer.deinit();
-    input_stream.attach(&tokenizer);
-
-    // Step 3: the tree builder.
-    var tree_builder = TreeBuilder.initWithStreamManager(allocator, &tokenizer, &input_stream) catch return error.OutOfMemory;
-    defer tree_builder.deinit();
-    tree_builder.scripting_enabled = options.scripting_enabled;
-    input_stream.script_nesting_level = &tree_builder.script_nesting_level;
-
-    // Step 4: the adapter that mirrors the tree into the DOM as it grows. The
-    // tree builder's document node is the DOM document.
-    var adapter = DomTreeAdapter.init(allocator, ctx, document);
-    defer adapter.deinit();
-    adapter.node_map.put(tree_builder.document, document) catch return error.OutOfMemory;
-    tree_builder.setDomAdapterCallbacks(
-        @ptrCast(&adapter),
-        &parser_scripts.domAdapterOnNodeCreated,
-        &parser_scripts.domAdapterOnChildAppended,
-        &parser_scripts.domAdapterOnTextContentChanged,
-    );
-    tree_builder.setDomAdapterAttributeCallback(&parser_scripts.domAdapterOnAttributeAdded);
-    // The document's mode: the "initial" insertion mode sets it on the
-    // Document as it parses the DOCTYPE, where script can already read it -
-    // except in an iframe srcdoc document, whose URL matches about:srcdoc.
-    tree_builder.setDomAdapterModeCallback(&parser_scripts.domAdapterOnModeSet);
-    tree_builder.setDomAdapterPoppedCallback(&parser_scripts.domAdapterOnElementPopped);
-    // Every element the tree builder removes from its stack of open elements:
-    // the element types that act on that pop hear it (dom.finish_parsing_children).
-    tree_builder.setDomAdapterFinishedCallback(&parser_scripts.domAdapterOnChildrenFinished);
-    adapter.notifies_children_finished = true;
-    if (document_internals.getURL(document)) |url| tree_builder.iframe_srcdoc = matchesAboutSrcdoc(url);
-
-    // Step 5: the script end-tag steps.
-    var script_context = ParserScriptContext.init(
-        allocator,
-        ctx,
-        document,
-        &adapter.node_map,
-        &tree_builder,
-        options.scripting_enabled,
-    );
-    script_context.setBaseUrl(options.base_url);
-    if (options.script_loader) |loader| script_context.setScriptLoader(loader.loadScript, loader.context);
-    tree_builder.setScriptEndCheckpointCallback(&parser_scripts.parserScriptEndCheckpoint, &script_context);
-    if (options.scripting_enabled) {
-        tree_builder.setScriptExecutionCallback(&parser_scripts.parserScriptCallback, @ptrCast(&script_context));
-    }
-
-    // Step 6: document.write() reaches the stream through the document, and
-    // has the parser process what it inserted.
-    input_stream.processor = .{
-        .context = @ptrCast(&tree_builder),
-        .process = &processInsertedCharacters,
-        .abort = &abortParserCharacters,
-    };
-    const previous_stream = document_internals.getInputStreamManager(document);
-    document_internals.setInputStreamManager(document, &input_stream);
-    defer {
-        // A reentrant open can replace this parser while it is suspended.
-        // Restore only the temporary association this invocation installed.
-        if ((!had_engine or ctx.hasEngine()) and
-            runtime.SlabAllocator.generationOf(document) == document_generation and
-            document_internals.getInputStreamManager(document) == &input_stream)
-            document_internals.setInputStreamManager(document, previous_stream);
-    }
-
-    // The parser's "change the encoding", while the encoding is tentative.
-    var byte_stream_decoding: ByteStreamDecoding = undefined;
-    if (sniffed) |result| {
-        byte_stream_decoding = .{
-            .allocator = allocator,
-            .bytes = html,
-            .encoding = result.encoding,
-            .confidence = result.confidence,
-            .document = document,
-            .input_stream = &input_stream,
-            .decoded_len = input.len,
-        };
-        tree_builder.change_the_encoding = .{ .context = @ptrCast(&byte_stream_decoding), .change = &ByteStreamDecoding.change };
-    }
-
-    // Step 7: parse.
-    tree_builder.parse() catch return error.TreeBuilderError;
-
-    // A script-end checkpoint can replace the document before the old
-    // script is prepared. Do not restore that parser's stale DOM bindings.
+    // Actual EOF detaches normally; open/abort/destruction detach without
+    // EOF. A returned loading document still owns its suspended parser.
     if ((had_engine and !ctx.hasEngine()) or runtime.SlabAllocator.generationOf(document) != document_generation or
-        input_stream.aborted or document_internals.getInputStreamManager(document) != &input_stream)
+        (parser.detached and !parser.eof_processed) or
+        ((!parser.detached or parser.eof_processed) and
+            (document_internals.getInternal(document) orelse return document).parser_epoch != parser.document_epoch))
     {
         if (options.parser_canceled) |canceled| canceled.* = true;
-        return document;
-    }
-
-    // The document element, should the adapter not have recorded it.
-    if (document_internals.getInternal(document)) |doc_internal| {
-        if (tree_builder.document.first_child) |first| {
-            if (first.hasTagName("html")) {
-                if (adapter.getDomNode(first)) |html_element| {
-                    doc_internal.document_element = html_element;
-                }
-            }
-        }
     }
 
     return document;

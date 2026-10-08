@@ -276,9 +276,9 @@ pub const InternalState = struct {
     /// Whether the active parser was aborted (e.g., by navigation)
     active_parser_was_aborted: bool,
 
-    /// document.open()'s persistent parser. Navigation parsers are borrowed
-    /// through input_stream_manager; only this parser is document-owned.
-    script_created_parser: ?*@import("html").scripted_parser.ScriptCreatedParser,
+    /// The document owns one reference to its navigation or script-created
+    /// parser until EOF, cancellation, replacement, or destruction.
+    active_parser: ?*@import("html").scripted_parser.DocumentParser,
 
     /// Distinguishes successive parsers of the same Document across script
     /// callbacks, including a replacement that already finished again.
@@ -436,7 +436,7 @@ pub const InternalState = struct {
             .insertion_point = null,
             .is_script_created_parser = false,
             .active_parser_was_aborted = false,
-            .script_created_parser = null,
+            .active_parser = null,
             .input_stream_manager = null,
             .scripting_enabled = true, // Default to true for browser environments
             // Module map and import map
@@ -465,8 +465,8 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        if (self.script_created_parser) |parser| {
-            self.script_created_parser = null;
+        if (self.active_parser) |parser| {
+            self.active_parser = null;
             self.input_stream_manager = null;
             parser.detachForDocumentDestruction();
             parser.release();
@@ -626,6 +626,9 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     @import("dom").document_lifecycle.install(.{
+        .associate_parser = &lifecycleAssociateParser,
+        .discard_parser = &lifecycleDiscardParser,
+        .parser_finished = &lifecycleParserFinished,
         .parsing_stopped = &lifecycleParsingStopped,
         .finish_loading = &lifecycleFinishLoading,
         .load_delay_may_have_ended = &lifecycleLoadDelayMayHaveEnded,
@@ -2643,11 +2646,11 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // document's node navigable."
     @import("dom").content_navigables.stopLoadingIfNavigating(instance);
 
-    // Detach the previous script-created parser before replacing its DOM.
+    // Detach the previous parser before replacing its DOM.
     // A parser pump currently on the stack keeps its own reference until
     // that invocation has restored its input stream's insertion limits.
     @import("html").script_execution.discardParserScripts(instance);
-    discardScriptCreatedParser(internal);
+    discardDocumentParser(internal);
     internal.parsing_end_waiting_on_scripts = false;
     // Step 16 replaces the parser. An old "the end" suspended at steps
     // 7-8 no longer completes this stream; only its explicit EOF can do so.
@@ -2708,15 +2711,16 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
 
     // Steps 16-17: create a parser that waits for document.close()'s EOF,
     // with its insertion point just before its empty stream's end.
-    const parser = try @import("html").scripted_parser.ScriptCreatedParser.create(
+    const parser = try @import("html").scripted_parser.DocumentParser.create(
         internal.allocator,
         instance.ctx,
         instance,
         internal.default_view != null and internal.scripting_enabled,
-        &scriptCreatedParserFinished,
+        &activeParserFinished,
     );
     internal.parser_epoch +%= 1;
-    internal.script_created_parser = parser;
+    parser.document_epoch = internal.parser_epoch;
+    internal.active_parser = parser;
     internal.input_stream_manager = &parser.input_stream;
     internal.is_script_created_parser = true;
     internal.insertion_point = 0;
@@ -3035,7 +3039,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
     // Keep document.open()'s parser alive through nested script and through
     // processInserted restoring the stream's limits. Reentrant open/close
     // can detach it before the outer write has returned.
-    var kept_parser = internal.script_created_parser;
+    var kept_parser = internal.active_parser;
     if (kept_parser) |parser| parser.retain();
     defer if (kept_parser) |parser| parser.release();
 
@@ -3076,7 +3080,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
         // script-created parser; then nothing is written.
         if (!internal.is_script_created_parser) return;
         if (kept_parser) |parser| parser.release();
-        kept_parser = internal.script_created_parser;
+        kept_parser = internal.active_parser;
         if (kept_parser) |parser| parser.retain();
     }
     const stream = internal.input_stream_manager orelse return;
@@ -4002,15 +4006,15 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return;
     }
 
-    const parser = internal.script_created_parser orelse return;
+    const parser = internal.active_parser orelse return;
     parser.retain();
     defer parser.release();
     try parser.close();
 }
 
-fn discardScriptCreatedParser(internal: *InternalState) void {
-    const parser = internal.script_created_parser orelse return;
-    internal.script_created_parser = null;
+fn discardDocumentParser(internal: *InternalState) void {
+    const parser = internal.active_parser orelse return;
+    internal.active_parser = null;
     if (internal.input_stream_manager == &parser.input_stream) internal.input_stream_manager = null;
     internal.is_script_created_parser = false;
     internal.insertion_point = null;
@@ -4018,16 +4022,47 @@ fn discardScriptCreatedParser(internal: *InternalState) void {
     parser.release();
 }
 
-fn scriptCreatedParserFinished(instance: *runtime.Instance, parser: *@import("html").scripted_parser.ScriptCreatedParser) void {
+fn lifecycleAssociateParser(document: *runtime.Instance, opaque_parser: *anyopaque) bool {
+    const internal = getInternal(document) orelse return false;
+    const parser: *@import("html").scripted_parser.DocumentParser = @ptrCast(@alignCast(opaque_parser));
+    @import("html").script_execution.discardParserScripts(document);
+    discardDocumentParser(internal);
+    internal.parser_epoch +%= 1;
+    parser.document_epoch = internal.parser_epoch;
+    parser.retain();
+    internal.active_parser = parser;
+    internal.input_stream_manager = &parser.input_stream;
+    internal.insertion_point = null;
+    internal.is_script_created_parser = false;
+    internal.active_parser_was_aborted = false;
+    internal.parsing_end_waiting_on_scripts = false;
+    internal.load_waiting_on_delay = false;
+    internal.scripting_enabled = parser.script_context.scripting_enabled;
+    updateReadiness(document, ._loading_);
+    return true;
+}
+
+fn lifecycleDiscardParser(document: *runtime.Instance, expected: ?*anyopaque) void {
+    const internal = getInternal(document) orelse return;
+    if (expected) |parser| if (internal.active_parser != @as(*@import("html").scripted_parser.DocumentParser, @ptrCast(@alignCast(parser)))) return;
+    @import("html").script_execution.discardParserScripts(document);
+    discardDocumentParser(internal);
+}
+
+fn lifecycleParserFinished(document: *runtime.Instance, parser: *anyopaque) void {
+    activeParserFinished(document, @ptrCast(@alignCast(parser)));
+}
+
+fn activeParserFinished(instance: *runtime.Instance, parser: *@import("html").scripted_parser.DocumentParser) void {
     const internal = getInternal(instance) orelse return;
-    if (internal.script_created_parser != parser) return;
+    if (internal.active_parser != parser) return;
     // End the parser association before the readiness events can run script.
-    discardScriptCreatedParser(internal);
+    discardDocumentParser(internal);
     theEnd(instance);
 }
 
 // =============================================================================
-// "The end" (HTML §13.2.7) for a script-created parser
+// "The end" (HTML §13.2.7) for any document parser
 // =============================================================================
 
 /// "Update the current document readiness": if `readiness` is new, set it
@@ -4050,10 +4085,10 @@ fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadySt
     fireEvent(instance, instance, "readystatechange", false);
 }
 
-/// "The end" from step 3, once document.close()'s parse has stopped: step 5
+/// "The end" from step 3, once the active parser reaches EOF: step 5
 /// runs the scripts that will execute when the document has finished
 /// parsing - a defer script document.write() put in the stream - as the
-/// other parser drivers' "the end" does (HTMLParser.zig, a frame's parse).
+/// navigation and written parsers both use these guarded lifecycle steps.
 /// Deviation, stated: load's legacy target override is not modelled.
 fn theEnd(instance: *runtime.Instance) void {
     const realm = instance.ctx;
@@ -4122,10 +4157,10 @@ fn lifecycleAbort(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     if (canceled) internal.salvageable = false;
     internal.parsing_end_waiting_on_scripts = false;
-    if (internal.input_stream_manager == null and internal.script_created_parser == null) return;
+    if (internal.input_stream_manager == null and internal.active_parser == null) return;
     const stream = internal.input_stream_manager;
     if (stream) |input| if (input.aborted) return;
-    const parser = internal.script_created_parser;
+    const parser = internal.active_parser;
     if (parser) |active| active.retain();
     defer if (parser) |active| active.release();
     internal.active_parser_was_aborted = true;
@@ -4143,7 +4178,7 @@ fn lifecycleAbort(document: *runtime.Instance) void {
     if (had_engine and !realm.hasEngine()) return;
     if (runtime.SlabAllocator.generationOf(document) != generation) return;
     const current = getInternal(document) orelse return;
-    if (current.script_created_parser == parser) discardScriptCreatedParser(current);
+    if (current.active_parser == parser) discardDocumentParser(current);
     if (current.input_stream_manager == stream) {
         current.input_stream_manager = null;
         current.insertion_point = null;
@@ -4467,7 +4502,7 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
     internal.salvageable = false;
     internal.destroyed = true;
     @import("html").script_execution.discardDocumentScripts(document);
-    discardScriptCreatedParser(internal);
+    discardDocumentParser(internal);
 }
 
 /// dom.document_lifecycle: set `document`'s about base URL (a copy).

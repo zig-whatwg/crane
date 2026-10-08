@@ -1,7 +1,6 @@
 //! A document's lifecycle (HTML §7.5, §13.2.7) as seen from outside Document:
-//! "the end" for a document whose parser finishes outside Document - the
-//! top-level document's (impls/HTMLParser) and a frame's (html/scripted_parser)
-//! - and the steps navigation takes on the document it is leaving: firing
+//! Active parser ownership and "the end" for navigation and written input,
+//! and the steps navigation takes on the document it is leaving: firing
 //! beforeunload, unloading it, and asking whether it is still loading.
 //!
 //! A document's readiness, page showing flag, unload counter, salvageable
@@ -19,6 +18,10 @@ const runtime = @import("runtime");
 
 /// What Document supplies.
 pub const Implementation = struct {
+    /// Only Document casts these parser pointers to the HTML owner type.
+    associate_parser: *const fn (document: *runtime.Instance, parser: *anyopaque) bool,
+    discard_parser: *const fn (document: *runtime.Instance, expected: ?*anyopaque) void,
+    parser_finished: *const fn (document: *runtime.Instance, parser: *anyopaque) void,
     parsing_stopped: *const fn (document: *runtime.Instance) void,
     finish_loading: *const fn (document: *runtime.Instance) void,
     load_delay_may_have_ended: *const fn (document: *runtime.Instance) void,
@@ -61,6 +64,27 @@ var implementation: ?Implementation = null;
 pub fn install(impl: Implementation) void {
     process_start.assertInstalling();
     implementation = impl;
+}
+
+/// Document acquires a parser reference independently of the initiating
+/// caller's reference, which stays alive through every parsing callback.
+pub fn associateParser(document: *runtime.Instance, parser: *anyopaque) bool {
+    const impl = implementation orelse return false;
+    return impl.associate_parser(document, parser);
+}
+
+/// Cancel the current parser, or only `expected` when supplied. This never
+/// runs normal EOF or loading completion, and cannot discard a replacement.
+pub fn discardParser(document: *runtime.Instance, expected: ?*anyopaque) void {
+    const impl = implementation orelse return;
+    impl.discard_parser(document, expected);
+}
+
+/// Actual EOF, once, with a pump reference held. Document detaches before
+/// running its guarded readiness and deferred script steps.
+pub fn parserFinished(document: *runtime.Instance, parser: *anyopaque) void {
+    const impl = implementation orelse return;
+    impl.parser_finished(document, parser);
 }
 
 /// "The end" step 3: the parser has stopped, and readiness becomes
@@ -246,6 +270,9 @@ test "without an installed implementation nothing is asked of a document" {
     implementation = null;
     // Never dereferenced: with no implementation nothing reads it.
     var document: runtime.Instance = undefined;
+    try std.testing.expect(!associateParser(&document, &document));
+    discardParser(&document, null);
+    parserFinished(&document, &document);
     parsingStopped(&document);
     finishLoading(&document);
     loadDelayMayHaveEnded(&document);
