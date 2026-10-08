@@ -1478,50 +1478,88 @@ pub const Context = struct {
         if (history.currentEntry(navigable.id)) |entry| history.setDocumentOfState(entry.document_state, @ptrCast(document));
     }
 
-    /// The page's current document goes, because a load replaces it: HTML
-    /// "abort a document" - its active parser aborted, its parser-owned
-    /// scripts discarded, its fetches canceled. Its browsing context becomes
-    /// null ("destroy a document" step 6) when the new document takes its
-    /// place (Window.setDocument, through associateDocument), which unlinks
-    /// it from the Window and from the Context.
+    /// The page's current document goes, because a load replaces it. True
+    /// when the document left current was unloaded - and with it destroyed
+    /// ("unload a document" step 20) - here; false when its "destroy a
+    /// document" is still to come (createLoadDocument queues it).
     ///
-    /// Nothing more is done to it here, and its storage is never freed here:
-    /// a parser of it may still be on the native stack - a script of the
-    /// page started this load - and script may hold its nodes. It is left to
-    /// its owner: its wrapper (associateDocument made one when it became the
-    /// window's), whose collection frees it once neither script nor an
-    /// active parser call (DocumentParser.protect roots the document and its
-    /// nodes) reaches it, or the realm's end. Blink keeps a detached
-    /// parser's open-elements stack "because HTMLConstructionSite might be
-    /// on the callstack" (HTMLTreeBuilder::Detach); WebKit's parser keeps
-    /// itself with `Ref protectedThis`.
+    /// First HTML "abort a document": its active parser aborted, its
+    /// parser-owned scripts discarded, its fetches canceled. Then, as the
+    /// browsers do, "unload a document" - pagehide, visibilitychange and
+    /// unload, then destroy - only for a document whose load event has run.
+    /// Blink's Document::DispatchUnloadEvents stops the parser and returns
+    /// at once while load_event_progress_ is kLoadEventNotRun; WebKit's
+    /// FrameLoader::dispatchUnloadEvents fires them only after
+    /// m_didCallImplicitClose. HTML's "unload" fires unload for any document
+    /// that is not salvageable; Crane does what Chrome and Safari do. The
+    /// initial about:blank document has completely loaded
+    /// (markInitialAboutBlank), so the page's first load unloads it.
     ///
-    /// The rest of "destroy a document" - its state: destroyed, its document
-    /// scripts, which may be mid-preparation under that parser, discarded -
-    /// comes later, from a task (DestroyReplacedDocument, queued by
-    /// createLoadDocument). Not run, stated: the unloading document cleanup
-    /// steps, which are keyed on the realm here (dom.unloading_cleanup) and
-    /// would end the new document's timers and sockets too: HTML gives a
-    /// document that replaces a non-initial one a new Window ("create and
-    /// initialize a Document object" step 7), and a Context keeps its one
-    /// Window across loads. Browser.navigate makes a new Context, with a new
-    /// realm, for each navigation.
+    /// Its storage is never freed here: a parser of it may still be on the
+    /// native stack - a script of the page started this load - and script
+    /// may hold its nodes. It is left to its owner: its wrapper
+    /// (associateDocument made one when it became the window's), whose
+    /// collection frees it once neither script nor an active parser call
+    /// (DocumentParser.protect) reaches it, or the realm's end. Blink keeps
+    /// a detached parser's open-elements stack "because HTMLConstructionSite
+    /// might be on the callstack" (HTMLTreeBuilder::Detach); WebKit's parser
+    /// keeps itself with `Ref protectedThis`. For the same reason the unload,
+    /// whose last step destroys the document's script and parser state,
+    /// runs only when no parser of the document can be on the stack: not the
+    /// load's that made it, none document.open() made (mayUnloadNow).
+    /// Otherwise "destroy a document" comes from a task
+    /// (DestroyReplacedDocument). A document still loading fires no unload
+    /// events in Chrome and Safari either; one that loaded and was then
+    /// opened by document.open() would, after its parser returned - a
+    /// deviation, stated: Crane commits the load synchronously, and the
+    /// events could only reach the Window after the new document is its
+    /// own, and so the new page's listeners.
     ///
-    /// Abort runs script (readystatechange, XHR abort): a load that script
-    /// starts replaces the document meanwhile, and that one is aborted too -
-    /// the document replaced is whichever is current when no script runs any
-    /// more (docs/lessons/architecture-associate-a-parser-after-the-last-reentrant-step.md).
-    fn endCurrentDocument(self: *Context) void {
+    /// Not run, stated: the unloading document cleanup steps, keyed on the
+    /// realm here (dom.unloading_cleanup), which would end the new
+    /// document's timers and sockets too: HTML gives a document that
+    /// replaces a non-initial one a new Window ("create and initialize a
+    /// Document object" step 7), and a Context keeps its one Window across
+    /// loads. Browser.navigate makes a new Context, with a new realm, for
+    /// each navigation.
+    ///
+    /// Abort and unload run script: a load that script starts replaces the
+    /// document meanwhile, and that one goes too - the document replaced is
+    /// whichever is current when no script runs any more
+    /// (docs/lessons/architecture-associate-a-parser-after-the-last-reentrant-step.md).
+    fn endCurrentDocument(self: *Context) bool {
         var rounds: usize = 0;
         while (self.document_instance) |previous| : (rounds += 1) {
-            if (rounds == max_replaced_documents) return;
+            if (rounds == max_replaced_documents) return false;
+            // Asked before the abort, which ends a script-created parser's
+            // stream and with it the "loading" readiness that tells of it.
+            const may_unload = self.mayUnloadNow(previous);
             dom_mod.document_lifecycle.abort(previous);
-            if (self.document_instance == previous) return;
+            if (self.document_instance != previous) continue;
+            if (!may_unload or dom_mod.document_lifecycle.isUnloading(previous)) return false;
+            dom_mod.document_lifecycle.unload(previous);
+            if (self.document_instance == previous) return true;
         }
+        return false;
     }
 
-    /// How many documents loads started by abort listeners may replace in
-    /// one `endCurrentDocument`, before it stops chasing them.
+    /// Whether the page's current `document` is unloaded by the load that
+    /// replaces it (endCurrentDocument, before the abort): its load event
+    /// has run, and no parser of it can be on the stack - not
+    /// the load's that made it, and none document.open() made, which keeps
+    /// readiness "loading" until its stream closes (the document open
+    /// steps, step 17). Script of it may be: unloading runs script, and its
+    /// destroy discards only script and parser state no script frame holds,
+    /// as a frame that removes itself does.
+    fn mayUnloadNow(self: *Context, document: *runtime.Instance) bool {
+        if (!dom_mod.document_lifecycle.isCompletelyLoaded(document)) return false;
+        if (self.current_load) |load| if (load.parsing) return false;
+        const readiness = interfaces.Document.get_readyState(document) catch return false;
+        return readiness == ._complete_;
+    }
+
+    /// How many documents loads started by abort and unload listeners may
+    /// replace in one `endCurrentDocument`, before it stops chasing them.
     const max_replaced_documents = 16;
 
     /// A worker context's globals: `self`, and its WorkerNavigator.
@@ -1810,8 +1848,9 @@ pub const Context = struct {
     /// Load HTML content as the page's new document
     ///
     /// This method:
-    /// 1. Aborts the document the page shows (never freed here: it is left
-    ///    to whatever still holds it - script, or a parser on the stack)
+    /// 1. Aborts the document the page shows, and unloads it if it has
+    ///    loaded (never freed here: it is left to whatever still holds it -
+    ///    script, or a parser on the stack)
     /// 2. Sets up the document URL and Window origin
     /// 3. Makes a NEW Document, the Window's from then on - every load does
     /// 4. Parses HTML into it (html.dom_parser.parseHTMLWithScripting),
@@ -1861,9 +1900,9 @@ pub const Context = struct {
     /// replaces the initial about:blank document registerWindowGlobals made.
     fn createLoadDocument(self: *Context, options: LoadHTMLOptions) !LoadDocument {
         if (self.realm == null or self.window_instance == null) return error.NotInitialized;
-        // The document the load replaces is aborted first - its listeners
-        // see it at its own URL.
-        self.endCurrentDocument();
+        // The document the load replaces goes first - its listeners see it
+        // at its own URL.
+        const unloaded = self.endCurrentDocument();
         const runtime_ctx = self.realm orelse return error.NotInitialized;
 
         // The realm's document URL, for fetch's relative URL resolution.
@@ -1903,11 +1942,12 @@ pub const Context = struct {
         const replaced_load = self.current_load;
         self.associateDocument(runtime_ctx, document);
         self.current_load = load;
-        // The replaced document reaches "destroy a document" from a task,
-        // once no parse of it is on the stack (DestroyReplacedDocument).
-        if (replaced) |old| {
-            DestroyReplacedDocument.queue(self.allocator, old, replaced_load);
-        } else if (replaced_load) |stale| stale.release();
+        // A replaced document that was not unloaded - and so destroyed -
+        // above reaches "destroy a document" from a task, once no parse of
+        // it is on the stack (DestroyReplacedDocument).
+        if (replaced != null and !unloaded) {
+            DestroyReplacedDocument.queue(self.allocator, replaced.?, replaced_load);
+        } else if (replaced_load) |done| done.release();
         return .{ .document = document, .load = load };
     }
 
@@ -2137,9 +2177,11 @@ const LoadParse = struct {
     }
 };
 
-/// HTML "destroy a document" for the document a load replaced (its state:
-/// salvageable false, destroyed, its scripts and parser discarded -
-/// dom.document_lifecycle.destroy), from a task on its event loop - never
+/// HTML "destroy a document" for a document a load replaced without
+/// unloading it (Context.endCurrentDocument: it had not loaded, or something
+/// of it was on the stack). Its state - salvageable false, destroyed, its
+/// scripts and parser discarded (dom.document_lifecycle.destroy) - changes
+/// from a task on its event loop, never
 /// inside the load, where the parser of that document, or script holding its
 /// nodes, may still be on the stack. A task that finds the load's parse still
 /// running (a script of the replaced page started the load, and the loop was

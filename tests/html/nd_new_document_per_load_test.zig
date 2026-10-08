@@ -94,7 +94,9 @@ const ScriptHolds = enum { first_page, nothing };
 
 const first_page_held =
     \\<!doctype html><body><div id=first>one</div>
-    \\<script>globalThis.firstDoc = document; globalThis.firstDiv = document.getElementById('first');</script>
+    \\<script>globalThis.firstDoc = document; globalThis.firstDiv = document.getElementById('first');
+    \\globalThis.firstPageEvents = [];
+    \\for (const type of ['pagehide', 'unload']) addEventListener(type, () => firstPageEvents.push(type));</script>
     \\<script src="reload.js"></script>
     \\<div id=after>after</div>
     \\<script>globalThis.firstPageWentOn = true;</script>
@@ -148,6 +150,8 @@ fn reentrantLoad(holds: ScriptHolds) !void {
                 \\if (firstDoc.getElementById('after') !== null) throw new Error('the aborted parser went on parsing');
                 \\if (firstDoc.defaultView !== null) throw new Error('the replaced document keeps its window');
                 \\if (firstDiv.ownerDocument !== firstDoc || firstDiv.textContent !== 'one') throw new Error('first page node lost');
+                \\// It never finished loading: like Chrome and Safari, no unload events.
+                \\if (firstPageEvents.length) throw new Error('a page that never loaded got ' + firstPageEvents);
             );
             // The parser has unwound: the deferred destroy runs now. Script
             // still holds the first page, so `first` is live to ask.
@@ -272,6 +276,80 @@ fn sequentialLoads() !void {
 
 test "every load makes a new Document, and a node of a replaced one stays usable after collection" {
     try onFreshThread(sequentialLoads);
+}
+
+fn unloadOrder() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.TestUnexpectedResult;
+    const initial = page.document_instance orelse return error.TestUnexpectedResult;
+    // The Window is the same for every load here, so its listeners hear
+    // every document it unloads.
+    try page.runScript(
+        \\globalThis.log = [];
+        \\globalThis.initialDoc = document;
+        \\for (const type of ['pagehide', 'unload']) addEventListener(type, () => log.push(type + '@' + document.URL));
+        \\document.addEventListener('visibilitychange', () => log.push('initial:' + document.visibilityState));
+    );
+    try page.loadHTML(
+        \\<!doctype html><body><script>log.push('first-script');
+        \\document.addEventListener('visibilitychange', () => log.push('first:' + document.visibilityState));</script></body>
+    , .{ .base_url = "http://example.test/first" });
+    // The initial about:blank had loaded: it was unloaded, and destroyed,
+    // before the first page's script ran.
+    try testing.expect(dom.document_internals.getInternal(initial).?.destroyed);
+    const first = page.document_instance orelse return error.TestUnexpectedResult;
+    _ = try browser.runEventLoopBlocking(20);
+    try page.runScript(
+        \\if (document.readyState !== 'complete') throw new Error('first page readiness ' + document.readyState);
+        \\globalThis.firstDoc = document;
+    );
+    try page.loadHTML("<!doctype html><body><script>log.push('second-script')</script></body>", .{ .base_url = "http://example.test/second" });
+    // The first page had loaded: unloaded and destroyed inside the load.
+    try testing.expect(dom.document_internals.getInternal(first).?.destroyed);
+    try page.runScript(
+        \\const expected = ['pagehide@about:blank', 'initial:hidden', 'unload@about:blank', 'first-script',
+        \\  'pagehide@http://example.test/first', 'first:hidden', 'unload@http://example.test/first', 'second-script'];
+        \\if (log.join() !== expected.join()) throw new Error('events: ' + log.join());
+        \\if (firstDoc.visibilityState !== 'hidden' || document.visibilityState !== 'visible') throw new Error('visibility');
+    );
+}
+
+test "a page that has loaded is unloaded - pagehide, visibilitychange, unload - before the next page's scripts" {
+    try onFreshThread(unloadOrder);
+}
+
+fn openedDocumentIsNotUnloaded() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.TestUnexpectedResult;
+    try page.loadHTML("<!doctype html><body>first</body>", .{ .base_url = "http://example.test/first" });
+    _ = try browser.runEventLoopBlocking(20);
+    // Loaded, then opened: a script-created parser holds its stream until
+    // close(), and readiness is "loading" again.
+    try page.runScript(
+        \\globalThis.log = [];
+        \\for (const type of ['pagehide', 'unload']) addEventListener(type, () => log.push(type));
+        \\globalThis.openedDoc = document;
+        \\document.open();
+        \\document.write('<p id=written>written</p>');
+        \\if (document.readyState !== 'loading') throw new Error('opened readiness ' + document.readyState);
+    );
+    const opened = page.document_instance orelse return error.TestUnexpectedResult;
+    try page.loadHTML("<!doctype html><body><script>log.push('second-script')</script></body>", .{ .base_url = "http://example.test/second" });
+    try testing.expect(!dom.document_internals.getInternal(opened).?.destroyed);
+    _ = try browser.runEventLoopBlocking(20);
+    try testing.expect(dom.document_internals.getInternal(opened).?.destroyed);
+    try page.runScript(
+        \\if (log.join() !== 'second-script') throw new Error('events: ' + log.join());
+        \\if (openedDoc.getElementById('written')?.textContent !== 'written') throw new Error('written content lost');
+    );
+}
+
+test "a loaded page reopened by document.open is not unloaded under its parser, and is destroyed by a task" {
+    try onFreshThread(openedDocumentIsNotUnloaded);
 }
 
 fn replacedDocumentIsCollectable() !void {
