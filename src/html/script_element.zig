@@ -128,6 +128,10 @@ pub const State = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#concept-script-delay-load
     delaying_the_load_event: bool,
 
+    /// Preparation-time script fetch option, retained after removal from
+    /// the rendering set for requests/descendant options of this script.
+    fetch_render_blocking: bool = false,
+
     /// Script type (classic, module, importmap, speculationrules, or null)
     /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#concept-script-type
     script_type: ScriptType,

@@ -104,9 +104,10 @@ pub const ModuleScript = struct {
 
     /// The script's fetch options, as far as an import() from it reads them
     /// (HTML "new descendant script fetch options"): its cryptographic nonce
-    /// (OWNED when not empty) and referrer policy.
+    /// (OWNED when not empty), referrer policy and render-blocking state.
     nonce: []const u8 = "",
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    render_blocking: bool = false,
 
     /// Depth-first walk state. `visiting` is set while this script's requests
     /// are being loaded, so a cycle back to it stops instead of recursing
@@ -145,17 +146,18 @@ pub const ModuleScript = struct {
             .base_url = owned_base_url,
             .nonce = if (options.nonce.len > 0) try allocator.dupe(u8, options.nonce) else "",
             .referrer_policy = options.referrer_policy,
+            .render_blocking = options.render_blocking,
         };
         track(self);
         return self;
     }
 
     /// HTML "new descendant script fetch options" for this script's fetch
-    /// options: its cryptographic nonce and referrer policy; integrity
-    /// metadata "", parser metadata "not-parser-inserted". Borrowed from the
+    /// options: its cryptographic nonce, referrer policy and render-blocking;
+    /// integrity metadata "", parser metadata "not-parser-inserted". Borrowed from the
     /// script.
     pub fn descendantFetchOptions(self: *const ModuleScript) FetchOptions {
-        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy };
+        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy, .render_blocking = self.render_blocking };
     }
 
     /// Release the script, its record and values, and its edge list.
@@ -214,7 +216,7 @@ pub fn disposeEntry(value: *anyopaque) void {
 }
 
 /// HTML's script fetch options, as far as a module graph's requests use
-/// them: the cryptographic nonce, integrity metadata, parser metadata and
+/// them: cryptographic nonce, integrity, parser metadata, render-blocking and
 /// referrer policy (the credentials mode stays "same-origin", as before).
 /// Borrowed for as long as the graph is fetched.
 pub const FetchOptions = struct {
@@ -223,6 +225,7 @@ pub const FetchOptions = struct {
     /// section, which is not modelled, so descendants have none.
     integrity: []const u8 = "",
     parser_inserted: bool = false,
+    render_blocking: bool = false,
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
 };
 
@@ -351,13 +354,14 @@ pub const ClassicScript = struct {
     base_url: []const u8,
     /// Its fetch options, as far as an import() from it reads them (HTML
     /// "new descendant script fetch options"): the cryptographic nonce and
-    /// the referrer policy. Owned by whoever owns the script.
+    /// referrer policy and render-blocking. Owned by whoever owns the script.
     nonce: []const u8 = "",
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    render_blocking: bool = false,
 
     /// HTML "new descendant script fetch options" for this script's.
     pub fn descendantFetchOptions(self: *const ClassicScript) FetchOptions {
-        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy };
+        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy, .render_blocking = self.render_blocking };
     }
 };
 
@@ -502,6 +506,7 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     request.setIntegrityMetadata(options.integrity) catch return null;
     request.parser_metadata = if (options.parser_inserted) .parser_inserted else .not_parser_inserted;
     request.referrer_policy = options.referrer_policy;
+    request.render_blocking = options.render_blocking;
     request.destination = switch (module_type) {
         .javascript => .script,
         .json => .json,
@@ -1476,6 +1481,7 @@ pub const AsyncModuleLoader = struct {
         try request.setIntegrityMetadata(integrity);
         request.parser_metadata = if (options.parser_inserted) .parser_inserted else .not_parser_inserted;
         request.referrer_policy = options.referrer_policy;
+        request.render_blocking = options.render_blocking;
         try script_request.populateRequestFromClient(request, self.env.context_instance.ctx);
         if (referrer.len > 0) try request.setReferrerUrl(referrer);
         request_owned = false;

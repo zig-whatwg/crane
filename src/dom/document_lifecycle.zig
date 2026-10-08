@@ -18,6 +18,8 @@ const runtime = @import("runtime");
 
 /// What Document supplies.
 pub const Implementation = struct {
+    /// Rendering is a document lifecycle operation; share its installed table.
+    rendering: @import("document_rendering.zig").Implementation,
     /// Only Document casts these parser pointers to the HTML owner type.
     associate_parser: *const fn (document: *runtime.Instance, parser: *anyopaque) bool,
     discard_parser: *const fn (document: *runtime.Instance, expected: ?*anyopaque) void,
@@ -26,6 +28,7 @@ pub const Implementation = struct {
     parsing_stopped: *const fn (document: *runtime.Instance) void,
     finish_loading: *const fn (document: *runtime.Instance) void,
     load_delay_may_have_ended: *const fn (document: *runtime.Instance) void,
+    script_delivery_discarded: *const fn (document: *runtime.Instance, removed_parser_blocker: bool) void,
     delays_load_event: *const fn (document: *runtime.Instance) bool,
     is_ready_for_post_load_tasks: *const fn (document: *runtime.Instance) bool,
     mark_ready_for_post_load_tasks: *const fn (document: *runtime.Instance) void,
@@ -65,6 +68,13 @@ var implementation: ?Implementation = null;
 pub fn install(impl: Implementation) void {
     process_start.assertInstalling();
     implementation = impl;
+}
+
+/// The rendering seam shares this process-start table without mutable state
+/// of its own; all returned state still belongs to the queried Document.
+pub fn renderingImplementation() ?@import("document_rendering.zig").Implementation {
+    const impl = implementation orelse return null;
+    return impl.rendering;
 }
 
 /// Document acquires a parser reference independently of the initiating
@@ -116,6 +126,15 @@ pub fn finishLoading(document: *runtime.Instance) void {
 pub fn loadDelayMayHaveEnded(document: *runtime.Instance) void {
     const impl = implementation orelse return;
     impl.load_delay_may_have_ended(document);
+}
+
+/// A delivery owner relinquished its preparation and load delay. Recheck
+/// the surviving document on a later task, including a parser whose blocker
+/// was removed. Task.drop may call this during allocation failure: this
+/// never runs script or lifecycle events synchronously, even without a loop.
+pub fn scriptDeliveryDiscarded(document: *runtime.Instance, removed_parser_blocker: bool) void {
+    const impl = implementation orelse return;
+    impl.script_delivery_discarded(document, removed_parser_blocker);
 }
 
 /// Whether anything delays this document's load event ("the end", step 8).

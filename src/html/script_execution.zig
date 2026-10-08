@@ -342,7 +342,11 @@ pub fn prepareScriptElement(
         if ((!preparation_had_engine or preparation_realm.hasEngine()) and
             runtime.SlabAllocator.generationOf(script_element) == preparation_generation)
         {
-            if (script_element_state.of(script_element)) |current| current.delaying_the_load_event = false;
+            if (script_element_state.of(script_element)) |current| {
+                if (current.preparation_time_document) |document| {
+                    discardUndeliveredScript(script_element, preparation_generation, document, current.preparation_time_document_generation);
+                }
+            }
         }
     }
 
@@ -385,6 +389,11 @@ pub fn prepareScriptElement(
         // a deferred or async script runs long after this frame has returned.
         const script_url = state.setScriptUrl(parsed_url) catch
             return ScriptExecutionError.OutOfMemory;
+
+        // Prepare 33.7: potentially render-blocking external scripts block
+        // before fetching. 33.9: the fetch option records ACTUAL blocking.
+        if (isPotentiallyRenderBlocking(script_element)) try dom.document_rendering.block(script_element);
+        state.fetch_render_blocking = dom.document_rendering.isRenderBlocking(script_element);
 
         // Prepare step 33.8: external classic scripts and module graphs
         // delay their preparation-time document until "mark as ready".
@@ -478,6 +487,13 @@ pub fn prepareScriptElement(
             .module => {
                 // Prepare step 34.2 "module", step 1.
                 state.delaying_the_load_event = true;
+                // 34.2/module/2: block before acquiring the graph. Its fetch
+                // option is true whenever potentially blocking, even if body
+                // arrival prevents this document accepting another blocker.
+                if (isPotentiallyRenderBlocking(script_element)) {
+                    try dom.document_rendering.block(script_element);
+                    state.fetch_render_blocking = true;
+                }
                 // Step 34.2 "module", step 3: fetch an inline module script
                 // graph given source text and base URL. Its onComplete queues
                 // the task that marks el ready - "even if the inline module
@@ -633,6 +649,10 @@ fn handleScriptSchedulingOf(
     if (script_type == .module or has_src) {
         const doc = node_document orelse return true;
         const state = script_element_state.of(script_element) orelse return false;
+        // A delivery queue may synchronously drop its task on allocation
+        // failure. Its cancellation already discarded this preparation;
+        // do not recreate an execution owner with no remaining producer.
+        if (state.preparation_time_document != doc) return false;
         if (state.execution_root == null and script_element.ctx.hasEngine()) {
             state.execution_root = engine.retainValue(script_element.ctx, .{ .instance = script_element }) catch
                 return ScriptExecutionError.OutOfMemory;
@@ -644,6 +664,7 @@ fn handleScriptSchedulingOf(
             // a script the parser never touched lands here whether or not the
             // author wrote `async`.
             if (document_scripts.of(doc)) |scripts| scripts.addAsap(script_element) catch {
+                dom.document_rendering.unblock(script_element);
                 releaseExecutionRoot(script_element);
                 return ScriptExecutionError.OutOfMemory;
             };
@@ -652,6 +673,7 @@ fn handleScriptSchedulingOf(
             // 35.3: the list of scripts that will execute in order as soon as
             // possible.
             if (document_scripts.of(doc)) |scripts| scripts.appendInOrder(script_element) catch {
+                dom.document_rendering.unblock(script_element);
                 releaseExecutionRoot(script_element);
                 return ScriptExecutionError.OutOfMemory;
             };
@@ -660,6 +682,7 @@ fn handleScriptSchedulingOf(
             // 35.4: the list of scripts that will execute when the document
             // has finished parsing; the parser runs it at "the end".
             if (document_scripts.of(doc)) |scripts| scripts.addWhenParsingFinished(script_element) catch {
+                dom.document_rendering.unblock(script_element);
                 releaseExecutionRoot(script_element);
                 return ScriptExecutionError.OutOfMemory;
             };
@@ -679,6 +702,13 @@ fn handleScriptSchedulingOf(
                 // parser executes it afterward, outside "mark as ready".
                 state.delaying_the_load_event = false;
             }
+            // Prepare 35.5.2: parser-blocking external classics block even
+            // without an explicit blocking attribute; append is idempotent.
+            dom.document_rendering.block(script_element) catch {
+                dom.document_rendering.unblock(script_element);
+                releaseExecutionRoot(script_element);
+                return ScriptExecutionError.OutOfMemory;
+            };
             setPendingParsingBlockingScript(parser_document orelse doc, script_element);
         }
         return true;
@@ -728,7 +758,12 @@ fn isReadyToBeParserExecuted(script_element: *runtime.Instance) bool {
 fn queueMarkAsReady(script_element: *runtime.Instance, document: *runtime.Instance) void {
     const ctx = script_element.ctx;
     const loop = ctx.getOptionalEventLoop() orelse return markReadyNow(ctx.allocator, script_element, document);
-    const task = ctx.allocator.create(QueuedMarkAsReady) catch return markReadyNow(ctx.allocator, script_element, document);
+    const task = ctx.allocator.create(QueuedMarkAsReady) catch {
+        // Allocation failure cannot turn an asynchronous completion into
+        // synchronous script execution. Discard the undeliverable owner.
+        discardUndeliveredScript(script_element, runtime.SlabAllocator.generationOf(script_element), document, runtime.SlabAllocator.generationOf(document));
+        return;
+    };
     task.* = .{
         .element = script_element,
         .generation = runtime.SlabAllocator.generationOf(script_element),
@@ -809,6 +844,7 @@ const QueuedMarkAsReady = struct {
 /// `Task.drop`: the page ended with the result undelivered.
 fn dropQueuedMarkAsReady(data: ?*anyopaque) void {
     const task: *QueuedMarkAsReady = @ptrCast(@alignCast(data orelse return));
+    discardUndeliveredScript(task.element, task.generation, task.document, task.document_generation);
     task.destroy();
 }
 
@@ -816,12 +852,19 @@ fn runQueuedMarkAsReady(data: ?*anyopaque) void {
     const task: *QueuedMarkAsReady = @ptrCast(@alignCast(data orelse return));
     defer task.destroy();
 
-    if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
-    if (runtime.SlabAllocator.generationOf(task.document) != task.document_generation) return;
+    if (runtime.SlabAllocator.generationOf(task.element) != task.generation or
+        runtime.SlabAllocator.generationOf(task.document) != task.document_generation)
+    {
+        discardUndeliveredScript(task.element, task.generation, task.document, task.document_generation);
+        return;
+    }
 
     // A task of the element's realm: executing a script and firing its load
     // or error event run in it. An error means the realm is gone.
-    engine.runTaskInRealm(task.element.ctx, markAsReadySteps, task) catch return;
+    engine.runTaskInRealm(task.element.ctx, markAsReadySteps, task) catch {
+        discardUndeliveredScript(task.element, task.generation, task.document, task.document_generation);
+        return;
+    };
 }
 
 fn markAsReadySteps(data: ?*anyopaque) void {
@@ -957,9 +1000,52 @@ pub fn discardParserScripts(document: *runtime.Instance) void {
     while (lists.scripts_to_execute_when_parsing_finished.pop()) |script| discardScheduledScript(script);
 }
 
+/// A delivery that cannot run relinquishes only its own preparation. Remove
+/// the borrowed queue entry before releasing its independent execution root.
+/// This also handles queueTask calling drop synchronously on allocation
+/// failure, before preparation has reached its scheduling step.
+fn discardUndeliveredScript(script: *runtime.Instance, generation: u64, document: *runtime.Instance, document_generation: u64) void {
+    if (runtime.SlabAllocator.generationOf(script) != generation) return;
+    const state = script_element_state.of(script) orelse return;
+    if (state.preparation_time_document != document or
+        state.preparation_time_document_generation != document_generation) return;
+    var removed_parser_blocker = false;
+    if (runtime.SlabAllocator.generationOf(document) == document_generation) {
+        if (document_scripts.of(document)) |lists| {
+            if (lists.pending_parsing_blocking_script == script) {
+                lists.pending_parsing_blocking_script = null;
+                removed_parser_blocker = true;
+            }
+            removeScheduledEntry(&lists.scripts_to_execute_asap, script);
+            removeScheduledEntry(&lists.scripts_to_execute_in_order_asap, script);
+            removeScheduledEntry(&lists.scripts_to_execute_when_parsing_finished, script);
+        }
+    }
+    discardScheduledScript(script);
+    if (runtime.SlabAllocator.generationOf(document) == document_generation)
+        dom.document_lifecycle.scriptDeliveryDiscarded(document, removed_parser_blocker);
+}
+
+fn removeScheduledEntry(list: *std.ArrayList(*runtime.Instance), script: *runtime.Instance) void {
+    for (list.items, 0..) |entry, index| {
+        if (entry == script) {
+            _ = list.orderedRemove(index);
+            return;
+        }
+    }
+}
+
 fn discardScheduledScript(script: *runtime.Instance) void {
     const state = script_element_state.of(script) orelse return;
     const preparation_document = state.preparation_time_document;
+    const preparation_generation = state.preparation_time_document_generation;
+    // Relinquish the borrowed membership before canceling owners/roots.
+    if (preparation_document) |document| {
+        if (runtime.SlabAllocator.generationOf(document) == state.preparation_time_document_generation) {
+            dom.document_rendering.remove(document, script);
+        }
+    }
+    dom.document_rendering.unblock(script);
     // Delivery tasks may still be queued. They see that the old preparation
     // was discarded, and release their own owner without running script.
     state.preparation_time_document = null;
@@ -969,9 +1055,11 @@ fn discardScheduledScript(script: *runtime.Instance) void {
     state.steps_to_run_when_ready = null;
     state.discard_on_abort = false;
     if (preparation_document) |document| {
-        if (document_modules.getLoader(document)) |opaque_loader| {
-            const loader: *module_script.AsyncModuleLoader = @ptrCast(@alignCast(opaque_loader));
-            loader.cancelElement(script);
+        if (runtime.SlabAllocator.generationOf(document) == preparation_generation) {
+            if (document_modules.getLoader(document)) |opaque_loader| {
+                const loader: *module_script.AsyncModuleLoader = @ptrCast(@alignCast(opaque_loader));
+                loader.cancelElement(script);
+            }
         }
     }
     // Its parser is no longer watching for this response. Drop transport
@@ -1137,7 +1225,8 @@ pub fn executeScriptElement(
         return;
     }
 
-    // Step 3: Unblock rendering (not implemented - no rendering engine)
+    // Step 3: unblock before either error dispatch or script evaluation.
+    dom.document_rendering.unblock(script_element);
 
     // Step 4: If el's result is null, fire error event and return
     const result = state.result;
@@ -1338,8 +1427,9 @@ fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, elemen
     const allocator = std.heap.c_allocator;
     const options = moduleFetchOptions(element);
     const map = documentModuleMap(document);
-    // A nonce has no NUL, and a referrer policy's tag no NUL either.
-    const key = std.mem.concat(allocator, u8, &.{ classic_script_key_prefix, options.nonce, "\x00", @tagName(options.referrer_policy), "\x00", base_url }) catch return null;
+    // Include every option retained by this record: import() from otherwise
+    // identical classics must preserve its own render-blocking option.
+    const key = std.mem.concat(allocator, u8, &.{ classic_script_key_prefix, options.nonce, "\x00", @tagName(options.referrer_policy), "\x00", if (options.render_blocking) "1" else "0", "\x00", base_url }) catch return null;
     defer allocator.free(key);
     if (map.getFn(map.context, key)) |value| return @ptrCast(@alignCast(value));
 
@@ -1353,7 +1443,7 @@ fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, elemen
         allocator.destroy(record);
         return null;
     }) else "";
-    record.* = .{ .script = .{ .base_url = owned_base_url, .nonce = owned_nonce, .referrer_policy = options.referrer_policy } };
+    record.* = .{ .script = .{ .base_url = owned_base_url, .nonce = owned_nonce, .referrer_policy = options.referrer_policy, .render_blocking = options.render_blocking } };
     record.live_next = live_classic_scripts;
     if (live_classic_scripts) |head| head.live_prev = record;
     live_classic_scripts = record;
@@ -2124,6 +2214,7 @@ const ModuleElementGraph = struct {
 
     fn gone(data: *anyopaque) void {
         const self: *ModuleElementGraph = @ptrCast(@alignCast(data));
+        discardUndeliveredScript(self.element, self.element_generation, self.document, self.document_generation);
         self.destroy();
     }
 };
@@ -2325,6 +2416,16 @@ fn getForAttribute(element: *runtime.Instance) []const u8 {
 /// Generic attribute check
 fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
     return getAttributeNS(element, null, name) != null;
+}
+
+/// HTML blocking attributes: an explicit render token or the script's
+/// implicit condition, using its prepared type rather than its current type
+/// attribute. Force-async does not participate in the implicit condition.
+pub fn isPotentiallyRenderBlocking(element: *runtime.Instance) bool {
+    if (dom.document_rendering.hasRenderToken(getAttribute(element, "blocking") orelse "")) return true;
+    const state = script_element_state.of(element) orelse return false;
+    return state.script_type == .classic and state.parser_document != null and
+        !hasAsyncAttribute(element) and !hasDeferAttribute(element);
 }
 
 /// Generic attribute getter, for an attribute in no namespace.
@@ -2829,6 +2930,7 @@ fn setUpScriptRequest(request: *fetch.internal.InternalRequest, element: *runtim
     try request.setIntegrityMetadata(getAttribute(element, "integrity") orelse "");
     const state = script_element_state.of(element);
     request.parser_metadata = if (state != null and state.?.parser_document != null) .parser_inserted else .not_parser_inserted;
+    request.render_blocking = if (state) |s| s.fetch_render_blocking else false;
     request.referrer_policy = fetch.internal.policy_container.referrerPolicyFromAttribute(getAttribute(element, "referrerpolicy"));
 }
 
@@ -2841,6 +2943,7 @@ fn moduleFetchOptions(element: *runtime.Instance) module_script.FetchOptions {
         .nonce = getNonceAttribute(element),
         .integrity = getAttribute(element, "integrity") orelse "",
         .parser_inserted = state != null and state.?.parser_document != null,
+        .render_blocking = if (state) |s| s.fetch_render_blocking else false,
         .referrer_policy = fetch.internal.policy_container.referrerPolicyFromAttribute(getAttribute(element, "referrerpolicy")),
     };
 }
@@ -2861,8 +2964,7 @@ fn moduleFetchOptions(element: *runtime.Instance) module_script.FetchOptions {
 /// other failed fetch, with a null body.
 ///
 /// Deviations, stated: step 4's "set up the classic script request" sets no
-/// cryptographic nonce, integrity metadata, parser metadata, referrer policy,
-/// render-blocking or priority; steps 5.2-5.4 decode as UTF-8, with no
+/// priority; steps 5.2-5.4 decode as UTF-8, with no
 /// legacy encoding extraction; step 5.6's base URL is the request URL, not the
 /// response's.
 fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, document: ?*runtime.Instance, url: []const u8) ExternalScriptFetchResult {
@@ -3115,12 +3217,14 @@ fn fetchDone(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.alg
 /// The networking task: onComplete - "mark as ready el given result".
 fn runFetchedTask(data: ?*anyopaque) void {
     const self: *ClassicScriptFetch = @ptrCast(@alignCast(data orelse return));
-    defer finishFetch(self, .settled);
+    var ending: FetchEnding = .teardown;
+    defer finishFetch(self, ending);
     if (self.cancel_requested) return;
     if (!self.elementIsLive() or !self.documentIsLive()) return;
     // A realm retired by a navigation runs none of its tasks.
     if (self.realm.engine_ctx == null) return;
     engine.runTaskInRealm(self.element.ctx, fetchedSteps, self) catch return;
+    ending = .settled;
 }
 
 fn fetchedSteps(data: ?*anyopaque) void {
@@ -3237,11 +3341,15 @@ fn dropFetchedTask(data: ?*anyopaque) void {
 const FetchEnding = enum { settled, teardown };
 
 fn finishFetch(self: *ClassicScriptFetch, ending: FetchEnding) void {
+    // Unlink this owner first: discarding the script cancels any remaining
+    // producer, and must not recursively finish this same allocation.
     forgetFetch(self);
     if (self.fetch) |f| {
         self.fetch = null;
         f.terminate();
     }
+    if (ending == .teardown)
+        discardUndeliveredScript(self.element, self.element_generation, self.document, self.document_generation);
     if (self.elementIsLive()) engine.releasePlatformObject(self.element);
     if (self.body) |b| self.allocator.free(b);
     const document = self.document;
@@ -4341,3 +4449,233 @@ test "parseSpeculationRules - non-HTTP URLs filtered" {
     // Only the HTTPS URL should be kept
     try std.testing.expectEqual(@as(usize, 1), result.prefetch_rules.get(0).?.urls.len);
 }
+
+// Task.drop may run synchronously when queueTask cannot allocate. Exercise
+// delivery owners without an engine; primitive Owned values still pin the
+// independent queue-root contract, and testing.allocator sees task storage.
+// Named tests/html tests invoke these private-owner cases. Merely importing
+// another module does not collect its test blocks, and refAllDecls would
+// needlessly analyze the script execution module's unrelated public API.
+pub const delivery_drop_test_cases = if (@import("builtin").is_test) struct {
+    const DroppedDeliveryFixture = struct {
+        ctx: runtime.ContextData = undefined,
+        document: *runtime.Instance = undefined,
+        element: *runtime.Instance = undefined,
+        drops: usize = 0,
+
+        fn init(self: *@This()) !void {
+            interfaces.process_hooks.startHooksForTest();
+            runtime.initializeRuntime(std.testing.allocator);
+            self.ctx = try runtime.ContextData.init(std.testing.allocator, .{
+                .event_loop = .{ .ptr = self, .vtable = &vtable },
+            });
+            self.document = try interfaces.Document.init(std.testing.allocator, &self.ctx);
+            self.element = try interfaces.HTMLScriptElement.init(std.testing.allocator, &self.ctx);
+            try dom.document_internals.setContentType(self.document, "text/html");
+            try dom.node_document.set(self.element, self.document);
+            const state = script_element_state.of(self.element).?;
+            state.preparation_time_document = self.document;
+            state.preparation_time_document_generation = runtime.SlabAllocator.generationOf(self.document);
+            state.delaying_the_load_event = true;
+            state.script_type = .module;
+            state.execution_root = .{ .value = .undefined };
+            try dom.document_rendering.block(self.element);
+        }
+
+        fn deinit(self: *@This()) void {
+            discardDocumentScripts(self.document);
+            interfaces.HTMLScriptElement.deinit(self.element);
+            interfaces.Document.deinit(self.document);
+            self.ctx.deinit();
+            runtime.deinitializeRuntime();
+        }
+
+        fn expectDiscarded(self: *@This()) !void {
+            const state = script_element_state.of(self.element).?;
+            const lists = document_scripts.of(self.document).?;
+            try std.testing.expect(state.preparation_time_document == null);
+            try std.testing.expect(!state.delaying_the_load_event);
+            try std.testing.expect(state.execution_root == null);
+            try std.testing.expect(!dom.document_rendering.contains(self.document, self.element));
+            try std.testing.expect(lists.pending_parsing_blocking_script == null);
+            try std.testing.expectEqual(@as(usize, 0), lists.scripts_to_execute_asap.items.len);
+            try std.testing.expectEqual(@as(usize, 0), lists.scripts_to_execute_in_order_asap.items.len);
+            try std.testing.expectEqual(@as(usize, 0), lists.scripts_to_execute_when_parsing_finished.items.len);
+        }
+
+        fn queue(context: *anyopaque, task: runtime.EventLoopTask) void {
+            const self: *@This() = @ptrCast(@alignCast(context));
+            self.drops += 1;
+            if (task.drop) |drop| drop(task.context);
+        }
+        fn microtask(_: *anyopaque, _: runtime.EventLoopMicrotask) void {}
+        fn flush(_: *anyopaque) void {}
+        fn once(_: *anyopaque) bool {
+            return false;
+        }
+        fn allocator(_: *anyopaque) std.mem.Allocator {
+            return std.testing.allocator;
+        }
+        const vtable: runtime.EventLoop.VTable = .{
+            .queueTask = queue,
+            .queueMicrotask = microtask,
+            .runMicrotasks = flush,
+            .runOnce = once,
+            .promiseAllocator = allocator,
+        };
+    };
+
+    pub fn readyTaskDrop() !void {
+        var fixture: DroppedDeliveryFixture = .{};
+        try fixture.init();
+        defer fixture.deinit();
+        _ = try handleScriptSchedulingOf(std.testing.allocator, fixture.element, null, .module, .in_hand);
+        try std.testing.expectEqual(@as(usize, 1), fixture.drops);
+        try fixture.expectDiscarded();
+    }
+
+    pub fn classicDeliveryDrop() !void {
+        for (0..4) |kind| {
+            var fixture: DroppedDeliveryFixture = .{};
+            try fixture.init();
+            defer fixture.deinit();
+            const lists = document_scripts.of(fixture.document).?;
+            switch (kind) {
+                0 => try lists.addAsap(fixture.element),
+                1 => try lists.appendInOrder(fixture.element),
+                2 => try lists.addWhenParsingFinished(fixture.element),
+                3 => lists.pending_parsing_blocking_script = fixture.element,
+                else => unreachable,
+            }
+            const owner = try std.testing.allocator.create(ClassicScriptFetch);
+            owner.* = .{
+                .allocator = std.testing.allocator,
+                .element = fixture.element,
+                .element_generation = runtime.SlabAllocator.generationOf(fixture.element),
+                .document = fixture.document,
+                .document_generation = runtime.SlabAllocator.generationOf(fixture.document),
+                .realm = &fixture.ctx,
+                .url = "https://example.test/script.js",
+                .task_queued = true,
+            };
+            try script_fetches.append(std.heap.smp_allocator, owner);
+            dropFetchedTask(owner);
+            try fixture.expectDiscarded();
+            try std.testing.expect(!isFetching(fixture.element));
+        }
+    }
+
+    pub fn initialModuleCancellation() !void {
+        var fixture: DroppedDeliveryFixture = .{};
+        try fixture.init();
+        defer fixture.deinit();
+        const owner = try std.testing.allocator.create(ModuleElementGraph);
+        owner.* = .{
+            .allocator = std.testing.allocator,
+            .element = fixture.element,
+            .element_generation = runtime.SlabAllocator.generationOf(fixture.element),
+            .document = fixture.document,
+            .document_generation = runtime.SlabAllocator.generationOf(fixture.document),
+            .element_root = .{ .value = .undefined },
+            .document_root = .{ .value = .undefined },
+        };
+        // Graph.dropTask calls gone before loader.start returns on queue OOM.
+        ModuleElementGraph.gone(owner);
+        try std.testing.expect(!try handleScriptSchedulingOf(std.testing.allocator, fixture.element, null, .module, .fetching));
+        try fixture.expectDiscarded();
+    }
+
+    pub fn readyTaskAllocationFailure() !void {
+        var fixture: DroppedDeliveryFixture = .{};
+        try fixture.init();
+        defer fixture.deinit();
+        try document_scripts.of(fixture.document).?.addAsap(fixture.element);
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+        const original_allocator = fixture.ctx.allocator;
+        fixture.ctx.allocator = failing.allocator();
+        defer fixture.ctx.allocator = original_allocator;
+        queueMarkAsReady(fixture.element, fixture.document);
+        try std.testing.expectEqual(@as(usize, 0), fixture.drops);
+        try fixture.expectDiscarded();
+    }
+
+    pub fn generationGuard() !void {
+        var fixture: DroppedDeliveryFixture = .{};
+        try fixture.init();
+        defer fixture.deinit();
+        const state = script_element_state.of(fixture.element).?;
+        try document_scripts.of(fixture.document).?.addAsap(fixture.element);
+        discardUndeliveredScript(fixture.element, runtime.SlabAllocator.generationOf(fixture.element), fixture.document, state.preparation_time_document_generation + 1);
+        try std.testing.expect(state.execution_root != null);
+        try std.testing.expect(state.delaying_the_load_event);
+        try std.testing.expect(dom.document_rendering.contains(fixture.document, fixture.element));
+        try std.testing.expectEqual(@as(usize, 1), document_scripts.of(fixture.document).?.scripts_to_execute_asap.items.len);
+    }
+
+    /// Exercises the production Graph.dropTask -> cancel -> client.gone path,
+    /// including document cleanup re-entering the now-unlinked loader.
+    pub fn initialGraphTaskDrop() !void {
+        for (0..2) |kind| {
+            var fixture: DroppedDeliveryFixture = .{};
+            try fixture.init();
+            defer fixture.deinit();
+            const allocator = std.testing.allocator;
+            const Pending = @FieldType(module_script.AsyncModuleLoader, "pending");
+            var loader: module_script.AsyncModuleLoader = .{
+                .allocator = allocator,
+                .env = moduleEnvironment(fixture.element, fixture.document).?,
+                .document = fixture.document,
+                .document_generation = runtime.SlabAllocator.generationOf(fixture.document),
+                .pending = Pending.init(allocator),
+            };
+            defer {
+                // This test owns stack loader storage, not Document.
+                const internal = dom.document_internals.getInternal(fixture.document).?;
+                internal.module_loader = null;
+                internal.dispose_module_loader = null;
+                loader.discard();
+                loader.graphs.deinit(allocator);
+                loader.pending.deinit();
+            }
+            try document_modules.setLoader(fixture.document, &loader, &preserveStackLoader);
+            const internal = dom.document_internals.getInternal(fixture.document).?;
+            // The second case has a suspended lifecycle, so the graph's drop
+            // queues a continuation which queueTask also immediately drops.
+            internal.load_waiting_on_delay = kind == 1;
+            var inline_script: module_script.ModuleScript = .{
+                .allocator = allocator,
+                .base_url = "https://example.test/inline.mjs",
+            };
+            const owner = try allocator.create(ModuleElementGraph);
+            owner.* = .{
+                .allocator = allocator,
+                .element = fixture.element,
+                .element_generation = runtime.SlabAllocator.generationOf(fixture.element),
+                .document = fixture.document,
+                .document_generation = runtime.SlabAllocator.generationOf(fixture.document),
+                .element_root = .{ .value = .undefined },
+                .document_root = .{ .value = .undefined },
+            };
+            // A null record supplies an inline graph with no network request
+            // or JavaScript engine, but start still queues the real Graph task.
+            loader.start(inline_script.base_url, .javascript, &inline_script, .{}, .{
+                .context = owner,
+                .done = ModuleElementGraph.done,
+                .gone = ModuleElementGraph.gone,
+                .element = fixture.element,
+            }) catch |err| {
+                owner.destroy();
+                return err;
+            };
+            try std.testing.expectEqual(@as(usize, 0), loader.graphs.items.len);
+            try std.testing.expectEqual(@as(usize, 0), loader.pending.count());
+            try fixture.expectDiscarded();
+            try std.testing.expectEqual(@as(usize, if (kind == 0) 1 else 2), fixture.drops);
+            try std.testing.expect(!try handleScriptSchedulingOf(allocator, fixture.element, null, .module, .fetching));
+            try std.testing.expect(!internal.ready_for_post_load_tasks);
+            try std.testing.expectEqual(kind == 1, internal.load_waiting_on_delay);
+        }
+    }
+
+    fn preserveStackLoader(_: *anyopaque) void {}
+} else struct {};

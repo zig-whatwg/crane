@@ -161,6 +161,9 @@ pub const runtime = @import("runtime");
 pub const script_execution = @import("script_execution.zig");
 pub const script_request = @import("script_request.zig");
 
+/// Module script records, descendant fetch options, and document graph loading.
+pub const module_script = @import("module_script.zig");
+
 /// A script element's processing-model state (its parser document, already
 /// started, result, ...), and the hook the processing model reaches an
 /// element's through - Blink's ScriptLoader, WebKit's ScriptElement.

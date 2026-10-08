@@ -306,6 +306,13 @@ pub const DocumentParser = struct {
     }
 
     fn createWithInput(allocator: Allocator, ctx: runtime.Context, document: *runtime.Instance, input: []const u8, options: ParseOptions, script_created: bool, on_finished: *const fn (*runtime.Instance, *DocumentParser) void) !*DocumentParser {
+        // HTML "load an HTML document" step 1 initializes text/html before
+        // creating the parser. A browser singleton may still have no type;
+        // supply it before script preparation checks render eligibility.
+        // Keep explicit XML/text types when this parser is used as a fallback.
+        if (document_internals.getContentType(document)) |content_type| {
+            if (content_type.len == 0) try document_internals.setContentType(document, "text/html");
+        }
         const self = try allocator.create(DocumentParser);
         errdefer allocator.destroy(self);
         const base_url = try allocator.dupe(u8, options.base_url);

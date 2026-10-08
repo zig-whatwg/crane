@@ -119,6 +119,15 @@ fn associateWithAttribute(list: *runtime.Instance, element: *runtime.Instance, l
     const internal = getInternal(list) orelse return error.InvalidState;
     const name = try runtime.DOMString.initDupe(internal.allocator, local_name);
     setElement(list, element, name);
+    // HTML 2.5.8: the blocking attribute's supported tokens are the possible
+    // blocking tokens. DOM validation ASCII-lowercases its input.
+    if (std.mem.eql(u8, local_name, "blocking") and
+        (element.stateAs(interfaces.HTMLScriptElement.State) != null or
+            element.stateAs(interfaces.HTMLLinkElement.State) != null or
+            element.stateAs(interfaces.HTMLStyleElement.State) != null))
+    {
+        internal.supported_tokens = &.{"render"};
+    }
 }
 
 /// Deinitialize instance

@@ -68,6 +68,9 @@ pub fn installHooks() void {
     dom_module.mutation.registerChildrenChangedCallback(&scriptChildrenChangedCallback) catch |err| {
         log.warn("script children changed steps not registered: {}", .{err});
     };
+    dom_module.mutation.registerRemovingStepsCallback(&scriptRemovingStepsCallback) catch |err| {
+        log.warn("script removing steps not registered: {}", .{err});
+    };
     // html's script processing model reaches its state.
     script_element_state.install(.{ .state = &getInternal });
     @import("html").script_execution.installFetchHooks();
@@ -133,6 +136,8 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // Erase borrowed membership before this element's identity can end.
+    dom_module.document_rendering.unblock(instance);
     // Clean up internal state from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
@@ -261,15 +266,6 @@ pub fn get_async(instance: *runtime.Instance) anyerror!bool {
 /// True if the defer attribute is present.
 pub fn get_defer(instance: *runtime.Instance) anyerror!bool {
     return hasBooleanAttribute(instance, "defer");
-}
-
-/// Getter for blocking
-/// Spec: [SameObject, PutForwards=value, Reflect] readonly attribute DOMTokenList blocking;
-/// Returns the DOMTokenList for the blocking attribute.
-/// TODO: Implement DOMTokenList support
-pub fn get_blocking(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented; // Requires DOMTokenList implementation
 }
 
 /// Getter for crossOrigin
@@ -588,6 +584,20 @@ pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMStr
 // Post-connection steps
 // =============================================================================
 
+/// HTML 3.1.6: becoming browsing-context disconnected unblocks rendering.
+/// The DOM invokes this for every shadow-including descendant, after clearing
+/// connectedness and before adoption changes the node document.
+fn scriptRemovingStepsCallback(node: *NodeBase, _: ?*NodeBase) void {
+    // The remove algorithm invokes these steps after detaching the subtree.
+    // A cached flag must not suppress cleanup for a shadow-tree descendant.
+    // State-preserving moves invoke moving steps instead of this callback.
+    if (node.node_type != 1) return;
+    const instance_ptr = instance_bridge.getInstance(node) orelse return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+    if (getInternal(instance) == null) return;
+    dom_module.document_rendering.unblock(instance);
+}
+
 /// The script element's HTML element post-connection steps.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
@@ -735,6 +745,15 @@ fn attributeChangeSteps(
 
     // Step 1.
     if (namespace != null) return;
+
+    // HTML 3.1.6: changing blocking so the element is no longer potentially
+    // render-blocking removes it. Adding a token never retroactively blocks.
+    // An implicit parser classic blocker keeps blocking after token removal.
+    if (std.mem.eql(u8, local_name, "blocking") and
+        !@import("html").script_execution.isPotentiallyRenderBlocking(element))
+    {
+        dom_module.document_rendering.unblock(element);
+    }
 
     if (std.mem.eql(u8, local_name, "async") and old_value == null and value != null) {
         internal.force_async = false;
