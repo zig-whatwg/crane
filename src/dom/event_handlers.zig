@@ -8,6 +8,7 @@ const process_start = @import("process_start.zig");
 pub const Implementation = struct {
     get: *const fn (*runtime.Instance, []const u8) ?usize,
     set: *const fn (*runtime.Instance, []const u8, ?usize) anyerror!void,
+    erase: *const fn (*runtime.Instance) void,
 };
 
 // process-wide: hook table written once at process start by EventTarget.installHooks (B0); comptime in B9
@@ -29,6 +30,13 @@ pub inline fn get(comptime Handler: type, target: *runtime.Instance, event_type:
 pub inline fn set(comptime Handler: type, target: *runtime.Instance, event_type: []const u8, value: Handler) !void {
     const steps = implementation orelse return error.NotSupported;
     return steps.set(target, event_type, toAddress(Handler, value));
+}
+
+/// HTML "erase all event listeners and handlers", including activated IDL
+/// event handlers. document.open applies this to its shadow-including tree.
+pub fn eraseAll(target: *runtime.Instance) void {
+    const steps = implementation orelse return;
+    steps.erase(target);
 }
 
 fn fromAddress(comptime Handler: type, address: usize) Handler {

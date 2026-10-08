@@ -34,7 +34,6 @@ const Registry = utils.InstanceRegistry(InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-const EventTargetImpl = @import("EventTarget.zig");
 const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
@@ -2600,6 +2599,16 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
         return error.InvalidStateError;
     }
 
+    // Steps 3-4: the entry document's origin, before the parser/unload early
+    // returns. document.domain relaxation does not change this comparison.
+    const entry_document = documentOfRealm(engine.entryRealm()) orelse instance;
+    if (!try sameOriginForOpen(instance, entry_document)) return error.SecurityError;
+    const entry_pin = if (entry_document.ctx.hasEngine())
+        try engine.retainValue(entry_document.ctx, .{ .instance = entry_document })
+    else
+        null;
+    defer if (entry_pin) |held| held.release();
+
     // Step 5: "If document has an active parser whose script nesting level
     // is greater than 0, then return document." - an inline script of the
     // page being parsed calls document.open(), which is ignored. The parser
@@ -2637,14 +2646,14 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // given document's relevant global object."
     if (internal.default_view) |window| {
         if ((interfaces.Window.get_document(window) catch null) == instance) {
-            EventTargetImpl.eraseAllEventListenersAndHandlers(window);
+            @import("dom").event_handlers.eraseAll(window);
         }
     }
 
     // Step 11: "Replace all with null within document."
-    var child = NodeImpl.getFirstChild(instance);
+    var child = try interfaces.Node.get_firstChild(instance);
     while (child) |c| {
-        const next = NodeImpl.getNextSibling(c);
+        const next = try interfaces.Node.get_nextSibling(c);
         _ = interfaces.Node.call_removeChild(instance, c) catch {};
         child = next;
     }
@@ -2652,6 +2661,22 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Reset document element and doctype references
     internal.document_element = null;
     internal.doctype = null;
+
+    // Step 12: update the current history entry in place. The default
+    // serializedData preserves history.state. Only a different entry
+    // document loses its fragment; a detached document keeps its own URL.
+    if (isFullyActive(instance)) {
+        const entry_url = try interfaces.Document.get_URL(entry_document);
+        defer entry_document.ctx.allocator.free(entry_url);
+        const end = if (entry_document == instance) entry_url.len else std.mem.indexOfScalar(u8, entry_url, '#') orelse entry_url.len;
+        if (internal.default_view) |window| {
+            @import("dom").history_traversal.urlAndHistoryUpdate(window, entry_url[0..end], null, .replace);
+            // Associated documents read the context's live URL. Drop a
+            // prior explicit URL so later pushState updates stay visible.
+            if (internal.url.len > 0) internal.allocator.free(internal.url);
+            internal.url = "";
+        }
+    }
 
     // Step 13: "Set document's is initial about:blank to false."
     internal.is_initial_about_blank = false;
@@ -2682,6 +2707,29 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     return instance;
 }
 
+fn documentOfRealm(realm: ?runtime.Context) ?*runtime.Instance {
+    const record = (realm orelse return null).getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(global) catch null;
+}
+
+fn sameOriginForOpen(document: *runtime.Instance, entry_document: *runtime.Instance) !bool {
+    // A detached document created in this realm inherits its creator's
+    // origin, including an opaque origin's identity.
+    if (document.ctx == entry_document.ctx) return true;
+    const own_document = if ((getInternal(document) orelse return false).default_view == null)
+        documentOfRealm(document.ctx) orelse document
+    else
+        document;
+    const own = try serializedOrigin(own_document, getInternal(own_document) orelse return false, document.ctx.allocator);
+    defer if (own) |value| document.ctx.allocator.free(value);
+    const entry = try serializedOrigin(entry_document, getInternal(entry_document) orelse return false, document.ctx.allocator);
+    defer if (entry) |value| document.ctx.allocator.free(value);
+    if (own == null or entry == null) return false;
+    return std.mem.eql(u8, own.?, entry.?);
+}
+
 /// open(url, name, features): "1. If this is not fully active, then throw an
 /// "InvalidAccessError" DOMException. 2. Return the result of running the
 /// window open steps with url, name, and features." - on this's relevant
@@ -2707,16 +2755,19 @@ pub fn call_open__1(instance: *runtime.Instance, url: runtime.USVString, name: r
 fn eraseListenersOfTree(document: *runtime.Instance) void {
     var node: ?*runtime.Instance = document;
     while (node) |current| {
-        EventTargetImpl.eraseAllEventListenersAndHandlers(current);
-        if (NodeImpl.getFirstChild(current)) |first| {
+        @import("dom").event_handlers.eraseAll(current);
+        if (@import("dom").shadow_hosts.rootForHost(current)) |shadow| {
+            eraseListenersOfTree(shadow);
+        }
+        if (interfaces.Node.get_firstChild(current) catch null) |first| {
             node = first;
             continue;
         }
         var cursor = current;
         node = while (true) {
             if (cursor == document) break null;
-            if (NodeImpl.getNextSibling(cursor)) |next| break next;
-            cursor = NodeImpl.getParent(cursor) orelse break null;
+            if (interfaces.Node.get_nextSibling(cursor) catch null) |next| break next;
+            cursor = (interfaces.Node.get_parentNode(cursor) catch null) orelse break null;
         };
     }
 }

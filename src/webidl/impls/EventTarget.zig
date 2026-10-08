@@ -217,7 +217,7 @@ pub fn installHooks() void {
         .dispatch_trusted = dispatchTrusted,
         .dispatch_trusted_with_throws = dispatchTrustedWithThrows,
     });
-    dom_module.event_handlers.install(.{ .get = getHandlerAddress, .set = setHandlerAddress });
+    dom_module.event_handlers.install(.{ .get = getHandlerAddress, .set = setHandlerAddress, .erase = eraseAllEventListenersAndHandlers });
 }
 
 /// Initialize instance (creates the instance)

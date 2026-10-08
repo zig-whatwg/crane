@@ -549,6 +549,12 @@ pub fn installHooks() void {
     });
     // The parsers' "create an element" sets names through `dom.node_creation`.
     dom.node_creation.installElement(.{ .set_names = &setNamesHook });
+    dom.shadow_hosts.install(.{ .root_for_host = &shadowRootForHost });
+}
+
+fn shadowRootForHost(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.shadow_root;
 }
 
 /// Initialize instance (creates the instance)
