@@ -526,6 +526,11 @@ pub const TreeBuilder = struct {
     /// HTML Standard: Set while waiting for scripts to load/execute.
     parser_pause_flag: bool,
 
+    /// An unready or nested parser-blocking script still owns the pause.
+    /// The end-tag callback runs before the nesting-level decrement, so its
+    /// wait must survive the ordinary zero-level pause reset.
+    waiting_for_parser_blocking_script: bool = false,
+
     /// Callback for script execution.
     /// HTML Standard §13.2.6.4.7: When a script end tag is encountered,
     /// the script should be prepared and potentially executed.
@@ -534,6 +539,11 @@ pub const TreeBuilder = struct {
 
     /// Script execution callback context.
     script_execution_context: ?*anyopaque,
+
+    /// HTML script end-tag checkpoint, before the current script is popped
+    /// or prepared. False means the checkpoint detached this parser.
+    script_end_checkpoint_callback: ?*const fn (?*anyopaque) bool = null,
+    script_end_checkpoint_context: ?*anyopaque = null,
 
     /// DOM adapter callbacks for incremental TreeNode to DOM conversion.
     /// When set, these callbacks are invoked as nodes are created and modified,
@@ -550,6 +560,10 @@ pub const TreeBuilder = struct {
     /// The text node the parser has been appending to without telling the DOM
     /// adapter yet - see `flushPendingText`.
     pending_text: ?*TreeNode = null,
+
+    /// The textarea start tag ignores exactly the next token if it is LF.
+    /// An input suspension leaves this pending until a token is emitted.
+    skip_next_lf: bool = false,
     /// An attribute was added to an element the adapter already made: a
     /// second <html> or <body> start tag's attributes, which "in body" adds
     /// to the existing element. Called with `dom_adapter_context`.
@@ -682,6 +696,15 @@ pub const TreeBuilder = struct {
         self.script_execution_context = context;
     }
 
+    pub fn setScriptEndCheckpointCallback(
+        self: *TreeBuilder,
+        callback: ?*const fn (?*anyopaque) bool,
+        context: ?*anyopaque,
+    ) void {
+        self.script_end_checkpoint_callback = callback;
+        self.script_end_checkpoint_context = context;
+    }
+
     /// Set DOM adapter callbacks for incremental conversion.
     /// When set, these callbacks are invoked as nodes are created and modified during parsing.
     /// This enables scripts to access DOM nodes that were parsed before them.
@@ -808,9 +831,15 @@ pub const TreeBuilder = struct {
 
     /// Parse the entire document.
     pub fn parse(self: *TreeBuilder) !void {
+        if (self.input_stream_manager) |stream| {
+            if (stream.eof_processed) return;
+        }
         // Whatever stops the loop, the adapter hears the last run of text.
         defer self.flushPendingText();
         while (true) {
+            if (self.input_stream_manager) |stream| {
+                if (stream.aborted) return;
+            }
             // "If the parser pause flag is set, the tokenizer will abort
             // immediately" - a nested invocation (document.write's) stops
             // here, and the outer one resumes when the script that paused it
@@ -857,10 +886,28 @@ pub const TreeBuilder = struct {
         }
         // The end of the input: "stop parsing" pops every open element.
         self.popAllOpenElements();
+        if (self.input_stream_manager) |stream| stream.eof_processed = true;
+    }
+
+    /// HTML "abort a parser" step 4. This is an actual stack removal, with
+    /// the same finished-parsing-children callbacks as the normal end, but
+    /// it neither supplies EOF nor runs the normal end algorithm.
+    pub fn abort(self: *TreeBuilder) void {
+        if (self.input_stream_manager) |stream| stream.aborted = true;
+        self.flushPendingText();
+        self.pending_table_char_tokens.clear();
+        self.popAllOpenElements();
     }
 
     /// Process a single token.
     pub fn processToken(self: *TreeBuilder, token: Token) Allocator.Error!void {
+        // HTML textarea step 2. Decide on the emitted token, so split
+        // input and character references behave like contiguous input.
+        // Text runs never contain LF; a non-LF token consumes the decision.
+        if (self.skip_next_lf) {
+            self.skip_next_lf = false;
+            if (token == .character and token.character == 0x000A) return;
+        }
         // Tree construction dispatcher
         // HTML Standard §13.2.6: Check if we should use foreign content rules
         const use_foreign = self.shouldUseForeignContent(token);
@@ -2080,6 +2127,20 @@ pub const TreeBuilder = struct {
         } else if (std.mem.eql(u8, name, "frameset")) {
             self.reportError(.invalid_first_character_of_tag_name);
             // Ignore unless frameset_ok
+        } else if (std.mem.eql(u8, name, "plaintext")) {
+            // HTML "in body", plaintext start tag: close p in button
+            // scope, insert the element, then remain in PLAINTEXT through
+            // later write boundaries and explicit EOF.
+            try self.closePElementIfInButtonScope();
+            _ = try self.insertHtmlElement(tag);
+            self.tokenizer.state = .plaintext;
+        } else if (std.mem.eql(u8, name, "textarea")) {
+            // HTML "in body", textarea steps 1-6. The generic helper
+            // inserts the element and sets RCDATA and original/text modes.
+            // Keep step 2 pending across writes instead of peeking at input.
+            try self.parseGenericRCDATA(tag);
+            self.skip_next_lf = true;
+            self.frameset_ok = false;
         } else if (isSpecialBlockElement(name)) {
             try self.closePElementIfInButtonScope();
             _ = try self.insertHtmlElement(tag);
@@ -2229,6 +2290,18 @@ pub const TreeBuilder = struct {
             .end_tag => |tag| {
                 const name = tag.getTagName();
                 if (std.mem.eql(u8, name, "script")) {
+                    // HTML "text", script end tag, first step: when the
+                    // execution context stack is empty, run a checkpoint.
+                    // Flush script text before observers run, then allow a
+                    // detached parser to unwind without touching old DOM.
+                    self.flushPendingText();
+                    if (self.script_end_checkpoint_callback) |checkpoint| {
+                        if (!checkpoint(self.script_end_checkpoint_context)) {
+                            if (self.input_stream_manager) |stream| stream.discardInput();
+                            return;
+                        }
+                    }
+                    if (self.input_stream_manager) |stream| if (stream.aborted) return;
                     // HTML Standard §13.2.6.4.20: Script end tag processing
                     // 1. Pop the current node (script element)
                     const script_element = self.open_elements.get(self.open_elements.len - 1);
@@ -2256,7 +2329,8 @@ pub const TreeBuilder = struct {
                                 self.script_nesting_level += 1;
                                 callback(script, self.script_execution_context);
                                 self.script_nesting_level -|= 1;
-                                if (self.script_nesting_level == 0) self.parser_pause_flag = false;
+                                if (self.script_nesting_level == 0 and !self.waiting_for_parser_blocking_script)
+                                    self.parser_pause_flag = false;
                                 if (self.input_stream_manager) |stream| stream.popInsertionPoint();
                             }
                         }

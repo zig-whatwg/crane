@@ -20,12 +20,15 @@
 //!
 //! **After-parsing mode** (common case): When document.write() is called after
 //! initial parsing is complete, it implicitly calls document.open() which creates
-//! a new parser. Content is accumulated in a buffer and parsed when document.close()
-//! is called.
+//! a persistent script-created parser. Each write resumes that parser at its
+//! insertion point; document.close() supplies explicit EOF.
 //!
 //! **During-parsing mode**: When document.write() is called from a script during
 //! parsing, the content is inserted at the current input stream position
 //! (insertion point). This requires integration with the active parser's input stream.
+//!
+//! InputStreamManager is the live parser integration. DocumentWriteState and
+//! the simplified functions below are an engine-free state model.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -328,6 +331,16 @@ pub const InputStreamManager = struct {
     /// before document.close()), where it suspends instead.
     complete: bool = true,
 
+    /// HTML "abort a parser": stop tokenization without supplying EOF.
+    aborted: bool = false,
+
+    /// Tree construction consumed explicit EOF and stopped parsing.
+    eof_processed: bool = false,
+
+    /// The associated tree construction stage's actual script nesting level.
+    /// A script-created stream has an insertion point even between scripts.
+    script_nesting_level: ?*const u32 = null,
+
     /// The parser that processes inserted characters (document write steps
     /// step 11). It runs the tree builder until the tokenizer suspends at
     /// `stop_at`, or the tree construction stage aborts it.
@@ -336,6 +349,12 @@ pub const InputStreamManager = struct {
     pub const Processor = struct {
         context: *anyopaque,
         process: *const fn (context: *anyopaque) void,
+        /// Keep a heap parser alive until this invocation has restored the
+        /// readable limit, including any nested script's close/open calls.
+        retain: ?*const fn (context: *anyopaque) void = null,
+        release: ?*const fn (context: *anyopaque) void = null,
+        after_process: ?*const fn (context: *anyopaque) void = null,
+        abort: ?*const fn (context: *anyopaque) void = null,
     };
 
     /// A stream holding `input`, which is complete.
@@ -381,6 +400,7 @@ pub const InputStreamManager = struct {
     /// "Insert input into the input stream just before the insertion point."
     /// With no insertion point, nothing is inserted.
     pub fn insert(self: *InputStreamManager, content: []const u8) !void {
+        if (self.aborted) return;
         const at = self.insertion_point orelse return;
         if (content.len == 0) return;
         try self.buffer.insertSlice(self.allocator, at, content);
@@ -431,17 +451,49 @@ pub const InputStreamManager = struct {
     /// construction stage."
     pub fn processInserted(self: *InputStreamManager) void {
         const processor = self.processor orelse return;
+        if (processor.retain) |retain| retain(processor.context);
+        defer if (processor.release) |release| release(processor.context);
         self.saved_stops.append(self.allocator, self.stop_at) catch return;
         self.stop_at = self.insertion_point;
         self.sync();
         processor.process(processor.context);
         self.stop_at = self.saved_stops.pop() orelse null;
         self.sync();
+        if (processor.after_process) |after_process| after_process(processor.context);
     }
 
     /// Whether there is an insertion point.
     pub fn hasInsertionPoint(self: *const InputStreamManager) bool {
         return self.insertion_point != null;
+    }
+
+    pub fn isExecutingScript(self: *const InputStreamManager) bool {
+        return if (self.script_nesting_level) |level| level.* > 0 else false;
+    }
+
+    /// HTML "abort a parser" step 1. Document invokes this before the
+    /// interactive readiness callback; it does not finish open elements yet.
+    pub fn discardInput(self: *InputStreamManager) void {
+        self.aborted = true;
+        self.insertion_point = null;
+        const consumed = if (self.tokenizer) |tokenizer| tokenizer.nextInputPosition() else 0;
+        self.buffer.shrinkRetainingCapacity(@min(consumed, self.buffer.items.len));
+        for (self.saved_insertion_points.items) |*mark| mark.* = null;
+        for (self.saved_stops.items) |*mark| mark.* = null;
+        self.stop_at = null;
+        self.sync();
+    }
+
+    /// Finish aborting after Document's interactive readiness update. The
+    /// associated tree construction stage performs step 4's stack pop;
+    /// Document owns the readiness updates in steps 3 and 5.
+    pub fn abort(self: *InputStreamManager) void {
+        self.discardInput();
+        const processor = self.processor orelse return;
+        const abort_parser = processor.abort orelse return;
+        if (processor.retain) |retain| retain(processor.context);
+        defer if (processor.release) |release| release(processor.context);
+        abort_parser(processor.context);
     }
 };
 
