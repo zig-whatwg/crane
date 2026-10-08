@@ -38,6 +38,7 @@ const Allocator = std.mem.Allocator;
 
 // Import runtime for DOM types
 const runtime = @import("runtime");
+const engine = @import("engine");
 
 // Import interfaces for DOM operations (this module is allowed to use interfaces)
 const interfaces = @import("interfaces");
@@ -233,6 +234,8 @@ const ByteStreamDecoding = struct {
 /// Design: WebKit HTMLDocumentParser::insert / finish / shouldDelayEnd:
 /// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/html/parser/HTMLDocumentParser.cpp
 pub const DocumentParser = struct {
+    const trace_slot: engine.TracedSlot = .{ .name = "document-parser:nodes" };
+
     allocator: Allocator,
     ctx: runtime.Context,
     document: *runtime.Instance,
@@ -248,7 +251,15 @@ pub const DocumentParser = struct {
     original_bytes: ?[]u8 = null,
     byte_stream_decoding: ?ByteStreamDecoding = null,
     owned_loader: ?OwnedScriptLoader = null,
-    traced_slots: @import("infra").List([]u8),
+    /// One fixed Document member owns a fresh collectible array per parser.
+    /// Only active native calls keep independent roots; suspension keeps none.
+    owns_trace_slot: bool = false,
+    traced_node_count: usize = 0,
+    active_calls: usize = 0,
+    active_document: ?engine.Owned = null,
+    active_nodes: ?engine.Owned = null,
+    trace_failure: ?anyerror = null,
+    failed_processor_calls: usize = 0,
     /// Document owns one reference. Initiation and each write/close/resume
     /// hold another across callbacks and insertion-limit restoration.
     references: usize = 1,
@@ -329,7 +340,6 @@ pub const DocumentParser = struct {
             .adapter = undefined,
             .script_context = undefined,
             .base_url = base_url,
-            .traced_slots = @import("infra").List([]u8).init(allocator),
             .on_finished = on_finished,
         };
         errdefer self.input_stream.deinit();
@@ -398,9 +408,13 @@ pub const DocumentParser = struct {
     }
 
     fn nodeCreated(node: *TreeNode, context: ?*anyopaque) void {
-        parser_scripts.domAdapterOnNodeCreated(node, context);
         const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
         const self: *DocumentParser = @fieldParentPtr("adapter", adapter);
+        if (self.trace_failure != null) return;
+        adapter.onNodeCreated(node) catch |err| {
+            self.failedNode(node, err);
+            return;
+        };
         const instance = adapter.getDomNode(node) orelse return;
         if (instance == self.document or !self.ctx.hasEngine()) return;
         if (runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return;
@@ -408,16 +422,118 @@ pub const DocumentParser = struct {
         // Blink HTMLTreeBuilder::Trace visiting its open-element stack.
         // A detached node must survive until this parser releases it, while
         // an unreachable document/parser/node cycle must remain collectable.
-        const slot = std.fmt.allocPrint(self.allocator, "document-parser:{x}", .{@intFromPtr(node)}) catch return;
-        self.traced_slots.append(slot) catch {
-            self.allocator.free(slot);
+        const nodes = self.active_nodes orelse {
+            self.failedNode(node, error.InvalidStateError);
             return;
         };
-        @import("engine").traceChild(self.document, instance, .{ .name = slot });
-        // traceChild makes the wrapper and transfers this node to the
+        // defineOwnProperty allocates the numeric key before converting its
+        // value. Root a newly wrapped node before any of those allocations.
+        const node_hold = engine.retainValue(self.ctx, .{ .instance = instance }) catch |err| {
+            self.failedNode(node, err);
+            return;
+        };
+        defer node_hold.release();
+        var index_buffer: [32]u8 = undefined;
+        const index = std.fmt.bufPrint(&index_buffer, "{d}", .{self.traced_node_count}) catch unreachable;
+        engine.defineOwnProperty(self.ctx, nodes.borrow(), index, node_hold.borrow(), .{
+            .writable = true,
+            .enumerable = true,
+            .configurable = true,
+        }) catch |err| {
+            self.failedNode(node, err);
+            return;
+        };
+        self.traced_node_count += 1;
+        // Defining the array member makes the wrapper and transfers it to the
         // collector, even if its later DOM insertion is rejected. The
         // adapter must never directly destroy a wrapped parser-held node.
-        if (@import("engine").hasWrapper(instance)) _ = adapter.unattached_nodes.remove(instance);
+        if (engine.hasWrapper(instance)) _ = adapter.unattached_nodes.remove(instance);
+    }
+
+    fn failedNode(self: *DocumentParser, node: *TreeNode, err: anyerror) void {
+        // The callback cannot return an error. Revoke this node's published
+        // mapping before later callbacks for the same token can use it. An
+        // unwrapped orphan stays with the adapter; a made wrapper is GC-owned.
+        if (self.adapter.node_map.fetchRemove(node)) |entry| {
+            const generation: ?u64 = if (self.adapter.generations.get(node)) |recorded|
+                recorded
+            else
+                self.adapter.unattached_nodes.get(entry.value);
+            if (generation) |expected| {
+                if (runtime.SlabAllocator.generationOf(entry.value) == expected and engine.hasWrapper(entry.value))
+                    _ = self.adapter.unattached_nodes.remove(entry.value);
+            }
+        }
+        _ = self.adapter.generations.remove(node);
+        self.trace_failure = err;
+        self.input_stream.discardInput();
+    }
+
+    /// Protect native parser state and its wrappers across an entire call,
+    /// including callbacks, input-limit restoration and final native cleanup.
+    /// A suspended parser keeps only its collectible Document edge.
+    pub const ActiveCall = struct {
+        parser: *DocumentParser,
+
+        pub fn deinit(self: ActiveCall) void {
+            const parser = self.parser;
+            std.debug.assert(parser.active_calls > 0);
+            parser.active_calls -= 1;
+            const document = if (parser.active_calls == 0) parser.active_document else null;
+            const nodes = if (parser.active_calls == 0) parser.active_nodes else null;
+            if (parser.active_calls == 0) {
+                parser.active_document = null;
+                parser.active_nodes = null;
+            }
+            // release may destroy parser. The extracted roots stay alive
+            // through adapter cleanup; nothing below dereferences parser.
+            parser.release();
+            if (nodes) |held| held.release();
+            if (document) |held| held.release();
+        }
+    };
+
+    /// Fallibly acquire active-call ownership before anything can run script.
+    /// Nested calls share the outer roots, but each owns a native reference.
+    pub fn protect(self: *DocumentParser) !ActiveCall {
+        if (self.trace_failure) |err| return err;
+        return self.protectForCleanup();
+    }
+
+    /// Acquire only cleanup ownership after a parse failure. This does not
+    /// clear that failure or permit the input processor to resume parsing.
+    pub fn protectForCleanup(self: *DocumentParser) !ActiveCall {
+        if (self.active_calls == 0 and !self.isCurrent()) return error.InvalidStateError;
+        if (self.active_calls == 0 and self.ctx.hasEngine()) {
+            const document = try engine.retainValue(self.ctx, .{ .instance = self.document });
+            errdefer document.release();
+            if (!self.isCurrent()) return error.InvalidStateError;
+            const nodes = if (self.owns_trace_slot)
+                engine.tracedValue(self.document, trace_slot) orelse return error.OutOfMemory
+            else blk: {
+                const made = try engine.createSequenceOfValues(self.ctx, &.{});
+                errdefer made.release();
+                engine.traceValue(self.document, made.borrow(), trace_slot);
+                // traceValue is infallible at the protocol boundary. Prove
+                // publication while the constructor hold still roots the bag.
+                const published = engine.tracedValue(self.document, trace_slot) orelse {
+                    engine.forgetTracedChild(self.document, trace_slot);
+                    return error.OutOfMemory;
+                };
+                defer published.release();
+                if (!engine.sameValue(self.ctx, made.borrow(), published.borrow())) {
+                    engine.forgetTracedChild(self.document, trace_slot);
+                    return error.InvalidStateError;
+                }
+                self.owns_trace_slot = true;
+                break :blk made;
+            };
+            self.active_document = document;
+            self.active_nodes = nodes;
+        }
+        self.active_calls += 1;
+        self.retain();
+        return .{ .parser = self };
     }
 
     pub fn retain(self: *DocumentParser) void {
@@ -428,6 +544,7 @@ pub const DocumentParser = struct {
         self.references -= 1;
         if (self.references != 0) return;
         std.debug.assert(self.pump_depth == 0);
+        std.debug.assert(self.active_calls == 0);
         if (!self.document_destroyed) self.forgetParserReferences();
         self.adapter.deinit();
         self.tree_builder.deinit();
@@ -436,8 +553,6 @@ pub const DocumentParser = struct {
         if (self.owned_loader) |*loader| loader.deinit();
         if (self.original_bytes) |bytes| self.allocator.free(bytes);
         self.allocator.free(self.base_url);
-        for (self.traced_slots.toSlice()) |slot| self.allocator.free(slot);
-        self.traced_slots.deinit();
         self.allocator.destroy(self);
     }
 
@@ -445,6 +560,7 @@ pub const DocumentParser = struct {
     /// The document clears its association before dropping its reference.
     pub fn detach(self: *DocumentParser) void {
         if (self.detached) return;
+        self.forgetParserReferences();
         self.detached = true;
         self.input_stream.aborted = true;
         self.input_stream.insertion_point = null;
@@ -454,6 +570,7 @@ pub const DocumentParser = struct {
     /// those die with the wrapper, without manipulating edges during GC.
     pub fn detachForDocumentDestruction(self: *DocumentParser) void {
         self.document_destroyed = true;
+        self.owns_trace_slot = false;
         // Teardown never runs parser callbacks or script. Destroying the
         // private tree below releases its stack storage without observable
         // finished-parsing-children steps against a retired document.
@@ -466,19 +583,36 @@ pub const DocumentParser = struct {
         // A frame can retire its realm while a written script still holds
         // this parser on the stack. The saved context remains allocated;
         // do not dereference a document the collector has already recycled.
+        if (!self.owns_trace_slot) return;
+        self.owns_trace_slot = false;
         if (!self.ctx.hasEngine()) return;
         if (runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return;
-        for (self.traced_slots.toSlice()) |slot| @import("engine").forgetTracedChild(self.document, .{ .name = slot });
+        const internal = document_internals.getInternal(self.document) orelse return;
+        // discardDocumentParser clears active_parser before detach. The
+        // epoch still identifies the edge; a successor has a different one.
+        if (internal.parser_epoch != self.document_epoch) return;
+        engine.forgetTracedChild(self.document, trace_slot);
     }
 
     fn retainProcessor(context: *anyopaque) void {
         const self: *DocumentParser = @ptrCast(@alignCast(context));
-        self.retain();
+        _ = self.protect() catch |err| {
+            // Processor's callback cannot fail. Keep its native storage for
+            // restoration, but never enter parsing after root acquisition failed.
+            self.retain();
+            self.failed_processor_calls += 1;
+            self.trace_failure = err;
+            self.input_stream.discardInput();
+            return;
+        };
     }
 
     fn releaseProcessor(context: *anyopaque) void {
         const self: *DocumentParser = @ptrCast(@alignCast(context));
-        self.release();
+        if (self.failed_processor_calls != 0) {
+            self.failed_processor_calls -= 1;
+            self.release();
+        } else (ActiveCall{ .parser = self }).deinit();
     }
 
     fn afterProcess(context: *anyopaque) void {
@@ -488,6 +622,7 @@ pub const DocumentParser = struct {
 
     fn abortProcessor(context: *anyopaque) void {
         const self: *DocumentParser = @ptrCast(@alignCast(context));
+        if (self.trace_failure != null) return;
         self.tree_builder.abort();
     }
 
@@ -497,16 +632,20 @@ pub const DocumentParser = struct {
     }
 
     fn pump(self: *DocumentParser) !void {
+        if (self.trace_failure) |err| return err;
         if (self.detached or self.eof_processed) return;
         if (!self.isCurrent()) {
             self.detach();
             return;
         }
+        const call = try self.protect();
+        defer call.deinit();
         self.pump_depth += 1;
         defer self.pump_depth -= 1;
         parser_scripts.resumeAfterBlockingScript(&self.script_context);
         if (self.detached or !self.isCurrent()) return;
         try self.tree_builder.parse();
+        if (self.trace_failure) |err| return err;
     }
 
     fn isCurrent(self: *const DocumentParser) bool {
@@ -519,10 +658,13 @@ pub const DocumentParser = struct {
     /// Called after the input stream restored a write's stop position. A
     /// nested close only marks EOF; the outermost write finishes the parser.
     pub fn finishIfPossible(self: *DocumentParser) !void {
+        if (self.trace_failure) |err| return err;
         if (self.detached or self.eof_processed or !self.input_stream.complete or self.pump_depth != 0) return;
         if (!self.isCurrent()) return;
         const internal = document_internals.getInternal(self.document) orelse return;
         if (internal.scripts.pending_parsing_blocking_script != null) return;
+        const call = try self.protect();
+        defer call.deinit();
         try self.pump();
         if (self.detached or !self.isCurrent() or !self.input_stream.eof_processed) return;
         self.eof_processed = true;
@@ -591,11 +733,30 @@ pub fn parseHTMLWithScripting(
     // association acquires another, so either EOF or a reentrant open can
     // release Document's ownership without freeing this invocation's state.
     const parser = DocumentParser.createComplete(allocator, ctx, document, html, options) catch return error.OutOfMemory;
-    defer parser.release();
+    var initiating_owner = true;
+    defer if (initiating_owner) parser.release();
     if (!dom.document_lifecycle.associateParser(document, parser)) return error.InvalidStateError;
+    const call: ?DocumentParser.ActiveCall = if (parser.isCurrent())
+        parser.protect() catch {
+            if ((!had_engine or ctx.hasEngine()) and
+                runtime.SlabAllocator.generationOf(document) == document_generation)
+                dom.document_lifecycle.discardParser(document, parser);
+            return error.OutOfMemory;
+        }
+    else
+        null;
+    defer if (call) |held| held.deinit();
+    // On failure detach while the active call still roots its graph; the
+    // guard then releases final native state before those roots are dropped.
     errdefer if ((!had_engine or ctx.hasEngine()) and
         runtime.SlabAllocator.generationOf(document) == document_generation)
         dom.document_lifecycle.discardParser(document, parser);
+    if (call != null) {
+        // The guard replaces initiation's native reference and releases it
+        // while its wrapper roots still protect final native cleanup.
+        parser.release();
+        initiating_owner = false;
+    }
     parser.pump() catch return error.TreeBuilderError;
     parser.finishIfPossible() catch return error.TreeBuilderError;
 

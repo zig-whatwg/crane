@@ -10,6 +10,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
 
+- [Parser tracing uses a fixed member and collectible storage](architecture-parser-tracing-uses-a-fixed-member-and-collectible-storage.md) - Keep variable parser graphs collectible and active calls rooted through native cleanup.
 - [An internal mutation keeps its caller's reaction scope](architecture-an-internal-mutation-keeps-its-callers-reaction-scope.md) - Use shared DOM algorithms inside the owning public operation's reaction boundary.
 
 - [A script-created parser outlives each write](architecture-a-script-created-parser-outlives-each-write.md) - Keep the script-created parser across consecutive document.write calls until the stream closes.

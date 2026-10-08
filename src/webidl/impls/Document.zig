@@ -3152,8 +3152,11 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
     // processInserted restoring the stream's limits. Reentrant open/close
     // can detach it before the outer write has returned.
     var kept_parser = internal.active_parser;
-    if (kept_parser) |parser| parser.retain();
-    defer if (kept_parser) |parser| parser.release();
+    var parser_call: ?@import("html").scripted_parser.DocumentParser.ActiveCall = if (kept_parser) |parser|
+        try parser.protect()
+    else
+        null;
+    defer if (parser_call) |held| held.deinit();
 
     // A parser is running (the document's own, a frame's, or a script-created)
     // and has an insertion point - it runs the script calling us, or a script
@@ -3191,9 +3194,10 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.Truste
         // an unload in progress, an aborted parser - without a
         // script-created parser; then nothing is written.
         if (!internal.is_script_created_parser) return;
-        if (kept_parser) |parser| parser.release();
+        if (parser_call) |held| held.deinit();
+        parser_call = null;
         kept_parser = internal.active_parser;
-        if (kept_parser) |parser| parser.retain();
+        if (kept_parser) |parser| parser_call = try parser.protect();
     }
     const stream = internal.input_stream_manager orelse return;
     // Steps 10-11 apply to the newly created parser as to an existing one.
@@ -3984,8 +3988,8 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
     }
 
     const parser = internal.active_parser orelse return;
-    parser.retain();
-    defer parser.release();
+    const parser_call = try parser.protect();
+    defer parser_call.deinit();
     try parser.close();
 }
 
@@ -4161,11 +4165,30 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
     if (canceled) internal.salvageable = false;
     internal.parsing_end_waiting_on_scripts = false;
     if (internal.input_stream_manager == null and internal.active_parser == null) return;
+    if (internal.active_parser) |failed| if (failed.trace_failure != null) {
+        // A failed trace append already discarded input. It must still be
+        // cancellable, without resuming parsing or running cleanup callbacks.
+        // If the root cannot be reacquired, preserve the Document association
+        // for later destruction rather than clear its sole collector edge.
+        const cleanup_call = failed.protectForCleanup() catch return;
+        defer cleanup_call.deinit();
+        internal.active_parser_was_aborted = true;
+        internal.salvageable = false;
+        @import("html").script_execution.discardParserScripts(document);
+        if (had_engine and !realm.hasEngine()) return;
+        if (runtime.SlabAllocator.generationOf(document) != generation) return;
+        const current = getInternal(document) orelse return;
+        if (current.active_parser == failed) discardDocumentParser(current);
+        return;
+    };
     const stream = internal.input_stream_manager;
     if (stream) |input| if (input.aborted) return;
     const parser = internal.active_parser;
-    if (parser) |active| active.retain();
-    defer if (parser) |active| active.release();
+    const parser_call: ?@import("html").scripted_parser.DocumentParser.ActiveCall = if (parser) |active|
+        active.protect() catch return
+    else
+        null;
+    defer if (parser_call) |held| held.deinit();
     internal.active_parser_was_aborted = true;
     internal.salvageable = false;
     @import("html").script_execution.discardParserScripts(document);
@@ -4380,8 +4403,8 @@ fn resumeScriptDelivery(task: *LifecycleTask) void {
             if (!parser.detached and !parser.input_stream.aborted and !parser.input_stream.isExecutingScript() and
                 parser.tree_builder.waiting_for_parser_blocking_script)
             {
-                parser.retain();
-                defer parser.release();
+                const parser_call = parser.protect() catch return;
+                defer parser_call.deinit();
                 parser.tree_builder.waiting_for_parser_blocking_script = false;
                 parser.tree_builder.parser_pause_flag = false;
                 parser.input_stream.processInserted();
