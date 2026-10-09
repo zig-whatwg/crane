@@ -21,23 +21,37 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../html/"><code>html/</code></a></li><li><a href="../../../../html/dom/"><code>dom/</code></a></li><li><a href="../../../../html/dom/render-blocking/"><code>render-<wbr>blocking/</code></a></li><li aria-current="page"><code>remove-<wbr>attr-<wbr>unblocks-<wbr>rendering.<wbr>optional.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>remove-<wbr>attr-<wbr>unblocks-<wbr>rendering.<wbr>optional.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="html/dom/render-blocking/remove-attr-unblocks-rendering.optional.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 0</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">16</span><span class="fg-of"> / 16</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-f83fd1e955</code>, <span class="nowrap">8 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f83fd1e955"><code>f83fd1e955</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-40586ce295</code>, <span class="nowrap">9 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/40586ce295"><code>40586ce295</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/dom/render-blocking/remove-attr-unblocks-rendering.optional.html"><code>html/<wbr>dom/<wbr>render-<wbr>blocking/<wbr>remove-<wbr>attr-<wbr>unblocks-<wbr>rendering.<wbr>optional.<wbr>html</code></a></dd></div>
 </dl>
-<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">TypeError: Cannot set property on null or undefined</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/html/dom/render-blocking/remove-attr-unblocks-rendering.optional.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><span class="quiet">none reported</span></span></h3>
-<pre class="msg harness-msg">TypeError: Cannot set property on null or undefined</pre>
-<p class="omitted">No subtests were reported.</p>
+<ol class="subtests">
+<li class="sub s-pass" id="s-c2d6887e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Render-blocking on parser-inserted async script is cancellable</span></div><a class="self" href="#s-c2d6887e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-67e670c1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Render-blocking on parser-inserted defer script is cancellable</span></div><a class="self" href="#s-67e670c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ce8f7f65"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Render-blocking on parser-inserted module script is cancellable</span></div><a class="self" href="#s-ce8f7f65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-95e8be5f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Render-blocking on parser-inserted async module script is cancellable</span></div><a class="self" href="#s-95e8be5f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-17471145"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Render-blocking on script-inserted stylesheet link is cancellable</span></div><a class="self" href="#s-17471145" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-19139541"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Render-blocking on script-inserted script is cancellable</span></div><a class="self" href="#s-19139541" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6385d46e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Render-blocking on script-inserted module script is cancellable</span></div><a class="self" href="#s-6385d46e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-59c28aed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Render-blocking on script-inserted inline style is cancellable</span></div><a class="self" href="#s-59c28aed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fb8a6554"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Loading of parser-inserted async script should eventually succeed</span></div><a class="self" href="#s-fb8a6554" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-879d2d67"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Loading of parser-inserted defer script should eventually succeed</span></div><a class="self" href="#s-879d2d67" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a3958193"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Loading of parser-inserted module script should eventually succeed</span></div><a class="self" href="#s-a3958193" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cf964fd1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Loading of parser-inserted async module script should eventually succeed</span></div><a class="self" href="#s-cf964fd1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7aad8e91"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Loading of script-inserted stylesheet link should eventually succeed</span></div><a class="self" href="#s-7aad8e91" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8ea1f25e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Loading of script-inserted script should eventually succeed</span></div><a class="self" href="#s-8ea1f25e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-354136eb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Loading of script-inserted module script should eventually succeed</span></div><a class="self" href="#s-354136eb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-959d3912"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Loading of script-inserted inline style should eventually succeed</span></div><a class="self" href="#s-959d3912" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </section>
 <footer class="foot">

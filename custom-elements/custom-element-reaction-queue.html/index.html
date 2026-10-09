@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li aria-current="page"><code>custom-<wbr>element-<wbr>reaction-<wbr>queue.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>custom-<wbr>element-<wbr>reaction-<wbr>queue.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/custom-element-reaction-queue.html">
-<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 6</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>5</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">5</span><span class="fg-of"> / 6</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-f83fd1e955</code>, <span class="nowrap">8 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f83fd1e955"><code>f83fd1e955</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-40586ce295</code>, <span class="nowrap">9 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/40586ce295"><code>40586ce295</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/custom-element-reaction-queue.html"><code>custom-<wbr>elements/<wbr>custom-<wbr>element-<wbr>reaction-<wbr>queue.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,11 +35,11 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-bad48119"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upgrading a custom element must invoke attributeChangedCallback and connectedCallback before start upgrading another element</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert undefined or null to object&quot;</pre></details><a class="self" href="#s-bad48119" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-04f94e7f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upgrading a custom element must not invoke attributeChangedCallback for the attribute that is changed during upgrading</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert undefined or null to object&quot;</pre></details><a class="self" href="#s-04f94e7f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a1cd9c4e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upgrading a custom element must not invoke disconnectedCallback if the element is disconnected during upgrading</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert undefined or null to object&quot;</pre></details><a class="self" href="#s-a1cd9c4e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bad48119"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upgrading a custom element must invoke attributeChangedCallback and connectedCallback before start upgrading another element</span></div><a class="self" href="#s-bad48119" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-04f94e7f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upgrading a custom element must not invoke attributeChangedCallback for the attribute that is changed during upgrading</span></div><a class="self" href="#s-04f94e7f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a1cd9c4e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upgrading a custom element must not invoke disconnectedCallback if the element is disconnected during upgrading</span></div><a class="self" href="#s-a1cd9c4e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-1b783d87"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Upgrading a disconnected custom element must not invoke connectedCallback if the element is connected during upgrading</span></div><a class="self" href="#s-1b783d87" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8d644d16"><details><summary><span class="mark">FAIL</span><span class="sub-name">Mutating a undefined custom element while upgrading a custom element must not enqueue or invoke reactions on the mutated element</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert undefined or null to object&quot;</pre></details><a class="self" href="#s-8d644d16" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8d644d16"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Mutating a undefined custom element while upgrading a custom element must not enqueue or invoke reactions on the mutated element</span></div><a class="self" href="#s-8d644d16" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-3cb6ccfa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Mutating another custom element inside adopted callback must invoke all pending callbacks on the mutated element</span></summary><pre class="msg">assert_equals: expected 7 but got 4</pre></details><a class="self" href="#s-3cb6ccfa" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
