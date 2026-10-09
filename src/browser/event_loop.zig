@@ -953,9 +953,9 @@ test "the deferred teardown runs between tasks: slices while nothing waits, one 
     try testing.expect(q.pendingNodes() > DeferredTeardown.loop_low_water - DeferredTeardown.slice_budget);
 
     // At the mark, with a task waiting: one slice, then the task's turn.
-    const before = big.freed;
+    const at_mark = big.freed;
     try testing.expect(loop.runDeferredTeardown());
-    try testing.expectEqual(before + DeferredTeardown.slice_budget, big.freed);
+    try testing.expectEqual(at_mark + DeferredTeardown.slice_budget, big.freed);
     _ = loop.tasks.orderedRemove(0);
 
     // Nothing waiting: slices until the queue is empty or the turn's share
