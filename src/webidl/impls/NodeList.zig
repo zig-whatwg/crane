@@ -239,21 +239,6 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
     return node;
 }
 
-/// Operation: forEach(callback)
-/// Spec: https://webidl.spec.whatwg.org/#es-forEach
-/// Calls callback for each node in the list
-pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-    const internal = getInternal(instance) orelse return;
-    _ = callback;
-
-    // forEach requires JS callback invocation which needs V8 integration
-    // For now, we iterate but can't call the callback
-    const nodes = internal.nodes.toSlice();
-    for (nodes) |_| {
-        // TODO: Invoke callback(node, index, this) via V8
-    }
-}
-
 // ============================================================================
 // Internal helper functions (for DOM implementation)
 // ============================================================================

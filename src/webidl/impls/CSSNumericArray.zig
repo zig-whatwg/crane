@@ -44,10 +44,3 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
-
-/// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
-}

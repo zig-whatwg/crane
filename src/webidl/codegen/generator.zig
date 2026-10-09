@@ -1417,23 +1417,10 @@ fn generateImplFile(
         }
     }
 
-    // Add forEach stub for iterable interfaces
-    var has_iterable = false;
-    for (interface.members) |member| {
-        if (member.type == .iterable) {
-            has_iterable = true;
-            break;
-        }
-    }
-
-    if (has_iterable) {
-        try w.writeAll("/// Operation: forEach\n");
-        try w.writeAll("pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {\n");
-        try w.writeAll("    _ = instance;\n");
-        try w.writeAll("    _ = callback;\n");
-        try w.writeAll("    return error.NotImplemented;\n");
-        try w.writeAll("}\n\n");
-    }
+    // An iterable declaration's members (entries, keys, values, forEach,
+    // %Symbol.iterator%) are not operations: WebIDL 3.7.9 "define the
+    // iteration methods" makes them, and the engine adapter installs them.
+    // The impl has nothing to implement for them.
 
     try w.flush();
 }
@@ -1645,37 +1632,11 @@ fn generateInterfaceFile(
     // Partial interfaces can cause duplicate constant definitions
     try deduplicateConstants(allocator, &own_constants);
 
-    // Track allocated forEach arrays for cleanup
-    var forEach_args_own_alloc: ?[]types.Argument = null;
-    var forEach_extAttrs_own_alloc: ?[]types.ExtendedAttribute = null;
-    defer if (forEach_args_own_alloc) |arr| allocator.free(arr);
-    defer if (forEach_extAttrs_own_alloc) |arr| allocator.free(arr);
-
-    // Add forEach to own_ops for iterable interfaces (per WebIDL spec)
-    // This ensures forEach appears in own_methods and gets registered in V8
-    if (iterable_member != null) {
-        var forEach_args_own = try allocator.alloc(types.Argument, 1);
-        forEach_args_own_alloc = forEach_args_own;
-        forEach_args_own[0] = types.Argument{
-            .name = "callback",
-            .idlType = types.IDLType{ .type = "any" },
-            .optional = false,
-            .variadic = false,
-            .default = null,
-        };
-
-        const forEach_extAttrs_own = try allocator.alloc(types.ExtendedAttribute, 0);
-        forEach_extAttrs_own_alloc = forEach_extAttrs_own;
-
-        const forEach_op_own = types.Operation{
-            .name = "forEach",
-            .idlType = types.IDLType{ .type = "void" },
-            .arguments = forEach_args_own,
-            .special = null,
-            .extAttrs = forEach_extAttrs_own,
-        };
-        try own_ops.append(allocator, forEach_op_own);
-    }
+    // An iterable declaration adds no operation: WebIDL 3.7.9 "define the
+    // iteration methods" makes forEach (and entries, keys, values,
+    // %Symbol.iterator%), and the engine adapter installs them from
+    // Meta.iterable - the realm's Array.prototype functions for a value
+    // iterator, its own for a pair iterator.
 
     // Track allocated async iterator method arrays for cleanup
     var values_args_alloc: ?[]types.Argument = null;
@@ -1821,38 +1782,6 @@ fn generateInterfaceFile(
     try deduplicateAttributes(allocator, &all_attrs);
     try deduplicateOperations(allocator, &all_ops);
     try deduplicateConstants(allocator, &all_constants);
-
-    // Track allocated forEach arrays for cleanup
-    var forEach_args_alloc: ?[]types.Argument = null;
-    var forEach_extAttrs_alloc: ?[]types.ExtendedAttribute = null;
-    defer if (forEach_args_alloc) |arr| allocator.free(arr);
-    defer if (forEach_extAttrs_alloc) |arr| allocator.free(arr);
-
-    // Add forEach operation for iterable interfaces (per WebIDL spec)
-    if (iterable_member != null) {
-        // Create synthetic forEach operation
-        var forEach_args = try allocator.alloc(types.Argument, 1);
-        forEach_args_alloc = forEach_args;
-        forEach_args[0] = types.Argument{
-            .name = "callback",
-            .idlType = types.IDLType{ .type = "any" },
-            .optional = false,
-            .variadic = false,
-            .default = null,
-        };
-
-        const forEach_extAttrs = try allocator.alloc(types.ExtendedAttribute, 0);
-        forEach_extAttrs_alloc = forEach_extAttrs;
-
-        const forEach_op = types.Operation{
-            .name = "forEach",
-            .idlType = types.IDLType{ .type = "void" },
-            .arguments = forEach_args,
-            .special = null,
-            .extAttrs = forEach_extAttrs,
-        };
-        try all_ops.append(allocator, forEach_op);
-    }
 
     // Generate VTable (with ONLY own attributes/operations, not inherited)
     try writer.writeVTable(w, all_constants.items, own_constants.items, own_attrs.items, own_ops.items, interface.name);

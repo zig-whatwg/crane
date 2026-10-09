@@ -363,21 +363,6 @@ pub fn call_set__1(instance: *runtime.Instance, name: runtime.USVString, blob: *
     setFileTrace(instance, internal, trace);
 }
 
-/// Operation: forEach
-///
-/// Spec: https://xhr.spec.whatwg.org/#dom-formdata
-/// Iterates over all entries in the FormData.
-pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    // Callback is a function pointer from V8
-    // For now, return NotImplemented as this requires V8 integration
-    _ = callback;
-    _ = internal;
-
-    return error.NotImplemented;
-}
-
 /// Get entries for iterable protocol (used by V8Interface)
 ///
 /// Returns entries that can be iterated by entries(), keys(), values(), Symbol.iterator.

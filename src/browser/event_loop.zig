@@ -294,10 +294,11 @@ pub const EventLoop = struct {
         // for the next turn).
         if (self.runPosted()) did_work = true;
 
-        // Step 4: wait for a timer or I/O, and run the timer callbacks.
+        // Step 4: wait for a timer or I/O, and run the timer callbacks -
+        // each a task, followed by a microtask checkpoint (HTML 8.1.7.3).
         if (self.timer_manager) |mgr| {
             const poll_start = monotonicNs();
-            if (mgr.pollBlocking(wait_time)) did_work = true;
+            if (mgr.pollBlockingEach(wait_time, .{ .context = self, .run = checkpointAfterTimer })) did_work = true;
             // The wait is at most a millisecond slice (native_timer.zig);
             // the rest is timer callbacks.
             self.noteWork(poll_start + std.time.ns_per_ms, monotonicNs());
@@ -344,6 +345,12 @@ pub const EventLoop = struct {
     /// HTML "perform a microtask checkpoint", the agent's.
     fn checkpoint(self: *Self) void {
         engine.performMicrotaskCheckpoint(self.agent) catch {};
+    }
+
+    /// The checkpoint after a timer's task (NativeTimerManager.AfterEach).
+    fn checkpointAfterTimer(context: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.checkpoint();
     }
 
     /// Run the tasks queued so far, each followed by a microtask checkpoint

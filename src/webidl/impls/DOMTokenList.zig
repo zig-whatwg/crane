@@ -320,19 +320,6 @@ pub fn call_supports(instance: *runtime.Instance, token: runtime.DOMString) anye
     return error.NotImplemented;
 }
 
-/// Operation: forEach(callback)
-/// Spec: https://webidl.spec.whatwg.org/#es-forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-    const internal = getInternal(instance) orelse return;
-    _ = callback;
-
-    // forEach requires JS callback invocation
-    const tokens = internal.tokens.toSlice();
-    for (tokens) |_| {
-        // TODO: Invoke callback(token, index, this) via V8
-    }
-}
-
 // ============================================================================
 // Internal helper functions
 // ============================================================================

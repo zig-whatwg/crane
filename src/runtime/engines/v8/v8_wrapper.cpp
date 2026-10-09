@@ -25,6 +25,32 @@
 
 using namespace v8;
 
+// A native step that is not a script call - engine bookkeeping, a realm's
+// properties being defined, a promise resolved from a task, a value
+// serialized - entered from native code with no script on the stack. Under
+// kAuto, leaving any API scope entered with do_callback=true (ENTER_V8 in
+// 13.1 api.cc: Object::Set, Has, HasOwnProperty and so HasPrivate, Delete,
+// DefineProperty with a descriptor, SetIntegrityLevel, Set::Has/Delete,
+// Promise::Resolver::Resolve/Reject, Function::Call/NewInstance,
+// Module::InstantiateModule/Evaluate, ValueSerializer::WriteValue) at call
+// depth 0 performs a microtask checkpoint (api-inl.h
+// CallDepthScope::~CallDepthScope -> isolate.cc
+// FireCallCompletedCallbackInternal): queued microtasks ran from inside
+// whatever DOM algorithm, realm creation or task step made the call. HTML
+// performs a checkpoint only in "clean up after running script" (and so a
+// callback's) and at the event loop's own points.
+//
+// This scope holds the call depth above 0 for its lifetime and fires nothing
+// when it ends (13.1 api.cc:10100-10113,
+// Isolate::SuppressMicrotaskExecutionScope), so the step's API calls return
+// to depth >= 1 and what they queue waits for the next real checkpoint.
+// Invoking a callback (v8_Function_Call*, v8_Function_CallCatching*,
+// v8_Function_ConstructCatchingWithSite) does not use it: kAuto's checkpoint
+// there is "clean up after running a callback". It must live on the C++
+// stack - it records its own address as the isolate's last API entry
+// (docs/lessons/architecture-suppressmicrotaskexecutionscope-must-live-on-the.md).
+using NativeStepScope = Isolate::SuppressMicrotaskExecutionScope;
+
 // Platform singleton
 static std::unique_ptr<Platform> g_platform = nullptr;
 static bool v8_initialized = false;
@@ -2056,6 +2082,24 @@ Global<Value>* v8_Function_CallCatching(
     return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked()));
 }
 
+/// v8_Function_CallCatching for an ECMAScript Call that does not invoke a
+/// callback - the iterator protocol a WebIDL conversion runs (GetIterator,
+/// IteratorStep, IteratorClose) - so that no kAuto microtask checkpoint
+/// follows it when native code makes it at call depth 0 (NativeStepScope).
+/// What it returns and owns is v8_Function_CallCatching's.
+Global<Value>* v8_Function_CallCatchingNativeStep(
+    Global<Context>* context,
+    Global<Value>* function,
+    Global<Value>* recv,
+    int argc,
+    Global<Value>** argv,
+    bool* threw
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);
+    return v8_Function_CallCatching(context, function, recv, argc, argv, threw);
+}
+
 /// Get(object, key) under a TryCatch, returning the completion the way
 /// v8_Function_CallCatching does: the property's value with `*threw` false, or
 /// the thrown value with `*threw` true. WebIDL's "call a user object's
@@ -2414,6 +2458,7 @@ void v8_Array_ClearElement(Global<Value>* array, uint32_t index) {
     // can run script to reach the array either.
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return;
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     Local<Value> value = array->Get(isolate);
     if (!value->IsArray()) return;
@@ -3973,6 +4018,7 @@ Global<Value>* v8_Value_StructuredClone(Global<Value>* value) {
     if (!value || value->IsEmpty()) return nullptr;
 
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
 
     Local<Context> ctx = isolate->GetCurrentContext();
@@ -4053,6 +4099,7 @@ Global<Value>* v8_Value_StructuredCloneWithTransfer(
     }
 
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
 
     Local<Context> ctx = isolate->GetCurrentContext();
@@ -4249,6 +4296,7 @@ bool v8_Object_Set(Global<Object>* object, Global<Context>* context, Global<Valu
     CHECK_ALIGNMENT_LOG(value, Global<Value>, "v8_Object_Set");
 
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
 
     Local<Context> ctx = context->Get(isolate);
@@ -4262,6 +4310,7 @@ bool v8_Object_Set(Global<Object>* object, Global<Context>* context, Global<Valu
 
 bool v8_Object_Delete(Global<Object>* object, Global<Context>* context, Global<Value>* key) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     
     Local<Context> ctx = context->Get(isolate);
@@ -4315,6 +4364,7 @@ Global<Value>* v8_Object_Get(Global<Object>* object, Global<Context>* context, G
 // Check if an object has an own property (not inherited)
 bool v8_Object_HasOwnProperty(Global<Object>* object, Global<Context>* context, Global<Value>* key) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     
     Local<Context> ctx = context->Get(isolate);
@@ -4601,6 +4651,7 @@ Global<Value>* v8_Array_Get(Global<Context>* context, Global<Array>* arr, uint32
 /// Every caller fills an array it made itself (lane binding, 2026-10-04).
 bool v8_Array_Set(Global<Array>* arr, Global<Context>* context, uint32_t index, Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
 
     Local<Context> local_context = context->Get(isolate);
@@ -4616,6 +4667,7 @@ bool v8_Array_Set(Global<Array>* arr, Global<Context>* context, uint32_t index, 
 bool v8_Object_Freeze(Global<Object>* object, Global<Context>* context) {
     if (!object || !context) return false;
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     Local<Context> local_context = context->Get(isolate);
     Local<Object> local_object = object->Get(isolate);
@@ -5537,6 +5589,7 @@ void v8_DynamicImport_Resolve(
     void* module_namespace_ptr
 ) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     
     Global<Context>* context_global = static_cast<Global<Context>*>(context_ptr);
@@ -5567,6 +5620,7 @@ void v8_DynamicImport_RejectWithValue(
     Global<Value>* value
 ) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
 
     Global<Context>* context_global = static_cast<Global<Context>*>(context_ptr);
@@ -5592,6 +5646,7 @@ void v8_DynamicImport_Reject(
     int error_message_len
 ) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     
     Global<Context>* context_global = static_cast<Global<Context>*>(context_ptr);
@@ -6620,6 +6675,24 @@ void v8_ObjectTemplate_SetIteratorToArrayValues(Global<ObjectTemplate>* tpl) {
     local_tpl->SetIntrinsicDataProperty(Symbol::GetIterator(isolate), kArrayProto_values, DontEnum);
 }
 
+// WebIDL 3.7.9 "define the iteration methods" step 1.2: an interface with a
+// value iterator takes %Array.prototype.entries%, %Array.prototype.keys%,
+// %Array.prototype.values% and %Array.prototype.forEach% as its entries,
+// keys, values and forEach - CreateDataPropertyOrThrow, so writable,
+// enumerable and configurable (None). An intrinsic data property is resolved
+// from the context each instantiation happens in (v8-template.h,
+// SetIntrinsicDataProperty), so every realm's prototype holds that realm's
+// own functions; Blink's bindings install the same four (bind_gen/interface.py).
+void v8_ObjectTemplate_SetValueIteratorToArrayMethods(Global<ObjectTemplate>* tpl) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    local_tpl->SetIntrinsicDataProperty(String::NewFromUtf8Literal(isolate, "entries", NewStringType::kInternalized), kArrayProto_entries, None);
+    local_tpl->SetIntrinsicDataProperty(String::NewFromUtf8Literal(isolate, "keys", NewStringType::kInternalized), kArrayProto_keys, None);
+    local_tpl->SetIntrinsicDataProperty(String::NewFromUtf8Literal(isolate, "values", NewStringType::kInternalized), kArrayProto_values, None);
+    local_tpl->SetIntrinsicDataProperty(String::NewFromUtf8Literal(isolate, "forEach", NewStringType::kInternalized), kArrayProto_forEach, None);
+}
+
 // ObjectTemplate - set property with attributes
 void v8_ObjectTemplate_SetWithAttributes(
     Global<ObjectTemplate>* tpl,
@@ -7296,6 +7369,7 @@ bool v8_Object_SetAccessorProperty(
     FunctionCallback setter
 ) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     
     Local<Object> obj = object->Get(isolate);
@@ -7585,6 +7659,7 @@ void v8_Object_SetLazyDataProperty(
 
 bool v8_Object_PreventExtensions(Global<Object>* object, Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     
     Local<Object> obj = object->Get(isolate);
@@ -7659,6 +7734,7 @@ bool v8_Object_Has(
     const char* key
 ) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     
     Local<Context> ctx = context->Get(isolate);
@@ -7959,6 +8035,7 @@ Global<Object>* v8_Function_NewInstance(
     Global<Value>** argv
 ) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     Local<Context> ctx = context->Get(isolate);
     Context::Scope context_scope(ctx);
@@ -8016,6 +8093,7 @@ bool v8_PromiseResolver_Resolve(
     Global<Value>* value
 ) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     
     Local<Promise::Resolver> res = resolver->Get(isolate);
@@ -8033,6 +8111,7 @@ bool v8_PromiseResolver_Reject(
     Global<Value>* reason
 ) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     
     Local<Promise::Resolver> res = resolver->Get(isolate);
@@ -11168,11 +11247,25 @@ Global<Object>* v8_CreateLegacyPlatformObjectProxy(Global<Context>* context, Glo
     // Create the handler object with all traps
     Local<Object> handler = Object::New(isolate);
     
-    // Helper to create and set a function trap
+    // Helper to create and set a function trap.
+    //
+    // CreateDataProperty, not Set: this runs from native code with no script
+    // on the stack whenever a legacy platform object is first wrapped there
+    // (a tree mutation's record, a collection traced from a DOM algorithm).
+    // Object::Set enters V8 with do_callback=true (13.1 api.cc:4469,
+    // ENTER_V8), and leaving that scope at call depth 0 fires the
+    // call-completed callbacks - under kAuto a microtask checkpoint
+    // (api-inl.h CallDepthScope::~CallDepthScope, isolate.cc
+    // FireCallCompletedCallbackInternal), run from inside the DOM algorithm.
+    // On a JSObject CreateDataProperty enters with ENTER_V8_NO_SCRIPT (13.1
+    // api.cc:4526): do_callback=false. It also defines the trap as an own
+    // data property whatever Object.prototype holds - a [[Set]] would have run
+    // an accessor script installed there. GetFunction (PREPARE_FOR_EXECUTION,
+    // api.cc:7503), Object::New and Proxy::New (api.cc:8866) fire nothing.
     auto set_trap = [&](const char* name, FunctionCallback callback) {
         Local<FunctionTemplate> tmpl = FunctionTemplate::New(isolate, callback);
         Local<Function> fn = tmpl->GetFunction(ctx).ToLocalChecked();
-        handler->Set(ctx, String::NewFromUtf8(isolate, name).ToLocalChecked(), fn).Check();
+        handler->CreateDataProperty(ctx, String::NewFromUtf8(isolate, name).ToLocalChecked(), fn).Check();
     };
     
     // Set all traps
@@ -11544,6 +11637,7 @@ static uint8_t* serializeWithTransfer(
     }
 
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
 
     Local<Context> ctx = isolate->GetCurrentContext();
@@ -11834,6 +11928,7 @@ void v8_ValueSerializer_WriteRawBytes(ValueSerializer* serializer, const void* s
 bool v8_ValueSerializer_WriteValue(ValueSerializer* serializer, Global<Value>* value) {
     if (!serializer || !value || value->IsEmpty()) return false;
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     Local<Context> context = isolate->GetCurrentContext();
     if (context.IsEmpty()) return false;
@@ -12458,6 +12553,7 @@ bool v8_Module_LinkWithResolver(
 ) {
     *exception = nullptr;
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     Local<Context> local_context = context->Get(isolate);
     Context::Scope context_scope(local_context);
@@ -12542,6 +12638,7 @@ static void ProtocolDynamicImportRejected(const FunctionCallbackInfo<Value>& inf
 /// v8_DynamicImport_Resolve does; `module` stays the caller's.
 void v8_DynamicImport_ContinueWithModule(void* context_ptr, void* resolver_ptr, Global<Module>* module_global) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     Global<Context>* context_global = static_cast<Global<Context>*>(context_ptr);
     Global<Promise::Resolver>* resolver_global = static_cast<Global<Promise::Resolver>*>(resolver_ptr);
@@ -13133,6 +13230,7 @@ Global<Value>* v8_Object_GetPrivateRef(Global<Object>* holder, const char* key, 
     if (!holder || holder->IsEmpty()) return nullptr;
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return nullptr;
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     // Read the holder before the name allocates (see DeletePrivateRef).
     Local<Object> object = holder->Get(isolate);
@@ -13161,6 +13259,7 @@ void v8_Object_RetainInPrivateArray(Global<Value>* holder, const char* key, int 
     if (!holder || holder->IsEmpty() || !value || value->IsEmpty()) return;
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return;
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     Local<Value> held = holder->Get(isolate);
     // Read before anything below allocates (see v8_Object_SetPrivateRef).
@@ -13232,6 +13331,7 @@ void v8_Object_PrivateSetUpdate(Global<Value>* holder, const char* key, int key_
     if (!holder || holder->IsEmpty() || !member || member->IsEmpty()) return;
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return;
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     Local<Value> held = holder->Get(isolate);
     // Read before anything below allocates (see v8_Object_SetPrivateRef).
@@ -13341,6 +13441,7 @@ extern "C" {
 
 int v8_Object_HasOwnPropertyOrThrow(Global<Object>* object, Global<Context>* context, Global<Value>* key) {
     Isolate* isolate = Isolate::GetCurrent();
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
     HandleScope handle_scope(isolate);
     Local<Context> ctx = context->Get(isolate);
     Local<Object> obj = object->Get(isolate);

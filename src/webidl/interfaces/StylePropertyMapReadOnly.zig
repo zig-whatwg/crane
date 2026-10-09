@@ -43,8 +43,6 @@ pub const StylePropertyMapReadOnly = struct {
             .{ "get", "call_get", 1 },
             .{ "getAll", "call_getAll", 1 },
             .{ "has", "call_has", 1 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
         };
 
         /// Methods defined/overridden by this interface
@@ -52,7 +50,6 @@ pub const StylePropertyMapReadOnly = struct {
             "get",
             "getAll",
             "has",
-            "forEach",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -87,7 +84,6 @@ pub const StylePropertyMapReadOnly = struct {
     const delegates = .{
         .get_size = &get_size,
 
-        .call_forEach = &call_forEach,
         .call_get = &call_get,
         .call_getAll = &call_getAll,
         .call_has = &call_has,
@@ -140,10 +136,6 @@ pub const StylePropertyMapReadOnly = struct {
 
     pub fn call_getAll(instance: *runtime.Instance, property: runtime.USVString) anyerror!runtime.JSValue {
         return try StylePropertyMapReadOnlyImpl.call_getAll(instance, property);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try StylePropertyMapReadOnlyImpl.call_forEach(instance, callback);
     }
 
     /// Get entries for pair iterable support (used by V8 for iteration)

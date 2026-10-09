@@ -38,15 +38,10 @@ pub const CSSNumericArray = struct {
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
-        };
+        pub const methods = .{};
 
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-            "forEach",
-        };
+        pub const own_methods = .{};
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{};
@@ -79,8 +74,6 @@ pub const CSSNumericArray = struct {
 
     const delegates = .{
         .get_length = &get_length,
-
-        .call_forEach = &call_forEach,
 
         .deinit = &deinit,
     };
@@ -122,9 +115,5 @@ pub const CSSNumericArray = struct {
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         return try CSSNumericArrayImpl.call_getter(instance, index);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try CSSNumericArrayImpl.call_forEach(instance, callback);
     }
 };

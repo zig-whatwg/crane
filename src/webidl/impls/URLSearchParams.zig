@@ -589,18 +589,6 @@ test "orderByCodeUnits: a name outside the BMP sorts before U+E000 and after U+D
     try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{1F4A9}"));
 }
 
-/// forEach method
-/// Spec: WebIDL iterable forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = callback;
-
-    // TODO: Implement callback invocation
-    // This requires understanding how to call JavaScript callbacks from Zig
-    // For now, return NotImplemented
-    return error.NotImplemented;
-}
-
 /// Internal: stringifier implementation
 ///
 /// Returns the serialization of the URLSearchParams' list.

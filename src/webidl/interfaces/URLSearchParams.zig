@@ -42,8 +42,6 @@ pub const URLSearchParams = struct {
             .{ "has", "call_has", 1 },
             .{ "set", "call_set", 2 },
             .{ "sort", "call_sort", 0 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
             .{ "toString", "serialize", 0 },
         };
 
@@ -56,7 +54,6 @@ pub const URLSearchParams = struct {
             "has",
             "set",
             "sort",
-            "forEach",
             "toString",
         };
 
@@ -94,7 +91,6 @@ pub const URLSearchParams = struct {
 
         .call_append = &call_append,
         .call_delete = &call_delete,
-        .call_forEach = &call_forEach,
         .call_get = &call_get,
         .call_getAll = &call_getAll,
         .call_has = &call_has,
@@ -153,10 +149,6 @@ pub const URLSearchParams = struct {
 
     pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?runtime.USVString {
         return try URLSearchParamsImpl.call_get(instance, name);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try URLSearchParamsImpl.call_forEach(instance, callback);
     }
 
     pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {

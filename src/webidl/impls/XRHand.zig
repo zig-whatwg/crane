@@ -52,13 +52,6 @@ pub fn call_get(instance: *runtime.Instance, key: enums.XRHandJoint) anyerror!*r
     return error.NotImplemented;
 }
 
-/// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
-}
-
 /// Entry type for pair iterable support
 /// Note: Using string types for V8 compatibility
 pub const IterableEntry = struct {

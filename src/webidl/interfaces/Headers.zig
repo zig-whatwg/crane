@@ -42,8 +42,6 @@ pub const Headers = struct {
             .{ "getSetCookie", "call_getSetCookie", 0 },
             .{ "has", "call_has", 1 },
             .{ "set", "call_set", 2 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
         };
 
         /// Methods defined/overridden by this interface
@@ -54,7 +52,6 @@ pub const Headers = struct {
             "getSetCookie",
             "has",
             "set",
-            "forEach",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -86,7 +83,6 @@ pub const Headers = struct {
     const delegates = .{
         .call_append = &call_append,
         .call_delete = &call_delete,
-        .call_forEach = &call_forEach,
         .call_get = &call_get,
         .call_getSetCookie = &call_getSetCookie,
         .call_has = &call_has,
@@ -144,10 +140,6 @@ pub const Headers = struct {
 
     pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try HeadersImpl.call_getSetCookie(instance);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try HeadersImpl.call_forEach(instance, callback);
     }
 
     pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) anyerror!bool {

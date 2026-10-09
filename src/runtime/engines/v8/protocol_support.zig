@@ -251,10 +251,12 @@ pub fn get(at: anytype, object: *ffi.Value, key: []const u8) Error!*ffi.Value {
     return result orelse error.OperationFailed;
 }
 
-/// Call(F, V, args), rethrowing what it throws. OWNED.
+/// Call(F, V, args), rethrowing what it throws. OWNED. An ECMAScript Call
+/// the engine makes (the iterator protocol), not "invoke a callback
+/// function": no microtask checkpoint follows it.
 pub fn call(at: anytype, function: *ffi.Value, receiver: ?*ffi.Value, args: []const *ffi.Value) Error!*ffi.Value {
     var threw = false;
-    const result = ffi.v8_Function_CallCatching(at.context(), function, receiver, @intCast(args.len), if (args.len == 0) null else args.ptr, &threw);
+    const result = ffi.v8_Function_CallCatchingNativeStep(at.context(), function, receiver, @intCast(args.len), if (args.len == 0) null else args.ptr, &threw);
     if (threw) return rethrow(at.isolate, result);
     return result orelse error.OperationFailed;
 }
@@ -375,11 +377,12 @@ pub fn getCaught(at: anytype, object: *ffi.Value, key: []const u8) Error!Caught 
     return if (threw) .{ .thrown = value } else .{ .normal = value };
 }
 
-/// Completion(Call(F, V, args)); a non-callable F is a TypeError thrown.
+/// Completion(Call(F, V, args)); a non-callable F is a TypeError thrown. The
+/// iterator protocol's Call, like `call`: no microtask checkpoint follows it.
 pub fn callCaught(at: anytype, function: *ffi.Value, receiver: ?*ffi.Value, args: []const *ffi.Value) Error!Caught {
     if (!ffi.v8_Value_IsFunction(function)) return .{ .thrown = try newTypeError(at.isolate, at.context(), "not a function") };
     var threw = false;
-    const result = ffi.v8_Function_CallCatching(at.context(), function, receiver, @intCast(args.len), if (args.len == 0) null else args.ptr, &threw);
+    const result = ffi.v8_Function_CallCatchingNativeStep(at.context(), function, receiver, @intCast(args.len), if (args.len == 0) null else args.ptr, &threw);
     const value = result orelse return error.OperationFailed;
     return if (threw) .{ .thrown = value } else .{ .normal = value };
 }

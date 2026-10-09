@@ -65,13 +65,6 @@ pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph
     return error.NotImplemented;
 }
 
-/// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
-}
-
 /// Entry type for pair iterable support
 /// Note: Using string types for V8 compatibility
 pub const IterableEntry = struct {

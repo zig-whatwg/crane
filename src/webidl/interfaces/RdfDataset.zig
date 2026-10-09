@@ -36,14 +36,11 @@ pub const RdfDataset = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "add", "call_add", 2 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "add",
-            "forEach",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -79,7 +76,6 @@ pub const RdfDataset = struct {
         .get_defaultGraph = &get_defaultGraph,
 
         .call_add = &call_add,
-        .call_forEach = &call_forEach,
 
         .deinit = &deinit,
     };
@@ -125,10 +121,6 @@ pub const RdfDataset = struct {
 
     pub fn get_defaultGraph(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RdfDatasetImpl.get_defaultGraph(instance);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try RdfDatasetImpl.call_forEach(instance, callback);
     }
 
     pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph: *runtime.Instance) anyerror!void {

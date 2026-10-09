@@ -405,6 +405,7 @@ pub extern fn v8_ObjectTemplate_Set(
 /// %Symbol.iterator% as %Array.prototype.values% (non-enumerable), resolved
 /// from the context each object is instantiated in.
 pub extern fn v8_ObjectTemplate_SetIteratorToArrayValues(self: *ObjectTemplate) void;
+pub extern fn v8_ObjectTemplate_SetValueIteratorToArrayMethods(self: *ObjectTemplate) void;
 
 pub extern fn v8_ObjectTemplate_SetWithAttributes(
     self: *ObjectTemplate,
@@ -1358,6 +1359,18 @@ pub extern fn v8_RunInBindingCatchScope(isolate: *Isolate, body: *const fn (?*an
 pub extern fn v8_WithBindingExceptionSetAside(isolate: *Isolate, steps: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) c_int;
 
 pub extern fn v8_Function_CallCatching(
+    context: *Context,
+    function: *Value,
+    recv: ?*Value,
+    argc: c_int,
+    argv: ?[*]const *Value,
+    threw: *bool,
+) ?*Value;
+
+/// v8_Function_CallCatching for a Call that invokes no callback (the iterator
+/// protocol of a WebIDL conversion): no kAuto microtask checkpoint follows it
+/// at call depth 0 (v8_wrapper.cpp, NativeStepScope).
+pub extern fn v8_Function_CallCatchingNativeStep(
     context: *Context,
     function: *Value,
     recv: ?*Value,
