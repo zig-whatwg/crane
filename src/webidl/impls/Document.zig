@@ -2834,7 +2834,9 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
         internal.allocator,
         instance.ctx,
         instance,
-        internal.default_view != null and internal.scripting_enabled,
+        // HTML 8.1.3.4: scripting is disabled for a node whose document's
+        // browsing context is null, including a retained destroyed document.
+        internal.default_view != null and !internal.destroyed and internal.scripting_enabled,
         &activeParserFinished,
     );
     internal.parser_epoch +%= 1;

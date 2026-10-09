@@ -130,7 +130,10 @@ fn parserContextIsCurrent(ctx: *const ParserScriptContext) bool {
     const stream = ctx.tree_builder.input_stream_manager orelse return false;
     if (stream.aborted) return false;
     const internal = document_internals.getInternal(ctx.document) orelse return false;
-    return !internal.destroyed and internal.input_stream_manager == stream;
+    // A retained inactive document can receive a new script-created parser
+    // (HTML open step 16). Destruction aborts the old stream and removes its
+    // association; the document's activity flag does not invalidate a new one.
+    return internal.input_stream_manager == stream;
 }
 
 /// HTML "text" script end-tag checkpoint, before pop or prepare. Crane has

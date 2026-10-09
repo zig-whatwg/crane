@@ -649,10 +649,14 @@ pub const DocumentParser = struct {
     }
 
     fn isCurrent(self: *const DocumentParser) bool {
-        if (self.document_destroyed or (self.had_engine and !self.ctx.hasEngine())) return false;
+        if (self.detached or self.document_destroyed or (self.had_engine and !self.ctx.hasEngine())) return false;
         if (runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return false;
         const internal = document_internals.getInternal(self.document) orelse return false;
-        return !internal.destroyed and internal.active_parser == self and internal.parser_epoch == self.document_epoch;
+        // HTML open steps 16-17 may associate a new parser with a retained
+        // document after its navigable was destroyed. That lifecycle flag
+        // governs activity, not native ownership; destruction already detached
+        // the preceding parser. Keep the association/epoch/generation checks.
+        return internal.active_parser == self and internal.parser_epoch == self.document_epoch;
     }
 
     /// Called after the input stream restored a write's stop position. A

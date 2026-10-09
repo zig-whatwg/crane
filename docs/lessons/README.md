@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Parser association is not document activity](architecture-parser-association-is-not-document-activity.md) - A new parser follows its native document association even after the browsing context is destroyed.
 - [Reuse slots inside a collectible traced value](architecture-reuse-slots-inside-a-collectible-traced-value.md) - Temporary owners share a fixed trace member and recycle ordinary array slots instead of registering immortal keys.
 - [Load-delay notification is not permission to run script](architecture-load-delay-notification-is-not-permission-to-run-script.md) - Synchronous readiness callbacks queue parser and deferred-script continuation on a guarded document task.
 
