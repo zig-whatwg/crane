@@ -1676,6 +1676,22 @@ fn runPrecommitHandlers(instance: *runtime.Instance, internal: *InternalState, r
 /// WebIDL "invoke" `handler` - whose return type is a promise type - with
 /// `args`: the promise it returned, or one resolved with what it returned,
 /// or rejected with what it threw. OWNED; null when it could not run.
+///
+/// Deviation from the spec text, stated (golden rule 2): WebIDL converts the
+/// returned value to Promise<undefined> with a NEW promise resolved with it,
+/// which adds two microtask ticks before "wait for all" sees a returned
+/// promise settle. Blink keeps the returned promise as it is - the binding's
+/// NativeValueTraits<IDLPromise<T>> is ScriptPromise<T>::FromV8Value, which
+/// returns a v8::Promise unchanged (bindings/core/v8/script_promise.h), and
+/// NavigateEvent::FinalizeNavigationActionPromisesList and the precommit
+/// handler loop collect those promises for PromiseAll::WaitForAll
+/// (core/navigation_api/navigate_event.cc). Crane takes ECMAScript
+/// PromiseResolve(%Promise%, x) (engine.promiseResolve): the returned
+/// promise itself when its constructor is the realm's %Promise%. wpt.fyi
+/// (run cc74d2669f): navigation-api/ordering-and-transition/
+/// {navigate-same-document,reload,anchor-download,location-href}-intercept-reject.html,
+/// both variants each, pass in Chrome 154 and Firefox 157 and fail in
+/// Safari 27 (a 2-of-3 majority).
 fn invokeToPromise(realm: runtime.Context, handler: *const engine.CallbackFunction, args: []const runtime.JSValue) ?engine.Owned {
     const completion = engine.invokeCallbackFunction(realm, handler, .undefined, args, .rethrow) catch |err| {
         log.debug("[navigation] handler not invoked: {s}", .{@errorName(err)});
@@ -1684,7 +1700,17 @@ fn invokeToPromise(realm: runtime.Context, handler: *const engine.CallbackFuncti
     return switch (completion) {
         .normal => |value| blk: {
             defer value.release();
-            break :blk engine.createResolvedPromise(realm, value.value) catch null;
+            const resolved = engine.promiseResolve(realm, value.value) catch break :blk null;
+            break :blk switch (resolved) {
+                .normal => |promise| promise,
+                // Get(x, "constructor") threw: the conversion's abrupt
+                // completion is a promise rejected with it, as a throw from
+                // the handler is.
+                .throw => |reason| rejected: {
+                    defer reason.release();
+                    break :rejected engine.createRejectedPromise(realm, reason.value) catch null;
+                },
+            };
         },
         .throw => |reason| blk: {
             defer reason.release();
