@@ -36,7 +36,6 @@ const analyzeSelector = selector_mod.analyzeSelector;
 const NodeImpl = @import("Node.zig");
 const ElementImpl = @import("Element.zig");
 const HTMLCollectionImpl = @import("HTMLCollection.zig");
-const NodeListImpl = @import("NodeList.zig");
 const live_collections = @import("dom").live_collections;
 
 pub const ImplError = error{
@@ -216,12 +215,12 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
     // Analyze selector for fast path opportunities
     const analysis = analyzeSelector(&selector_list);
 
-    // Step 3: Create static NodeList and collect all matching elements (use interface per Golden Rule #13)
-    const node_list = interfaces.NodeList.init(
-        allocator,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
-    errdefer interfaces.NodeList.deinit(node_list);
+    // Step 3: the matching elements, in tree order - collected first, then
+    // made the static list's in one step, which holds them for as long as
+    // the list lives (dom.node_lists.setStaticWithin: every match descends
+    // from this node, so their tree's root is found once).
+    var collected: std.ArrayList(*runtime.Instance) = .empty;
+    defer collected.deinit(allocator);
 
     // Collect matches using appropriate strategy
     switch (analysis.fast_path) {
@@ -229,12 +228,8 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
             // Fast path: ID selector - find by ID, add if matches
             if (analysis.id) |id| {
                 if (findElementById(instance, id)) |element| {
-                    if (analysis.needs_verification) {
-                        if (elementMatchesSelectorList(element, &selector_list)) {
-                            NodeListImpl.addNode(node_list, element) catch return error.OutOfMemory;
-                        }
-                    } else {
-                        NodeListImpl.addNode(node_list, element) catch return error.OutOfMemory;
+                    if (!analysis.needs_verification or elementMatchesSelectorList(element, &selector_list)) {
+                        collected.append(allocator, element) catch return error.OutOfMemory;
                     }
                 }
             }
@@ -242,20 +237,27 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
         .single_class => {
             // Fast path: Class-only selector
             if (analysis.class_name) |class_name| {
-                collectElementsByClass(instance, class_name, node_list) catch return error.OutOfMemory;
+                collectElementsByClass(allocator, instance, class_name, &collected) catch return error.OutOfMemory;
             }
         },
         .single_tag => {
             // Fast path: Tag-only selector
             if (analysis.tag_name) |tag_name| {
-                collectElementsByTagName(instance, tag_name, node_list) catch return error.OutOfMemory;
+                collectElementsByTagName(allocator, instance, tag_name, &collected) catch return error.OutOfMemory;
             }
         },
         .none, .complex => {
             // No fast path - use full tree traversal
-            collectAllMatches(instance, &selector_list, node_list) catch return error.OutOfMemory;
+            collectAllMatches(allocator, instance, &selector_list, &collected) catch return error.OutOfMemory;
         },
     }
+
+    const node_list = interfaces.NodeList.init(
+        allocator,
+        instance.ctx,
+    ) catch return error.OutOfMemory;
+    errdefer interfaces.NodeList.deinit(node_list);
+    try @import("dom").node_lists.setStaticWithin(node_list, collected.items, instance);
 
     return node_list;
 }
@@ -328,9 +330,10 @@ fn findFirstElementByTagName(root: *runtime.Instance, tag_name: []const u8) ?*ru
 
 /// Fast path: Collect all elements with given class name
 fn collectElementsByClass(
+    allocator: std.mem.Allocator,
     root: *runtime.Instance,
     class_name: []const u8,
-    node_list: *runtime.Instance,
+    collected: *std.ArrayList(*runtime.Instance),
 ) !void {
     var child = NodeImpl.getFirstChild(root);
     while (child) |c| {
@@ -338,10 +341,10 @@ fn collectElementsByClass(
         if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
             // Check class
             if (matchesClassSelector(c, class_name)) {
-                try NodeListImpl.addNode(node_list, c);
+                try collected.append(allocator, c);
             }
             // Recurse into children
-            try collectElementsByClass(c, class_name, node_list);
+            try collectElementsByClass(allocator, c, class_name, collected);
         }
         child = NodeImpl.getNextSibling(c);
     }
@@ -349,9 +352,10 @@ fn collectElementsByClass(
 
 /// Fast path: Collect all elements with given tag name
 fn collectElementsByTagName(
+    allocator: std.mem.Allocator,
     root: *runtime.Instance,
     tag_name: []const u8,
-    node_list: *runtime.Instance,
+    collected: *std.ArrayList(*runtime.Instance),
 ) !void {
     var child = NodeImpl.getFirstChild(root);
     while (child) |c| {
@@ -359,10 +363,10 @@ fn collectElementsByTagName(
         if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
             // Check tag name
             if (matchesTypeSelector(c, tag_name)) {
-                try NodeListImpl.addNode(node_list, c);
+                try collected.append(allocator, c);
             }
             // Recurse into children
-            try collectElementsByTagName(c, tag_name, node_list);
+            try collectElementsByTagName(allocator, c, tag_name, collected);
         }
         child = NodeImpl.getNextSibling(c);
     }
@@ -401,9 +405,10 @@ fn findFirstMatch(
 
 /// Collect all elements matching the selector list (depth-first tree order)
 fn collectAllMatches(
+    allocator: std.mem.Allocator,
     node: *runtime.Instance,
     selector_list: *const SelectorList,
-    node_list: *runtime.Instance,
+    collected: *std.ArrayList(*runtime.Instance),
 ) !void {
     var child = NodeImpl.getFirstChild(node);
     while (child) |c| {
@@ -411,12 +416,12 @@ fn collectAllMatches(
         if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
             // Check if this element matches
             if (elementMatchesSelectorList(c, selector_list)) {
-                try NodeListImpl.addNode(node_list, c);
+                try collected.append(allocator, c);
             }
         }
 
         // Recursively search descendants (depth-first)
-        try collectAllMatches(c, selector_list, node_list);
+        try collectAllMatches(allocator, c, selector_list, collected);
 
         child = NodeImpl.getNextSibling(c);
     }

@@ -14,8 +14,10 @@ fn base(instance: *runtime.Instance) *dom.NodeBase {
 }
 
 test "the shadow host bit fits NodeBase's padding" {
-    // 440 bytes before the bit was added, and after.
-    try std.testing.expectEqual(@as(usize, 440), @sizeOf(dom.NodeBase));
+    // 440 bytes before the bit was added, and after. 448 since lane
+    // nodeholds' hold chain head (`NodeBase.holds`, a pointer: the padding
+    // beside node_type and the bools is 3 bytes), accepted by the integrator.
+    try std.testing.expectEqual(@as(usize, 448), @sizeOf(dom.NodeBase));
 }
 
 const Fixture = struct {
