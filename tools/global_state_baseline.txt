@@ -38,12 +38,13 @@ src/dom/cssom.zig sheets 1 TL I/engine decl:d5da0433784f149e
 src/dom/custom_elements.zig implementation 1 G P-res decl:89dd82c5fbd26c9f
 src/dom/document_activity.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_browsing_context.zig implementation 1 G H decl:9c737e7125e9c3d4
-src/dom/document_fetches.zig cancelers 1 G H decl:b261b480b9e2e550
+src/dom/document_fetches.zig cancelers 1 G H decl:30e1703fbc925361
 src/dom/document_lifecycle.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_modules.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_origin.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_scripts.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/dom_exceptions.zig implementation 1 G P-res decl:9c737e7125e9c3d4
+src/dom/drag_data_store.zig implementation 1 G P-res decl:89dd82c5fbd26c9f
 src/dom/element_attributes.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/event_construction.zig event_steps 1 G H decl:f85775e0ca95f00d
 src/dom/event_construction.zig ui_event_steps 1 G H decl:c0a9c4ee7c8461cf
@@ -51,6 +52,7 @@ src/dom/event_dispatch.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/event_handlers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/fetch_objects.zig request_steps 1 G H decl:30978182fd939a7b
 src/dom/fetch_objects.zig response_steps 1 G H decl:fb5cd971a78a8840
+src/dom/file_lists.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/finish_parsing_children.zig table 1 G P-res decl:f6c637cc7c367f73
 src/dom/fire_event.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/focus_matching.zig implementation 1 G H decl:9c737e7125e9c3d4
