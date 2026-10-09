@@ -9,14 +9,15 @@ pub fn forEach(select: *runtime.Instance, context: anytype, comptime visit: fn (
     // Steps 1–2: start at the select's first child.
     var node = try interfaces.Node.get_firstChild(select);
     while (node) |element| {
-        // Step 3.1: append each option in tree order.
-        const option = associated.isElementNamed(element, "option");
+        // Step 3.1: append HTML options in tree order. Brand checks borrow
+        // state; localName getters would allocate for every node on every read.
+        const option = element.stateAs(interfaces.HTMLOptionElement.State) != null;
         if (option) try visit(context, element);
         // Step 3.2: exclude descendants of these elements, including an
         // optgroup with another optgroup between it and this select.
-        const skip = option or associated.isElementNamed(element, "select") or
-            associated.isElementNamed(element, "hr") or associated.isElementNamed(element, "datalist") or
-            (associated.isElementNamed(element, "optgroup") and hasOptgroupAncestor(element, select));
+        const skip = option or element.stateAs(interfaces.HTMLSelectElement.State) != null or
+            element.stateAs(interfaces.HTMLHRElement.State) != null or element.stateAs(interfaces.HTMLDataListElement.State) != null or
+            (element.stateAs(interfaces.HTMLOptGroupElement.State) != null and hasOptgroupAncestor(element, select));
         node = associated.nextInTree(element, select, skip);
     }
 }
@@ -25,7 +26,7 @@ fn hasOptgroupAncestor(node: *runtime.Instance, select: *runtime.Instance) bool 
     var ancestor = associated.parentOf(node);
     while (ancestor) |element| : (ancestor = associated.parentOf(element)) {
         if (element == select) return false;
-        if (associated.isElementNamed(element, "optgroup")) return true;
+        if (element.stateAs(interfaces.HTMLOptGroupElement.State) != null) return true;
     }
     return false;
 }
