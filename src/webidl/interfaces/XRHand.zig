@@ -36,14 +36,11 @@ pub const XRHand = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "get", "call_get", 1 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "get",
-            "forEach",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -78,7 +75,6 @@ pub const XRHand = struct {
     const delegates = .{
         .get_size = &get_size,
 
-        .call_forEach = &call_forEach,
         .call_get = &call_get,
 
         .deinit = &deinit,
@@ -121,10 +117,6 @@ pub const XRHand = struct {
 
     pub fn call_get(instance: *runtime.Instance, key: XRHandJoint) anyerror!*runtime.Instance {
         return try XRHandImpl.call_get(instance, key);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try XRHandImpl.call_forEach(instance, callback);
     }
 
     /// Get entries for pair iterable support (used by V8 for iteration)

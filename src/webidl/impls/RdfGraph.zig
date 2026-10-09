@@ -57,10 +57,3 @@ pub fn call_add(instance: *runtime.Instance, triple: *runtime.Instance) anyerror
     _ = triple;
     return error.NotImplemented;
 }
-
-/// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
-}

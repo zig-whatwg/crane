@@ -1,0 +1,10 @@
+interface Item {};
+interface ValueList {
+  readonly attribute unsigned long length;
+  getter Item? item(unsigned long index);
+  iterable<Item>;
+};
+interface PairList {
+  undefined append(DOMString name, DOMString value);
+  iterable<DOMString, DOMString>;
+};

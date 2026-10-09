@@ -35,14 +35,11 @@ pub const NodeList = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "item", "call_item", 1 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "item",
-            "forEach",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -77,7 +74,6 @@ pub const NodeList = struct {
     const delegates = .{
         .get_length = &get_length,
 
-        .call_forEach = &call_forEach,
         .call_item = &call_item,
 
         .deinit = &deinit,
@@ -116,10 +112,6 @@ pub const NodeList = struct {
 
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try NodeListImpl.get_length(instance);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try NodeListImpl.call_forEach(instance, callback);
     }
 
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {

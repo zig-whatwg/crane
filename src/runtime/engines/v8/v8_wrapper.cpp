@@ -6620,6 +6620,24 @@ void v8_ObjectTemplate_SetIteratorToArrayValues(Global<ObjectTemplate>* tpl) {
     local_tpl->SetIntrinsicDataProperty(Symbol::GetIterator(isolate), kArrayProto_values, DontEnum);
 }
 
+// WebIDL 3.7.9 "define the iteration methods" step 1.2: an interface with a
+// value iterator takes %Array.prototype.entries%, %Array.prototype.keys%,
+// %Array.prototype.values% and %Array.prototype.forEach% as its entries,
+// keys, values and forEach - CreateDataPropertyOrThrow, so writable,
+// enumerable and configurable (None). An intrinsic data property is resolved
+// from the context each instantiation happens in (v8-template.h,
+// SetIntrinsicDataProperty), so every realm's prototype holds that realm's
+// own functions; Blink's bindings install the same four (bind_gen/interface.py).
+void v8_ObjectTemplate_SetValueIteratorToArrayMethods(Global<ObjectTemplate>* tpl) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    local_tpl->SetIntrinsicDataProperty(String::NewFromUtf8Literal(isolate, "entries", NewStringType::kInternalized), kArrayProto_entries, None);
+    local_tpl->SetIntrinsicDataProperty(String::NewFromUtf8Literal(isolate, "keys", NewStringType::kInternalized), kArrayProto_keys, None);
+    local_tpl->SetIntrinsicDataProperty(String::NewFromUtf8Literal(isolate, "values", NewStringType::kInternalized), kArrayProto_values, None);
+    local_tpl->SetIntrinsicDataProperty(String::NewFromUtf8Literal(isolate, "forEach", NewStringType::kInternalized), kArrayProto_forEach, None);
+}
+
 // ObjectTemplate - set property with attributes
 void v8_ObjectTemplate_SetWithAttributes(
     Global<ObjectTemplate>* tpl,

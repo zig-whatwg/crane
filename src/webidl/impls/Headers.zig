@@ -329,22 +329,6 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: ru
     try headers_class.set(internal.list, internal.guard, name, value);
 }
 
-/// forEach(callback)
-/// Iterator support - called by V8 for Symbol.iterator
-pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Iterate over headers
-    for (internal.list.entries.items) |entry| {
-        // Call the callback with (value, name, headers)
-        // V8 runtime will handle the actual callback invocation
-        _ = callback;
-        _ = entry;
-        // TODO: Integrate with V8 callback system
-    }
-}
-
 /// Internal method to get all entries for pair iterable support
 /// Per Fetch spec, Headers iteration returns entries sorted alphabetically by name
 /// This is used by V8Interface for entries(), keys(), values() iteration

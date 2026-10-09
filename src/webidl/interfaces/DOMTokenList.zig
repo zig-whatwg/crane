@@ -42,8 +42,6 @@ pub const DOMTokenList = struct {
             .{ "toggle", "call_toggle", 1 },
             .{ "replace", "call_replace", 2 },
             .{ "supports", "call_supports", 1 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
             .{ "toString", "get_value", 0 },
         };
 
@@ -56,7 +54,6 @@ pub const DOMTokenList = struct {
             "toggle",
             "replace",
             "supports",
-            "forEach",
             "toString",
         };
 
@@ -99,7 +96,6 @@ pub const DOMTokenList = struct {
 
         .call_add = &call_add,
         .call_contains = &call_contains,
-        .call_forEach = &call_forEach,
         .call_item = &call_item,
         .call_remove = &call_remove,
         .call_replace = &call_replace,
@@ -187,10 +183,6 @@ pub const DOMTokenList = struct {
         defer runtime.CEReactions.end(ce_scope);
 
         return try DOMTokenListImpl.call_remove(instance, tokens);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try DOMTokenListImpl.call_forEach(instance, callback);
     }
 
     pub fn call_contains(instance: *runtime.Instance, token: DOMString) anyerror!bool {

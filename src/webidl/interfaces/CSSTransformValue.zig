@@ -46,14 +46,11 @@ pub const CSSTransformValue = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toMatrix", "call_toMatrix", 0 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "toMatrix",
-            "forEach",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -94,7 +91,6 @@ pub const CSSTransformValue = struct {
         .get_is2D = &get_is2D,
         .get_length = &get_length,
 
-        .call_forEach = &call_forEach,
         .call_toMatrix = &call_toMatrix,
 
         .deinit = &deinit,
@@ -157,9 +153,5 @@ pub const CSSTransformValue = struct {
 
     pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSTransformValueImpl.call_toMatrix(instance);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try CSSTransformValueImpl.call_forEach(instance, callback);
     }
 };

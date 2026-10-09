@@ -38,15 +38,12 @@ pub const MediaKeyStatusMap = struct {
         pub const methods = .{
             .{ "has", "call_has", 1 },
             .{ "get", "call_get", 1 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "has",
             "get",
-            "forEach",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -81,7 +78,6 @@ pub const MediaKeyStatusMap = struct {
     const delegates = .{
         .get_size = &get_size,
 
-        .call_forEach = &call_forEach,
         .call_get = &call_get,
         .call_has = &call_has,
 
@@ -129,10 +125,6 @@ pub const MediaKeyStatusMap = struct {
 
     pub fn call_get(instance: *runtime.Instance, keyId: BufferSource) anyerror!runtime.JSValue {
         return try MediaKeyStatusMapImpl.call_get(instance, keyId);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try MediaKeyStatusMapImpl.call_forEach(instance, callback);
     }
 
     /// Get entries for pair iterable support (used by V8 for iteration)

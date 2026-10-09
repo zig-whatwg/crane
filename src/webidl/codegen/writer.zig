@@ -639,11 +639,6 @@ pub fn writeMetadata(
         }
     }
 
-    // Add forEach method for iterable interfaces (per WebIDL spec)
-    if (iterable != null) {
-        try writer.writeAll("            .{ \"forEach\", \"call_forEach\", 1 },\n");
-    }
-
     // Add toString method for stringifier interfaces (per WebIDL spec)
     // Bare stringifier declarations generate a toString() method that calls serialize
     // Stringifier attribute declarations generate a toString() method that returns the attribute

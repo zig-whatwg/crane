@@ -45,8 +45,6 @@ pub const FormData = struct {
             .{ "getAll", "call_getAll", 1 },
             .{ "has", "call_has", 1 },
             .{ "set", "call_set", 2 },
-            .{ "forEach", "call_forEach", 1 },
-            .{ "forEach", "call_forEach", 1 },
         };
 
         /// Methods defined/overridden by this interface
@@ -57,7 +55,6 @@ pub const FormData = struct {
             "getAll",
             "has",
             "set",
-            "forEach",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -89,7 +86,6 @@ pub const FormData = struct {
     const delegates = .{
         .call_append = &call_append,
         .call_delete = &call_delete,
-        .call_forEach = &call_forEach,
         .call_get = &call_get,
         .call_getAll = &call_getAll,
         .call_has = &call_has,
@@ -145,16 +141,12 @@ pub const FormData = struct {
         return try FormDataImpl.call_get(instance, name);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        return try FormDataImpl.call_forEach(instance, callback);
+    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
+        return try FormDataImpl.call_getAll(instance, name);
     }
 
     pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) anyerror!bool {
         return try FormDataImpl.call_has(instance, name);
-    }
-
-    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
-        return try FormDataImpl.call_getAll(instance, name);
     }
 
     pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
