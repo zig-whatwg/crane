@@ -2269,6 +2269,65 @@ pub const TreeBuilder = struct {
             try self.closePElementIfInButtonScope();
             _ = try self.insertHtmlElement(tag);
             self.tokenizer.state = .plaintext;
+        } else if (std.mem.eql(u8, name, "li")) {
+            // "In body", a start tag whose tag name is "li".
+            // Step 1.
+            self.frameset_ok = false;
+            // Steps 2-5: from the current node up the stack.
+            var index = self.open_elements.len;
+            while (index > 0) {
+                index -= 1;
+                const node = self.open_elements.get(index).?;
+                // Step 3: an li closes, and the loop is done.
+                if (node.namespace == .html and node.hasTagName("li")) {
+                    self.closeListItem("li");
+                    break;
+                }
+                // Step 4: a special element other than address, div or p ends it.
+                if (self.isSpecialElement(node) and !isAddressDivOrP(node)) break;
+                // Step 5: the previous entry.
+            }
+            // Step 6 (done).
+            try self.closePElementIfInButtonScope();
+            // Step 7.
+            _ = try self.insertHtmlElement(tag);
+        } else if (std.mem.eql(u8, name, "dd") or std.mem.eql(u8, name, "dt")) {
+            // "In body", a start tag whose tag name is one of: "dd", "dt".
+            // Step 1.
+            self.frameset_ok = false;
+            // Steps 2-6.
+            var index = self.open_elements.len;
+            while (index > 0) {
+                index -= 1;
+                const node = self.open_elements.get(index).?;
+                // Steps 3-4: a dd, or a dt, closes, and the loop is done.
+                if (node.namespace == .html and (node.hasTagName("dd") or node.hasTagName("dt"))) {
+                    self.closeListItem(if (node.hasTagName("dd")) "dd" else "dt");
+                    break;
+                }
+                // Step 5.
+                if (self.isSpecialElement(node) and !isAddressDivOrP(node)) break;
+                // Step 6: the previous entry.
+            }
+            // Step 7 (done).
+            try self.closePElementIfInButtonScope();
+            // Step 8.
+            _ = try self.insertHtmlElement(tag);
+        } else if (std.mem.eql(u8, name, "button")) {
+            // "In body", a start tag whose tag name is "button".
+            // Step 1.
+            if (self.hasElementInScope("button")) {
+                // Steps 1.1-1.3.
+                self.reportError(.invalid_first_character_of_tag_name);
+                self.generateImpliedEndTags(null);
+                self.popUntilTagName("button");
+            }
+            // Step 2.
+            try self.reconstructActiveFormattingElements();
+            // Step 3.
+            _ = try self.insertHtmlElement(tag);
+            // Step 4.
+            self.frameset_ok = false;
         } else if (isSpecialBlockElement(name)) {
             try self.closePElementIfInButtonScope();
             _ = try self.insertHtmlElement(tag);
@@ -2431,7 +2490,24 @@ pub const TreeBuilder = struct {
             if (!self.currentNode().?.hasTagName(name)) self.reportError(.invalid_first_character_of_tag_name);
             self.popUntilTagName(name);
             self.clearActiveFormattingToMarker();
-        } else if (isSpecialBlockElement(name)) {
+        } else if (std.mem.eql(u8, name, "li")) {
+            // "In body", an end tag whose tag name is "li".
+            if (!self.hasElementInListItemScope("li")) {
+                self.reportError(.invalid_first_character_of_tag_name);
+                return;
+            }
+            // Steps 1-3.
+            self.closeListItem("li");
+        } else if (std.mem.eql(u8, name, "dd") or std.mem.eql(u8, name, "dt")) {
+            // "In body", an end tag whose tag name is one of: "dd", "dt".
+            if (!self.hasElementInScope(name)) {
+                self.reportError(.invalid_first_character_of_tag_name);
+                return;
+            }
+            // Steps 1-3.
+            self.closeListItem(name);
+        } else if (isSpecialBlockElement(name) or std.mem.eql(u8, name, "button")) {
+            // The block end tags: "address" ... "ul", with "button".
             if (!self.hasElementInScope(name)) {
                 self.reportError(.invalid_first_character_of_tag_name);
                 return;
@@ -4125,6 +4201,30 @@ pub const TreeBuilder = struct {
         return false;
     }
 
+    /// The li, dd and dt steps' common substeps: generate implied end tags
+    /// except for `name` elements; a parse error unless the current node is
+    /// now one; pop until a `name` element has been popped.
+    fn closeListItem(self: *TreeBuilder, name: []const u8) void {
+        self.generateImpliedEndTags(name);
+        if (self.currentNode()) |current| {
+            if (!(current.namespace == .html and current.hasTagName(name))) self.reportError(.invalid_first_character_of_tag_name);
+        }
+        self.popUntilTagName(name);
+    }
+
+    /// "Has a particular element in list item scope": the element scope's
+    /// boundaries, with HTML ol and ul.
+    fn hasElementInListItemScope(self: *TreeBuilder, tag_name: []const u8) bool {
+        var i = self.open_elements.len;
+        while (i > 0) {
+            i -= 1;
+            const node = self.open_elements.get(i) orelse continue;
+            if (node.namespace == .html and node.hasTagName(tag_name)) return true;
+            if (isScopeBoundary(node) or (node.namespace == .html and (node.hasTagName("ol") or node.hasTagName("ul")))) return false;
+        }
+        return false;
+    }
+
     /// Close p element if in button scope.
     fn closePElementIfInButtonScope(self: *TreeBuilder) !void {
         if (self.hasElementInButtonScope("p")) {
@@ -4860,6 +4960,12 @@ fn isFormattingElement(name: []const u8) bool {
 }
 
 /// Check if tag name is a void element.
+/// The li and dd/dt start tags' step: a special element other than these
+/// stops the walk up the stack.
+fn isAddressDivOrP(node: *const TreeNode) bool {
+    return node.namespace == .html and (node.hasTagName("address") or node.hasTagName("div") or node.hasTagName("p"));
+}
+
 fn isVoidElement(name: []const u8) bool {
     const void_elements = [_][]const u8{
         "area",  "base", "br",   "col",   "embed",  "hr",    "img",
