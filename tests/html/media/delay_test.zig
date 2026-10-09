@@ -41,7 +41,7 @@ test "fatal network failure, suspend, and current data release the load delay" {
     try testing.expectEqual(State.Network.idle, suspended.network);
     var ready = loading();
     defer ready.deinit();
-    ready.haveCurrentData(ready.generation);
+    _ = ready.decoderData(ready.generation, .current_data, false, false).?;
     try testing.expect(!ready.delaying_load_event);
     try testing.expectEqual(State.Ready.current_data, ready.ready);
 }
@@ -54,7 +54,7 @@ test "an old resource cannot change readiness, error, or network state after rel
     _ = state.select(current.generation, .{ .src_attribute = true }, true);
     state.fatalFailure(old, .network);
     state.suspendFetch(old);
-    state.haveCurrentData(old);
+    try testing.expect(state.decoderData(old, .current_data, false, false) == null);
     try testing.expect(state.delaying_load_event);
     try testing.expectEqual(State.Network.loading, state.network);
     try testing.expectEqual(State.Ready.nothing, state.ready);

@@ -71,6 +71,18 @@ pub const LoadState = struct {
     timeline_offset: f64 = std.math.nan(f64),
     playback_rate: f64 = 1,
     default_playback_rate: f64 = 1,
+    /// What the decoder has reported for this load: null, metadata, or data
+    /// at the current playback position.
+    data: ?Data = null,
+    /// The decoder had data at the position on the end_of_stream push: every
+    /// byte of the resource has arrived, and waiting longer will not get more.
+    all_data: bool = false,
+    /// loadeddata fires once per load (4.8.11.7, "the first time this occurs
+    /// for this media element since the load algorithm was last invoked").
+    loadeddata_fired: bool = false,
+    /// Fences the seek algorithm: a newer seek aborts an older one (4.8.11.9
+    /// step 3).
+    seek_id: u64 = 0,
 
     /// The element owns its selected URL; all other fields are value state.
     pub fn init(allocator: std.mem.Allocator) LoadState {
@@ -111,6 +123,10 @@ pub const LoadState = struct {
             self.timeline_offset = std.math.nan(f64);
             self.duration = std.math.nan(f64);
         }
+        // The previous resource's decoder state goes with it.
+        self.data = null;
+        self.all_data = false;
+        self.loadeddata_fired = false;
         // Steps 8–10. currentSrc remains until an actual candidate is selected.
         self.playback_rate = self.default_playback_rate;
         self.error_code = null;
@@ -254,11 +270,206 @@ pub const LoadState = struct {
         self.delaying_load_event = false;
     }
 
-    /// Ready state change to HAVE_CURRENT_DATA: data, not merely metadata.
-    pub fn haveCurrentData(self: *LoadState, generation: u64) void {
-        if (generation != self.generation) return;
-        self.ready = .current_data;
-        self.delaying_load_event = false;
+    /// What a decoder result says (platform.media_backend.Result): metadata
+    /// only, or data at the current playback position.
+    pub const Data = enum { metadata, current_data };
+
+    /// The events a ready-state change queues, in this order (HTML 4.8.11.7,
+    /// "When the ready state of a media element whose networkState is not
+    /// NETWORK_EMPTY changes"). `notify_playing` is "notify about playing";
+    /// `timeupdate_waiting` queues timeupdate, then waiting.
+    pub const ReadyChange = struct {
+        loadedmetadata: bool = false,
+        loadeddata: bool = false,
+        timeupdate_waiting: bool = false,
+        canplay: bool = false,
+        notify_playing: bool = false,
+        canplaythrough: bool = false,
+    };
+
+    /// The duration attribute takes `duration`; true when it changed, and the
+    /// owner queues durationchange (4.8.11.6: "When the length of the media
+    /// resource changes to a known value ... queue a media element task ...
+    /// to fire an event named durationchange").
+    pub fn setDuration(self: *LoadState, duration: f64) bool {
+        const same = (std.math.isNan(duration) and std.math.isNan(self.duration)) or duration == self.duration;
+        if (same) return false;
+        self.duration = duration;
+        return true;
+    }
+
+    /// Media data processing: the decoder answered a push of this load with
+    /// `data`, `end_of_stream` saying whether it was the last. Changes the
+    /// ready state to what that data supports; null for a stale load.
+    pub fn decoderData(self: *LoadState, generation: u64, data: Data, end_of_stream: bool, loop: bool) ?ReadyChange {
+        if (generation != self.generation) return null;
+        if (self.data == null or @intFromEnum(data) > @intFromEnum(self.data.?)) self.data = data;
+        if (data == .current_data and end_of_stream) self.all_data = true;
+        return self.changeReady(self.readyNow(loop), loop);
+    }
+
+    /// The ready state the decoded data supports at the current playback
+    /// position (4.8.11.7):
+    /// - metadata alone: HAVE_METADATA;
+    /// - data at the position, with more of the resource still to arrive:
+    ///   HAVE_CURRENT_DATA - nothing says the next frame is here;
+    /// - data at the position and every byte arrived: HAVE_ENOUGH_DATA, by its
+    ///   second condition ("the user agent has entered a state where waiting
+    ///   longer will not result in further data being obtained") - Gecko's
+    ///   UpdateReadyStateInternal does the same once the download is done
+    ///   ("this state transition includes the case where we finished
+    ///   downloaded the whole data stream");
+    /// - except at the end in the direction of playback: HAVE_CURRENT_DATA
+    ///   ("there is no more data to obtain in the direction of playback ...
+    ///   when playback has ended"; HAVE_FUTURE_DATA "cannot be" reached then).
+    ///   Gecko keeps HAVE_CURRENT_DATA in its ended state too.
+    pub fn readyNow(self: *const LoadState, loop: bool) Ready {
+        const data = self.data orelse return self.ready;
+        if (data == .metadata) return .metadata;
+        if (!self.all_data) return .current_data;
+        if (self.endedPlayback(loop)) return .current_data;
+        return .enough_data;
+    }
+
+    /// Set the ready state to `new`, returning the events to queue (4.8.11.7).
+    pub fn changeReady(self: *LoadState, new: Ready, loop: bool) ReadyChange {
+        const old = self.ready;
+        var change: ReadyChange = .{};
+        if (old == new) return change;
+        const was_potentially_playing = self.potentiallyPlaying(loop);
+        self.ready = new;
+        const old_level = @intFromEnum(old);
+        const new_level = @intFromEnum(new);
+        // From HAVE_NOTHING: loadedmetadata (the processing steps reach
+        // HAVE_METADATA before any later state).
+        if (old == .nothing and new_level >= @intFromEnum(Ready.metadata)) change.loadedmetadata = true;
+        // From HAVE_METADATA (or less) to HAVE_CURRENT_DATA or greater: the
+        // first time since load, loadeddata. Data is not merely metadata, so
+        // the element stops delaying the load event (resource fetch,
+        // "once the readyState attribute reaches HAVE_CURRENT_DATA").
+        if (old_level <= @intFromEnum(Ready.metadata) and new_level >= @intFromEnum(Ready.current_data)) {
+            if (!self.loadeddata_fired) change.loadeddata = true;
+            self.loadeddata_fired = true;
+            self.delaying_load_event = false;
+        }
+        // From HAVE_FUTURE_DATA or more to HAVE_CURRENT_DATA or less, while it
+        // was potentially playing and has not ended playback.
+        if (old_level >= @intFromEnum(Ready.future_data) and new_level <= @intFromEnum(Ready.current_data)) {
+            if (was_potentially_playing and !self.endedPlayback(loop)) change.timeupdate_waiting = true;
+        }
+        // From HAVE_CURRENT_DATA or less to HAVE_FUTURE_DATA or more: canplay,
+        // and notify about playing when not paused.
+        if (old_level <= @intFromEnum(Ready.current_data) and new_level >= @intFromEnum(Ready.future_data)) {
+            change.canplay = true;
+            if (!self.paused) change.notify_playing = true;
+        }
+        if (new == .enough_data) change.canplaythrough = true;
+        return change;
+    }
+
+    /// 4.8.11.8 "ended playback": the end in the direction of playback, with
+    /// no loop attribute (or the start, playing backwards).
+    pub fn endedPlayback(self: *const LoadState, loop: bool) bool {
+        if (@intFromEnum(self.ready) < @intFromEnum(Ready.metadata)) return false;
+        if (self.playback_rate >= 0) return !loop and self.position >= self.duration;
+        return self.position <= 0;
+    }
+
+    /// 4.8.11.8 "potentially playing": not paused, not ended, not blocked
+    /// (HAVE_FUTURE_DATA or more). Crane pauses for no user interaction or
+    /// in-band content.
+    pub fn potentiallyPlaying(self: *const LoadState, loop: bool) bool {
+        return !self.paused and !self.endedPlayback(loop) and @intFromEnum(self.ready) >= @intFromEnum(Ready.future_data);
+    }
+
+    pub const Boundary = enum { none, end, start };
+
+    /// The media timeline's clock moved by `seconds`: while potentially
+    /// playing, the current playback position moves at playbackRate (4.8.11.8,
+    /// "must increase monotonically at the element's playbackRate units of
+    /// media time per unit time"), up to the end or the earliest position.
+    pub fn advance(self: *LoadState, seconds: f64, loop: bool) Boundary {
+        if (!self.potentiallyPlaying(loop) or seconds <= 0) return .none;
+        self.position += seconds * self.playback_rate;
+        if (self.playback_rate > 0 and self.position >= self.duration) {
+            self.position = self.duration;
+            // With a loop attribute the owner seeks to the start instead.
+            return .end;
+        }
+        if (self.playback_rate < 0 and self.position <= 0) {
+            self.position = 0;
+            return .start;
+        }
+        return .none;
+    }
+
+    /// What the internal play steps ask of the owner (4.8.11.8), in order.
+    pub const Play = struct {
+        /// Step 1: run resource selection.
+        select: bool = false,
+        /// Step 2: seek to the earliest possible position.
+        seek_to_start: bool = false,
+        /// Step 3.3: queue play.
+        play_event: bool = false,
+        /// Step 3.4: queue waiting, or notify about playing.
+        waiting: bool = false,
+        notify_playing: bool = false,
+        /// Step 4: take pending play promises and queue their resolution.
+        resolve_pending: bool = false,
+    };
+
+    /// The internal play steps' state changes.
+    pub fn play(self: *LoadState, loop: bool) Play {
+        var steps: Play = .{ .select = self.network == .empty };
+        if (self.endedPlayback(loop) and self.playback_rate >= 0) steps.seek_to_start = true;
+        if (self.paused) {
+            self.paused = false;
+            self.show_poster = false;
+            steps.play_event = true;
+            if (@intFromEnum(self.ready) <= @intFromEnum(Ready.current_data)) steps.waiting = true else steps.notify_playing = true;
+        } else if (@intFromEnum(self.ready) >= @intFromEnum(Ready.future_data)) {
+            steps.resolve_pending = true;
+        }
+        self.can_autoplay = false;
+        return steps;
+    }
+
+    /// The internal pause steps' state changes: true when it was playing, and
+    /// the owner queues timeupdate, pause and the promises' rejection.
+    pub fn pause(self: *LoadState) bool {
+        self.can_autoplay = false;
+        if (self.paused) return false;
+        self.paused = true;
+        // Step 2.4: the official playback position is the current one.
+        self.official_position = self.position;
+        return true;
+    }
+
+    /// Seek steps 2–11 (4.8.11.9): null with no resource (HAVE_NOTHING);
+    /// otherwise the seek's id, with the position set. Positions clamp to the
+    /// media timeline [0, duration]. Every byte of a resource Crane plays is
+    /// held, so the whole timeline is seekable (as the browsers' seekable
+    /// reports it for such a resource; Crane's TimeRanges cannot list ranges
+    /// yet, so step 9's check against `seekable` is not made).
+    pub fn beginSeek(self: *LoadState, target: f64) ?u64 {
+        if (self.ready == .nothing) return null;
+        self.show_poster = false;
+        self.seeking = true;
+        var position = target;
+        if (!std.math.isNan(self.duration) and position > self.duration) position = self.duration;
+        if (position < 0) position = 0;
+        self.position = position;
+        self.official_position = position;
+        self.seek_id +%= 1;
+        return self.seek_id;
+    }
+
+    /// Seek step 14, in its stable state: false when a newer seek or a load
+    /// aborted this one.
+    pub fn finishSeek(self: *LoadState, id: u64) bool {
+        if (id != self.seek_id or !self.seeking) return false;
+        self.seeking = false;
+        return true;
     }
 
     fn clearCurrentSrc(self: *LoadState) void {
