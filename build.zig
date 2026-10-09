@@ -3539,6 +3539,44 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(lint_engine_tests).step);
 
     // ========================================================================
+    // LINT: the platform boundary, as a ratchet
+    // ========================================================================
+    // docs/platform-protocol.md section 11: everything platform-specific goes
+    // through the platform protocol (`@import("platform")`). Outside
+    // src/platform/ there is no OS API and no libcurl, mbedTLS, SQLite or
+    // LevelDB identifier. tools/lint_platform_boundary.zig counts every such
+    // reference per file and key and fails if any rises above
+    // tools/platform_boundary_baseline.txt or a new pair appears; the baseline
+    // only goes down (`zig build lint-platform -- --update`).
+    const lint_platform_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_platform_boundary.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_platform_exe = b.addExecutable(.{
+        .name = "lint_platform_boundary",
+        .root_module = lint_platform_module,
+    });
+
+    const lint_platform_step = b.step("lint-platform", "Fail on new OS or platform-library references outside src/platform/ (use -- --update after paying debt down)");
+    const lint_platform = b.addRunArtifact(lint_platform_exe);
+    // It reads src/, tests/, tools/ and the baseline, which the build graph does not track.
+    lint_platform.has_side_effects = true;
+    lint_platform.setCwd(b.path("."));
+    if (b.args) |args| lint_platform.addArgs(args);
+    lint_platform_step.dependOn(&lint_platform.step);
+
+    // Part of `zig build test`: the check itself (never with --update) and the
+    // tool's own tests.
+    const lint_platform_check = b.addRunArtifact(lint_platform_exe);
+    lint_platform_check.has_side_effects = true;
+    lint_platform_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_platform_check.step);
+    const lint_platform_tests = b.addTest(.{ .root_module = lint_platform_module });
+    test_step.dependOn(&b.addRunArtifact(lint_platform_tests).step);
+
+    // ========================================================================
     // LINT: global state, as a ratchet
     // ========================================================================
     // docs/instances.md: several isolated instances run in one process, each
