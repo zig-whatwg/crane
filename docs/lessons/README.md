@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Holds on nodes are a chain on the node - a removal asks exactly the holders that hold something in it](architecture-node-holds-are-a-chain-on-the-node.md) - Mark a held node with the head of its holders' chain, not a bit: a removal of nothing held stays a field test, and a removal of something held asks exactly its holders - pay one wrapper for the detached root, never one per node.
 - [Under kAuto, every do_callback=true API at call depth 0 is a microtask checkpoint](architecture-under-kauto-every-do-callback-api-at-depth-zero-is-a-checkpoint.md) - Under kAuto, a native step is a microtask checkpoint unless it proves otherwise: read the API's ENTER_V8 macro in api.cc for the version you link, and measure the call-completed callback rather than guessing which calls fire.
 - [A parent completes loading in its last child's task](architecture-a-parent-completes-loading-in-its-last-child-s-task.md) - When the spec spins the event loop before a load task, check how many tasks the browsers put there - Blink and Gecko put none between a last child and its parent - and make a Crane test read the state where the WPT test under study reads it.
 - [Parser association is not document activity](architecture-parser-association-is-not-document-activity.md) - A new parser follows its native document association even after the browsing context is destroyed.
@@ -352,6 +353,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+- [A timed window measures where the collection lands - compare with a collection between rounds](testing-a-timed-window-measures-where-the-gc-lands.md) - Before blaming the measured code for a timing regression, time the unmeasured part of the round too and rerun with a collection between rounds: lifetimes move GC work, they do not only add it.
 - [A count cannot see a tree's shape](testing-a-count-cannot-see-a-tree-shape.md) - Assert a parse by its serialization, through every parser path, never by counting nodes; read the large failure counts in OK files too.
 - [A queued-record test must collect without a task turn](testing-a-queued-record-test-must-collect-without-a-task-turn.md) - Know which checkpoint your helper crosses: an `await` delivers queued mutation records, so a test of the queue must collect, churn and read without one.
 - [Check the harness’s roots before asserting collection](testing-check-the-harness-roots-before-asserting-collection.md) - Invoke real GC, avoid test-owned strong references, and prove retention assertions fail without their collector edge.
@@ -435,6 +437,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Measure the WPT process, not its supervisor](testing-measure-the-wpt-process-not-its-supervisor.md) - Even `--parallel=1` changes the process measured by `leaks --atExit`; compare direct runners.
 
 ### Debugging
+- [A node's slab generation can outlive its NodeBase - a generation check does not prove a node's storage is there](debugging-a-nodes-slab-generation-can-outlive-its-nodebase.md) - A live generation says the Instance slot is still that object's, not that its node storage exists: anything linked into a NodeBase must be unlinked by the node's own teardown, the way registered observers are.
 - [Give the objects that reissue a freed slot a voice](debugging-give-the-objects-that-reissue-a-freed-slot-a-voice.md) - Make the impostor talk: churn objects that announce themselves, so a reissued slot fails the assertion with its name instead of passing or crashing elsewhere.
 
 - [A worker thread's crash is journalled against a later file](debugging-a-worker-thread-crash-is-journalled-against-a-later-file.md) - The journal names the file running when the process died, which is not always the file that crashed. Find the fault line in the log first; a worker thread's fault can be printed many files before the abort.

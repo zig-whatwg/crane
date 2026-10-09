@@ -1,5 +1,7 @@
 # Architecture: A parser's holds are its own structures, and a detached tree is rescued through its root
 
+**Status** (2026-10-09, lane nodeholds): generalized to any holder in src/dom/node_holds.zig ([Holds on nodes are a chain on the node](architecture-node-holds-are-a-chain-on-the-node.md)). The parser is now a "scanning" holder of that facility: `ParserRegistry` became `node_holds.Registry`, the removing-steps hook and the tree walks moved there (hostOfRoot now knows shadow roots too), and the kept-roots container uses `node_holds.putRoot` / `clearRoot`. The parser's holds and rescues are unchanged.
+
 **Date**: 2026-10-08
 **Lesson**: The live HTML parser holds natively exactly the nodes its structures name - the stack of open elements, the head and form element pointers, and an element wrapped at its creation until its first insertion attempt - and makes no wrapper per node. When script (or a failed insertion) detaches a tree containing a held node, the parser roots that tree's ROOT, one wrapper, from a fixed collectible Document member until it is released.
 

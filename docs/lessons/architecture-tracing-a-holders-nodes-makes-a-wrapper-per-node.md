@@ -1,5 +1,7 @@
 # Architecture: Tracing a holder's nodes makes a wrapper for every node it holds
 
+**Status** (2026-10-09, lane nodeholds): the native hold the Fix calls for is src/dom/node_holds.zig ([Holds on nodes are a chain on the node](architecture-node-holds-are-a-chain-on-the-node.md)); MutationRecord and the static NodeList use it.
+
 **Date**: 2026-10-09
 **Lesson**: Keeping a static NodeList's or a MutationRecord's nodes alive by traced edges (engine.traceChild / traceValue) wraps every node at the moment the holder is filled - and, by the wrappers' upward closure, its ancestors - which is the cost Blink's `Member<Node>` does not have. On the hot holders that is several times the operation itself.
 
