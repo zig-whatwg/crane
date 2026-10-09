@@ -33,6 +33,7 @@ and the tracing decision - V8 TracedReference / cppgc versus manual \
 disposal - is made once."""
 metric = "heap"
 progress = [
+  "decided 2026-10-09 (the user) - the lifetime model is reference counting (WebKit's), not cppgc/Oilpan: one model under V8 and JavaScriptCore; deferred, sliced teardown of collected trees first (lane defertd), then a refcount design and migration that retires the hand-written holds",
   "26626c087 - bindings release the context handles they take: live Global<Context> after 8 pages 431 -> 101",
   "journal records heap_used_kb; CRANE_HEAP_GC and CRANE_HEAP_SNAPSHOT diagnose retention",
   "0100e3e5b - per-context registration releases its handles; callback registry resets a torn-down context's callbacks: live handles after 8 pages 21,469 -> 16,788",
