@@ -16,4 +16,6 @@ A discarded parser (document.open, abort) keeps its stack, pointers, pending hol
 4. A synchronously constructed custom element is held from its creation, before its attribute reactions run, to its first insertion attempt.
 5. Rescue reserves its container index from the registry before any engine allocation, so a reentrant rescue cannot take it, and `release()` clears this parser's slots only while the Document and its realm are usable.
 
+**Measured** (7 alternating paired rounds, target 9717346413 / base 0ad1972542 / lane tip 8864c97b18, medians): live parse of 2,500 sections 544 / 1,053 / 517 ms; page load 695 / 1,231 / 680 ms; DOMParser 309 / 346 / 319 ms; removal-heavy parse (12,505 removals) 4,473 / 4,636 / 4,442 ms; summed heap over 31 heavy files 492,032 / 501,387 / 491,418 KB. Holds and rescue alone took the live parse from 994 to 577 ms; the rest was the adapter's side tables (a `generations` hash map and a `node_map` per node - now fields on the TreeNode, generation-checked), found by profiling rather than guessed.
+
 **Takeaway**: **Hold what your own structures name, natively, and pay for a wrapper only at the moment a held node leaves the tree its owner keeps - one wrapper for the detached root, never one per node; and let holds end when the holder is released, not when it is detached.**

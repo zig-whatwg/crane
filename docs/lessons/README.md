@@ -340,6 +340,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+- [A count cannot see a tree's shape](testing-a-count-cannot-see-a-tree-shape.md) - Assert a parse by its serialization, through every parser path, never by counting nodes; read the large failure counts in OK files too.
 - [Check the harness’s roots before asserting collection](testing-check-the-harness-roots-before-asserting-collection.md) - Invoke real GC, avoid test-owned strong references, and prove retention assertions fail without their collector edge.
 
 - [A shared suite can hide missing hook setup](testing-a-shared-suite-can-hide-missing-hook-setup.md) - Each test file owns its process-wide prerequisites.
