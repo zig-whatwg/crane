@@ -22,6 +22,7 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     elements: ?*runtime.Instance = null,
+    elements_generation: u64 = 0,
     elements_traced: bool = false,
 };
 
@@ -46,7 +47,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.elements_traced) @import("engine").forgetTracedChild(instance, .{ .name = "elements" });
-        if (!internal.elements_traced) if (internal.elements) |collection| runtime.Instance.deinit(collection);
+        if (!internal.elements_traced) if (liveChild(internal.elements, internal.elements_generation)) |collection| runtime.Instance.deinit(collection);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -79,7 +80,7 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for elements
 pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
-    if (internal.elements) |collection| return collection;
+    if (liveChild(internal.elements, internal.elements_generation)) |collection| return collection;
     const collection = try interfaces.HTMLCollection.init(instance.ctx.allocator, instance.ctx);
     errdefer runtime.Instance.deinit(collection);
     try @import("dom").live_collections.formControls(collection, instance, true);
@@ -88,7 +89,19 @@ pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
         internal.elements_traced = true;
     }
     internal.elements = collection;
+    internal.elements_generation = runtime.SlabAllocator.generationOf(collection);
     return collection;
+}
+
+/// A [SameObject] child kept beside the owner's traced edge to it: the
+/// child while it is still the one made - its slot not freed or reissued,
+/// not torn down. The edge is what keeps it; a child whose edge was lost
+/// reads as gone and is made again, never a freed or reissued object
+/// (PR-N1, the 2026-10-03 lesson).
+fn liveChild(child: ?*runtime.Instance, generation: u64) ?*runtime.Instance {
+    const value = child orelse return null;
+    if (runtime.SlabAllocator.generationOf(value) != generation or runtime.instance_lifecycle.isCleanedUp(value)) return null;
+    return value;
 }
 
 /// Getter for willValidate
