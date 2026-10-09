@@ -124,7 +124,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls fill a static list they created (an element's labels).
-    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .labels = &makeLabels, .named_controls = &makeNamedControls });
+    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls });
     // A static list holds its nodes; the removing steps rescue a held tree.
     node_holds.installHooks();
 }
@@ -197,6 +197,15 @@ fn setStaticNodes(list: *runtime.Instance, nodes: []const *runtime.Instance, wit
     else
         null;
     try internal.held.hold(*runtime.Instance, nodes, root_hint);
+    list.getState(State).own.length = @intCast(internal.held.holds.len);
+}
+
+/// dom.node_lists: `setStaticNodes`, given the tree nodes, all descendants
+/// of `within`.
+fn setStaticBases(list: *runtime.Instance, nodes: []const *@import("dom").NodeBase, within: *@import("dom").NodeBase) anyerror!void {
+    clear(list);
+    const internal = getInternal(list) orelse return error.InvalidState;
+    try internal.held.hold(*@import("dom").NodeBase, nodes, node_holds.hostIncludingRoot(within));
     list.getState(State).own.length = @intCast(internal.held.holds.len);
 }
 

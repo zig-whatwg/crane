@@ -37,6 +37,8 @@ const NodeImpl = @import("Node.zig");
 const ElementImpl = @import("Element.zig");
 const HTMLCollectionImpl = @import("HTMLCollection.zig");
 const live_collections = @import("dom").live_collections;
+const dom = @import("dom");
+const NodeBase = dom.NodeBase;
 
 pub const ImplError = error{
     NotImplemented,
@@ -217,10 +219,13 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
 
     // Step 3: the matching elements, in tree order - collected first, then
     // made the static list's in one step, which holds them for as long as
-    // the list lives (dom.node_lists.setStaticWithin: every match descends
-    // from this node, so their tree's root is found once).
-    var collected: std.ArrayList(*runtime.Instance) = .empty;
+    // the list lives (dom.node_lists.setStaticBasesWithin: every match
+    // descends from this node, so their tree's root is found once). The
+    // walks follow the tree's own links and collect the tree nodes, so the
+    // holds need no lookup per match.
+    var collected: std.ArrayList(*NodeBase) = .empty;
     defer collected.deinit(allocator);
+    const root_base = dom.instance_bridge.getNodeBase(@ptrCast(instance)) orelse return error.InvalidStateError;
 
     // Collect matches using appropriate strategy
     switch (analysis.fast_path) {
@@ -229,7 +234,8 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
             if (analysis.id) |id| {
                 if (findElementById(instance, id)) |element| {
                     if (!analysis.needs_verification or elementMatchesSelectorList(element, &selector_list)) {
-                        collected.append(allocator, element) catch return error.OutOfMemory;
+                        const base = dom.instance_bridge.getNodeBase(@ptrCast(element)) orelse return error.InvalidStateError;
+                        collected.append(allocator, base) catch return error.OutOfMemory;
                     }
                 }
             }
@@ -237,18 +243,18 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
         .single_class => {
             // Fast path: Class-only selector
             if (analysis.class_name) |class_name| {
-                collectElementsByClass(allocator, instance, class_name, &collected) catch return error.OutOfMemory;
+                collectDescendants(allocator, root_base, .{ .class_name = class_name }, &collected) catch return error.OutOfMemory;
             }
         },
         .single_tag => {
             // Fast path: Tag-only selector
             if (analysis.tag_name) |tag_name| {
-                collectElementsByTagName(allocator, instance, tag_name, &collected) catch return error.OutOfMemory;
+                collectDescendants(allocator, root_base, .{ .tag_name = tag_name }, &collected) catch return error.OutOfMemory;
             }
         },
         .none, .complex => {
             // No fast path - use full tree traversal
-            collectAllMatches(allocator, instance, &selector_list, &collected) catch return error.OutOfMemory;
+            collectDescendants(allocator, root_base, .{ .selectors = &selector_list }, &collected) catch return error.OutOfMemory;
         },
     }
 
@@ -257,7 +263,7 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
         instance.ctx,
     ) catch return error.OutOfMemory;
     errdefer interfaces.NodeList.deinit(node_list);
-    try @import("dom").node_lists.setStaticWithin(node_list, collected.items, instance);
+    try dom.node_lists.setStaticBasesWithin(node_list, collected.items, root_base);
 
     return node_list;
 }
@@ -328,48 +334,53 @@ fn findFirstElementByTagName(root: *runtime.Instance, tag_name: []const u8) ?*ru
     return null;
 }
 
-/// Fast path: Collect all elements with given class name
-fn collectElementsByClass(
-    allocator: std.mem.Allocator,
-    root: *runtime.Instance,
+/// What querySelectorAll's walk keeps: a class or tag fast path, or the
+/// full selector list.
+const Wanted = union(enum) {
     class_name: []const u8,
-    collected: *std.ArrayList(*runtime.Instance),
+    tag_name: []const u8,
+    selectors: *const SelectorList,
+
+    fn matches(self: Wanted, element: *runtime.Instance) bool {
+        return switch (self) {
+            .class_name => |name| matchesClassSelector(element, name),
+            .tag_name => |name| matchesTypeSelector(element, name),
+            .selectors => |list| elementMatchesSelectorList(element, list),
+        };
+    }
+};
+
+/// Collect every element descendant of `root` that `wanted` matches, in tree
+/// order (DOM "scope-match a selectors string": the inclusive descendants of
+/// the node, in tree order; the node itself is never a match). Walks the
+/// tree's own links - no lookup per node.
+fn collectDescendants(
+    allocator: std.mem.Allocator,
+    root: *NodeBase,
+    wanted: Wanted,
+    collected: *std.ArrayList(*NodeBase),
 ) !void {
-    var child = NodeImpl.getFirstChild(root);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // Check class
-            if (matchesClassSelector(c, class_name)) {
-                try collected.append(allocator, c);
+    var current = root.first_child;
+    while (current) |node| {
+        if (node.node_type == NodeBase.ELEMENT_NODE) {
+            if (dom.instance_bridge.getInstance(node)) |opaque_element| {
+                const element: *runtime.Instance = @ptrCast(@alignCast(opaque_element));
+                if (wanted.matches(element)) try collected.append(allocator, node);
             }
-            // Recurse into children
-            try collectElementsByClass(allocator, c, class_name, collected);
         }
-        child = NodeImpl.getNextSibling(c);
+        current = nextInTreeOrder(node, root);
     }
 }
 
-/// Fast path: Collect all elements with given tag name
-fn collectElementsByTagName(
-    allocator: std.mem.Allocator,
-    root: *runtime.Instance,
-    tag_name: []const u8,
-    collected: *std.ArrayList(*runtime.Instance),
-) !void {
-    var child = NodeImpl.getFirstChild(root);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // Check tag name
-            if (matchesTypeSelector(c, tag_name)) {
-                try collected.append(allocator, c);
-            }
-            // Recurse into children
-            try collectElementsByTagName(allocator, c, tag_name, collected);
-        }
-        child = NodeImpl.getNextSibling(c);
+/// The node after `node` in tree order within `root`'s descendants, or null.
+fn nextInTreeOrder(node: *NodeBase, root: *NodeBase) ?*NodeBase {
+    if (node.first_child) |child| return child;
+    var current = node;
+    while (current != root) {
+        if (current.next_sibling) |sibling| return sibling;
+        current = current.parent_node orelse return null;
     }
+    return null;
 }
 
 // =============================================================================
@@ -401,30 +412,6 @@ fn findFirstMatch(
     }
 
     return null;
-}
-
-/// Collect all elements matching the selector list (depth-first tree order)
-fn collectAllMatches(
-    allocator: std.mem.Allocator,
-    node: *runtime.Instance,
-    selector_list: *const SelectorList,
-    collected: *std.ArrayList(*runtime.Instance),
-) !void {
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // Check if this element matches
-            if (elementMatchesSelectorList(c, selector_list)) {
-                try collected.append(allocator, c);
-            }
-        }
-
-        // Recursively search descendants (depth-first)
-        try collectAllMatches(allocator, c, selector_list, collected);
-
-        child = NodeImpl.getNextSibling(c);
-    }
 }
 
 /// Check if an element matches a selector list (OR semantics - match any selector)

@@ -162,8 +162,9 @@ pub const Holder = struct {
         return .{ .allocator = allocator, .owner = owner, .owner_generation = runtime.SlabAllocator.generationOf(owner) };
     }
 
-    /// Hold `nodes`, in order (`T` is `*runtime.Instance` or
-    /// `?*runtime.Instance`; a null holds nothing), then rescue every root of
+    /// Hold `nodes`, in order (`T` is `*runtime.Instance`,
+    /// `?*runtime.Instance` - a null holds nothing - or `*NodeBase`, the
+    /// tree nodes themselves, which spares a lookup each), then rescue every root of
     /// theirs that is not a kept document. `root_hint`: the host-including
     /// root they all share, when the caller knows it (querySelectorAll's
     /// receiver's), so it is found once. The holder holds nothing yet.
@@ -171,14 +172,31 @@ pub const Holder = struct {
         std.debug.assert(self.holds.len == 0);
         if (nodes.len == 0) return;
         const holds = try self.allocator.alloc(Hold, nodes.len);
-        for (nodes, holds) |maybe, *slot| {
+        for (nodes, holds) |item, *slot| {
             slot.* = .{};
-            const node: *runtime.Instance = if (T == ?*runtime.Instance) (maybe orelse continue) else maybe;
-            const base = instance_bridge.getNodeBase(@ptrCast(node)) orelse continue;
-            slot.link(self, node, base);
+            const held = resolve(T, item) orelse continue;
+            slot.link(self, held.node, held.base);
         }
         self.holds = holds;
         self.rescueUnkeptRoots(root_hint);
+    }
+
+    const Resolved = struct { node: *runtime.Instance, base: *NodeBase };
+
+    /// A node to hold, as both its platform object and its tree node.
+    fn resolve(comptime T: type, item: T) ?Resolved {
+        switch (T) {
+            *NodeBase => {
+                const node: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(item) orelse return null));
+                return .{ .node = node, .base = item };
+            },
+            *runtime.Instance => return .{ .node = item, .base = instance_bridge.getNodeBase(@ptrCast(item)) orelse return null },
+            ?*runtime.Instance => {
+                const node = item orelse return null;
+                return .{ .node = node, .base = instance_bridge.getNodeBase(@ptrCast(node)) orelse return null };
+            },
+            else => @compileError("Holder.hold holds *NodeBase, *runtime.Instance or ?*runtime.Instance"),
+        }
     }
 
     /// The node of hold `index` (see `Hold.get`).

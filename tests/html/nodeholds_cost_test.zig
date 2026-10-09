@@ -224,3 +224,99 @@ fn unreadRecordsMakeNoListAndNoRescue() !void {
 test "an observed mutation whose record script never reads makes no NodeList and takes no rescue" {
     try onFreshThread(unreadRecordsMakeNoListAndNoRescue);
 }
+
+/// Outstanding bytes of the allocator a Browser is given.
+const CountingAllocator = struct {
+    child: std.mem.Allocator,
+    outstanding: usize = 0,
+
+    fn allocator(self: *CountingAllocator) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &.{ .alloc = alloc, .resize = resize, .remap = remap, .free = free } };
+    }
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        const result = self.child.rawAlloc(len, alignment, ra) orelse return null;
+        self.outstanding += len;
+        return result;
+    }
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) bool {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        if (!self.child.rawResize(memory, alignment, new_len, ra)) return false;
+        self.outstanding = self.outstanding - memory.len + new_len;
+        return true;
+    }
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        const result = self.child.rawRemap(memory, alignment, new_len, ra) orelse return null;
+        self.outstanding = self.outstanding - memory.len + new_len;
+        return result;
+    }
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ra: usize) void {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        self.child.rawFree(memory, alignment, ra);
+        self.outstanding -= memory.len;
+    }
+};
+
+const Retained = struct { instances: usize, wrappers: i64, native: usize, arena: usize };
+
+/// 1,000 rounds of a tree replaced by innerHTML; with `lists`, a
+/// querySelectorAll list over each tree is kept until every round is done,
+/// so each list rescues the tree innerHTML takes from under it. Then every
+/// list is dropped and the page collects twice.
+fn retainedAfterDroppedLists(lists: bool) !Retained {
+    var counting: CountingAllocator = .{ .child = testing.allocator };
+    const browser = try browser_mod.Browser.init(counting.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body><div id=host></div></body>", .{ .base_url = "about:blank" });
+    try page.runScript("TestUtils.gc(); TestUtils.gc();");
+    const slab = try @import("runtime").SlabAllocator.tryGet();
+    const arena = @import("runtime").ArenaAllocator.tryGet() catch null;
+    const instances_before = slab.stats().currently_allocated;
+    const native_before = counting.outstanding;
+    const arena_before = if (arena) |a| a.stats().bytes_in_use else 0;
+    var buffer: [512]u8 = undefined;
+    const script = try std.fmt.bufPrint(&buffer,
+        \\globalThis.kept = [];
+        \\const host = document.getElementById('host');
+        \\const markup = '<section><p><b>x</b></p><ul><li>1</li><li>2</li></ul></section>'.repeat(5);
+        \\for (let i = 0; i < 1000; i++) {{
+        \\  host.innerHTML = markup;
+        \\  if ({s}) kept.push(host.querySelectorAll('*'));
+        \\}}
+        \\host.innerHTML = '';
+        \\kept = null;
+    , .{if (lists) "true" else "false"});
+    try page.runScript(script);
+    _ = try browser.runEventLoopBlocking(20);
+    try page.runScript("TestUtils.gc(); TestUtils.gc();");
+    _ = try browser.runEventLoopBlocking(20);
+    try page.runScript("TestUtils.gc(); TestUtils.gc();");
+    const wrappers = try wrapperEntries(browser);
+    // What the rounds left behind: the page's own growth over the run.
+    return .{
+        .instances = slab.stats().currently_allocated -| instances_before,
+        .wrappers = wrappers,
+        .native = counting.outstanding -| native_before,
+        .arena = (if (arena) |a| a.stats().bytes_in_use else 0) -| arena_before,
+    };
+}
+
+fn droppedListsRetainNothing() !void {
+    _ = try retainedAfterDroppedLists(false);
+    const without = try retainedAfterDroppedLists(false);
+    const with = try retainedAfterDroppedLists(true);
+    std.debug.print("dropped lists: instances {d} -> {d}, wrappers {d} -> {d}, native {d} -> {d} B, arena {d} -> {d} B\n", .{ without.instances, with.instances, without.wrappers, with.wrappers, without.native, with.native, without.arena, with.arena });
+    // 1,000 lists of 35 nodes rescued 5,000 trees: none of it may outlive the
+    // lists' collection.
+    if (with.instances > without.instances + 64) return error.InstancesRetainedByDroppedLists;
+    if (with.wrappers > without.wrappers + wrapper_slack) return error.WrappersRetainedByDroppedLists;
+    if (with.native > without.native + 64 * 1024) return error.NativeHeapRetainedByDroppedLists;
+    if (with.arena > without.arena + 64 * 1024) return error.ArenaRetainedByDroppedLists;
+}
+
+test "1,000 dropped querySelectorAll lists that rescued their trees retain nothing past two collections" {
+    try onFreshThread(droppedListsRetainNothing);
+}
