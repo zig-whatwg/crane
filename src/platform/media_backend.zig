@@ -19,6 +19,9 @@ pub const Result = union(enum) {
     current_data: Metadata,
 };
 
+/// The size, in pixels, of a video frame.
+pub const VideoSize = struct { width: u32, height: u32 };
+
 /// One resource's decoder. Bytes are borrowed for push only; the host owns any
 /// retained copy. A successful open transfers exactly one deinit to the caller.
 pub const Decoder = struct {
@@ -27,9 +30,23 @@ pub const Decoder = struct {
     pub const VTable = struct {
         push: *const fn (?*anyopaque, []const u8, bool) Result,
         deinit: *const fn (?*anyopaque) void,
+        /// The size of the video frame at a playback position, in seconds on
+        /// the media timeline - so the element can follow a size change
+        /// during playback (HTML 4.8.8 fires `resize` when the natural
+        /// size changes). Any host, iOS included: the size of the frame the
+        /// decoder really has at that position, never a guess from container
+        /// metadata; null when it does not know (no video, no frame there
+        /// yet), and the element keeps its last size. Optional: a host that
+        /// leaves it out answers null everywhere.
+        video_size_at: ?*const fn (?*anyopaque, f64) ?VideoSize = null,
     };
     pub fn push(self: Decoder, bytes: []const u8, end_of_stream: bool) Result {
         return self.vtable.push(self.ptr, bytes, end_of_stream);
+    }
+    /// See VTable.video_size_at.
+    pub fn videoSizeAt(self: Decoder, seconds: f64) ?VideoSize {
+        const answer = self.vtable.video_size_at orelse return null;
+        return answer(self.ptr, seconds);
     }
     pub fn deinit(self: *Decoder) void {
         self.vtable.deinit(self.ptr);

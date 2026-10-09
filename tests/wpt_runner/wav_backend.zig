@@ -509,3 +509,13 @@ test "a data chunk before its fmt chunk, or an inconsistent fmt, is a decode err
         try testing.expectEqual(media.Result.decode_error, decoder.push(file, true));
     }
 }
+
+test "a WAV decoder has no video: videoSizeAt is null" {
+    const file = try wavFile(testing.allocator, 1, 8000, 16, 1600);
+    defer testing.allocator.free(file);
+    var decoder = try openDecoder();
+    defer decoder.deinit();
+    try testing.expect(decoder.push(file, true) == .current_data);
+    try testing.expectEqual(@as(?media.VideoSize, null), decoder.videoSizeAt(0));
+    try testing.expectEqual(@as(?media.VideoSize, null), decoder.videoSizeAt(0.1));
+}
