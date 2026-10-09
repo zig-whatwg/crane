@@ -434,6 +434,41 @@ pub const LoadState = struct {
         return steps;
     }
 
+    /// What the autoplay substeps ask the owner to queue.
+    pub const Autoplay = struct {
+        /// Step 2: the show poster flag was true; run time marches on.
+        time_marches_on: bool = false,
+        /// Step 3: queue a task to fire play.
+        play_event: bool = true,
+        /// Step 4: notify about playing.
+        notify_playing: bool = true,
+    };
+
+    /// HTML 4.8.11.7, "If the previous ready state was HAVE_FUTURE_DATA or
+    /// less, and the new ready state is HAVE_ENOUGH_DATA": after canplaythrough,
+    /// "If the element is not eligible for autoplay, then the user agent must
+    /// abort these substeps." This checks the parts of "eligible for
+    /// autoplay" the model holds - the can autoplay flag is true and paused is
+    /// true - and the owner checks the rest (the autoplay attribute, the
+    /// sandboxing flag, the "autoplay" feature) before calling. Then the
+    /// substeps the user agent "may" run, which Crane does:
+    ///   1. Set paused to false.
+    ///   2. If the show poster flag is true, set it to false and run time
+    ///      marches on.
+    ///   3. Queue a media element task to fire play.
+    ///   4. Notify about playing.
+    /// Null when not eligible.
+    pub fn autoplay(self: *LoadState) ?Autoplay {
+        if (!self.can_autoplay or !self.paused) return null;
+        self.paused = false;
+        var steps: Autoplay = .{};
+        if (self.show_poster) {
+            self.show_poster = false;
+            steps.time_marches_on = true;
+        }
+        return steps;
+    }
+
     /// The internal pause steps' state changes: true when it was playing, and
     /// the owner queues timeupdate, pause and the promises' rejection.
     pub fn pause(self: *LoadState) bool {

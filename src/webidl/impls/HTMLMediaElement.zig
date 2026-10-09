@@ -316,6 +316,16 @@ pub const InternalState = struct {
                         self.fail();
                         return;
                     }
+                    // "Once the entire media resource has been fetched (but
+                    // potentially before any of it has been decoded)": fire
+                    // progress, then set networkState to NETWORK_IDLE and fire
+                    // suspend (4.8.11.5, the media data processing steps). A
+                    // body that arrives before the 350ms progress timer first
+                    // fires gets its progress here. networkState is already
+                    // NETWORK_IDLE when progress dispatches, as in Chrome and
+                    // Safari (networkState_during_progress.html: Chrome 2/4,
+                    // Safari 2/4, Firefox 4/4 on wpt.fyi, 2026-10-09).
+                    try self.event("progress");
                     self.load.suspendFetch(self.load.generation);
                     self.syncDelay();
                     try self.event("suspend");
@@ -422,8 +432,35 @@ pub const InternalState = struct {
         }
         if (change.canplay) try self.event("canplay");
         if (change.notify_playing) try self.notifyPlaying();
-        if (change.canplaythrough) try self.event("canplaythrough");
+        if (change.canplaythrough) {
+            try self.event("canplaythrough");
+            try self.autoplay();
+        }
         self.syncClock();
+    }
+
+    /// The autoplay substeps after canplaythrough (4.8.11.7; LoadState.autoplay
+    /// numbers them). "Eligible for autoplay": the model checks the can
+    /// autoplay flag and paused; here, the autoplay attribute, that the node
+    /// document's active sandboxing flag set lacks the sandboxed automatic
+    /// features flag (set by a sandbox without allow-scripts), and that the
+    /// document is allowed to use the "autoplay" feature. The lazy loading
+    /// condition always holds: Crane loads every media element eagerly.
+    fn autoplay(self: *InternalState) !void {
+        const instance = self.activity.instance orelse return;
+        if (!(try interfaces.Element.call_hasAttribute(instance, .initInterned("autoplay")))) return;
+        if (automaticFeaturesSandboxed(instance)) return;
+        // TODO(permissions-policy): "allowed to use" the "autoplay" feature
+        // (default allowlist 'self'). No document carries a permissions policy
+        // yet (src/html/permissions_policy.zig is not delivered), so every
+        // document is allowed, as a top-level or same-origin one is.
+        const steps = self.load.autoplay() orelse return;
+        // Step 2's time marches on has nothing to do yet: Crane does not
+        // process text track cues there (a follow-up), and outside normal
+        // playback it fires no timeupdate.
+        _ = steps.time_marches_on;
+        if (steps.play_event) try self.event("play");
+        if (steps.notify_playing) try self.notifyPlaying();
     }
 
     /// The official playback position, just set, stays until the next stable
@@ -726,6 +763,18 @@ fn documentAbortSteps(context: ?*anyopaque) void {
 fn naturalSize(instance: *runtime.Instance) dom.media_elements.VideoSize {
     const self = instance.getState(State).own._internal orelse return .{};
     return .{ .width = self.video_size.width, .height = self.video_size.height };
+}
+/// Whether the element's node document's active sandboxing flag set has the
+/// sandboxed automatic features browsing context flag: its navigable is
+/// sandboxed without allow-scripts (HTML 7.1.5, "parse a sandboxing
+/// directive": the sandboxed automatic features browsing context flag,
+/// "unless tokens contains the allow-scripts keyword"). Document.zig's
+/// automaticFeaturesSandboxed reads it the same way for meta refresh.
+fn automaticFeaturesSandboxed(instance: *runtime.Instance) bool {
+    const document = common.documentOf(instance) orelse return false;
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
+    const browsing_context = @import("html_core").window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    return !browsing_context.allowsScripts();
 }
 fn delaysLoad(document: *runtime.Instance) bool {
     const registry = common.liveRegistry(document.ctx) orelse return false;
