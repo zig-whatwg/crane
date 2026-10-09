@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../../../">Crane WPT results</a></li><li><a href="../../../../../../html/"><code>html/</code></a></li><li><a href="../../../../../../html/semantics/"><code>semantics/</code></a></li><li><a href="../../../../../../html/semantics/forms/"><code>forms/</code></a></li><li><a href="../../../../../../html/semantics/forms/the-select-element/"><code>the-<wbr>select-<wbr>element/</code></a></li><li><a href="../../../../../../html/semantics/forms/the-select-element/customizable-select/"><code>customizable-<wbr>select/</code></a></li><li aria-current="page"><code>nested-<wbr>options.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>nested-<wbr>options.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="html/semantics/forms/the-select-element/customizable-select/nested-options.html">
-<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-40586ce295</code>, <span class="nowrap">9 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/40586ce295"><code>40586ce295</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-ed90afcf6f</code>, <span class="nowrap">9 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ed90afcf6f"><code>ed90afcf6f</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/forms/the-select-element/customizable-select/nested-options.html"><code>html/<wbr>semantics/<wbr>forms/<wbr>the-<wbr>select-<wbr>element/<wbr>customizable-<wbr>select/<wbr>nested-<wbr>options.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,7 +35,7 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-aa1de038"><details><summary><span class="mark">FAIL</span><span class="sub-name">The HTML parser should disallow nested options in select datalist.</span></summary><pre class="msg">assert_equals: expected &quot;\n  &lt;datalist&gt;\n    &lt;option id=\&quot;o1\&quot;&gt;\n      parent\n      &lt;/option&gt;&lt;option id=\&quot;o2\&quot;&gt;child&lt;/option&gt;\n\n  &lt;/datalist&gt;\n&quot; but got &quot;\n  &lt;datalist&gt;\n    &lt;option id=\&quot;o1\&quot;&gt;\n      parent\n      &lt;option id=\&quot;o2\&quot;&gt;child&lt;/option&gt;\n&lt;/option&gt;\n  &lt;/datalist&gt;\n&quot;</pre></details><a class="self" href="#s-aa1de038" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aa1de038"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The HTML parser should disallow nested options in select datalist.</span></div><a class="self" href="#s-aa1de038" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-57f0f8c7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Nested &lt;options&gt; not should be listed in &lt;select&gt; IDLs.</span></div><a class="self" href="#s-57f0f8c7" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-7781499d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Showing the popup with nested &lt;option&gt;s should not crash.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-7781499d" aria-label="Link to this subtest">&para;</a></li>
 </ol>
