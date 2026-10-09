@@ -184,9 +184,10 @@ pub const WorkerEventLoop = struct {
             } else self.sink.waitForWork(null);
         }
 
-        // 6. The timers that came due, then a checkpoint.
+        // 6. The timers that came due - each a task, followed by a
+        // checkpoint (HTML 8.1.7.3) - then a checkpoint.
         if (self.link.runsTasks()) {
-            if (self.timers.poll()) did_work = true;
+            if (self.timers.pollEach(.{ .context = self, .run = checkpointAfterTimer })) did_work = true;
             self.checkpoint();
         }
         return did_work;
@@ -222,6 +223,12 @@ pub const WorkerEventLoop = struct {
     fn checkpoint(self: *WorkerEventLoop) void {
         const agent = self.agent orelse return;
         engine.performMicrotaskCheckpoint(agent) catch {};
+    }
+
+    /// The checkpoint after a timer's task (NativeTimerManager.AfterEach).
+    fn checkpointAfterTimer(context: *anyopaque) void {
+        const self: *WorkerEventLoop = @ptrCast(@alignCast(context));
+        self.checkpoint();
     }
 
     // ========================================================================

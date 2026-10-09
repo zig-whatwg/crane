@@ -1367,6 +1367,18 @@ pub extern fn v8_Function_CallCatching(
     threw: *bool,
 ) ?*Value;
 
+/// v8_Function_CallCatching for a Call that invokes no callback (the iterator
+/// protocol of a WebIDL conversion): no kAuto microtask checkpoint follows it
+/// at call depth 0 (v8_wrapper.cpp, NativeStepScope).
+pub extern fn v8_Function_CallCatchingNativeStep(
+    context: *Context,
+    function: *Value,
+    recv: ?*Value,
+    argc: c_int,
+    argv: ?[*]const *Value,
+    threw: *bool,
+) ?*Value;
+
 /// Get(object, key) under a TryCatch: the value with `threw.* == false`, or the
 /// thrown value with `threw.* == true`, caught rather than left pending. Null
 /// with `threw` true only when there is nothing to report. A non-null result

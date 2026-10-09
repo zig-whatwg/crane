@@ -434,7 +434,9 @@ pub const V8EventLoop = struct {
         if (self.timer_manager) |mgr| {
             // Use blocking poll with timeout - this waits efficiently for timer/I/O
             // and returns after at most wait_time milliseconds
-            const had_callbacks = mgr.pollBlocking(wait_time);
+            // - each callback a task, followed by a microtask checkpoint
+            // (HTML 8.1.7.3).
+            const had_callbacks = mgr.pollBlockingEach(wait_time, .{ .context = self, .run = checkpointAfterTimer });
             if (had_callbacks) {
                 did_work = true;
             }
@@ -457,6 +459,13 @@ pub const V8EventLoop = struct {
     /// handler navigates the frame, whose next load runs the handler again -
     /// keep a turn from ever returning, and with it the deadline its caller
     /// checks between turns. Returns whether any task ran.
+    /// The microtask checkpoint after a timer's task (the timer manager's
+    /// AfterEach).
+    fn checkpointAfterTimer(context: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+    }
+
     fn runQueuedTasks(self: *Self) bool {
         var budget = self.tasks.items.len;
         if (budget == 0) return false;

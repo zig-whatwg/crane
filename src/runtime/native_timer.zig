@@ -191,8 +191,25 @@ pub const NativeTimerManager = struct {
         return false;
     }
 
+    /// What an event loop runs after each timer callback: its microtask
+    /// checkpoint. Each timer is a task of its own - HTML "run steps after a
+    /// timeout" queues one per timer - and the event loop processing model
+    /// performs a microtask checkpoint after every task it runs (8.1.7.3).
+    /// A callback that settles a promise from native code does not perform
+    /// one itself (v8_wrapper.cpp, NativeStepScope), so without this its
+    /// reactions would wait behind the next due timer's callback.
+    pub const AfterEach = struct {
+        context: *anyopaque,
+        run: *const fn (context: *anyopaque) void,
+    };
+
     /// Fire every timer whose deadline has passed. Returns whether any callback ran.
     pub fn poll(self: *Self) bool {
+        return self.pollEach(null);
+    }
+
+    /// `poll`, running `after_each` after every callback it fires.
+    pub fn pollEach(self: *Self, after_each: ?AfterEach) bool {
         if (!self.initialized) return false;
         self.callback_invoked = false;
 
@@ -236,6 +253,7 @@ pub const NativeTimerManager = struct {
 
             self.callback_invoked = true;
             cb(data);
+            if (after_each) |hook| hook.run(hook.context);
         }
 
         return self.callback_invoked;
@@ -256,11 +274,16 @@ pub const NativeTimerManager = struct {
 
     /// Wait (briefly) for a timer to come due, then fire what is due.
     pub fn pollBlocking(self: *Self, timeout_ms: u64) bool {
+        return self.pollBlockingEach(timeout_ms, null);
+    }
+
+    /// `pollBlocking`, running `after_each` after every callback it fires.
+    pub fn pollBlockingEach(self: *Self, timeout_ms: u64, after_each: ?AfterEach) bool {
         if (!self.initialized) return false;
-        if (timeout_ms == 0) return self.poll();
+        if (timeout_ms == 0) return self.pollEach(after_each);
 
         // Anything already due: fire it now rather than sleeping first.
-        if (self.poll()) return true;
+        if (self.pollEach(after_each)) return true;
 
         // Sleep until the earliest of: the next deadline, the caller's bound, and
         // max_block_ms - see above for why that last cap exists.
@@ -270,7 +293,7 @@ pub const NativeTimerManager = struct {
         const wait_ms: u64 = @min(@min(next, timeout_ms), max_block_ms);
 
         if (wait_ms > 0) clock.sleep(wait_ms *| std.time.ns_per_ms);
-        return self.poll();
+        return self.pollEach(after_each);
     }
 
     pub fn timerInterface(self: *Self) TimerInterface {
