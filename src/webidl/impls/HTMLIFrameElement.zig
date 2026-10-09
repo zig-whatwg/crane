@@ -994,6 +994,15 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     const allocator = integration.allocator;
     const active = activeDocumentOf(integration);
 
+    // Not a spec step: a cross-origin frame without user activation may not
+    // navigate its top-level traversable away, as in Firefox and Safari
+    // (html.user_activation.topNavigationBlocked states the deviation and
+    // its exceptions). Only a navigation a document started: never a
+    // traversal or reload, an element's own navigation of its frame, or the
+    // browser's.
+    if (options.traversal_entry == 0 and !options.initial_insertion and options.user_involvement != .browser_ui and
+        html_module.user_activation.topNavigationBlocked(options.source_document, browsing_context, url)) return;
+
     // Step 9: "If navigable's active document's unload counter is greater
     // than 0, then ... return."
     if (active) |doc| {
@@ -3079,6 +3088,11 @@ fn navigateFromIntegration(integration: *IFrameIntegration, url: []const u8, req
 fn navigateFromLocation(ctx: ?*anyopaque, url: []const u8, request: html_core.window.iframe_integration.NavigateRequest) bool {
     const integration: *IFrameIntegration = @ptrCast(@alignCast(ctx orelse return false));
     if (integration.browsing_context == null or integration.state == .discarded) return false;
+    // A refused top-level navigation (html.user_activation.topNavigationBlocked)
+    // throws a SecurityError at script, as WebKit's Location::setLocation and
+    // Gecko's do; navigate() would refuse it silently.
+    const source: ?*runtime.Instance = if (request.source_document) |d| @ptrCast(@alignCast(d)) else null;
+    if (html_module.user_activation.topNavigationBlocked(source, integration.browsing_context.?, url)) return false;
     var behavior = request.history_behavior;
     if (activeDocumentOf(integration)) |document| {
         // Step 3: "If location's relevant Document is not yet completely

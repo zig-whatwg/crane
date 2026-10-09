@@ -365,3 +365,36 @@ test "a traversal to a frame's entry goes to the nearest step where the frame sh
     h.current_step = 2;
     try testing.expectEqual(@as(u32, 0), h.nearestStepOf(h.entryAt(top, 0).?));
 }
+
+test "a leaving document's no-referrer or origin policy marks every entry of it, and only those" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    var doc_a: u8 = 0;
+    var doc_b: u8 = 0;
+    try h.addInitialEntry(top, "http://x.test/a", @ptrCast(&doc_a), "http://x.test");
+    try h.commitSameDocument(top, "http://x.test/a#hash", .null, .push, null);
+    try h.commitDocument(top, "http://x.test/b", @ptrCast(&doc_b), "http://x.test", .push);
+    // Both entries of a's document state hold it; b's entry holds b.
+    h.forgetDocumentWithPolicy(@ptrCast(&doc_a), .no_referrer);
+    try testing.expect(h.entryAt(top, 0).?.protect_url);
+    try testing.expect(h.entryAt(top, 1).?.protect_url);
+    try testing.expect(h.entryAt(top, 0).?.document == null);
+    try testing.expect(!h.entryAt(top, 2).?.protect_url);
+    // A later leave records the policy the document had then.
+    h.setDocumentOfState(h.entryAt(top, 0).?.document_state, @ptrCast(&doc_a));
+    h.forgetDocumentWithPolicy(@ptrCast(&doc_a), .same_origin);
+    try testing.expect(!h.entryAt(top, 0).?.protect_url);
+    try testing.expect(!h.entryAt(top, 1).?.protect_url);
+    // No policy container: nothing to hide.
+    h.forgetDocumentWithPolicy(@ptrCast(&doc_b), null);
+    try testing.expect(!h.entryAt(top, 2).?.protect_url);
+}
+
+test "only no-referrer and origin hide a document's URL from the navigation API" {
+    try testing.expect(joint.protectsUrl(.no_referrer));
+    try testing.expect(joint.protectsUrl(.origin));
+    try testing.expect(!joint.protectsUrl(.strict_origin_when_cross_origin));
+    try testing.expect(!joint.protectsUrl(.same_origin));
+    try testing.expect(!joint.protectsUrl(.unsafe_url));
+    try testing.expect(!joint.protectsUrl(.empty));
+}

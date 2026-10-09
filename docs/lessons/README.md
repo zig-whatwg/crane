@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A parent completes loading in its last child's task](architecture-a-parent-completes-loading-in-its-last-child-s-task.md) - When the spec spins the event loop before a load task, check how many tasks the browsers put there - Blink and Gecko put none between a last child and its parent - and make a Crane test read the state where the WPT test under study reads it.
 - [Parser association is not document activity](architecture-parser-association-is-not-document-activity.md) - A new parser follows its native document association even after the browsing context is destroyed.
 - [A load makes a new Document and never empties the old one](architecture-a-load-makes-a-new-document-and-never-empties-the-old-one.md) - Never empty a document to reuse it: make a new one, abort the old, leave its storage to its wrapper, and destroy it from a task once nothing of it is on the stack.
 - [Tracing a holder's nodes makes a wrapper for every node it holds](architecture-tracing-a-holders-nodes-makes-a-wrapper-per-node.md) - Before choosing traced edges for a holder, count the wrappers its hottest fill path makes: an edge per held node is a wrapper per held node, so a holder of many nodes needs a native hold the teardown respects, not a trace.
@@ -250,6 +251,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A gate that trips once is not a scope - reset only what a mutation reaches](architecture-a-gate-that-trips-once-is-not-a-scope.md) - A "has any X" counter is a fast path, not a bound: once it trips, cost every mutation by what it can actually change, and derive that set from the spec's own triggers (and the engine that already implements them).
 
 ### Spec Compliance
+- [An intervention's exceptions are decided one by one](spec-compliance-an-intervention-s-exceptions-are-decided-one-by-one.md) - For a behaviour the spec does not have, list each exception the shipping engines make, mark who allows it - counting a non-blocking engine as allowing - and test every line.
 
 - [Check the XHR send flag when abort is delivered](spec-compliance-check-the-xhr-send-flag-when-abort-is-delivered.md) - A queued document abort must recheck completed request state before touching its response or firing errors.
 

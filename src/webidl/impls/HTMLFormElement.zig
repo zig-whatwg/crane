@@ -47,9 +47,15 @@ pub const InternalState = struct {
     elements: ?*runtime.Instance = null,
     elements_generation: u64 = 0,
     elements_traced: bool = false,
-    /// HTML § 4.10.22.3 "planned navigation": the token of the queued task
-    /// that will navigate, or 0 for null.
+    /// HTML § 4.10.22.3 "planned navigation": the token of the form's last
+    /// planned navigation while its task is still queued, or 0 for null.
     planned_navigation: u64 = 0,
+    /// Every planned navigation of the form whose task is still queued (see
+    /// planNavigationWith: a submit() call does not cancel the ones before
+    /// it, as it does in the spec text). Allocated with
+    /// `pending_allocator`.
+    pending_navigations: std.ArrayListUnmanaged(PendingNavigation) = .empty,
+    pending_allocator: ?std.mem.Allocator = null,
     /// § 4.10.22.3 "constructing entry list", initially false.
     constructing_entry_list: bool = false,
     /// § 4.10.22.3 "firing submission events", initially false.
@@ -58,8 +64,17 @@ pub const InternalState = struct {
     locked_for_reset: bool = false,
 
     pub fn deinit(self: *InternalState) void {
-        _ = self;
+        if (self.pending_allocator) |allocator| self.pending_navigations.deinit(allocator);
+        self.pending_navigations = .empty;
     }
+};
+
+/// A planned navigation of a form whose task has not run yet.
+const PendingNavigation = struct {
+    token: u64,
+    /// The id of the navigable (html_core BrowsingContext) the target named
+    /// at submission, or 0 when it named a new one or none was found.
+    navigable: u64,
 };
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -879,6 +894,19 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
         };
         // 5.8: If shouldContinue is false, then return.
         if (!should_continue) return;
+        // Deviation from the spec text, where every submission replaces the
+        // form's planned navigation ("plan to navigate" step 3): the browsers
+        // cancel the form's last planned navigation here, once the submit
+        // event lets the submission go on, and only for a submission that
+        // fires it (a submit button, implicit submission, requestSubmit()).
+        // A submit() call cancels nothing (planNavigationWith). Blink:
+        // HTMLFormElement::PrepareForSubmission runs cancel_last_submission_
+        // before ScheduleFormSubmission, which submitFromJavaScript calls
+        // directly; WebKit: HTMLFormElement::submitIfPossible cancels
+        // m_plannedFormSubmission, which submitFromJavaScript only overwrites.
+        // The cancellation comes before the connected check, as in both.
+        // form-submission-0/form-double-submit.html pins this one.
+        cancelLastPlannedNavigation(form);
         // 5.9: dispatching submit could have changed this.
         if (cannotNavigate(form)) return;
     }
@@ -1181,11 +1209,83 @@ fn planNavigationWith(form: *runtime.Instance, url: []const u8, target: []const 
 
     const internal = Registry.get(form) orelse return task.destroy();
     const event_loop = form.ctx.getOptionalEventLoop() orelse return task.destroy();
-    // Steps 3 and 5: this plan replaces any earlier one, whose task then
-    // finds a different token and does nothing.
+    // Steps 3 and 5, as the browsers do them (golden rule 2). The spec text
+    // removes the form's planned navigation from its task queue whatever it
+    // targets, so three submit() calls aimed at three frames navigate only
+    // the last; Chrome 154, Firefox 157 and Safari 27 navigate all three
+    // (form-submission-0/form-double-submit-multiple-targets.html, 1/1 in
+    // each, wpt.fyi run cc74d2669f). In Blink a scheduled form submission
+    // replaces only the earlier one aimed at the same frame -
+    // Frame::ScheduleFormSubmission keeps one form_submit_navigation_task_
+    // per frame - and the form cancels its last one only from
+    // PrepareForSubmission (cancelLastPlannedNavigation, above). WebKit
+    // matches: FrameLoader::submitForm schedules on the target frame's
+    // NavigationScheduler, and only submitIfPossible cancels the form's
+    // planned submission. So: an earlier plan of this form aimed at the same
+    // navigable is replaced; the others stay queued. Not modelled, stated:
+    // a plan of ANOTHER form aimed at the same navigable is not replaced here
+    // - its navigation replaces the earlier one's ongoing navigation instead.
+    const navigable = targetNavigableId(document, target);
+    if (navigable != 0) {
+        var i: usize = 0;
+        while (i < internal.pending_navigations.items.len) {
+            if (internal.pending_navigations.items[i].navigable == navigable) {
+                _ = internal.pending_navigations.orderedRemove(i);
+            } else i += 1;
+        }
+    }
+    if (internal.pending_allocator == null) internal.pending_allocator = allocator;
+    internal.pending_navigations.append(internal.pending_allocator.?, .{ .token = task.token, .navigable = navigable }) catch return task.destroy();
     internal.planned_navigation = task.token;
     // Step 4: queue a task that navigates.
     event_loop.queueTask(.{ .callback = &runPlannedNavigation, .context = task });
+}
+
+/// Removes the planned navigation `token` from the form's queued ones;
+/// whether it was there (its task may run).
+fn takePendingNavigation(internal: *InternalState, token: u64) bool {
+    for (internal.pending_navigations.items, 0..) |pending, i| {
+        if (pending.token != token) continue;
+        _ = internal.pending_navigations.orderedRemove(i);
+        return true;
+    }
+    return false;
+}
+
+/// Blink's cancel_last_submission_, WebKit's m_plannedFormSubmission->cancel():
+/// the form's last planned navigation, if its task has not run, does not.
+fn cancelLastPlannedNavigation(form: *runtime.Instance) void {
+    const internal = Registry.get(form) orelse return;
+    if (internal.planned_navigation == 0) return;
+    _ = takePendingNavigation(internal, internal.planned_navigation);
+    internal.planned_navigation = 0;
+}
+
+/// The id of the navigable `target` names from `document`'s node navigable
+/// at submission - its html_core BrowsingContext's - or 0 for "_blank", a
+/// name no frame has (a new or existing popup: the window open steps choose
+/// it when the plan runs) or a document with no navigable. Only identifies
+/// the navigable; the plan's task still chooses it (navigateSteps).
+fn targetNavigableId(document: ?*runtime.Instance, target: []const u8) u64 {
+    const BrowsingContext = @import("html_core").BrowsingContext;
+    const doc = document orelse return 0;
+    if (std.ascii.eqlIgnoreCase(target, "_blank")) return 0;
+    const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return 0;
+    const own = BrowsingContext.ofWindow(@ptrCast(window)) orelse return 0;
+    if (target.len == 0 or std.ascii.eqlIgnoreCase(target, "_self")) return own.id;
+    if (std.ascii.eqlIgnoreCase(target, "_parent")) return (own.parent orelse own).id;
+    if (std.ascii.eqlIgnoreCase(target, "_top")) {
+        var top = own;
+        var depth: usize = 0;
+        while (top.parent) |parent| : (depth += 1) {
+            if (depth >= 64) break;
+            top = parent;
+        }
+        return top.id;
+    }
+    const named = @import("dom").navigables.findByName(doc, target) orelse return 0;
+    const browsing_context = BrowsingContext.ofWindow(@ptrCast(named)) orelse return 0;
+    return browsing_context.id;
 }
 
 fn runPlannedNavigation(data: ?*anyopaque) void {
@@ -1195,9 +1295,12 @@ fn runPlannedNavigation(data: ?*anyopaque) void {
     // The form may have been collected and its slot reissued since.
     if (runtime.SlabAllocator.generationOf(task.form) != task.form_generation) return;
     const internal = Registry.get(task.form) orelse return;
-    if (internal.planned_navigation != task.token) return;
-    // Step 4.1: Set the form's planned navigation to null.
-    internal.planned_navigation = 0;
+    // A later plan aimed at the same navigable, or a submission that fired
+    // the submit event, cancelled this one (planNavigationWith).
+    if (!takePendingNavigation(internal, task.token)) return;
+    // Step 4.1: Set the form's planned navigation to null - if this task is
+    // still the form's last one.
+    if (internal.planned_navigation == task.token) internal.planned_navigation = 0;
 
     // A task is entered from the event loop, not from script: it runs as a
     // task of the form's realm, which enters it. A realm with no engine

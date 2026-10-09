@@ -446,11 +446,16 @@ pub fn promiseResolve(at: anytype, value: *ffi.Value) Error!Caught {
     return .{ .normal = try promiseResolvedWith(at, value) };
 }
 
-/// Whether `candidate` is %Promise% (see promiseResolve).
+/// Whether `candidate` is %Promise% (see promiseResolve). The promise whose
+/// [[Prototype]] is read is a pending one nothing resolves: resolving it
+/// with `candidate` would Get(candidate, "then") - a step PromiseResolve
+/// does not take, which script could observe.
 fn isPromiseConstructor(at: anytype, candidate: *ffi.Value) Error!bool {
-    const fresh = try promiseResolvedWith(at, candidate);
-    defer ffi.v8_Global_Dispose(fresh);
-    const prototype = ffi.v8_Object_GetPrototypeV2(@ptrCast(fresh)) orelse return error.OperationFailed;
+    const resolver = ffi.v8_PromiseResolver_New(at.context()) orelse return error.OperationFailed;
+    defer ffi.v8_PromiseResolver_Dispose(resolver);
+    const pending = ffi.v8_PromiseResolver_GetPromise(resolver) orelse return error.OperationFailed;
+    defer ffi.v8_Promise_Dispose(pending);
+    const prototype = ffi.v8_Object_GetPrototypeV2(@ptrCast(pending)) orelse return error.OperationFailed;
     defer ffi.v8_Global_Dispose(prototype);
     const intrinsic = switch (try getCaught(at, prototype, "constructor")) {
         .normal => |v| v,

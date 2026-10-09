@@ -27,6 +27,13 @@ const Allocator = std.mem.Allocator;
 /// A policy container, as a document state's history policy container keeps
 /// one (Fetch's: CSP list, referrer policy).
 pub const PolicyContainer = @import("fetch").internal.PolicyContainer;
+pub const ReferrerPolicy = @import("fetch").internal.ReferrerPolicy;
+
+/// Whether a document whose referrer policy is `policy` hides its URL from
+/// the navigation API of the documents after it: "no-referrer" or "origin".
+pub fn protectsUrl(policy: ReferrerPolicy) bool {
+    return policy == .no_referrer or policy == .origin;
+}
 
 extern "c" fn getentropy(buf: [*]u8, len: usize) c_int;
 
@@ -97,6 +104,12 @@ pub const Entry = struct {
     history_policy_container: ?PolicyContainer = null,
     /// "Scroll restoration mode" is "manual".
     scroll_restoration_manual: bool = false,
+    /// Its document's referrer policy was "no-referrer" or "origin" when the
+    /// document went (`forgetDocument`): a NavigationHistoryEntry for it,
+    /// read from another document, has a null url (HTML
+    /// NavigationHistoryEntry url getter step 4, as the browsers key it - see
+    /// forgetDocument). Shared by the entries of the document state.
+    protect_url: bool = false,
     /// What the navigation that committed its document state's document
     /// recorded for that document's navigation.activation - on one entry of
     /// the state (`setActivation`). Owned.
@@ -691,10 +704,42 @@ pub const JointHistory = struct {
     }
 
     /// A document was destroyed: entries that held it keep their URL, to be
-    /// repopulated by a traversal.
+    /// repopulated by a traversal. `document` is still alive here (the
+    /// callers forget it once it has unloaded, before it is destroyed), so
+    /// its referrer policy is recorded on those entries as it is now.
     pub fn forgetDocument(self: *JointHistory, document: *anyopaque) void {
+        const container = @import("dom").policy_containers.of(@ptrCast(@alignCast(document)));
+        self.forgetDocumentWithPolicy(document, if (container) |c| c.referrer_policy else null);
+    }
+
+    /// `forgetDocument`, given the leaving document's referrer policy (null
+    /// when it has no policy container).
+    ///
+    /// HTML's NavigationHistoryEntry url getter step 4 censors an entry of
+    /// another document whose document state's REQUEST referrer policy is
+    /// "no-referrer" or "origin". The browsers key it on the document's own
+    /// referrer policy instead, as it stands when the document leaves - the
+    /// one its response's Referrer-Policy header or a meta referrer element
+    /// gave it, changed after load or not (golden rule 2). Chromium keeps
+    /// protect_url_in_navigation_api per FrameNavigationEntry, set from the
+    /// document's policy container at commit and updated by
+    /// NavigationControllerImpl::DidChangeReferrerPolicy until the document
+    /// leaves (content/browser/renderer_host/navigation_controller_impl.cc,
+    /// ShouldProtectUrlInNavigationApi: kNever or kOrigin); WebKit records
+    /// the leaving document's referrerPolicy when the next document clones
+    /// its entries (NavigationHistoryEntry::DocumentState::fromContext). So
+    /// recording the policy at leave time gives Chromium's flag. wpt.fyi
+    /// (cc74d2669f): navigation-history-entry/no-referrer-url-censored and
+    /// no-referrer-from-meta-url-censored pass in Chrome 154, Firefox 157
+    /// and Safari 27; no-referrer-dynamic-url-censored, the meta added after
+    /// load that separates the two readings, passes in Chrome and Safari
+    /// only (a 2-of-3 majority).
+    pub fn forgetDocumentWithPolicy(self: *JointHistory, document: *anyopaque, referrer_policy: ?ReferrerPolicy) void {
+        const protect = if (referrer_policy) |policy| protectsUrl(policy) else false;
         for (self.entries.items) |*entry| {
-            if (entry.document == document) entry.document = null;
+            if (entry.document != document) continue;
+            entry.document = null;
+            entry.protect_url = protect;
         }
     }
 

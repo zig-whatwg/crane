@@ -49,6 +49,9 @@ pub const InternalState = struct {
     id: [36]u8 = undefined,
     url: []u8 = &.{},
     document: ?*anyopaque = null,
+    /// The entry's document hid its URL when it left (joint_history
+    /// Entry.protect_url).
+    protect_url: bool = false,
 
     fn deinit(self: *InternalState) void {
         self.allocator.free(self.url);
@@ -108,6 +111,7 @@ fn createForEntry(window: *runtime.Instance, entry_ptr: *const anyopaque) anyerr
     internal.key = entry.api_key;
     internal.id = entry.api_id;
     internal.document = entry.document;
+    internal.protect_url = entry.protect_url;
     return instance;
 }
 
@@ -133,11 +137,26 @@ fn scopeOf(internal: *InternalState) ?navigation_entries.Scope {
 /// she be this's session history entry. 4. If she's document does not equal
 /// document, and she's document state's request referrer policy is
 /// "no-referrer" or "origin", then return null. 5. Return she's URL,
-/// serialized." Step 4 is not modelled (no request referrer policy is kept),
-/// stated.
+/// serialized."
+///
+/// Deviation from the spec text in step 4, stated (golden rule 2): the
+/// policy read is not the document state's request referrer policy but
+/// she's document's own referrer policy as it stood when that document
+/// left - which a meta referrer element can change after load - as Chrome
+/// and Safari do. Evidence and engine code: joint_history
+/// forgetDocumentWithPolicy, which records it.
 pub fn get_url(instance: *runtime.Instance) anyerror!?runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (scopeOf(internal) == null) return try instance.ctx.allocator.dupe(u8, "");
+    // Step 2.
+    const scope = scopeOf(internal) orelse return try instance.ctx.allocator.dupe(u8, "");
+    // Step 4. The entry is read as the history has it now, while it is
+    // there: this object may have been made before its document left.
+    const live = scope.history.entryById(internal.entry_id);
+    const she_document = if (live) |entry| entry.document else internal.document;
+    const protect_url = if (live) |entry| entry.protect_url else internal.protect_url;
+    const same_document = if (she_document) |d| d == @as(*anyopaque, @ptrCast(scope.document)) else false;
+    if (!same_document and protect_url) return null;
+    // Step 5.
     return try instance.ctx.allocator.dupe(u8, internal.url);
 }
 
