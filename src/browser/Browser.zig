@@ -196,6 +196,9 @@ pub const Browser = struct {
             .hooks = &window_agent_hooks,
             .host = agent_host,
             .allocator = allocator,
+            // A collected node's teardown is queued here, for the event loop
+            // to run between tasks (runtime.gc.DeferredTeardown).
+            .deferred_teardown = &agent_host.deferred_teardown,
         }) catch return error.V8InitFailed;
 
         return initBrowserWithAgent(allocator, agent, agent_host, from_snapshot, config);
@@ -219,6 +222,9 @@ pub const Browser = struct {
         const event_loop = try allocator.create(EventLoop);
         errdefer allocator.destroy(event_loop);
         event_loop.* = try EventLoop.init(agent, allocator);
+        // The agent's deferred teardown queue, which the loop runs between
+        // tasks.
+        event_loop.deferred_teardown = &agent_host.deferred_teardown;
 
         // The Browser's scope, which its realms carry.
         const scope = try allocator.create(runtime.BrowserScope);
@@ -295,6 +301,11 @@ pub const Browser = struct {
         if (self.agent) |agent| {
             // Release queued handles while the agent exists; AgentHost outlives it.
             self.agent_host.custom_elements.releasePending();
+            // No node waits for its deferred teardown: each was queued by a
+            // realm, and every realm's end (current_context's, above) drained
+            // its own. The sweep below frees what is left of the DOM without
+            // teardowns, so a node still queued would be torn down after it.
+            std.debug.assert(self.agent_host.deferred_teardown.isEmpty());
             // IMPORTANT: Clean up orphaned DOM nodes BEFORE the agent ends!
             // DOM node internal states may use the agent's allocator, which
             // its end frees. We must clean them up while allocators are valid.

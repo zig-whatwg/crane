@@ -55,6 +55,10 @@ pub const WorkerEventLoop = struct {
     /// The agent, once the worker thread has made it; the microtask
     /// checkpoint and the engine's posted tasks are its.
     agent: ?*engine.Agent = null,
+    /// The agent's deferred teardown queue (its AgentHost's; engine.
+    /// AgentOptions.deferred_teardown), set with `agent`: the nodes whose
+    /// wrappers the collector took, freed here between tasks, a slice a turn.
+    deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
     /// The worker's inbox (the link's worker_sink). A reference.
     sink: *runtime.TaskSink,
     timers: *TimerManager,
@@ -173,6 +177,19 @@ pub const WorkerEventLoop = struct {
             if (engine.runEngineTasks(agent)) did_work = true;
         }
 
+        // 3b. The collected trees the agent queued for teardown - between
+        // tasks, never inside script (runtime.gc.DeferredTeardown).
+        // A slice a turn - and past the queue's mark, down to it.
+        if (self.deferred_teardown) |queue| {
+            if (!queue.isEmpty()) {
+                while (true) {
+                    _ = queue.runSlice(runtime.gc.DeferredTeardown.slice_budget);
+                    if (queue.pendingNodes() <= runtime.gc.DeferredTeardown.loop_low_water) break;
+                }
+                did_work = true;
+            }
+        }
+
         // 4. This thread's fetches.
         if (async_fetch.pump()) did_work = true;
 
@@ -196,6 +213,8 @@ pub const WorkerEventLoop = struct {
     /// How long a turn may wait (ns): 0 not at all, null with no limit.
     fn waitBound(self: *WorkerEventLoop) ?u64 {
         if (self.sink.hasPosted()) return 0;
+        // A tree still waiting for its teardown: the next turn frees more.
+        if (self.deferred_teardown) |queue| if (!queue.isEmpty()) return 0;
         var bound: ?u64 = null;
         if (self.timers.getNextTimerDeadline()) |ms| bound = ms *| std.time.ns_per_ms;
         const busy = async_fetch.inFlight() > 0 or
