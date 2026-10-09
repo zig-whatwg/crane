@@ -1829,11 +1829,14 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
         .creation_time_ns = request.creation_time_ns,
         .allocator = allocator,
     };
+    // Pending activity until the steps end: whatever script holds, the
+    // SharedWorker is there for its `error` event. Taken before the task is
+    // queued, with nothing fallible after it: a loop can drop the task before
+    // queueTask returns (it cannot allocate the entry), and the drop's
+    // `finish` releases this hold - taken after, it was never released.
+    engine.keepPlatformObjectAlive(request.worker);
     // A loop that will not run the task drops it: `drop` frees it.
     loop.queueTask(.{ .callback = SharedConnect.run, .context = task, .drop = SharedConnect.drop });
-    // Pending activity until the steps end: whatever script holds, the
-    // SharedWorker is there for its `error` event.
-    engine.keepPlatformObjectAlive(request.worker);
 }
 
 /// "Destroy a document" step 8 - "remove document from the owner set of
