@@ -38,7 +38,7 @@ src/dom/cssom.zig sheets 1 TL I/engine decl:d5da0433784f149e
 src/dom/custom_elements.zig implementation 1 G P-res decl:89dd82c5fbd26c9f
 src/dom/document_activity.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_browsing_context.zig implementation 1 G H decl:9c737e7125e9c3d4
-src/dom/document_fetches.zig cancelers 1 G H decl:b261b480b9e2e550
+src/dom/document_fetches.zig cancelers 1 G H decl:30e1703fbc925361
 src/dom/document_lifecycle.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_modules.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_origin.zig implementation 1 G H decl:9c737e7125e9c3d4
@@ -109,8 +109,8 @@ src/dom/range_boundaries.zig live_range 1 G H decl:1b0949cd267e9be6
 src/dom/range_boundaries.zig providers 1 G H decl:d31a717956152a62
 src/dom/script_elements.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/script_elements.zig svg_implementation 1 G H decl:2b000c56b2bcfae5
-src/dom/shadow_dom_algorithms.zig signal_slots_set 1 G A decl:0950009102e18a50
 src/dom/shadow_hosts.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/slot_helpers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/string_lists.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/style_sheet_owners.zig load_delay 1 G H decl:8da63f45bc254f79
 src/dom/style_sheet_owners.zig parser_steps 1 G H decl:efc82acf0bf6e79e
