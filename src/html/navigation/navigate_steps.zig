@@ -88,10 +88,20 @@ pub fn matchesAboutSrcdoc(url: []const u8) bool {
 /// HTML "requires storing the policy container in history": "1. If url's
 /// scheme is "blob", then return false. 2. If url is local, then return
 /// true. 3. Return false." Fetch's local schemes are about, blob and data.
+///
+/// Deviation from step 1, stated (golden rule 2): a blob: document keeps its
+/// policy container in history too, so a traversal back to it restores the
+/// policies it was made with instead of taking the initiator's. Chromium's
+/// NavigationPolicyContainerBuilder::ComputeFinalPolicies restores history
+/// policies for every url.SchemeIsLocal() (about, blob, data, filesystem)
+/// but about:srcdoc, and NavigationControllerImpl stores them for every
+/// entry (ComputePolicyContainerPoliciesForFrameEntry). wpt.fyi (run
+/// cc74d2669f): content-security-policy/inheritance/history.sub.html passes
+/// 6/6 in Chrome 154 and Firefox 157 and 0/6 in Safari 27 (a 2-of-3
+/// majority); history-iframe.sub.html's two blob subtests pass in all three.
 pub fn requiresStoringPolicyContainerInHistory(url: []const u8) bool {
     const scheme = schemeOf(url);
-    if (std.ascii.eqlIgnoreCase(scheme, "blob")) return false;
-    return std.ascii.eqlIgnoreCase(scheme, "about") or std.ascii.eqlIgnoreCase(scheme, "data");
+    return std.ascii.eqlIgnoreCase(scheme, "about") or std.ascii.eqlIgnoreCase(scheme, "blob") or std.ascii.eqlIgnoreCase(scheme, "data");
 }
 
 /// Whether `url`'s scheme is "javascript".

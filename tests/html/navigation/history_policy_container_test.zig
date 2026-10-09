@@ -73,12 +73,14 @@ test "setting it again replaces it; an unknown entry has none" {
     try testing.expect(h.historyPolicyContainer(999_999) == null);
 }
 
-test "requiresStoringPolicyContainerInHistory - about: and data:, not blob: nor http(s)" {
+test "requiresStoringPolicyContainerInHistory - the local schemes, blob: included as browsers do, not http(s)" {
     const f = html_core.navigation.navigate_steps.requiresStoringPolicyContainerInHistory;
     try testing.expect(f("about:blank"));
     try testing.expect(f("about:srcdoc"));
     try testing.expect(f("data:text/html,x"));
-    try testing.expect(!f("blob:http://x.test/0e5d8f2a-7b1c-4c3d-8e9f-1a2b3c4d5e6f"));
+    // Chrome and Firefox restore a blob: document's policies from history
+    // (navigate_steps: the deviation from step 1).
+    try testing.expect(f("blob:http://x.test/0e5d8f2a-7b1c-4c3d-8e9f-1a2b3c4d5e6f"));
     try testing.expect(!f("http://x.test/"));
     try testing.expect(!f("https://x.test/"));
     try testing.expect(!f("javascript:1"));
