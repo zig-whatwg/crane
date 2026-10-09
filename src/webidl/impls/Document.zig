@@ -170,6 +170,14 @@ pub const InternalState = struct {
     /// "The end" is waiting at step 8 - something delays the load event -
     /// and has not queued step 9's task yet.
     load_waiting_on_delay: bool = false,
+    /// The token of the step 9 task "the end" queued and that has not run,
+    /// or 0. A child navigable's load completes the document before that
+    /// task runs (completeLoadingWithChild), which then does nothing.
+    pending_load_token: u64 = 0,
+    /// The step 9 task whose load completeLoadingWithChild ran early, or 0.
+    early_load_token: u64 = 0,
+    /// Source of `pending_load_token`s: never reused, never zero.
+    next_load_token: u64 = 1,
     /// "The end" is waiting for its deferred scripts before DOMContentLoaded.
     parsing_end_waiting_on_scripts: bool = false,
     /// Abort, destruction, and parser replacement discard deliveries without
@@ -4287,7 +4295,10 @@ fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
     // task to fire load. Set this before the native no-loop fallback can
     // synchronously run the queued task and its callbacks.
     internal.ready_for_post_load_tasks = true;
-    queueLifecycleTask(document, .load);
+    const token = internal.next_load_token;
+    internal.next_load_token += 1;
+    internal.pending_load_token = token;
+    queueLifecycleTaskWith(document, .load, token);
 }
 
 /// The resource conditions of "the end" step 8, also read by an iframe
@@ -4867,11 +4878,17 @@ const LifecycleTask = struct {
     step: LifecycleStep,
     /// Only delivery continuation captures the parser that lost its producer.
     parser_epoch: u64 = 0,
+    /// A load task's token (Document.pending_load_token); 0 for other steps.
+    load_token: u64 = 0,
     had_engine: bool = false,
     removed_parser_blocker: bool = false,
 };
 
 fn queueLifecycleTask(target: *runtime.Instance, step: LifecycleStep) void {
+    queueLifecycleTaskWith(target, step, 0);
+}
+
+fn queueLifecycleTaskWith(target: *runtime.Instance, step: LifecycleStep, load_token: u64) void {
     const allocator = target.ctx.allocator;
     const task = allocator.create(LifecycleTask) catch return;
     task.* = .{
@@ -4879,6 +4896,7 @@ fn queueLifecycleTask(target: *runtime.Instance, step: LifecycleStep) void {
         .target = target,
         .generation = runtime.SlabAllocator.generationOf(target),
         .step = step,
+        .load_token = load_token,
     };
     const loop = target.ctx.getOptionalEventLoop() orelse {
         // No loop to queue on (a context built for tests): the events are
@@ -4935,13 +4953,23 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
             fireEvent(task.target, task.target, "DOMContentLoaded", true);
             if (has_window) @import("dom").performance_timeline.recordLoadTiming(task.target.ctx, .dom_content_loaded_event_end);
         },
-        .load => completeLoading(task.target),
+        .load => {
+            if (getInternal(task.target)) |internal| {
+                // Its last child's load completed the document already.
+                if (task.load_token != 0 and task.load_token == internal.early_load_token) return;
+                if (internal.pending_load_token == task.load_token) internal.pending_load_token = 0;
+            }
+            completeLoading(task.target);
+        },
         // "Completely finish loading" step 4: the container's load event
         // steps - the iframe's own (dom.content_navigables), which end the
         // delay its navigation put on its node document's load event; step
         // 5 for any other container: "fire an event named load at element".
-        .container_load => if (!@import("dom").content_navigables.runLoadEventSteps(task.target)) {
-            fireEvent(task.target, task.target, "load", false);
+        .container_load => {
+            if (!@import("dom").content_navigables.runLoadEventSteps(task.target)) {
+                fireEvent(task.target, task.target, "load", false);
+            }
+            completeLoadingWithChild(task.target);
         },
         // A refresh set up while the document loaded starts waiting now.
         .declarative_refresh => armDeclarativeRefresh(task.target),
@@ -4963,6 +4991,41 @@ fn isShownByItsWindow(document: *runtime.Instance) bool {
     const window = (get_defaultView(document) catch null) orelse return true;
     const shown = interfaces.Window.get_document(window) catch return true;
     return shown == document;
+}
+
+/// `container`'s load event steps have run: its navigable no longer delays
+/// its node document. If that document's "the end" has queued step 9's task
+/// already - nothing else delays it - complete its load now, in this task,
+/// rather than in that one.
+///
+/// Deviation from the spec text, stated (golden rule 2). In HTML, "the end"
+/// spins the event loop at step 8 until nothing delays the load event and
+/// then queues step 9's task, so a parent's load comes at least one task
+/// after its last frame's - after any task that frame's load handlers
+/// queued, such as a postMessage. The browsers complete the parent
+/// synchronously, as soon as its last child is done: Blink
+/// FrameLoader::DidFinishNavigation calls parent->CheckCompleted(), whose
+/// Document::CheckCompletedInternal fires load
+/// (core/loader/frame_loader.cc, core/dom/document.cc); Gecko
+/// nsDocLoader::NotifyDoneWithOnload calls the parent's
+/// ChildDoneWithOnload, whose DocLoaderIsEmpty fires its load
+/// (uriloader/base/nsDocLoader.cpp). wpt.fyi (run cc74d2669f):
+/// navigating-across-documents/grandparent_session_aboutsrcdoc.sub.window.html
+/// passes 4/4 in Chrome 154, Firefox 157 and Safari 27; its frame's
+/// navigation on the first message is a push only if the frame has
+/// completely loaded by then. Not taken, stated: the container's load
+/// event steps stay a task of their own ("completely finish loading" step
+/// 4), which Blink (LocalDOMWindow::DispatchLoadEvent, owner->DispatchLoad())
+/// and Gecko (nsGlobalWindowInner::FireFrameLoadEvent) run inside the
+/// child's load event dispatch - a further flip, to measure on its own.
+fn completeLoadingWithChild(container: *runtime.Instance) void {
+    const document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return;
+    const internal = getInternal(document) orelse return;
+    if (internal.pending_load_token == 0) return;
+    if (!isShownByItsWindow(document)) return;
+    internal.early_load_token = internal.pending_load_token;
+    internal.pending_load_token = 0;
+    completeLoading(document);
 }
 
 /// "The end" step 9's task: readiness "complete", load at the window,
