@@ -46,6 +46,10 @@ progress = [
   "7b265eb8f - the event handler map owns its values: 40 frame files leave 21 live contexts, not 102",
   "0af9d3df0, 005e85fac, 1e0711be0, 483783b0a, 677e88983 (merged 58ddcc8b5) - realms2: a removed frame's realm ends when nothing reachable holds it - traceChild never makes the owner's wrapper, torn-down nodes' wrappers weak, callback handles tagged with their realm and weakened at detach, Pin only for pending activity, retired realms end outside GC",
   "f5f883ce91 (merged 3e1c853902) - leaks3: every element torn down through its own vtable deinit (the GC's path), teardown marked first, address-keyed registries free a dead instance's entry at the address's next birth and carry their arena's runtime epoch (leaks lane)",
+  "304aa61bc5 - a template owns its content natively, the wrapper cache never replaces a live wrapper, queueRealmMicrotask has a dropped end, constructed and attachShadow registries are brand-checked (lifefix1)",
+  "3d9f97caa0 - the live parser holds only the nodes its structures name and rescues a detached held tree's root with one wrapper, ending per-node wrapping: live parse 1,053 -> 517 ms; the in-body start-tag rules for li, dd/dt, button, option, ruby and the void elements land (pholds)",
+  "f62e45fe68 - elements trace only scoped registries; form-owner resets reach only the mutated subtree; registry, FormData File and [SameObject] readers are generation-checked; a destroyed script element leaves the script queues (lifefix2)",
+  "560eea1871 - StaticRange keeps its containers, a queued SVG script keeps its element until load (edges)",
 ]
 
   [[infra.items]]
@@ -127,6 +131,8 @@ progress = [
   "35dc32ef6..eceadb5b4 (merged 5803428e4) - pageswap and NavigationActivation (navigation.activation), the joint history's reserved entries and child steps, cross-window navigate events (same origin-domain, the navigable's own document), frame Referer, top-level javascript: URLs, navigator.keyboard (navigation lane, batch 5)",
   "70f11029e5 (merged 07ba782f8a) - navigation batch 6: a Window's navigable, navigate event handler steps, document.referrer, beforeunload, rate limit, fragment popstate, window.open geometry, download navigations, traversal order, Content-Type as Fetch extracts it, blob: frames through scheme fetch (navigation lane)",
   "79327bce39 (merged a3c966f636) - navigation batch 7: blob: documents load with their source's policies, noopener name lookup and browsing context groups, <frame> content navigables, the response URL is the request's, history and javascript: URL policy containers, window.postMessage transfer (nav7 lane)",
+  "c4be0eb872 - every load makes a new Document; the replaced one is aborted, unloaded when it had loaded, and never emptied (newdoc)",
+  "3852465fda - browsers-first flips: form.submit() cancellation, NavigationHistoryEntry.url censoring, blob: history policy containers, intercept() promise identity (promiseResolve), cross-origin top navigation without activation blocked, parent load after its last child (navflip)",
 ]
 
   [[infra.items]]
