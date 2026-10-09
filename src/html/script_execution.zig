@@ -1603,10 +1603,24 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
 }
 
 /// A script-inserted external SVG script's run, queued: the element as
-/// (address, slab generation), the fetched source (owned), and its URL.
+/// (address, slab generation), kept alive by the task, the fetched source
+/// (owned), and its URL.
+///
+/// The task keeps its element until it has fired load at it, as the browsers'
+/// pending script does (Blink's PendingScript traces Member<ScriptElementBase>
+/// element_, WebKit's PendingScript holds Ref<ScriptElement>) and as Crane's
+/// HTML script queues do (script_element.State.execution_root): a script that
+/// removes its own element and lets every reference go still gets its load
+/// event. The task once held only the address and generation, checked once
+/// before the script ran - and load was fired at whatever took the freed slot
+/// (crane/ed-svg-script-removed-gc.html).
 const QueuedSvgScript = struct {
     element: *runtime.Instance,
     generation: u64,
+    /// The element's wrapper, held from queueing until the task is done or
+    /// dropped. Null with no engine behind the element's realm (nothing to
+    /// collect it), or when holding it failed.
+    element_root: ?engine.Owned = null,
     /// Null for a failed fetch: the task fires error.
     source: ?[]u8,
     url: []u8,
@@ -1614,9 +1628,11 @@ const QueuedSvgScript = struct {
     muted: bool,
 
     fn destroy(self: *QueuedSvgScript) void {
+        const root = self.element_root;
         if (self.source) |b| std.heap.c_allocator.free(b);
         std.heap.c_allocator.free(self.url);
         std.heap.c_allocator.destroy(self);
+        if (root) |value| value.release();
     }
 };
 
@@ -1633,6 +1649,10 @@ fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const
         },
         .muted = muted,
     };
+    // The element lives until the task is done with it. Without the hold
+    // (out of memory) the generation checks below still keep a freed
+    // element from being run or fired at.
+    if (element.ctx.hasEngine()) task.element_root = engine.retainValue(element.ctx, .{ .instance = element }) catch null;
     loop.queueTask(.{ .callback = &runQueuedSvgScript, .context = task, .drop = &dropQueuedSvgScript });
 }
 
@@ -1643,13 +1663,18 @@ fn dropQueuedSvgScript(data: ?*anyopaque) void {
 
 fn runQueuedSvgScript(data: ?*anyopaque) void {
     const task: *QueuedSvgScript = @ptrCast(@alignCast(data orelse return));
+    // The hold goes after load is fired.
     defer task.destroy();
-    // The element was collected and its slot reissued: nobody is left to run.
+    // The teardown net: an element freed while queued - its realm's
+    // teardown frees it whatever the task holds - has nobody left to run.
     if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
     const document = getNodeDocument(task.element) orelse return;
     const allocator = task.element.ctx.allocator;
     const source = task.source orelse return fireErrorEvent(allocator, task.element);
     runSvgScriptSource(document, task.element, source, task.url, task.url, task.muted);
+    // Again after the script: the task's hold keeps the element through
+    // anything the script does, but not through a teardown it starts.
+    if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
     fireLoadEvent(allocator, task.element);
 }
 
