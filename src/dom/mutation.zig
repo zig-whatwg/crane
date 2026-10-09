@@ -963,17 +963,11 @@ pub fn insert(
             setConnectedRecursive(n, true);
         }
 
-        // Step 7.4: If parent is a shadow host and node is slottable, assign a slot
-        // TODO: Implement when shadow DOM is fully integrated
-        // if (isShadowHost(parent) and isSlottable(n)) {
-        //     shadow_dom_algorithms.assignSlot(n);
-        // }
-
-        // Step 7.5: If parent's root is shadow root and parent is slot, signal slot change
-        // TODO: Implement when shadow DOM is fully integrated
-
-        // Step 7.6: Run assign slottables for a tree with node's root
-        // TODO: Implement when shadow DOM is fully integrated
+        // Steps 7.4-7.6: assign a slot for node if parent is a shadow host,
+        // signal a slot change for an empty slot parent in a shadow tree,
+        // and assign slottables for node's tree when it is a shadow tree
+        // that node brings a slot into.
+        insertionSlotSteps(parent.allocator, n, @ptrCast(parent));
 
         // Step 7.7: For each shadow-including inclusive descendant of node,
         // in shadow-including tree order, run the insertion steps
@@ -1658,8 +1652,10 @@ pub fn remove(
     // left the tree (CE2-S1).
     formSubtreeMoved(@ptrCast(node), @ptrCast(parent), null);
 
-    // Step 8-10: Shadow DOM slot assignment
-    // TODO: Implement when shadow DOM is fully integrated
+    // Steps 8-10: re-assign node's assigned slot, signal a slot change for
+    // an empty slot parent in a shadow tree, and re-assign both trees when
+    // node takes a slot out of a shadow tree.
+    removingSlotSteps(parent.allocator, @ptrCast(node), @ptrCast(parent));
 
     // Step 11: Run the removing steps with node and parent
     // Spec: DOM §4.2.5 - Specifications may define removing steps
@@ -1827,15 +1823,8 @@ pub fn move(
     // (Node was removed from oldParent's children)
     runChildrenChangedSteps(old_parent);
 
-    // Step 14: If node is assigned, then run assign slottables for node's assigned slot
-    // TODO: Shadow DOM - check if node is assigned and run assign slottables
-
-    // Step 15: If oldParent's root is a shadow root, and oldParent is a slot whose assigned nodes is empty,
-    // then run signal a slot change for oldParent
-    // TODO: Shadow DOM - implement slot change signaling
-
-    // Step 16: If node has an inclusive descendant that is a slot:
-    // TODO: Shadow DOM - run assign slottables for tree
+    // Steps 14-16: the remove steps 8-10, with oldParent.
+    removingSlotSteps(new_parent.allocator, @ptrCast(node), @ptrCast(old_parent));
 
     // Step 17: If child is non-null:
     if (child) |c| {
@@ -1868,16 +1857,8 @@ pub fn move(
     // (Node was added to newParent's children)
     runChildrenChangedSteps(new_parent);
 
-    // Step 21: If newParent is a shadow host whose shadow root's slot assignment is "named"
-    // and node is a slottable, then assign a slot for node
-    // TODO: Shadow DOM - implement slot assignment
-
-    // Step 22: If newParent's root is a shadow root, and newParent is a slot whose assigned nodes is empty,
-    // then run signal a slot change for newParent
-    // TODO: Shadow DOM - implement slot change signaling
-
-    // Step 23: Run assign slottables for a tree with node's root
-    // TODO: Shadow DOM - implement assign slottables for tree
+    // Steps 21-23: the insert steps 7.4-7.6, with newParent.
+    insertionSlotSteps(new_parent.allocator, @ptrCast(node), @ptrCast(new_parent));
 
     // Step 24: For each shadow-including inclusive descendant of node, in shadow-including tree order
     // Run moving steps (handles shadow-including traversal internally)
@@ -1912,6 +1893,22 @@ pub fn move(
             child,
         );
     }
+}
+
+/// The slot steps of insert (7.4-7.6) and move (21-23). They cannot fail in
+/// the standard; running out of memory here leaves an assignment stale
+/// rather than abandoning an insertion halfway through its steps.
+fn insertionSlotSteps(allocator: std.mem.Allocator, node: *NodeBase, parent: *NodeBase) void {
+    shadow_dom_algorithms.runInsertionSlotSteps(allocator, node, parent) catch |err| {
+        std.log.scoped(.mutation).warn("slot assignment after insertion failed: {}", .{err});
+    };
+}
+
+/// The slot steps of remove (8-10) and move (14-16); see insertionSlotSteps.
+fn removingSlotSteps(allocator: std.mem.Allocator, node: *NodeBase, parent: *NodeBase) void {
+    shadow_dom_algorithms.runRemovingSlotSteps(allocator, node, parent) catch |err| {
+        std.log.scoped(.mutation).warn("slot assignment after removal failed: {}", .{err});
+    };
 }
 
 /// Helper: Get shadow-including root of a node

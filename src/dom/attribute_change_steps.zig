@@ -10,7 +10,7 @@
 //!
 //! Spec: https://dom.spec.whatwg.org/#concept-element-attributes-change-ext
 //!
-//! lint-impls: hook for HTMLIFrameElement, HTMLScriptElement, HTMLDetailsElement, HTMLLinkElement, HTMLInputElement
+//! lint-impls: hook for HTMLIFrameElement, HTMLScriptElement, HTMLDetailsElement, HTMLLinkElement, HTMLInputElement, HTMLSlotElement
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
@@ -33,8 +33,10 @@ const Entry = struct {
     steps: Steps,
 };
 
-/// Few element types have steps, so a short list beats a map.
-const max_entries = 16;
+/// Few element types have steps, so a short list beats a map. Sixteen types
+/// install steps (the slot element made it sixteen); an entry dropped here is
+/// a type whose steps never run, so the bound stays well above the count.
+const max_entries = 32;
 var entries: [max_entries]Entry = undefined;
 var count: usize = 0;
 
@@ -49,6 +51,7 @@ pub fn install(element: []const u8, steps: Steps) void {
             return;
         }
     }
+    std.debug.assert(count < max_entries);
     if (count == max_entries) return;
     entries[count] = .{ .element = element, .steps = steps };
     count += 1;

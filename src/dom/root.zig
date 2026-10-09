@@ -153,11 +153,6 @@ pub const focused_area = @import("focused_area.zig");
 pub const visibility_state = @import("visibility_state.zig");
 pub const focus_matching = @import("focus_matching.zig");
 
-// Re-export slot_helpers functions
-pub const isElement = slot_helpers.isElement;
-pub const isSlottable = slot_helpers.isSlottable;
-pub const isSlot = slot_helpers.isSlot;
-
 // Re-export CookieChangeEvent
 pub const CookieChangeEvent = cookie_change_event.CookieChangeEvent;
 pub const CookieChangeEventInit = cookie_change_event.CookieChangeEventInit;
