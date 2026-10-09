@@ -160,6 +160,10 @@ pub const InternalState = struct {
     /// 2026-10-09). So the synchronous section runs in a media element task,
     /// on the element's task source, like its other tasks. A host with no
     /// event loop keeps the stable-state microtask.
+    fn hasEventLoop(self: *InternalState) bool {
+        const instance = self.activity.instance orelse return false;
+        return instance.ctx.getOptionalEventLoop() != null;
+    }
     fn awaitSelection(self: *InternalState, generation: u64) !void {
         const instance = self.activity.instance orelse return error.InvalidStateError;
         if (instance.ctx.getOptionalEventLoop() == null) {
@@ -187,6 +191,15 @@ pub const InternalState = struct {
                 // Children steps 10–11: error belongs to the source, then await
                 // stable state before advancing the live child-list pointer.
                 _ = self.queue(.next_source, target, if (target != null) "error" else null) catch {
+                    self.cancel();
+                    return;
+                };
+                // With an event loop the stable-state wait is a task
+                // (awaitSelection), queued now, right behind the error task,
+                // as the algorithm reaches step 11 (Chromium starts its
+                // load_timer_ when the source fails, not after its error
+                // event). Without one, the error task awaits the microtask.
+                if (self.hasEventLoop()) self.awaitSelection(self.load.generation) catch {
                     self.cancel();
                     return;
                 };
@@ -918,7 +931,8 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
                 // A removed candidate must not stay alive while we wait.
                 self.candidate = null;
                 engine.forgetTracedChild(instance, .{ .name = "sourceCandidate" });
-                self.awaitSelection(task.generation) catch self.cancel();
+                // With an event loop, fail() queued the selection task already.
+                if (!self.hasEventLoop()) self.awaitSelection(task.generation) catch self.cancel();
             }
         },
         .release_delay => {
