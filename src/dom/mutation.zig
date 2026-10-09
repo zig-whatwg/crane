@@ -2486,11 +2486,25 @@ fn runCustomElementInsertionSteps(node: *NodeBase) void {
             if (interfaces.Node.get_ownerDocument(instance) catch null) |document| custom_elements.associateDocument(value, document) catch {};
         }
     }
-    if (node.node_type != ELEMENT_NODE or registry == null) return;
+    if (node.node_type != ELEMENT_NODE) return;
     const data = custom_elements.get(instance) orelse return;
+    // DOM insert 7.7.3.2: a custom element gets connectedCallback.
+    //
+    // Deviation from the cached spec text, stated (CE2-S3; the user's
+    // browsers-first rule, 2026-10-08): specs/whatwg/dom.md insert step
+    // 7.7.3 enqueues it only when the element's custom element registry is
+    // non-null, and an element adopted into a document with no registry
+    // (new Document(), createHTMLDocument) has a null one. Chrome 157, Edge
+    // 157 and Firefox 159 enqueue it whatever the registry
+    // (custom-elements/connected-callbacks.html 40/40 and
+    // adopted-callback.html 71/71 on wpt.fyi stable/experimental; Crane had
+    // 15/40 and 16/71), and the question is open upstream - so a custom
+    // element is connected whatever its registry. The scoped-document-set
+    // append above and the try-to-upgrade below stay gated on a registry
+    // (with none there is no definition to find).
     if (data.state == .custom) {
         custom_elements.enqueueCallback(instance, .connected, .none);
-    } else {
+    } else if (registry != null) {
         custom_elements.tryUpgrade(instance);
     }
 }
