@@ -353,6 +353,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+- [A retention bound relative to a control holds only when the control retains nothing](testing-a-retention-bound-relative-to-a-control-needs-a-control-that-retains-nothing.md) - Read the control's numbers before you read the comparison: a control that leaks makes "no worse than without" mean nothing.
+- [gc_bench's end-of-run counts without --gc are the last batch, not retention](testing-gc-bench-end-counts-without-gc-are-the-last-batch.md) - "Identical in every round" proves the count is deterministic, not that anything leaked. A whole number of objects per cycle in the last batch is the harness. Measure retention with --gc.
 - [A timed window measures where the collection lands - compare with a collection between rounds](testing-a-timed-window-measures-where-the-gc-lands.md) - Before blaming the measured code for a timing regression, time the unmeasured part of the round too and rerun with a collection between rounds: lifetimes move GC work, they do not only add it.
 - [A count cannot see a tree's shape](testing-a-count-cannot-see-a-tree-shape.md) - Assert a parse by its serialization, through every parser path, never by counting nodes; read the large failure counts in OK files too.
 - [A queued-record test must collect without a task turn](testing-a-queued-record-test-must-collect-without-a-task-turn.md) - Know which checkpoint your helper crosses: an `await` delivers queued mutation records, so a test of the queue must collect, churn and read without one.

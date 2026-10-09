@@ -309,11 +309,17 @@ fn droppedListsRetainNothing() !void {
     const without = try retainedAfterDroppedLists(false);
     const with = try retainedAfterDroppedLists(true);
     std.debug.print("dropped lists: instances {d} -> {d}, wrappers {d} -> {d}, native {d} -> {d} B, arena {d} -> {d} B\n", .{ without.instances, with.instances, without.wrappers, with.wrappers, without.native, with.native, without.arena, with.arena });
-    // 1,000 lists of 35 nodes rescued 5,000 trees: none of it may outlive the
-    // lists' collection.
+    // 1,000 lists of 30 elements rescued 5,000 trees: none of it may outlive
+    // the lists' collection. Absolutely, not only against the run without
+    // lists: that control keeps every tree innerHTML removed - 45 nodes a
+    // round, never wrapped, so no collection frees them before the realm
+    // ends (45,000 instances when this was written) - and a bound relative to it
+    // would pass a list that kept them all.
+    if (with.instances > 64) return error.InstancesRetainedByDroppedLists;
     if (with.instances > without.instances + 64) return error.InstancesRetainedByDroppedLists;
     if (with.wrappers > without.wrappers + wrapper_slack) return error.WrappersRetainedByDroppedLists;
     if (with.native > without.native + 64 * 1024) return error.NativeHeapRetainedByDroppedLists;
+    if (with.arena > 64 * 1024) return error.ArenaRetainedByDroppedLists;
     if (with.arena > without.arena + 64 * 1024) return error.ArenaRetainedByDroppedLists;
 }
 
