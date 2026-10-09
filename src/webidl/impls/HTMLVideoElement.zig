@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const dom = @import("dom");
 const HTMLVideoElement = interfaces.HTMLVideoElement;
 
 pub const State = HTMLVideoElement.State;
@@ -54,16 +55,20 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for videoWidth
+/// The videoWidth getter steps (HTML 4.8.8):
+/// 1. If this's readyState attribute is HAVE_NOTHING, then return 0.
+/// 2. Return the natural width of the video in CSS pixels.
 pub fn get_videoWidth(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return 0; // No host decoder is installed (media Q4).
+    if (try interfaces.HTMLMediaElement.get_readyState(instance) == interfaces.HTMLMediaElement.get_HAVE_NOTHING()) return 0;
+    return dom.media_elements.videoSize(instance).width;
 }
 
-/// Getter for videoHeight
+/// The videoHeight getter steps (HTML 4.8.8):
+/// 1. If this's readyState attribute is HAVE_NOTHING, then return 0.
+/// 2. Return the natural height of the video in CSS pixels.
 pub fn get_videoHeight(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return 0; // No host decoder is installed (media Q4).
+    if (try interfaces.HTMLMediaElement.get_readyState(instance) == interfaces.HTMLMediaElement.get_HAVE_NOTHING()) return 0;
+    return dom.media_elements.videoSize(instance).height;
 }
 
 /// Getter for onenterpictureinpicture

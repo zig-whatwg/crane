@@ -59,6 +59,10 @@ pub const InternalState = struct {
     /// stable state, the official playback position must be set to the
     /// current playback position").
     official_fresh: bool = false,
+    /// The video's natural size (HTML 4.8.8): the size of the frame at the
+    /// current playback position, as the host's decoder reports it; 0x0 for
+    /// a resource with no video.
+    video_size: backend.VideoSize = .{ .width = 0, .height = 0 },
 
     fn queue(self: *InternalState, kind: Kind, target: ?*runtime.Instance, name: ?[]const u8) !void {
         return self.activity.queue(@intFromEnum(kind), self.load.generation, target, name);
@@ -66,14 +70,22 @@ pub const InternalState = struct {
     fn event(self: *InternalState, name: []const u8) !void {
         _ = try self.queue(.event, null, name);
     }
+    /// Stop fetching and drop the resource's decoder.
     fn endFetch(self: *InternalState) void {
+        self.stopFetch();
+        if (self.decoder) |*decoder| decoder.deinit();
+        self.decoder = null;
+    }
+    /// Stop fetching. A resource fetched to its end keeps its decoder: it
+    /// holds the media data, and playback asks it about positions (the
+    /// size of the frame at each, videoSizeAt) until the next load,
+    /// a failure, or teardown drops it (endFetch).
+    fn stopFetch(self: *InternalState) void {
         self.document_abort_pending = null;
         self.progress_timer.cancel();
         self.stall_timer.cancel();
         self.progress.reset();
         self.resource.stop();
-        if (self.decoder) |*decoder| decoder.deinit();
-        self.decoder = null;
         self.activity.fetching = false;
         self.read_queued = false;
     }
@@ -98,7 +110,7 @@ pub const InternalState = struct {
     }
     fn finish(self: *InternalState, generation: u64) void {
         if (generation != self.load.generation) return;
-        self.endFetch();
+        self.stopFetch();
         self.load.endLoadDelay(generation);
         // A playing element stays in the live registry, so the document's
         // unload and discard reach it (syncClock).
@@ -275,11 +287,66 @@ pub const InternalState = struct {
                 // durationchange is queued before loadedmetadata).
                 if (self.load.setDuration(metadata.duration)) try self.event("durationchange");
                 const data_kind: LoadState.Data = if (result == .current_data) .current_data else .metadata;
-                const change = self.load.decoderData(self.load.generation, data_kind, end_of_stream, self.looping()) orelse return false;
+                const reported: backend.VideoSize = .{ .width = metadata.width, .height = metadata.height };
+                const change = self.load.decoderData(self.load.generation, data_kind, end_of_stream, self.looping()) orelse {
+                    self.followSize(reported);
+                    return false;
+                };
+                if (change.loadedmetadata) try self.metadataSize(reported) else self.followSize(reported);
                 try self.readyChanged(change);
             },
         }
         return false;
+    }
+
+    fn isVideo(self: *InternalState) bool {
+        const instance = self.activity.instance orelse return false;
+        return std.mem.eql(u8, instance.vtable.name, "HTMLVideoElement");
+    }
+
+    /// The size of the frame at the current playback position: what the
+    /// decoder knows of it, else what its last answer reported.
+    fn frameSize(self: *InternalState, reported: ?backend.VideoSize) ?backend.VideoSize {
+        if (self.decoder) |decoder| if (decoder.videoSizeAt(self.load.position)) |size| return size;
+        const size = reported orelse return null;
+        if (size.width == 0 and size.height == 0) return null;
+        return size;
+    }
+
+    /// Media data processing, "once enough of the media data has been
+    /// fetched to determine the duration of the media resource and its
+    /// dimensions", step 5 (4.8.11.5): "For video elements, set the
+    /// videoWidth and videoHeight attributes, and queue a media element
+    /// task given the media element to fire an event named resize at the
+    /// media element." Between durationchange and loadedmetadata.
+    /// Deviation: only when the resource has video, as Gecko does
+    /// (HTMLMediaElement::MetadataLoaded: `if (IsVideo() && HasVideo())
+    /// QueueEvent(u"resize")`) and Chromium does (WebMediaPlayerImpl reports
+    /// a natural size, so HTMLMediaElement::SizeChanged fires resize, only for
+    /// a pipeline with video): an audio resource in a video element fires none.
+    fn metadataSize(self: *InternalState, reported: backend.VideoSize) !void {
+        if (!self.isVideo()) return;
+        const size = self.frameSize(reported) orelse {
+            self.video_size = .{ .width = 0, .height = 0 };
+            return;
+        };
+        self.video_size = size;
+        try self.event("resize");
+    }
+
+    /// HTML 4.8.8: "Whenever the natural width or natural height of the
+    /// video changes ..., if the element's readyState attribute is not
+    /// HAVE_NOTHING, the user agent must queue a media element task given the
+    /// media element to fire an event named resize at the media element."
+    /// Fired only on a real change (Gecko HTMLMediaElement::UpdateMediaSize
+    /// compares with the size it holds). A position whose size the decoder
+    /// does not know keeps the last one.
+    fn followSize(self: *InternalState, reported: ?backend.VideoSize) void {
+        if (!self.isVideo() or self.load.ready == .nothing) return;
+        const size = self.frameSize(reported) orelse return;
+        if (size.width == self.video_size.width and size.height == self.video_size.height) return;
+        self.video_size = size;
+        self.event("resize") catch self.cancel();
     }
 
     /// Queue what a ready-state change asks (4.8.11.7), in its order.
@@ -391,6 +458,8 @@ pub const InternalState = struct {
         const self: *InternalState = @ptrCast(@alignCast(context));
         if (self.activity.instance == null) return;
         self.advanceClock();
+        // The frame at the new position may have another size.
+        self.followSize(null);
         if (!self.load.potentiallyPlaying(self.looping())) return;
         // Time marches on, during normal playback: timeupdate.
         self.load.official_position = self.load.position;
@@ -448,6 +517,8 @@ fn seekStable(context: *anyopaque, generation: u64) void {
     if (generation != self.load.generation) return;
     // Step 14: only the newest seek finishes.
     if (!self.load.finishSeek(self.load.seek_id)) return;
+    // The frame at the new position may have another size.
+    self.followSize(null);
     // Steps 16-17: timeupdate, then seeked.
     self.event("timeupdate") catch {
         self.cancel();
@@ -503,7 +574,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn installHooks() void {
     dom.attribute_change_steps.install("audio", attributeChanged);
     dom.attribute_change_steps.install("video", attributeChanged);
-    dom.media_elements.installMediaElement(delaysLoad, trackParentChanged, trackModeChanged);
+    dom.media_elements.installMediaElement(delaysLoad, trackParentChanged, trackModeChanged, naturalSize);
     dom.mutation.registerInsertionStepsCallback(inserted) catch @panic("media insertion hook allocation");
     dom.mutation.registerRemovingStepsCallback(removed) catch @panic("media removing hook allocation");
     dom.document_fetches.install(.{ .discard = cancelRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
@@ -589,6 +660,12 @@ fn documentAbortSteps(context: ?*anyopaque) void {
     self.unregister();
     self.syncDelay();
     self.activity.sync();
+}
+/// The video's natural size, for HTMLVideoElement's videoWidth and
+/// videoHeight (dom.media_elements.videoSize).
+fn naturalSize(instance: *runtime.Instance) dom.media_elements.VideoSize {
+    const self = instance.getState(State).own._internal orelse return .{};
+    return .{ .width = self.video_size.width, .height = self.video_size.height };
 }
 fn delaysLoad(document: *runtime.Instance) bool {
     const registry = common.liveRegistry(document.ctx) orelse return false;

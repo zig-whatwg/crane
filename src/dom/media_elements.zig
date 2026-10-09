@@ -22,6 +22,9 @@ const SourceURL = *const fn (*runtime.Instance) ?[]const u8;
 const DelaysLoad = *const fn (*runtime.Instance) bool;
 const ParentChanged = *const fn (*runtime.Instance, ?*runtime.Instance, ?*runtime.Instance) void;
 const TrackModeChanged = *const fn (*runtime.Instance) void;
+/// A video's natural size in CSS pixels (HTML 4.8.8), 0x0 when it has none.
+pub const VideoSize = struct { width: u32 = 0, height: u32 = 0 };
+const NaturalSize = *const fn (*runtime.Instance) VideoSize;
 pub const ListOperations = struct {
     create: *const fn (runtime.Context) anyerror!*runtime.Instance,
     append: *const fn (*runtime.Instance, *runtime.Instance) anyerror!void,
@@ -36,6 +39,7 @@ pub const Implementation = struct {
     list: ?ListOperations = null,
     parent_changed: ?ParentChanged = null,
     track_mode_changed: ?TrackModeChanged = null,
+    video_size: ?NaturalSize = null,
 };
 // process-wide: hook table written only by its owners at process start (B0); immutable while Browsers run, comptime in B9
 var implementation: ?Implementation = null;
@@ -57,11 +61,12 @@ pub fn installTrackElement(changed: ModeChanged) void {
 pub fn installSourceElement(url: SourceURL) void {
     installing().source_url = url;
 }
-pub fn installMediaElement(delays_load: DelaysLoad, parent_changed: ParentChanged, mode_changed: TrackModeChanged) void {
+pub fn installMediaElement(delays_load: DelaysLoad, parent_changed: ParentChanged, mode_changed: TrackModeChanged, video_size: NaturalSize) void {
     const table = installing();
     table.delays_load = delays_load;
     table.parent_changed = parent_changed;
     table.track_mode_changed = mode_changed;
+    table.video_size = video_size;
 }
 pub fn installTextTrackList(operations: ListOperations) void {
     installing().list = operations;
@@ -125,6 +130,13 @@ pub fn sourceURL(element: *runtime.Instance) ?[]const u8 {
     const url = (implementation orelse return null).source_url orelse return null;
     return url(element);
 }
+/// The natural size of a video element's video: the media element owns the
+/// decoder that knows it, and HTMLVideoElement's videoWidth and videoHeight
+/// read it here. 0x0 when uninstalled.
+pub fn videoSize(element: *runtime.Instance) VideoSize {
+    const size = (implementation orelse return .{}).video_size orelse return .{};
+    return size(element);
+}
 pub fn mediaDelaysLoadEvent(document: *runtime.Instance) bool {
     const delays_load = (implementation orelse return false).delays_load orelse return false;
     return delays_load(document);
@@ -146,6 +158,7 @@ test "uninstalled media hooks define every fallback without accessing an instanc
     trackModeChanged(&instance, .disabled, .hidden);
     try std.testing.expect(sourceURL(&instance) == null);
     try std.testing.expect(!mediaDelaysLoadEvent(&instance));
+    try std.testing.expectEqual(VideoSize{ .width = 0, .height = 0 }, videoSize(&instance));
     try std.testing.expectError(error.NotSupported, createTextTrackList(&ctx));
     try std.testing.expectError(error.NotSupported, appendTextTrack(&instance, &instance));
     removeTextTrack(&instance, &instance);
