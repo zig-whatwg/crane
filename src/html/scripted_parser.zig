@@ -562,14 +562,16 @@ pub const DocumentParser = struct {
     }
 
     /// Whether this parser can still touch its Document's engine objects:
-    /// the Document is the one it was made for, not destroyed, and its realm
-    /// has an engine. Never true during a collector teardown of the Document
-    /// (`detachForDocumentDestruction` runs first).
+    /// the Document is the one it was made for, its object is not being torn
+    /// down, and its realm has an engine. Never true during a collector
+    /// teardown of the Document (`detachForDocumentDestruction` runs first).
+    /// HTML's "destroyed" lifecycle flag is not consulted: a retained
+    /// document whose navigable was destroyed can still be opened and parsed
+    /// (40586ce295), and its kept-roots container lives with its wrapper.
     fn documentEngineUsable(self: *const DocumentParser) bool {
         if (self.document_destroyed or !self.ctx.hasEngine()) return false;
         if (runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return false;
-        const internal = document_internals.getInternal(self.document) orelse return false;
-        return !internal.destroyed;
+        return document_internals.getInternal(self.document) != null;
     }
 
     /// The node `tree_node` names, as the DOM's tree node, if it is alive.
