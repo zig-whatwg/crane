@@ -345,7 +345,15 @@ fn attachTransaction(instance: *runtime.Instance, transaction: *BackendTransacti
     try dom.indexeddb.registerDatabaseTransaction(database, instance);
     errdefer dom.indexeddb.removeDatabaseTransaction(database, instance);
     const task = try TransactionTask.create(instance, transaction);
-    errdefer task.destroy();
+    // The task is the transaction's before it is queued: a closing worker's
+    // loop drops it inside schedule(), and the drop's cancel unlinks it from
+    // here and frees it. A queue failure calls neither run nor drop, so the
+    // task is still this call's to free. After schedule() it is not touched.
+    internal.task = task;
+    errdefer {
+        internal.task = null;
+        task.destroy();
+    }
     try task.schedule();
     internal.cleanup_list = cleanup_list;
     internal.transaction = transaction;
@@ -353,7 +361,6 @@ fn attachTransaction(instance: *runtime.Instance, transaction: *BackendTransacti
     internal.database_realm = database.ctx;
     internal.database_generation = runtime.SlabAllocator.generationOf(database);
     internal.registered = true;
-    internal.task = task;
     engine.traceChild(instance, database, .{ .name = "idb.database" });
 }
 fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
@@ -450,13 +457,21 @@ fn enqueueRequest(instance: *runtime.Instance, source: *runtime.Instance, operat
     errdefer root.release();
     const cursor_root = if (operation.cursor) |cursor| try engine.retainValue(instance.ctx, .{ .instance = cursor }) else null;
     errdefer if (cursor_root) |held| held.release();
-    // Reserve its task before transferring operation ownership. A queue
-    // failure propagates to the caller with every native argument still its own.
-    try task.schedule();
+    // The request is set up while this call still roots it: once the task is
+    // queued, the work below - and its root - may already be gone.
     dom.indexeddb.setRequestTransaction(request, instance);
     dom.indexeddb.setRequestSource(request, source);
     dom.indexeddb.setRequestPending(request);
+    // The work is the task's before the task is handed to its queue: a
+    // closing worker's loop drops the task inside schedule(), and the drop
+    // frees it with its pending work. A queue failure calls neither run nor
+    // drop, so the work is taken back and the caller keeps every native
+    // argument. After a successful schedule() the task is not touched.
     task.pending.appendAssumeCapacity(.{ .source = source, .source_realm = source.ctx, .request = request, .request_realm = request.ctx, .cursor_realm = if (operation.cursor) |cursor| cursor.ctx else null, .root = root, .cursor_root = cursor_root, .operation = captured });
+    task.schedule() catch |err| {
+        _ = task.pending.pop();
+        return err;
+    };
     return request;
 }
 
@@ -468,11 +483,16 @@ fn enqueueInternal(instance: *runtime.Instance, source: *runtime.Instance, opera
     try task.pending.ensureUnusedCapacity(task.allocator, 1);
     const root = try engine.retainValue(instance.ctx, .{ .instance = source });
     errdefer root.release();
-    try task.schedule();
     var captured = operation;
     // Index population has no script result; its clone uses the source realm.
     captured.target_realm = source.ctx;
+    // The task's before it is queued, and taken back on a queue failure, as
+    // in enqueueRequest: after a successful schedule() the task is not touched.
     task.pending.appendAssumeCapacity(.{ .source = source, .source_realm = source.ctx, .request = null, .root = root, .operation = captured });
+    task.schedule() catch |err| {
+        _ = task.pending.pop();
+        return err;
+    };
 }
 
 /// Pending activity roots last through the task's microtask checkpoint. They
@@ -522,8 +542,18 @@ const TransactionTask = struct {
         if (self.queued or self.running or self.cancelled or self.finished) return;
         if (self.backend.state != .finished and !self.backend.canStart()) return;
         if (!self.realm.hasEngine()) return;
-        self.queued_task = try dom.indexeddb.queueDatabaseTask(self.realm, .{ .callback = run, .context = self, .drop = drop });
+        // A closing worker's loop drops a task before queueTask returns
+        // (WorkerEventLoop.queueTask), and the drop's cancel can free this
+        // task inside the call. Give the queue ownership first, and never
+        // touch self once it has it: callers do their work on the task
+        // before calling this (lesson
+        // architecture-a-queue-handoff-may-drop-the-task-before-return).
         self.queued = true;
+        _ = dom.indexeddb.queueDatabaseTask(self.realm, .{ .callback = run, .context = self, .drop = drop }) catch |err| {
+            // A queue error never calls run or drop: self is still ours.
+            self.queued = false;
+            return err;
+        };
     }
     fn run(data: ?*anyopaque) void {
         const self: *TransactionTask = @ptrCast(@alignCast(data.?));
