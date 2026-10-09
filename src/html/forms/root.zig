@@ -178,6 +178,10 @@ pub fn validationMessage(allocator: std.mem.Allocator, candidate: bool, flags: V
 /// returns false for this invocation.
 pub fn checkValidity(instance: *runtime.Instance, candidate: bool, flags: ValidityFlags) !bool {
     if (!candidate or isValid(flags)) return true;
+    // No engine means no listener can run. Do not make an event that
+    // releaseIfUnwrapped would leave ownerless, following the pre-event break
+    // in HTMLFormElement.validateCustomControls at base 63d0e68b2a.
+    if (!instance.ctx.hasEngine()) return false;
     try form_associated.fireSimpleEvent(instance, "invalid", .{ .cancelable = true });
     return false;
 }

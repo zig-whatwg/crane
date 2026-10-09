@@ -328,12 +328,14 @@ pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
 
 fn validateControls(form: *runtime.Instance) !bool {
     // HTML 4.10.21.2 steps 1–4: snapshot every invalid candidate before
-    // firing any events. The existing owned list keeps each control alive
-    // even if an earlier invalid listener detaches it and collects garbage.
+    // firing any events. In script realms, owned roots keep each control
+    // alive if an earlier invalid listener detaches it and collects garbage.
     const allocator = form.ctx.allocator;
+    const realm = form.ctx;
     var invalid: std.ArrayList(engine.Owned) = .empty;
+    var any_invalid = false;
     defer {
-        for (invalid.items) |value| value.release();
+        for (invalid.items) |held| held.release();
         invalid.deinit(allocator);
     }
     const root = form_associated.rootOf(form);
@@ -357,24 +359,28 @@ fn validateControls(form: *runtime.Instance) !bool {
                 false;
             if (!candidate or @import("html").forms.isValid(@import("dom").form_controls.validityFlags(element))) continue;
         }
-        const held = try engine.retainValue(form.ctx, .{ .instance = element });
+        any_invalid = true;
+        // No engine means no listener can run: keep only the result, making
+        // no event that releaseIfUnwrapped would leave ownerless. This follows
+        // validateCustomControls's pre-event break in base 63d0e68b2a.
+        if (!realm.hasEngine()) continue;
+        const held = try engine.retainValue(realm, .{ .instance = element });
         invalid.append(allocator, held) catch |err| {
             held.release();
             return err;
         };
     }
-    const realm = form.ctx;
     // Steps 5–7: fire invalid at the saved list, even if a preceding listener
     // repaired a later control. Canceling the event does not change the result.
-    for (invalid.items) |value| {
+    for (invalid.items) |held| {
         if (!realm.hasEngine()) break;
-        const element = engine.convertToPlatformObject(realm, value.value) orelse continue;
+        const element = engine.convertToPlatformObject(realm, held.value) orelse continue;
         const event = try interfaces.Event.call_constructor(realm, runtime.DOMString.initInterned("invalid"), .passed(.{ .cancelable = true }));
         const generation = runtime.SlabAllocator.generationOf(event);
         defer event.releaseIfUnwrapped(generation);
         _ = try @import("dom").fire_event.dispatchTrusted(element, event);
     }
-    return invalid.items.len == 0;
+    return !any_invalid;
 }
 
 /// Operation: submit
@@ -597,6 +603,12 @@ fn constructEntryList(allocator: std.mem.Allocator, form: *runtime.Instance, sub
         try appendFieldEntries(allocator, &entries, field, submitter, encoding);
     }
 
+    // No engine means no listener can run or change the entries. Skip the
+    // script-only FormData/event that releaseIfUnwrapped would leave ownerless,
+    // as validateCustomControls skips events in base 63d0e68b2a; step 9 returns
+    // the entries directly because there was no observable intermediate list.
+    if (!form.ctx.hasEngine()) return entries;
+
     // 6. Let form data be a new FormData object associated with entry list.
     const form_data = try entryListFormData(form, entries.items);
     const form_data_generation = runtime.SlabAllocator.generationOf(form_data);
@@ -693,20 +705,27 @@ fn appendFieldEntries(allocator: std.mem.Allocator, entries: *EntryList, field: 
         // File, not a string. Its root uses the existing File-entry lifetime.
         // TODO(FileList/DataTransfer lane): enumerate a live nonempty selection
         // through the input owner's read hook, without creating a FileList.
-        const parts = try engine.createSequenceOfValues(field.ctx, &.{});
-        defer parts.release();
-        const file = try interfaces.File.call_constructor(field.ctx, parts.value, "", .passed(.{
-            .base = .{ .type = runtime.DOMString.initInterned("application/octet-stream") },
-        }));
-        const generation = runtime.SlabAllocator.generationOf(file);
-        defer file.releaseIfUnwrapped(generation);
-        const held = try engine.retainValue(field.ctx, .{ .instance = file });
-        errdefer held.release();
-        try appendEntry(allocator, entries, name, try allocator.dupe(u8, ""));
-        const added = &entries.items[entries.items.len - 1];
-        added.is_file = true;
-        added.file = file;
-        added.file_root = held;
+        if (field.ctx.hasEngine()) {
+            const parts = try engine.createSequenceOfValues(field.ctx, &.{});
+            defer parts.release();
+            const file = try interfaces.File.call_constructor(field.ctx, parts.value, "", .passed(.{
+                .base = .{ .type = runtime.DOMString.initInterned("application/octet-stream") },
+            }));
+            const generation = runtime.SlabAllocator.generationOf(file);
+            defer file.releaseIfUnwrapped(generation);
+            const held = try engine.retainValue(field.ctx, .{ .instance = file });
+            errdefer held.release();
+            try appendEntry(allocator, entries, name, try allocator.dupe(u8, ""));
+            const added = &entries.items[entries.items.len - 1];
+            added.is_file = true;
+            added.file = file;
+            added.file_root = held;
+        } else {
+            // Engine-free entry construction retains its native filename
+            // representation; creating an ECMAScript sequence needs an engine.
+            try appendEntry(allocator, entries, name, try allocator.dupe(u8, ""));
+            entries.items[entries.items.len - 1].is_file = true;
+        }
     } else if (is_input and eql(input_type, "hidden") and std.ascii.eqlIgnoreCase(name, "_charset_")) {
         // 5.9: the encoding's name.
         try appendEntry(allocator, entries, name, try allocator.dupe(u8, encoding.name));
