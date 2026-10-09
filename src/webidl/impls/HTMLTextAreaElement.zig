@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const forms = @import("html").forms;
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -115,8 +116,10 @@ fn isTextArea(instance: *runtime.Instance) bool {
 /// value of element to its child text content."
 fn resetAlgorithm(instance: *runtime.Instance) void {
     const internal = StateMap.get(instance) orelse return;
-    internal.deinit();
+    // HTML 4.10.11 reset: custom validity and its object are not reset.
+    if (internal.raw_value) |value| if (internal.allocator) |allocator| allocator.free(value);
     internal.raw_value = null;
+    internal.last_user_edit = false;
 }
 
 /// https://html.spec.whatwg.org/multipage/form-elements.html#concept-textarea-raw-value
@@ -139,8 +142,10 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
 /// `el.value = "a\r\nb"` reads back "a\nb", which
 /// `value-defaultValue-textContent.html` asserts in two places.
 pub const InternalState = struct {
+    validation: forms.Validation = .{},
     /// Owned by `allocator`. Non-null means the dirty value flag is set.
     raw_value: ?[]u8 = null,
+    last_user_edit: bool = false,
     /// The allocator raw_value came from, recorded with it: final
     /// teardown's sweep has no element to ask.
     allocator: ?std.mem.Allocator = null,
@@ -157,6 +162,7 @@ pub const InternalState = struct {
     /// write would be pointless, and a write through a registry pointer is the
     /// one thing worth not doing on a teardown path.
     pub fn deinit(self: *InternalState) void {
+        if (self.allocator) |allocator| self.validation.deinit(allocator);
         if (self.raw_value) |v| {
             if (self.allocator) |a| a.free(v);
         }
@@ -171,14 +177,54 @@ pub const InternalState = struct {
         }
         self.raw_value = copy;
         self.allocator = allocator;
+        self.last_user_edit = false;
     }
 };
+
+fn validationState(instance: *runtime.Instance) !*forms.Validation {
+    const internal = try StateMap.getOrPut(instance);
+    if (internal.allocator == null) internal.allocator = instance.ctx.allocator;
+    return &internal.validation;
+}
+
+fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
+    const internal = StateMap.get(instance);
+    var flags = forms.ValidityFlags{ .customError = if (internal) |state| !state.validation.custom_error.isEmpty() else false };
+    const value = currentApiValue(instance) catch return flags;
+    defer instance.ctx.allocator.free(value);
+    // HTML 4.10.11: required, mutable, and an empty API value.
+    flags.valueMissing = form_associated.hasAttribute(instance, "required") and
+        !form_associated.isDisabled(instance) and !form_associated.hasAttribute(instance, "readonly") and value.len == 0;
+    if (internal) |state| if (state.last_user_edit) {
+        // HTML 4.10.19.3–4: dirty and last changed by a user edit. Count
+        // normalized API newlines, not the raw CRLF pair.
+        const length = form_associated.utf16Length(value);
+        const maximum = interfaces.HTMLTextAreaElement.get_maxLength(instance) catch -1;
+        const minimum = interfaces.HTMLTextAreaElement.get_minLength(instance) catch -1;
+        flags.tooLong = maximum >= 0 and length > @as(u32, @intCast(maximum));
+        flags.tooShort = value.len != 0 and minimum >= 0 and length < @as(u32, @intCast(minimum));
+    };
+    return flags;
+}
+
+fn editorText(instance: *runtime.Instance) !runtime.DOMString {
+    if (StateMap.get(instance)) |state| if (state.raw_value) |raw| return runtime.DOMString.initDupe(instance.ctx.allocator, raw);
+    return runtime.DOMString.initOwned(try childTextContent(instance, instance.ctx.allocator));
+}
+
+fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void {
+    const internal = try StateMap.getOrPut(instance);
+    try internal.setRawValue(instance.ctx.allocator, edit.text);
+    // HTML 4.10.19.3–4: script value/setRangeText writes clear this marker.
+    internal.last_user_edit = true;
+    internal.selection = .{ .start = edit.selection_start, .end = edit.selection_end, .direction = .none };
+}
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // The steps other code runs on textareas (each idempotent).
-    dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm });
+    dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_edit = &userEdit, .editor_text = &editorText });
     dom.teardown_sweeps.install(&cleanupAllRemainingInternal);
 }
 
@@ -192,8 +238,7 @@ pub fn init(
 ) !*runtime.Instance {
 
     // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
 
     // A new textarea at this address: an entry already under it is a dead
@@ -219,11 +264,11 @@ pub fn deinit(instance: *runtime.Instance) void {
     // already been reused.
     if (StateMap.remove(instance)) |taken| {
         var state = taken;
+        if (state.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
         state.deinit();
     }
 
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    interfaces.HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
@@ -377,20 +422,29 @@ pub fn get_textLength(instance: *runtime.Instance) anyerror!u32 {
 
 /// Getter for willValidate
 pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return !forms.isBarred(instance) and !form_associated.hasAttribute(instance, "readonly");
 }
 
 /// Getter for validity
 pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML 4.10.21.3: the same live ValidityState on every access.
+    const internal = try validationState(instance);
+    if (forms.liveChild(internal.validity, internal.validity_generation)) |validity| return validity;
+    const validity = try interfaces.ValidityState.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(validity);
+    try @import("dom").custom_elements.setValidityControl(validity, instance);
+    if (instance.ctx.hasEngine()) {
+        @import("engine").traceChild(instance, validity, .{ .name = "validity" });
+        internal.validity_traced = true;
+    }
+    internal.validity = validity;
+    internal.validity_generation = runtime.SlabAllocator.generationOf(validity);
+    return validity;
 }
 
 /// Getter for validationMessage
 pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return forms.validationMessage(instance.ctx.allocator, try get_willValidate(instance), constraintFlags(instance), (try validationState(instance)).custom_error);
 }
 
 /// Getter for labels
@@ -536,21 +590,19 @@ pub fn call_setRangeText__1(instance: *runtime.Instance, replacement: runtime.DO
 
 /// Operation: checkValidity
 pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));
 }
 
 /// Operation: reportValidity
 pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML reportValidity steps 1–2; a headless host has no validation UI.
+    return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));
 }
 
 /// Operation: setCustomValidity
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = @"error";
-    return error.NotImplemented;
+    // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
+    try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
 }
 
 /// The SelectionMode argument of setRangeText(replacement, start, end,

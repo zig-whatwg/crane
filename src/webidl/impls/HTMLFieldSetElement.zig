@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const forms = @import("html").forms;
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -21,10 +22,28 @@ pub const ImplError = error{
 /// - Cached computations, buffers, etc.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
+    validation: forms.Validation = .{},
     elements: ?*runtime.Instance = null,
     elements_generation: u64 = 0,
     elements_traced: bool = false,
 };
+
+fn validationState(instance: *runtime.Instance) !*forms.Validation {
+    return &(instance.getState(State).own._internal orelse return error.InvalidStateError).validation;
+}
+
+fn isValidationControl(instance: *runtime.Instance) bool {
+    return instance.stateAs(State) != null;
+}
+
+fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
+    const internal = instance.getState(State).own._internal orelse return .{};
+    return .{ .customError = !internal.validation.custom_error.isEmpty() };
+}
+
+pub fn installHooks() void {
+    @import("dom").form_controls.install(.{ .is = &isValidationControl, .validity_flags = &constraintFlags });
+}
 
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
@@ -46,6 +65,8 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
+        internal.validation.deinit(instance.ctx.allocator);
         if (internal.elements_traced) @import("engine").forgetTracedChild(instance, .{ .name = "elements" });
         if (!internal.elements_traced) if (liveChild(internal.elements, internal.elements_generation)) |collection| runtime.Instance.deinit(collection);
         internal.allocator.destroy(internal);
@@ -107,36 +128,45 @@ fn liveChild(child: ?*runtime.Instance, generation: u64) ?*runtime.Instance {
 /// Getter for willValidate
 pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
+    // HTML 4.10.18 and 4.10.21.1: this is not a submittable element.
+    return false;
 }
 
 /// Getter for validity
 pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML 4.10.21.3: the same live ValidityState on every access.
+    const internal = try validationState(instance);
+    if (forms.liveChild(internal.validity, internal.validity_generation)) |validity| return validity;
+    const validity = try interfaces.ValidityState.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(validity);
+    try @import("dom").custom_elements.setValidityControl(validity, instance);
+    if (instance.ctx.hasEngine()) {
+        @import("engine").traceChild(instance, validity, .{ .name = "validity" });
+        internal.validity_traced = true;
+    }
+    internal.validity = validity;
+    internal.validity_generation = runtime.SlabAllocator.generationOf(validity);
+    return validity;
 }
 
 /// Getter for validationMessage
 pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return forms.validationMessage(instance.ctx.allocator, try get_willValidate(instance), constraintFlags(instance), (try validationState(instance)).custom_error);
 }
 
 /// Operation: checkValidity
 pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));
 }
 
 /// Operation: reportValidity
 pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML reportValidity steps 1–2; a headless host has no validation UI.
+    return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));
 }
 
 /// Operation: setCustomValidity
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = @"error";
-    return error.NotImplemented;
+    // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
+    try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
 }
