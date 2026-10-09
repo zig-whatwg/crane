@@ -9,10 +9,12 @@ const std = @import("std");
 pub const wav_backend = @import("wav_backend.zig");
 pub const webm_demuxer = @import("webm_demuxer.zig");
 pub const webm_frames = @import("webm_frames.zig");
+pub const webm_backend = @import("webm_backend.zig");
 
 test {
     std.testing.refAllDecls(@This());
     _ = wav_backend;
     _ = webm_demuxer;
     _ = webm_frames;
+    _ = webm_backend;
 }
