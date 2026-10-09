@@ -40,7 +40,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Parser reparenting must consult the live DOM](architecture-parser-reparenting-must-consult-the-live-dom.md) - Keep parser state for decisions and perform DOM moves against live relationships.
 
 - [Stable continuations own their native record](architecture-stable-continuations-own-their-native-record.md) - Retain queued identity separately from the element and release it on completion or drop.
-- [A queue handoff may drop the task before return](architecture-a-queue-handoff-may-drop-the-task-before-return.md) - After transferring task ownership, treat the payload as already destroyed.
+- [A queue handoff may drop the task before return](architecture-a-queue-handoff-may-drop-the-task-before-return.md) - After transferring task ownership, treat the payload as already destroyed. A caller of a task scheduled many times does its work on the task before the handoff; when fixing one user of a handoff, grep the queue's other callers.
 
 - [Parsed records need platform objects at the binding](architecture-parsed-records-need-platform-objects-at-the-binding.md) - Convert representations at the owner boundary; a pointer cast cannot create a platform object or its lifetime.
 - [Cancelled reaction queues need stable element identities](architecture-cancelled-reaction-queues-need-stable-element-identities.md) - Cancel by stable identity so a reused slab address cannot inherit queued work.
@@ -434,6 +434,7 @@ A lane brief now carries the lessons chosen for its batch.
 ### Debugging
 - [Give the objects that reissue a freed slot a voice](debugging-give-the-objects-that-reissue-a-freed-slot-a-voice.md) - Make the impostor talk: churn objects that announce themselves, so a reissued slot fails the assertion with its name instead of passing or crashing elsewhere.
 
+- [A worker thread's crash is journalled against a later file](debugging-a-worker-thread-crash-is-journalled-against-a-later-file.md) - The journal names the file running when the process died, which is not always the file that crashed. Find the fault line in the log first; a worker thread's fault can be printed many files before the abort.
 - [Inspect the DOM before changing a serializer](debugging-inspect-the-dom-before-changing-a-serializer.md) - Locate the first incorrect representation before repairing a later result.
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
 - [An instrument can confound its own result](debugging-an-instrument-can-confound-its-own-result.md) - Keep the perturbation independent of the reporting cadence, and prefer a slope between adjacent samples over any per-unit average.
