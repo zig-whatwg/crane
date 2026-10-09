@@ -1,19 +1,42 @@
 //! Implementation for FileList interface
 //!
-//! W3C File API: https://www.w3.org/TR/FileAPI/#filelist-section
+//! W3C File API: https://w3c.github.io/FileAPI/#filelist-section
 //!
-//! FileList is a read-only list of File objects, typically returned
-//! from HTMLInputElement.files when using <input type="file">.
+//! ```idl
+//! [Exposed=(Window,Worker), Serializable]
+//! interface FileList {
+//!   getter File? item(unsigned long index);
+//!   readonly attribute unsigned long length;
+//! };
+//! ```
+//!
+//! A FileList is read-only to script, and its contents are set natively: an
+//! input's selected files (HTML 4.10.5.1.18), a DataTransfer's files (HTML
+//! 6.11.3). Both browsers that share a list between owners empty it IN PLACE
+//! rather than replacing it - Blink's FileInputType::SetValue does
+//! `file_list_->clear()`, WebKit's FileInputType::setValue `files()->clear()`
+//! - and Blink's DataTransfer rebuilds its one `files_` in place on every
+//! item-list change (OnItemListChanged: clear, then Append each File). Those
+//! steps have no IDL member, so FileList installs them as a hook
+//! (dom.file_lists) for the input and DataTransfer impls to call.
+//!
+//! Lifetime. A FileList keeps its Files alive the browsers' way: Blink's
+//! FileList holds `HeapVector<Member<File>> files_`, traced (FileList::Trace).
+//! Here each File is held by an edge from the list's wrapper
+//! (engine.traceChild, one slot per index: "file.<i>"), drawn when the File
+//! is appended and ended when the list is emptied. The list never frees a
+//! File: a File's lifetime is its wrapper's, and a File made natively in an
+//! engine-free test is its maker's to free. The pointer kept beside each edge
+//! carries the File's slab generation and realm (KeptInstance): only the
+//! teardown net, so a File a realm's teardown freed reads as absent, never
+//! as a freed or reissued object.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const file = @import("file");
-const FileImpl = @import("File.zig");
+const engine = @import("engine");
+const dom = @import("dom");
+const KeptInstance = dom.custom_elements.KeptInstance;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const FileList = interfaces.FileList;
 
@@ -25,25 +48,19 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Internal state for FileList implementation
-///
-/// Holds references to File instances. The FileList owns these instances.
+/// The list's Files, in order. Made on the first append: a list nothing was
+/// ever appended to (an input's empty selection) has none, and reads as
+/// empty.
 pub const InternalState = struct {
-    /// Array of File runtime instances
-    files: []*runtime.Instance,
-    /// Allocator for memory management
     allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *InternalState) void {
-        // Deinitialize all contained File instances
-        for (self.files) |file_instance| {
-            interfaces.File.deinit(file_instance);
-        }
-        if (self.files.len > 0) {
-            self.allocator.free(self.files);
-        }
-    }
+    /// Each File, kept by the edge in slot "file.<index>".
+    files: std.ArrayList(KeptInstance) = .empty,
 };
+
+/// The slot that keeps the File at `index`: Blink's `files_[index]`.
+fn fileSlot(buffer: []u8, index: usize) engine.TracedSlot {
+    return .{ .name = std.fmt.bufPrint(buffer, "file.{d}", .{index}) catch unreachable };
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -52,158 +69,87 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
+    return runtime.Instance.init(allocator, StateType, vtable, ctx);
 }
 
-/// Deinitialize instance
+/// Deinitialize instance: the list's own storage, never its Files. A list
+/// freed without ever being wrapped lets the holds waiting for its wrapper
+/// go; a collected one's edges went with the wrapper.
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.deinit();
-        internal.allocator.destroy(internal);
-    }
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    forgetEdges(instance, 0, internal.files.items.len);
+    internal.files.deinit(internal.allocator);
+    internal.allocator.destroy(internal);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Create an empty FileList (internal helper)
-pub fn createEmpty(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(allocator, State, &FileList.vtable, ctx);
-    errdefer deinit(instance);
-
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-
-    internal.* = .{
-        .files = &[_]*runtime.Instance{},
-        .allocator = allocator,
-    };
-
-    const state = instance.getState(State);
-    state.own._internal = internal;
-
-    return instance;
+/// The process-wide hook: FileList's steps with no IDL member.
+pub fn installHooks() void {
+    dom.file_lists.install(.{ .clear = &clear, .append = &append });
 }
 
-/// Create a FileList from an array of File instances (internal helper)
-///
-/// Takes ownership of the File instances - they will be freed when
-/// the FileList is deinitialized.
-pub fn createFromFiles(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    files: []*runtime.Instance,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &FileList.vtable, ctx);
-    errdefer deinit(instance);
-
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-
-    // Copy the array of file instance pointers
-    const owned_files = try allocator.dupe(*runtime.Instance, files);
-    errdefer allocator.free(owned_files);
-
-    internal.* = .{
-        .files = owned_files,
-        .allocator = allocator,
-    };
-
-    const state = instance.getState(State);
-    state.own._internal = internal;
-
-    return instance;
-}
-
-/// Get internal state from instance
-/// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
-pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
+}
+
+fn ensureInternal(instance: *runtime.Instance) !*InternalState {
+    const state = instance.stateAs(State) orelse return error.InvalidState;
+    if (state.own._internal) |internal| return internal;
+    const allocator = instance.ctx.allocator;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    state.own._internal = internal;
+    return internal;
+}
+
+/// End the edges in slots [from, to).
+fn forgetEdges(instance: *runtime.Instance, from: usize, to: usize) void {
+    for (from..to) |index| {
+        var buffer: [32]u8 = undefined;
+        engine.forgetTracedChild(instance, fileSlot(&buffer, index));
+    }
+}
+
+/// dom.file_lists.clear: empty `list` in place. It keeps its identity - an
+/// input's `files` and a DataTransfer's `files` stay the same object - and
+/// lets go of the edges to the Files it held.
+fn clear(list: *runtime.Instance) void {
+    const internal = getInternal(list) orelse return;
+    const count = internal.files.items.len;
+    internal.files.clearRetainingCapacity();
+    forgetEdges(list, 0, count);
+}
+
+/// dom.file_lists.append: add `file` at the end of `list`, and keep it.
+fn append(list: *runtime.Instance, file: *runtime.Instance) error{ OutOfMemory, InvalidState }!void {
+    const internal = try ensureInternal(list);
+    const index = internal.files.items.len;
+    try internal.files.append(internal.allocator, KeptInstance.of(file));
+    var buffer: [32]u8 = undefined;
+    engine.traceChild(list, file, fileSlot(&buffer, index));
 }
 
 /// Getter for length
 ///
-/// Spec: https://www.w3.org/TR/FileAPI/#dfn-length
-/// Returns the number of files in the list.
+/// Spec: https://w3c.github.io/FileAPI/#dfn-length
+/// "must return the number of files in the FileList object. If there are no
+/// files, this attribute must return 0."
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
-    return @intCast(internal.files.len);
+    return @intCast(internal.files.items.len);
 }
 
 /// Operation: item
 ///
-/// Spec: https://www.w3.org/TR/FileAPI/#dfn-item
-/// Returns the indexth File object, or null if out of bounds.
+/// Spec: https://w3c.github.io/FileAPI/#dfn-item
+/// "must return the indexth File object in the FileList. If there is no
+/// indexth File object in the FileList, then this method must return null."
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-
-    if (index >= internal.files.len) {
-        return null;
-    }
-
-    return internal.files[index];
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "FileList - empty" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    const file_list = try createEmpty(allocator, ctx);
-    defer deinit(file_list);
-
-    const length = try get_length(file_list);
-    try std.testing.expectEqual(@as(u32, 0), length);
-
-    const item = try call_item(file_list, 0);
-    try std.testing.expect(item == null);
-}
-
-test "FileList - with files" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    // Create some files
-    const file1 = try FileImpl.createFromBytes(allocator, ctx, "content1", "file1.txt", "text/plain", null);
-    const file2 = try FileImpl.createFromBytes(allocator, ctx, "content2", "file2.txt", "text/plain", null);
-
-    var files = [_]*runtime.Instance{ file1, file2 };
-    const file_list = try createFromFiles(allocator, ctx, &files);
-    defer deinit(file_list); // This also deinitializes the files
-
-    const length = try get_length(file_list);
-    try std.testing.expectEqual(@as(u32, 2), length);
-
-    const item0 = try call_item(file_list, 0);
-    try std.testing.expect(item0 != null);
-
-    const item1 = try call_item(file_list, 1);
-    try std.testing.expect(item1 != null);
-
-    const item2 = try call_item(file_list, 2);
-    try std.testing.expect(item2 == null);
-}
-
-test "FileList - item returns correct file" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    const file1 = try FileImpl.createFromBytes(allocator, ctx, "a", "first.txt", "", null);
-    const file2 = try FileImpl.createFromBytes(allocator, ctx, "b", "second.txt", "", null);
-
-    var files = [_]*runtime.Instance{ file1, file2 };
-    const file_list = try createFromFiles(allocator, ctx, &files);
-    defer deinit(file_list);
-
-    // Verify we get the correct file instances back
-    const item0 = try call_item(file_list, 0);
-    try std.testing.expect(item0 == file1);
-
-    const item1 = try call_item(file_list, 1);
-    try std.testing.expect(item1 == file2);
+    if (index >= internal.files.items.len) return null;
+    return internal.files.items[index].get();
 }
