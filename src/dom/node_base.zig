@@ -73,6 +73,15 @@ pub const NodeBase = struct {
     /// Used by isConnected getter
     is_connected: bool = false,
 
+    /// Whether this element is a shadow host: set by "attach a shadow root"
+    /// (Element's attachShadow, the one step every shadow root attaches
+    /// through), never cleared - a shadow root is never detached. A guard
+    /// for the insert and remove steps' slot steps, so a tree with no shadow
+    /// root pays a field test for them (Blink's HasShadowRoot bit); the
+    /// shadow root itself is the Element state's, which stays the source of
+    /// truth (dom.shadow_hosts.rootForHost).
+    is_shadow_host: bool = false,
+
     /// V8 wrapper for cross-context identity
     /// When set, this wrapper is returned for ALL contexts to ensure `===` identity works.
     /// Solves the problem where MutationObserver addedNodes[0] !== original element

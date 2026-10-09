@@ -58,10 +58,6 @@ pub const InternalState = struct {
     /// The host element for this shadow root
     host: ?*runtime.Instance,
 
-    /// Event handler for slotchange event
-    /// Stored as runtime.JSValue with global handle scope for persistence
-    onslotchange: ?runtime.JSValue = null,
-
     /// Custom element registry (from DocumentOrShadowRoot mixin), read
     /// through `get()`: a registry whose keeper went reads null (CE2-M2).
     registry_edge: @import("dom").custom_elements.RegistryAssociation = .{},
@@ -101,7 +97,6 @@ pub const InternalState = struct {
             .declarative_flag = false,
             .keep_custom_element_registry_null = false,
             .host = null,
-            .onslotchange = null,
             .fullscreen_element = null,
             .active_element = null,
             .picture_in_picture_element = null,
@@ -112,12 +107,6 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // Dispose JSValue handles that may contain global handles
-        if (self.onslotchange) |*handler| {
-            handler.deinit(self.allocator);
-        }
-        self.onslotchange = null;
-
         if (self.adopted_style_sheets) |sheets| sheets.release();
         self.adopted_style_sheets = null;
     }
@@ -338,23 +327,17 @@ pub fn get_host(instance: *runtime.Instance) anyerror!*runtime.Instance {
 // Event Handlers
 // ============================================================================
 
-/// DOM §4.8.1 - ShadowRoot.onslotchange getter
-/// Event handler for the slotchange event.
+/// DOM 4.8: "The onslotchange attribute is an event handler IDL attribute
+/// for the onslotchange event handler, whose event handler event type is
+/// slotchange." Stored in the shadow root's event handler map, as every
+/// event handler IDL attribute is (dom.event_handlers).
 pub fn get_onslotchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.onslotchange) |handler| {
-        _ = handler;
-        // TODO: Convert to proper EventHandler typedef
-    }
-    return null;
+    return @import("dom").event_handlers.get(typedefs.EventHandler, instance, "slotchange");
 }
 
-/// DOM §4.8.1 - ShadowRoot.onslotchange setter
+/// DOM 4.8: the onslotchange event handler IDL attribute's setter.
 pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // TODO: Proper event handler storage
-    _ = value;
-    internal.onslotchange = null;
+    try @import("dom").event_handlers.set(typedefs.EventHandler, instance, "slotchange", value);
 }
 
 // ============================================================================

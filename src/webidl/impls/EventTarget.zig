@@ -1165,8 +1165,11 @@ fn getTheParent(target: *runtime.Instance, event_type: []const u8) ?*runtime.Ins
         return interfaces.Document.get_defaultView(target) catch null;
     }
 
-    if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-        if (interfaces.Element.get_assignedSlot(target) catch null) |slot| return slot;
+    // "the node's assigned slot, if node is assigned" - the internal one, a
+    // closed shadow root's included (the IDL assignedSlot hides those).
+    // Element and Text nodes are the slottables.
+    if (node_type == interfaces.Node.get_ELEMENT_NODE() or node_type == interfaces.Node.get_TEXT_NODE()) {
+        if (dom_module.shadow_dom_algorithms.assignedSlotOf(target)) |slot| return slot;
     }
 
     return interfaces.Node.get_parentNode(target) catch null;

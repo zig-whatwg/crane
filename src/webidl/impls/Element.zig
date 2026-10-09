@@ -141,12 +141,10 @@ pub const InternalState = struct {
     /// "is" value for customized built-in elements
     is_value: ?runtime.DOMString = null,
 
-    /// Slottable mixin fields (DOM §4.3.7)
-    /// The slot this element is assigned to (null if not in a shadow tree or unassigned)
-    assigned_slot: ?*runtime.Instance = null,
-
-    /// Manual slot assignment (for SlotAssignmentMode.manual)
-    manual_slot_assignment: ?*runtime.Instance = null,
+    /// DOM 4.2.2.2: the element as a slottable - its assigned slot and its
+    /// manual slot assignment, weak references the slot algorithms keep
+    /// (dom.slot_helpers, dom.shadow_dom_algorithms). Its name is `slot`.
+    slottable: dom.slot_helpers.SlottableState = .{},
 
     /// Cached NamedNodeMap for the attributes getter
     /// Per WebIDL, the same object must be returned on subsequent accesses
@@ -548,6 +546,9 @@ pub fn installHooks() void {
     // The parsers' "create an element" sets names through `dom.node_creation`.
     dom.node_creation.installElement(.{ .set_names = &setNamesHook, .is_value = &isValueHook });
     dom.shadow_hosts.install(.{ .root_for_host = &shadowRootOf });
+    // The slot algorithms read an element's slottable state through
+    // `dom.slot_helpers`.
+    dom.slot_helpers.install(.{ .element_slottable = &slottableOf });
     dom.custom_elements.installElement(.{
         .get = &customElementData,
         .initialize = &initializeCustomElement,
@@ -567,6 +568,13 @@ fn isValueHook(instance: *runtime.Instance) ?[]const u8 {
 
 fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
     return (getInternal(instance) orelse return null).shadow_root;
+}
+
+/// `dom.slot_helpers`: the element as a slottable - its state and its name,
+/// which is its slot attribute's value (DOM 4.2.2.2).
+fn slottableOf(instance: *runtime.Instance) ?dom.slot_helpers.Slottable {
+    const internal = getInternal(instance) orelse return null;
+    return .{ .state = &internal.slottable, .name = internal.slot.asSlice() };
 }
 
 fn markCustomElementEnqueued(instance: *runtime.Instance) void {
@@ -1210,32 +1218,11 @@ pub fn get_regionOverset(instance: *runtime.Instance) anyerror!typedefs.CSSOMStr
     return .{ .empty = {} };
 }
 
-/// Getter for assignedSlot
-/// Slottable mixin - Returns the slot this element is assigned to
-/// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
-///
-/// The assignedSlot getter steps are to return the result of find a slot
-/// given this and with the open flag set.
-///
-/// Returns null if:
-/// - Element is not assigned to any slot
-/// - Element is assigned to a slot in a closed shadow root
+/// Slottable's assignedSlot getter: "return the result of find a slot given
+/// this and true" - null for a slot in a closed shadow root.
+/// Spec: https://dom.spec.whatwg.org/#dom-slotable-assignedslot
 pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Get the assigned slot
-    const slot = internal.assigned_slot orelse return null;
-
-    // Check if the slot's shadow root is open (per spec, only return for open mode)
-    // The slot is an HTMLSlotElement which is in a ShadowRoot
-    // We need to check if that shadow root has mode = "open"
-
-    // Get the slot's parent/root to check if it's in an open shadow root
-    // For now, return the slot if it exists - full implementation would
-    // walk up to find the shadow root and check its mode
-    // TODO: Implement full "find a slot" algorithm with open flag check
-
-    return slot;
+    return dom.shadow_dom_algorithms.assignedSlotForScript(instance);
 }
 
 /// Setter for id: `id` reflects "id".
@@ -1371,7 +1358,10 @@ fn attributeChangeSteps(
     } else if (std.mem.eql(u8, local_name, "class")) {
         replaceCachedValue(internal, &internal.class_name, value);
     } else if (std.mem.eql(u8, local_name, "slot")) {
+        // DOM 4.2.2.2: the slottable's name follows its slot attribute, and
+        // a changed name re-assigns it.
         replaceCachedValue(internal, &internal.slot, value);
+        dom.shadow_dom_algorithms.slottableNameChanged(instance, old_value, value);
     }
 
     // HTML §8.1.8.1: event handler content attributes.
@@ -3252,6 +3242,9 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     // for its whole life - nothing else does - by an edge from its wrapper,
     // which script holds: it is calling this.
     internal.shadow_root = shadow_root;
+    // The node's shadow host bit, the slot steps' fast-path guard
+    // (NodeBase.is_shadow_host).
+    if (dom.instance_bridge.getNodeBase(instance)) |base| base.is_shadow_host = true;
     internal.shadow_root_kept.made(shadow_root);
     internal.shadow_root_kept.handOut(instance, shadow_root, .{ .name = "shadowRoot" });
     // And the shadow root keeps its host, whose `host` it answers for its

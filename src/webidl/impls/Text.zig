@@ -46,25 +46,34 @@ var undefined_sentinel: u8 = 0;
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    // Slottable mixin fields (from DOM spec)
-    slottable_name: []const u8,
-    assigned_slot: ?*runtime.Instance,
-    manual_slot_assignment: ?*runtime.Instance,
+    /// DOM 4.2.2.2: the node as a slottable - its assigned slot and its
+    /// manual slot assignment, weak references the slot algorithms keep
+    /// (dom.slot_helpers, dom.shadow_dom_algorithms). A Text node's name is
+    /// always the empty string.
+    slottable: dom.slot_helpers.SlottableState = .{},
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-            .slottable_name = "",
-            .assigned_slot = null,
-            .manual_slot_assignment = null,
-        };
+        return .{ .allocator = allocator };
     }
 
     pub fn deinit(self: *InternalState) void {
         _ = self;
-        // slottable_name is usually interned, not owned
     }
 };
+
+/// The hooks this type owns (src/dom), installed once, at process start, by
+/// crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The slot algorithms read a Text node's slottable state through
+    // `dom.slot_helpers`.
+    dom.slot_helpers.install(.{ .text_slottable = &slottableOf });
+}
+
+/// `dom.slot_helpers`: the node's slottable state.
+fn slottableOf(instance: *runtime.Instance) ?*dom.slot_helpers.SlottableState {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.slottable;
+}
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
@@ -181,12 +190,11 @@ pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initOwned(owned);
 }
 
-/// Getter for assignedSlot (from Slottable mixin)
-/// Returns the slot this node is assigned to, or null if not assigned.
-/// https://dom.spec.whatwg.org/#dom-slottable-assignedslot
+/// Slottable's assignedSlot getter: "return the result of find a slot given
+/// this and true" - null for a slot in a closed shadow root.
+/// Spec: https://dom.spec.whatwg.org/#dom-slotable-assignedslot
 pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.assigned_slot;
+    return dom.shadow_dom_algorithms.assignedSlotForScript(instance);
 }
 
 // =============================================================================

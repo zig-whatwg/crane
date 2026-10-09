@@ -16,8 +16,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 
-// Import impl modules for accessing internal state
-const NodeImpl = @import("Node.zig");
+const dom = @import("dom");
 
 pub const State = interfaces.Slottable.State;
 
@@ -49,49 +48,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 // Slottable Attributes
 // =============================================================================
 
-/// assignedSlot - Returns the slot the node is assigned to
-/// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
+/// assignedSlot: "return the result of find a slot given this and true".
+/// Spec: https://dom.spec.whatwg.org/#dom-slotable-assignedslot
 ///
-/// Returns the assigned slot for this node, or null if:
-/// - The node is not assigned to a slot
-/// - The slot's root is not a shadow root
-/// - The shadow root's mode is not "open"
+/// Element and Text still bind their own (Slottable is not yet among
+/// codegen's inherited_mixins), which run the same algorithm.
 pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    // TODO: Implement slot assignment lookup
-    // This requires:
-    // 1. Finding the node's assigned slot (from shadow DOM algorithms)
-    // 2. Checking if the slot's root is a shadow root
-    // 3. Checking if the shadow root's mode is "open"
-    _ = instance;
-    return null;
-}
-
-/// find_slot - Internal algorithm to find slot for a slottable
-/// Spec: https://dom.spec.whatwg.org/#find-a-slot
-///
-/// This is the internal algorithm used by assignedSlot and slot assignment.
-pub fn findSlot(slottable: *runtime.Instance, open_flag: bool) ?*runtime.Instance {
-    // Step 1: Let shadow be slottable's parent's shadow root
-    const parent = NodeImpl.getParent(slottable) orelse return null;
-
-    // TODO: Get shadow root from parent element
-    // For now, return null as shadow DOM is not fully implemented
-    _ = parent;
-    _ = open_flag;
-    return null;
-}
-
-/// find_slottables - Internal algorithm to find slottables for a slot
-/// Spec: https://dom.spec.whatwg.org/#find-slotables
-///
-/// Returns a list of slottables assigned to the given slot.
-pub fn findSlottables(allocator: std.mem.Allocator, slot: *runtime.Instance) !std.ArrayList(*runtime.Instance) {
-    var result: std.ArrayList(*runtime.Instance) = .empty;
-    errdefer result.deinit(allocator);
-
-    // TODO: Implement full algorithm
-    // This requires shadow DOM tree traversal
-    _ = slot;
-
-    return result;
+    return dom.shadow_dom_algorithms.assignedSlotForScript(instance);
 }

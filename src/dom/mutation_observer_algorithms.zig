@@ -25,6 +25,7 @@ const MutationRecord = interfaces.MutationRecord;
 // Import dictionary from dictionaries module
 const dictionaries = @import("dictionaries");
 const MutationObserverInit = dictionaries.MutationObserverInit;
+const engine = @import("engine");
 
 /// Global mutation observer state (per similar-origin window agent)
 /// In a real implementation, this would be per-agent state
@@ -36,6 +37,17 @@ pub const MutationObserverAgent = struct {
     /// Set of mutation observers with pending records
     /// Stores *runtime.Instance pointers to MutationObserver instances
     pending_observers: infra.List(*runtime.Instance),
+
+    /// DOM 4.2.2.5: the agent's signal slots, an ordered set of slots. Each
+    /// slot in it has pending activity (engine.keepPlatformObjectAlive) until
+    /// its slotchange event has been fired - Blink keeps the list as traced
+    /// Members - and the generation tells a slot its realm's end freed anyway.
+    signal_slots: std.ArrayListUnmanaged(SignalSlot) = .empty,
+    /// Membership of `signal_slots` - slot -> its generation - so that
+    /// appending to the set stays constant time however many slots one task
+    /// signals (a page building a thousand components signals thousands
+    /// before its first microtask checkpoint).
+    signal_slot_set: std.AutoHashMapUnmanaged(*runtime.Instance, u64) = .empty,
 
     allocator: Allocator,
 
@@ -49,7 +61,22 @@ pub const MutationObserverAgent = struct {
 
     pub fn deinit(self: *MutationObserverAgent) void {
         self.pending_observers.deinit();
+        self.signal_slots.deinit(self.allocator);
+        self.signal_slot_set.deinit(self.allocator);
     }
+
+    /// Whether `slot` is in the signal slots.
+    fn isSignaled(self: *const MutationObserverAgent, slot: *runtime.Instance) bool {
+        const generation = self.signal_slot_set.get(slot) orelse return false;
+        return generation == runtime.SlabAllocator.generationOf(slot);
+    }
+};
+
+/// A slot in the agent's signal slots, with its slab generation when it
+/// entered.
+pub const SignalSlot = struct {
+    slot: *runtime.Instance,
+    generation: u64,
 };
 
 // Thread-local agent state
@@ -77,6 +104,64 @@ pub fn forgetObserver(observer: *runtime.Instance) void {
         }
         i += 1;
     }
+}
+
+/// DOM "signal a slot change", for `slot` (an HTMLSlotElement).
+///
+/// Spec: https://dom.spec.whatwg.org/#signal-a-slot-change
+pub fn signalSlotChange(slot: *runtime.Instance) void {
+    const agent = getAgent(slot.ctx.allocator) catch return;
+    // Step 1: "Append slot to slot's relevant agent's signal slots." A set:
+    // a slot already in it keeps its place.
+    if (!agent.isSignaled(slot)) {
+        const generation = runtime.SlabAllocator.generationOf(slot);
+        agent.signal_slots.ensureUnusedCapacity(agent.allocator, 1) catch return;
+        agent.signal_slot_set.put(agent.allocator, slot, generation) catch return;
+        agent.signal_slots.appendAssumeCapacity(.{ .slot = slot, .generation = generation });
+        // Until its slotchange is fired, the slot stays alive whatever script
+        // holds - the event is pending activity.
+        engine.keepPlatformObjectAlive(slot);
+    }
+    // Step 2: "Queue a mutation observer microtask."
+    queueMutationObserverMicrotask(slot.ctx.allocator, slot.ctx) catch |err| {
+        std.log.scoped(.mutation_observer).warn("slotchange microtask not queued: {}", .{err});
+    };
+}
+
+/// `slot` is being torn down: take it out of the signal slots, so that
+/// notify cannot reach it, and end the pending activity signaling began.
+pub fn forgetSlot(slot: *runtime.Instance) void {
+    const agent = if (global_agent) |*a| a else return;
+    if (!agent.isSignaled(slot)) return;
+    _ = agent.signal_slot_set.remove(slot);
+    for (agent.signal_slots.items, 0..) |entry, i| {
+        if (entry.slot == slot) {
+            _ = agent.signal_slots.orderedRemove(i);
+            break;
+        }
+    }
+    engine.releasePlatformObject(slot);
+}
+
+/// DOM "notify mutation observers" step 7, for one slot of signalSet: "fire
+/// an event named slotchange, with its bubbles attribute set to true, at
+/// slot."
+fn fireSlotChange(slot: *runtime.Instance) void {
+    // Only script listens for slotchange; with no engine behind the realm (a
+    // DOM unit test's context) there is no listener, and an event made there
+    // would have no owner to free it (Instance.releaseIfUnwrapped).
+    if (!slot.ctx.hasEngine()) return;
+    const webidl = @import("webidl");
+    const event = interfaces.Event.call_constructor(
+        slot.ctx,
+        runtime.DOMString.initInterned("slotchange"),
+        webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = true, .cancelable = false, .composed = false }),
+    ) catch return;
+    // Not `defer deinit`: a listener can keep the event, and its wrapper
+    // then owns it.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    _ = @import("fire_event.zig").dispatchTrusted(slot, event) catch {};
 }
 
 /// Reset the agent state (for testing)
@@ -588,7 +673,16 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
     // Step 3: Empty the surrounding agent's pending mutation observers
     agent.pending_observers.clear();
 
-    // Step 4: (signal slots - not implemented yet, skip)
+    // Step 4: "Let signalSet be a clone of the surrounding agent's signal
+    // slots."
+    // Step 5: "Empty the surrounding agent's signal slots."
+    var signal_set = agent.signal_slots;
+    agent.signal_slots = .empty;
+    // Freed, not kept: the agent outlives every page, and nothing else
+    // would ever return the memory.
+    agent.signal_slot_set.clearAndFree(agent.allocator);
+    const signal_allocator = agent.allocator;
+    defer signal_set.deinit(signal_allocator);
 
     // Step 6: For each mo of notifySet
     for (notify_set.items(), 0..) |mo_instance, mo_index| {
@@ -629,8 +723,17 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
         }
     }
 
-    // Step 7: For each slot of signalSet, fire an event named slotchange...
-    // TODO: Implement slot change events when we have slots/shadow DOM
+    // Step 7: "For each slot of signalSet: fire an event named slotchange,
+    // with its bubbles attribute set to true, at slot."
+    for (signal_set.items) |entry| {
+        // A slot its realm's end freed meanwhile (generation), is skipped.
+        if (runtime.SlabAllocator.generationOf(entry.slot) != entry.generation) continue;
+        fireSlotChange(entry.slot);
+        // Its pending activity ends with its event - unless a listener
+        // signaled it again, into the agent's new signal slots.
+        if (runtime.SlabAllocator.generationOf(entry.slot) != entry.generation) continue;
+        if (!agent.isSignaled(entry.slot)) engine.releasePlatformObject(entry.slot);
+    }
 }
 
 // Tests

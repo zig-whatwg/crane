@@ -1,260 +1,240 @@
-//! Slot Algorithm Helper Utilities
+//! The state DOM 4.2.2 gives slots and slottables, and the hook the slot
+//! algorithms (shadow_dom_algorithms.zig) reach it through.
 //!
-//! KEEP: Uses *anyopaque for duck-typed polymorphism across node types.
-//! These utilities enable slot algorithms to work with Element, Text, and
-//! ShadowRoot without import cycles. The duck typing pattern uses @hasField
-//! to access common fields across different node types.
+//! A slottable (an Element or a Text node) has an assigned slot and a manual
+//! slot assignment; a slot (an HTML `slot` element) has a name, its assigned
+//! nodes and its manually assigned nodes. That state lives in the owning
+//! impls' InternalState - Element and Text embed a `SlottableState`,
+//! HTMLSlotElement a `SlotState` - and each owner installs a function here,
+//! once, at process start, that hands the algorithms a pointer to it. The
+//! algorithms never name an impl.
 //!
-//! This module provides type-safe utilities for slot algorithms to work with
-//! polymorphic node types. Uses duck typing to work with both interface and
-//! implementation types.
+//! Every pointer between nodes here is a `NodeRef`: the node, its owning
+//! Instance and that Instance's slab generation when the reference was taken.
+//! None of them keeps its target alive, and none is read once its target is
+//! gone. The algorithms keep them true eagerly - a slottable's assigned slot
+//! is cleared when it stops being assigned, a slot's assigned nodes are
+//! recomputed when a node leaves its host (DOM remove step 8) or the slot
+//! leaves its tree (remove step 10) - so a reference whose target was freed
+//! is one that a teardown, not a DOM operation, ended: the generation check
+//! makes it read as absent instead of as the next object at that address.
+//! Blink keeps the same edges as traced Members (SlotAssignment,
+//! HTMLSlotElement::assigned_nodes_, FlatTreeNodeData::assigned_slot_);
+//! WebKit holds WeakPtrs (NamedSlotAssignment::Slot::assignedNodes,
+//! HTMLSlotElement::m_manuallyAssignedNodes). The HTML standard notes that
+//! the manually assigned nodes and the manual slot assignment "can be
+//! implemented using weak references".
+//!
+//! lint-impls: hook for Element, Text, HTMLSlotElement
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
-const infra = @import("infra");
+const process_start = @import("process_start.zig");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const NodeBase = @import("node_base.zig").NodeBase;
 
-// Node type constants (from DOM spec)
-pub const ELEMENT_NODE: u16 = 1;
-pub const TEXT_NODE: u16 = 3;
-pub const DOCUMENT_FRAGMENT_NODE: u16 = 11;
+pub const ELEMENT_NODE: u16 = NodeBase.ELEMENT_NODE;
+pub const TEXT_NODE: u16 = NodeBase.TEXT_NODE;
+pub const DOCUMENT_FRAGMENT_NODE: u16 = NodeBase.DOCUMENT_FRAGMENT_NODE;
 
-/// Check if a value has a node_type field (duck typing)
-fn hasNodeType(comptime T: type) bool {
-    return @hasField(T, "node_type");
-}
+/// A reference to a node that does not keep it alive and reads as null once
+/// its Instance is freed (or its slab slot reissued).
+pub const NodeRef = struct {
+    node: *NodeBase,
+    instance: *runtime.Instance,
+    generation: u64,
 
-/// Get node_type from any type that has it
-fn getNodeType(node: anytype) u16 {
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "node_type")) {
-        return node.node_type;
+    /// A reference to `node`; null for a node no Instance owns.
+    pub fn to(node: *NodeBase) ?NodeRef {
+        const opaque_instance = node.owner_instance orelse return null;
+        const instance: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
+        return .{ .node = node, .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
     }
-    // Fallback: assume it's something else
-    return 0;
-}
 
-/// Check if a Node pointer is an Element (node_type == 1)
-pub fn isElement(node: anytype) bool {
-    return getNodeType(node) == ELEMENT_NODE;
-}
-
-/// Check if a Node pointer is a Text node (node_type == 3)
-pub fn isText(node: anytype) bool {
-    return getNodeType(node) == TEXT_NODE;
-}
-
-/// Check if a Node pointer is a DocumentFragment (node_type == 11)
-pub fn isDocumentFragment(node: anytype) bool {
-    return getNodeType(node) == DOCUMENT_FRAGMENT_NODE;
-}
-
-/// Check if a Node is a slottable (Element or Text)
-/// DOM §4.3.7: Element and Text nodes are slottables
-pub fn isSlottable(node: anytype) bool {
-    const nt = getNodeType(node);
-    return nt == ELEMENT_NODE or nt == TEXT_NODE;
-}
-
-/// Check if a Node is an HTMLSlotElement
-/// For now, this checks if it's an element with local_name "slot"
-pub fn isSlot(node: anytype) bool {
-    if (!isElement(node)) return false;
-
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-
-    // Check if it has local_name field
-    if (@hasField(ChildT, "local_name")) {
-        return std.ascii.eqlIgnoreCase(node.local_name, "slot");
+    /// The node, if it is still the one this reference was taken on.
+    pub fn get(self: NodeRef) ?*NodeBase {
+        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
+        return self.node;
     }
-    // Try tag_name
-    if (@hasField(ChildT, "tag_name")) {
-        return std.ascii.eqlIgnoreCase(node.tag_name, "slot");
+
+    /// Whether this reference names `node`, which the caller knows is live.
+    pub fn is(self: NodeRef, node: *NodeBase) bool {
+        return self.node == node and self.get() != null;
     }
-    return false;
-}
 
-/// Get the parent node if it has parent_node field
-pub fn getParentNode(node: anytype) ?*@TypeOf(node.*) {
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "parent_node")) {
-        return node.parent_node;
+    pub fn eql(a: NodeRef, b: NodeRef) bool {
+        return a.instance == b.instance and a.generation == b.generation;
     }
-    return null;
-}
+};
 
-/// Get the slottable name from a slottable
-/// For Elements, this is the "slot" attribute value (via slottable_name field)
-/// For Text nodes, this is always empty string
-pub fn getSlottableName(node: anytype) []const u8 {
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "slottable_name")) {
-        return node.slottable_name;
+/// DOM 4.2.2.2: a slottable's assigned slot (null or a slot) and its manual
+/// slot assignment (null or a slot).
+pub const SlottableState = struct {
+    assigned_slot: ?NodeRef = null,
+    manual_slot_assignment: ?NodeRef = null,
+
+    /// The assigned slot, if it is still alive.
+    pub fn assignedSlot(self: *const SlottableState) ?*NodeBase {
+        const ref = self.assigned_slot orelse return null;
+        return ref.get();
     }
-    return "";
-}
 
-/// Set the assigned slot for a slottable
-pub fn setSlottableAssignedSlot(node: anytype, slot: ?*anyopaque) void {
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "assigned_slot")) {
-        node.assigned_slot = slot;
+    /// The manual slot assignment, if it is still alive.
+    pub fn manualSlotAssignment(self: *const SlottableState) ?*NodeBase {
+        const ref = self.manual_slot_assignment orelse return null;
+        return ref.get();
     }
-}
+};
 
-/// Get the assigned slot for a slottable
-pub fn getSlottableAssignedSlot(node: anytype) ?*anyopaque {
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "assigned_slot")) {
-        return node.assigned_slot;
+/// DOM 4.2.2.1 and HTML 4.12.4: a slot's name, its assigned nodes and its
+/// manually assigned nodes (an ordered set, set by `assign()`).
+pub const SlotState = struct {
+    /// What the name and both lists are allocated from.
+    allocator: std.mem.Allocator,
+    /// Owned when non-empty.
+    name: []const u8 = "",
+    assigned_nodes: std.ArrayListUnmanaged(NodeRef) = .empty,
+    manually_assigned_nodes: std.ArrayListUnmanaged(NodeRef) = .empty,
+
+    pub fn init(allocator: std.mem.Allocator) SlotState {
+        return .{ .allocator = allocator };
     }
-    return null;
-}
 
-/// Get the manual slot assignment for a slottable
-pub fn getSlottableManualAssignment(node: anytype) ?*anyopaque {
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "manual_slot_assignment")) {
-        return node.manual_slot_assignment;
+    pub fn deinit(self: *SlotState) void {
+        if (self.name.len > 0) self.allocator.free(self.name);
+        self.name = "";
+        self.assigned_nodes.deinit(self.allocator);
+        self.manually_assigned_nodes.deinit(self.allocator);
     }
-    return null;
-}
 
-/// Set the manual slot assignment for a slottable
-pub fn setSlottableManualAssignment(node: anytype, slot: ?*anyopaque) void {
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "manual_slot_assignment")) {
-        node.manual_slot_assignment = slot;
+    /// Set the slot's name to a copy of `value`. On failure the name is
+    /// left as it was.
+    pub fn setName(self: *SlotState, value: []const u8) !void {
+        const copy: []const u8 = if (value.len == 0) "" else try self.allocator.dupe(u8, value);
+        if (self.name.len > 0) self.allocator.free(self.name);
+        self.name = copy;
     }
-}
 
-/// Get the name of a slot element
-/// Returns empty string if not a slot or name not found (which means default slot)
-pub fn getSlotName(slot_node: anytype) []const u8 {
-    if (!isSlot(slot_node)) return "";
+    /// Replace the assigned nodes with `nodes`, reusing the list's memory.
+    pub fn setAssignedNodes(self: *SlotState, nodes: []const NodeRef) !void {
+        try self.assigned_nodes.ensureTotalCapacity(self.allocator, nodes.len);
+        self.assigned_nodes.clearRetainingCapacity();
+        self.assigned_nodes.appendSliceAssumeCapacity(nodes);
+    }
 
-    const T = @TypeOf(slot_node);
-    const ChildT = @typeInfo(T).pointer.child;
-
-    // Try to get "name" attribute via call_getAttribute if available
-    if (@hasDecl(ChildT, "call_getAttribute")) {
-        if (slot_node.call_getAttribute("name")) |name| {
-            return name;
+    /// Whether the assigned nodes are empty, counting only live entries.
+    pub fn hasAssignedNodes(self: *const SlotState) bool {
+        for (self.assigned_nodes.items) |ref| {
+            if (ref.get() != null) return true;
         }
+        return false;
     }
-    return "";
+};
+
+/// A slottable's state and its name (DOM 4.2.2.2: an Element's is its `slot`
+/// attribute's value; a Text node's is always the empty string).
+pub const Slottable = struct {
+    state: *SlottableState,
+    name: []const u8,
+};
+
+/// What the owners supply. Each reads only the instance it is given.
+pub const Implementation = struct {
+    /// Element: its slottable state and its `slot` attribute value, null for
+    /// an instance that is not an Element.
+    element_slottable: ?*const fn (element: *runtime.Instance) ?Slottable = null,
+    /// Text: its slottable state, null for an instance that is not a Text node.
+    text_slottable: ?*const fn (text: *runtime.Instance) ?*SlottableState = null,
+    /// HTMLSlotElement: its slot state, null for any other instance.
+    slot_state: ?*const fn (slot: *runtime.Instance) ?*SlotState = null,
+};
+
+/// Process-wide, written once at start-up (process_start.zig).
+// process-wide: function pointers Element, Text and HTMLSlotElement install once at process start (crane.Process); they read only the instance they are given, so every Browser and thread shares them
+var implementation: ?Implementation = null;
+
+/// Called by the owners' installHooks, once each, at process start
+/// (process_start.zig). Each installs only its own members.
+pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
+    var combined = implementation orelse Implementation{};
+    if (impl.element_slottable) |f| combined.element_slottable = f;
+    if (impl.text_slottable) |f| combined.text_slottable = f;
+    if (impl.slot_state) |f| combined.slot_state = f;
+    implementation = combined;
 }
 
-/// Check if node is a shadow host (has a shadow root attached)
-pub fn isShadowHost(node: anytype) bool {
-    if (!isElement(node)) return false;
-
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "shadow_root")) {
-        return node.shadow_root != null;
-    }
-    return false;
+fn instanceOf(node: *NodeBase) ?*runtime.Instance {
+    const opaque_instance = node.owner_instance orelse return null;
+    return @ptrCast(@alignCast(opaque_instance));
 }
 
-/// Get the shadow root of an element (if it's a shadow host)
-pub fn getShadowRoot(node: anytype) ?*anyopaque {
-    if (!isElement(node)) return null;
-
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "shadow_root")) {
-        if (node.shadow_root) |sr| {
-            return @ptrCast(sr);
-        }
-    }
-    return null;
+/// Whether `node` is an Element.
+pub fn isElement(node: *const NodeBase) bool {
+    return node.node_type == ELEMENT_NODE;
 }
 
-/// Get the children of a node as a slice
-pub fn getChildNodes(node: anytype) []const *anyopaque {
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "child_nodes")) {
-        const slice = node.child_nodes.toSlice();
-        // Cast the slice (this is safe because we're just reinterpreting the pointer type)
-        return @as([*]const *anyopaque, @ptrCast(slice.ptr))[0..slice.len];
-    }
-    return &.{};
+/// DOM 4.2.2.2: "Element and Text nodes are slottables."
+///
+/// A CDATASection is a Text node too, but Crane's CDATASection has no Text
+/// state to keep an assigned slot in; it occurs only in XML documents. TODO:
+/// give CDATASection the slottable state when its impl chains through Text.
+pub fn isSlottable(node: *const NodeBase) bool {
+    return node.node_type == ELEMENT_NODE or node.node_type == TEXT_NODE;
 }
 
-/// Get the root node of a node
-pub fn getRoot(node: anytype) *anyopaque {
-    var current = node;
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-
-    if (@hasField(ChildT, "parent_node")) {
-        while (current.parent_node) |parent| {
-            current = parent;
-        }
-    }
-    return @ptrCast(current);
+/// DOM 4.2.2.1: whether `node` is a slot. "A slot can only be created
+/// through HTML's slot element": an HTMLSlotElement, told by its vtable, so
+/// the check reads no state.
+pub fn isSlot(node: *NodeBase) bool {
+    if (node.node_type != ELEMENT_NODE) return false;
+    const instance = instanceOf(node) orelse return false;
+    return instance.vtable == &interfaces.HTMLSlotElement.vtable;
 }
 
-/// Check if a node is a ShadowRoot
-/// ShadowRoot is a DocumentFragment with a host field
-pub fn isShadowRoot(node: anytype) bool {
-    if (!isDocumentFragment(node)) return false;
-
-    const T = @TypeOf(node);
-    const ChildT = @typeInfo(T).pointer.child;
-    if (@hasField(ChildT, "host")) {
-        return node.host != null;
+/// `node`'s slottable state and name, or null when it is not a slottable.
+pub fn slottable(node: *NodeBase) ?Slottable {
+    const instance = instanceOf(node) orelse return null;
+    switch (node.node_type) {
+        ELEMENT_NODE => {
+            const impl = implementation orelse return null;
+            const f = impl.element_slottable orelse return null;
+            return f(instance);
+        },
+        TEXT_NODE => {
+            const impl = implementation orelse return null;
+            const f = impl.text_slottable orelse return null;
+            const state = f(instance) orelse return null;
+            return .{ .state = state, .name = "" };
+        },
+        else => return null,
     }
-    return false;
 }
 
-/// Cast to ShadowRoot if it is one
-pub fn asShadowRoot(node: anytype) ?*anyopaque {
-    if (isShadowRoot(node)) {
-        return @ptrCast(node);
-    }
-    return null;
+/// `node`'s slot state, or null when it is not a slot.
+pub fn slotState(node: *NodeBase) ?*SlotState {
+    if (!isSlot(node)) return null;
+    const impl = implementation orelse return null;
+    const f = impl.slot_state orelse return null;
+    const instance = instanceOf(node) orelse return null;
+    return f(instance);
 }
 
-/// Check if ancestor is an inclusive ancestor of descendant
-pub fn isInclusiveAncestor(ancestor: anytype, descendant: anytype) bool {
-    // Same node?
-    if (@as(*anyopaque, @ptrCast(ancestor)) == @as(*anyopaque, @ptrCast(descendant))) {
-        return true;
-    }
-
-    // Walk up from descendant
-    const T = @TypeOf(descendant);
-    const ChildT = @typeInfo(T).pointer.child;
-
-    if (@hasField(ChildT, "parent_node")) {
-        var current = descendant.parent_node;
-        while (current) |node| {
-            if (@as(*anyopaque, @ptrCast(node)) == @as(*anyopaque, @ptrCast(ancestor))) {
-                return true;
-            }
-            current = node.parent_node;
-        }
-    }
-
-    return false;
+test "NodeRef equality compares instance and generation" {
+    var a: NodeBase = undefined;
+    var instance: runtime.Instance = undefined;
+    const r1 = NodeRef{ .node = &a, .instance = &instance, .generation = 1 };
+    const r2 = NodeRef{ .node = &a, .instance = &instance, .generation = 2 };
+    try std.testing.expect(r1.eql(r1));
+    try std.testing.expect(!r1.eql(r2));
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "slot_helpers: basic type checks" {
-    // Just verify the module compiles
-    try std.testing.expect(ELEMENT_NODE == 1);
-    try std.testing.expect(TEXT_NODE == 3);
+test "slot state names are copied and freed" {
+    var state = SlotState.init(std.testing.allocator);
+    defer state.deinit();
+    try state.setName("a");
+    try state.setName("bb");
+    try std.testing.expectEqualStrings("bb", state.name);
+    try state.setName("");
+    try std.testing.expectEqualStrings("", state.name);
 }
