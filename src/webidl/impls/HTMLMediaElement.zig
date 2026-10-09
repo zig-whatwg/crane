@@ -16,7 +16,7 @@ const same_object = @import("same_object.zig");
 const clock = @import("clock");
 const hooks = dom.media_elements;
 pub const State = interfaces.HTMLMediaElement.State;
-const Kind = enum(u16) { event, failure, read, next_source, release_delay, pause, track_event, select_tracks, track_change, progress_tick, stalled, fatal_network, fatal_decode, playing, resolve_play, reached_end };
+const Kind = enum(u16) { event, failure, read, next_source, release_delay, pause, track_event, select_tracks, track_change, progress_tick, stalled, fatal_network, fatal_decode, playing, resolve_play, reached_end, select };
 /// "time marches on" fires timeupdate every 15 to 250ms of normal playback
 /// (4.8.11.8 step 6); Chromium and Gecko both use 250ms.
 const timeupdate_interval_ms: u64 = 250;
@@ -134,15 +134,44 @@ pub const InternalState = struct {
         const generation = self.load.beginSelection();
         self.syncDelay();
         try self.register();
-        try self.activity.stable(generation, stable);
+        try self.awaitSelection(generation);
     }
     fn resumeSelection(self: *InternalState) !void {
         // Children steps 22–25 resume ONE waiting algorithm. Multiple child
         // insertions before its stable section cannot advance its pointer twice.
         // Step 24 can delay document load again, so restore the live registry.
         try self.register();
-        if (self.activity.hasStableFor(self.load.generation, stable)) return;
-        try self.activity.stable(self.load.generation, stable);
+        try self.awaitSelection(self.load.generation);
+    }
+    /// The resource selection algorithm's "await a stable state" (4.8.11.5:
+    /// step 4, and children steps 11 and 25), for load(), the insertion
+    /// steps, a src attribute set, and a source inserted or failed while
+    /// waiting.
+    /// Deviation: HTML defines awaiting a stable state as queueing a microtask
+    /// (8.1.7.3), which the parser's checkpoint before an inline script runs -
+    /// so a parsed <source> fails before that script can give it a src. The
+    /// browsers all wait for the current task to end instead: Chromium's
+    /// HTMLMediaElement::InvokeResourceSelectionAlgorithm and
+    /// ScheduleNextSourceChild start a 0-delay load_timer_ (a TODO there,
+    /// crbug.com/593289, would move it to a microtask), Gecko's
+    /// QueueSelectResourceTask uses RunInStableState (after the current
+    /// task), and WebKit queues a task. media-src-7_1_2.sub.html depends on it:
+    /// Chrome, Firefox and Safari pass it 3/3 (wpt.fyi aligned stable runs,
+    /// 2026-10-09). So the synchronous section runs in a media element task,
+    /// on the element's task source, like its other tasks. A host with no
+    /// event loop keeps the stable-state microtask.
+    fn awaitSelection(self: *InternalState, generation: u64) !void {
+        const instance = self.activity.instance orelse return error.InvalidStateError;
+        if (instance.ctx.getOptionalEventLoop() == null) {
+            if (self.activity.hasStableFor(generation, stable)) return;
+            return self.activity.stable(generation, stable);
+        }
+        // One pending selection task per load generation.
+        var task = self.activity.head;
+        while (task) |pending| : (task = pending.next) {
+            if (pending.kind == @intFromEnum(Kind.select) and pending.generation == generation and !pending.cancelled) return;
+        }
+        try self.queue(.select, null, null);
     }
     fn fail(self: *InternalState) void {
         if (self.load.ready != .nothing) {
@@ -859,6 +888,12 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
             self.finish(task.generation);
         },
         .event => if (task.event) |event| event.dispatch(),
+        // Resource selection's synchronous section (awaitSelection).
+        .select => {
+            // Running: no longer pending (awaitSelection's scan).
+            task.cancelled = true;
+            selection(self) catch self.cancel();
+        },
         .read => {
             self.read_queued = false;
             self.read() catch self.fail();
@@ -883,7 +918,7 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
                 // A removed candidate must not stay alive while we wait.
                 self.candidate = null;
                 engine.forgetTracedChild(instance, .{ .name = "sourceCandidate" });
-                self.activity.stable(task.generation, stable) catch self.cancel();
+                self.awaitSelection(task.generation) catch self.cancel();
             }
         },
         .release_delay => {
@@ -951,7 +986,7 @@ pub fn call_load(instance: *runtime.Instance) anyerror!void {
     if (reset.queue_timeupdate) try self.event("timeupdate");
     if (reset.queue_ratechange) try self.event("ratechange");
     try self.register();
-    try self.activity.stable(reset.generation, stable);
+    try self.awaitSelection(reset.generation);
 }
 fn rejectPending(self: *InternalState, name: []const u8) !void {
     const exception = try engine.createDOMException(self.activity.instance.?.ctx, name, "");

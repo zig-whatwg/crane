@@ -50,6 +50,12 @@ fn selectionOrder() !void {
     dom.node_creation.destroyUninserted(previous);
     try testing.expectEqual(@as(u64, 0), runtime.SlabAllocator.generationOf(previous));
 
+    // This realm has no event loop (a host without one): resource selection
+    // keeps HTML's stable-state microtask there. With an event loop it runs
+    // in a media element task instead, as the browsers do
+    // (HTMLMediaElement.zig awaitSelection); this test pins the fallback.
+    try testing.expect(realm.getOptionalEventLoop() == null);
+
     const next = try audio(realm);
     defer dom.node_creation.destroyUninserted(next);
     // The allocator reuses native slots; the pending operation must retain
