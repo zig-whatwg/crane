@@ -3118,11 +3118,12 @@ pub fn build(b: *std.Build) void {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
         };
 
-        // The WPT runner's WAV/PCM media backend (a host decoder built only
-        // into wpt_runner): its std.testing blocks. No V8 - only the media
-        // backend contract and MIME Sniffing's parser.
+        // The WPT runner's media backends (host decoders built only into
+        // wpt_runner: WAV/PCM, WebM): their std.testing blocks, reached from
+        // host_media.zig. No V8 - only the media backend contract and MIME
+        // Sniffing's parser.
         const wav_backend_tests = b.addTest(.{ .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/wpt_runner/wav_backend.zig"),
+            .root_source_file = b.path("tests/wpt_runner/host_media.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{

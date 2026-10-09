@@ -83,3 +83,60 @@ test "C host adapter preserves result tags bytes and decoder ownership" {
     try testing.expectEqual(@as(usize, 5), host.bytes);
     try testing.expectEqual(@as(u32, 1), host.closes);
 }
+
+test "videoSizeAt: null where a decoder does not answer it (no_decoder, the C adapter, a vtable without it)" {
+    // no_decoder.
+    var none = try media.no_decoder.open(testing.allocator, "video/webm");
+    defer none.deinit();
+    try testing.expectEqual(@as(?media.VideoSize, null), none.videoSizeAt(0));
+    try testing.expectEqual(@as(?media.VideoSize, null), none.videoSizeAt(12.5));
+
+    // A host decoder whose vtable leaves the entry out: unknown, so the
+    // element keeps its last size.
+    const Silent = struct {
+        fn push(_: ?*anyopaque, _: []const u8, _: bool) media.Result {
+            return .need_more;
+        }
+        fn destroy(_: ?*anyopaque) void {}
+    };
+    var silent: media.Decoder = .{ .ptr = null, .vtable = &.{ .push = Silent.push, .deinit = Silent.destroy } };
+    try testing.expectEqual(@as(?media.VideoSize, null), silent.videoSizeAt(1));
+    silent.deinit();
+
+    // The C adapter's vtable is unchanged, and its decoders answer null.
+    const adapter = @import("platform").media_adapter;
+    const Host = struct {
+        fn support(_: ?*anyopaque, _: [*]const u8, _: usize) callconv(.c) u8 {
+            return 2;
+        }
+        fn open(raw: ?*anyopaque, _: [*]const u8, _: usize) callconv(.c) ?*anyopaque {
+            return raw;
+        }
+        fn push(_: ?*anyopaque, _: [*]const u8, _: usize, _: bool, _: *adapter.Metadata) callconv(.c) u8 {
+            return 0;
+        }
+        fn close(_: ?*anyopaque) callconv(.c) void {}
+    };
+    var context: u8 = 0;
+    var bridge = adapter.Adapter.init(&context, &.{ .can_play_type = Host.support, .open = Host.open, .push = Host.push, .close = Host.close });
+    var bridged = try bridge.backend().open(testing.allocator, "video/example");
+    defer bridged.deinit();
+    try testing.expectEqual(@as(?media.VideoSize, null), bridged.videoSizeAt(0));
+}
+
+test "videoSizeAt: a decoder that answers it gives the size of the frame at each position" {
+    const Host = struct {
+        fn push(_: ?*anyopaque, _: []const u8, _: bool) media.Result {
+            return .need_more;
+        }
+        fn destroy(_: ?*anyopaque) void {}
+        fn sizeAt(_: ?*anyopaque, seconds: f64) ?media.VideoSize {
+            if (seconds < 0.986) return .{ .width = 400, .height = 300 };
+            return .{ .width = 200, .height = 150 };
+        }
+    };
+    var decoder: media.Decoder = .{ .ptr = null, .vtable = &.{ .push = Host.push, .deinit = Host.destroy, .video_size_at = Host.sizeAt } };
+    try testing.expectEqual(media.VideoSize{ .width = 400, .height = 300 }, decoder.videoSizeAt(0).?);
+    try testing.expectEqual(media.VideoSize{ .width = 200, .height = 150 }, decoder.videoSizeAt(1.5).?);
+    decoder.deinit();
+}

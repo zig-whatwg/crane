@@ -16,7 +16,7 @@ const same_object = @import("same_object.zig");
 const clock = @import("clock");
 const hooks = dom.media_elements;
 pub const State = interfaces.HTMLMediaElement.State;
-const Kind = enum(u16) { event, failure, read, next_source, release_delay, pause, track_event, select_tracks, track_change, progress_tick, stalled, fatal_network, fatal_decode, playing, resolve_play, reached_end };
+const Kind = enum(u16) { event, failure, read, next_source, release_delay, pause, track_event, select_tracks, track_change, progress_tick, stalled, fatal_network, fatal_decode, playing, resolve_play, reached_end, select };
 /// "time marches on" fires timeupdate every 15 to 250ms of normal playback
 /// (4.8.11.8 step 6); Chromium and Gecko both use 250ms.
 const timeupdate_interval_ms: u64 = 250;
@@ -59,6 +59,10 @@ pub const InternalState = struct {
     /// stable state, the official playback position must be set to the
     /// current playback position").
     official_fresh: bool = false,
+    /// The video's natural size (HTML 4.8.8): the size of the frame at the
+    /// current playback position, as the host's decoder reports it; 0x0 for
+    /// a resource with no video.
+    video_size: backend.VideoSize = .{ .width = 0, .height = 0 },
 
     fn queue(self: *InternalState, kind: Kind, target: ?*runtime.Instance, name: ?[]const u8) !void {
         return self.activity.queue(@intFromEnum(kind), self.load.generation, target, name);
@@ -66,14 +70,22 @@ pub const InternalState = struct {
     fn event(self: *InternalState, name: []const u8) !void {
         _ = try self.queue(.event, null, name);
     }
+    /// Stop fetching and drop the resource's decoder.
     fn endFetch(self: *InternalState) void {
+        self.stopFetch();
+        if (self.decoder) |*decoder| decoder.deinit();
+        self.decoder = null;
+    }
+    /// Stop fetching. A resource fetched to its end keeps its decoder: it
+    /// holds the media data, and playback asks it about positions (the
+    /// size of the frame at each, videoSizeAt) until the next load,
+    /// a failure, or teardown drops it (endFetch).
+    fn stopFetch(self: *InternalState) void {
         self.document_abort_pending = null;
         self.progress_timer.cancel();
         self.stall_timer.cancel();
         self.progress.reset();
         self.resource.stop();
-        if (self.decoder) |*decoder| decoder.deinit();
-        self.decoder = null;
         self.activity.fetching = false;
         self.read_queued = false;
     }
@@ -98,7 +110,7 @@ pub const InternalState = struct {
     }
     fn finish(self: *InternalState, generation: u64) void {
         if (generation != self.load.generation) return;
-        self.endFetch();
+        self.stopFetch();
         self.load.endLoadDelay(generation);
         // A playing element stays in the live registry, so the document's
         // unload and discard reach it (syncClock).
@@ -122,15 +134,66 @@ pub const InternalState = struct {
         const generation = self.load.beginSelection();
         self.syncDelay();
         try self.register();
-        try self.activity.stable(generation, stable);
+        self.delayUntilSelection();
+        try self.awaitSelection(generation);
     }
     fn resumeSelection(self: *InternalState) !void {
         // Children steps 22–25 resume ONE waiting algorithm. Multiple child
         // insertions before its stable section cannot advance its pointer twice.
         // Step 24 can delay document load again, so restore the live registry.
         try self.register();
-        if (self.activity.hasStableFor(self.load.generation, stable)) return;
-        try self.activity.stable(self.load.generation, stable);
+        self.delayUntilSelection();
+        try self.awaitSelection(self.load.generation);
+    }
+    /// With selection's wait a task (awaitSelection), the document's load
+    /// event could fire between the invocation and the synchronous section
+    /// that sets the delaying-the-load-event flag (step 4; children step 24).
+    /// Chromium sets the flag when the algorithm is invoked
+    /// (InvokeResourceSelectionAlgorithm: "3 - Set the media element's
+    /// delaying-the-load-event flag to true"), the step's place before HTML
+    /// moved it for lazy loading; Crane loads media eagerly, so it does the
+    /// same. resource-selection-invoke-set-src.html, -insert-source.html,
+    /// -audio-constructor.html and others wait for loadstart before
+    /// window.onload; Chrome and Safari pass them. Without an event loop the
+    /// microtask runs before any load event can, and nothing changes.
+    fn delayUntilSelection(self: *InternalState) void {
+        if (!self.hasEventLoop()) return;
+        self.load.delaying_load_event = true;
+        self.syncDelay();
+    }
+    /// The resource selection algorithm's "await a stable state" (4.8.11.5:
+    /// step 4, and children steps 11 and 25), for load(), the insertion
+    /// steps, a src attribute set, and a source inserted or failed while
+    /// waiting.
+    /// Deviation: HTML defines awaiting a stable state as queueing a microtask
+    /// (8.1.7.3), which the parser's checkpoint before an inline script runs -
+    /// so a parsed <source> fails before that script can give it a src. The
+    /// browsers all wait for the current task to end instead: Chromium's
+    /// HTMLMediaElement::InvokeResourceSelectionAlgorithm and
+    /// ScheduleNextSourceChild start a 0-delay load_timer_ (a TODO there,
+    /// crbug.com/593289, would move it to a microtask), Gecko's
+    /// QueueSelectResourceTask uses RunInStableState (after the current
+    /// task), and WebKit queues a task. media-src-7_1_2.sub.html depends on it:
+    /// Chrome, Firefox and Safari pass it 3/3 (wpt.fyi aligned stable runs,
+    /// 2026-10-09). So the synchronous section runs in a media element task,
+    /// on the element's task source, like its other tasks. A host with no
+    /// event loop keeps the stable-state microtask.
+    fn hasEventLoop(self: *InternalState) bool {
+        const instance = self.activity.instance orelse return false;
+        return instance.ctx.getOptionalEventLoop() != null;
+    }
+    fn awaitSelection(self: *InternalState, generation: u64) !void {
+        const instance = self.activity.instance orelse return error.InvalidStateError;
+        if (instance.ctx.getOptionalEventLoop() == null) {
+            if (self.activity.hasStableFor(generation, stable)) return;
+            return self.activity.stable(generation, stable);
+        }
+        // One pending selection task per load generation.
+        var task = self.activity.head;
+        while (task) |pending| : (task = pending.next) {
+            if (pending.kind == @intFromEnum(Kind.select) and pending.generation == generation and !pending.cancelled) return;
+        }
+        try self.queue(.select, null, null);
     }
     fn fail(self: *InternalState) void {
         if (self.load.ready != .nothing) {
@@ -146,6 +209,15 @@ pub const InternalState = struct {
                 // Children steps 10–11: error belongs to the source, then await
                 // stable state before advancing the live child-list pointer.
                 _ = self.queue(.next_source, target, if (target != null) "error" else null) catch {
+                    self.cancel();
+                    return;
+                };
+                // With an event loop the stable-state wait is a task
+                // (awaitSelection), queued now, right behind the error task,
+                // as the algorithm reaches step 11 (Chromium starts its
+                // load_timer_ when the source fails, not after its error
+                // event). Without one, the error task awaits the microtask.
+                if (self.hasEventLoop()) self.awaitSelection(self.load.generation) catch {
                     self.cancel();
                     return;
                 };
@@ -244,6 +316,16 @@ pub const InternalState = struct {
                         self.fail();
                         return;
                     }
+                    // "Once the entire media resource has been fetched (but
+                    // potentially before any of it has been decoded)": fire
+                    // progress, then set networkState to NETWORK_IDLE and fire
+                    // suspend (4.8.11.5, the media data processing steps). A
+                    // body that arrives before the 350ms progress timer first
+                    // fires gets its progress here. networkState is already
+                    // NETWORK_IDLE when progress dispatches, as in Chrome and
+                    // Safari (networkState_during_progress.html: Chrome 2/4,
+                    // Safari 2/4, Firefox 4/4 on wpt.fyi, 2026-10-09).
+                    try self.event("progress");
                     self.load.suspendFetch(self.load.generation);
                     self.syncDelay();
                     try self.event("suspend");
@@ -275,11 +357,66 @@ pub const InternalState = struct {
                 // durationchange is queued before loadedmetadata).
                 if (self.load.setDuration(metadata.duration)) try self.event("durationchange");
                 const data_kind: LoadState.Data = if (result == .current_data) .current_data else .metadata;
-                const change = self.load.decoderData(self.load.generation, data_kind, end_of_stream, self.looping()) orelse return false;
+                const reported: backend.VideoSize = .{ .width = metadata.width, .height = metadata.height };
+                const change = self.load.decoderData(self.load.generation, data_kind, end_of_stream, self.looping()) orelse {
+                    self.followSize(reported);
+                    return false;
+                };
+                if (change.loadedmetadata) try self.metadataSize(reported) else self.followSize(reported);
                 try self.readyChanged(change);
             },
         }
         return false;
+    }
+
+    fn isVideo(self: *InternalState) bool {
+        const instance = self.activity.instance orelse return false;
+        return std.mem.eql(u8, instance.vtable.name, "HTMLVideoElement");
+    }
+
+    /// The size of the frame at the current playback position: what the
+    /// decoder knows of it, else what its last answer reported.
+    fn frameSize(self: *InternalState, reported: ?backend.VideoSize) ?backend.VideoSize {
+        if (self.decoder) |decoder| if (decoder.videoSizeAt(self.load.position)) |size| return size;
+        const size = reported orelse return null;
+        if (size.width == 0 and size.height == 0) return null;
+        return size;
+    }
+
+    /// Media data processing, "once enough of the media data has been
+    /// fetched to determine the duration of the media resource and its
+    /// dimensions", step 5 (4.8.11.5): "For video elements, set the
+    /// videoWidth and videoHeight attributes, and queue a media element
+    /// task given the media element to fire an event named resize at the
+    /// media element." Between durationchange and loadedmetadata.
+    /// Deviation: only when the resource has video, as Gecko does
+    /// (HTMLMediaElement::MetadataLoaded: `if (IsVideo() && HasVideo())
+    /// QueueEvent(u"resize")`) and Chromium does (WebMediaPlayerImpl reports
+    /// a natural size, so HTMLMediaElement::SizeChanged fires resize, only for
+    /// a pipeline with video): an audio resource in a video element fires none.
+    fn metadataSize(self: *InternalState, reported: backend.VideoSize) !void {
+        if (!self.isVideo()) return;
+        const size = self.frameSize(reported) orelse {
+            self.video_size = .{ .width = 0, .height = 0 };
+            return;
+        };
+        self.video_size = size;
+        try self.event("resize");
+    }
+
+    /// HTML 4.8.8: "Whenever the natural width or natural height of the
+    /// video changes ..., if the element's readyState attribute is not
+    /// HAVE_NOTHING, the user agent must queue a media element task given the
+    /// media element to fire an event named resize at the media element."
+    /// Fired only on a real change (Gecko HTMLMediaElement::UpdateMediaSize
+    /// compares with the size it holds). A position whose size the decoder
+    /// does not know keeps the last one.
+    fn followSize(self: *InternalState, reported: ?backend.VideoSize) void {
+        if (!self.isVideo() or self.load.ready == .nothing) return;
+        const size = self.frameSize(reported) orelse return;
+        if (size.width == self.video_size.width and size.height == self.video_size.height) return;
+        self.video_size = size;
+        self.event("resize") catch self.cancel();
     }
 
     /// Queue what a ready-state change asks (4.8.11.7), in its order.
@@ -295,8 +432,35 @@ pub const InternalState = struct {
         }
         if (change.canplay) try self.event("canplay");
         if (change.notify_playing) try self.notifyPlaying();
-        if (change.canplaythrough) try self.event("canplaythrough");
+        if (change.canplaythrough) {
+            try self.event("canplaythrough");
+            try self.autoplay();
+        }
         self.syncClock();
+    }
+
+    /// The autoplay substeps after canplaythrough (4.8.11.7; LoadState.autoplay
+    /// numbers them). "Eligible for autoplay": the model checks the can
+    /// autoplay flag and paused; here, the autoplay attribute, that the node
+    /// document's active sandboxing flag set lacks the sandboxed automatic
+    /// features flag (set by a sandbox without allow-scripts), and that the
+    /// document is allowed to use the "autoplay" feature. The lazy loading
+    /// condition always holds: Crane loads every media element eagerly.
+    fn autoplay(self: *InternalState) !void {
+        const instance = self.activity.instance orelse return;
+        if (!(try interfaces.Element.call_hasAttribute(instance, .initInterned("autoplay")))) return;
+        if (automaticFeaturesSandboxed(instance)) return;
+        // TODO(permissions-policy): "allowed to use" the "autoplay" feature
+        // (default allowlist 'self'). No document carries a permissions policy
+        // yet (src/html/permissions_policy.zig is not delivered), so every
+        // document is allowed, as a top-level or same-origin one is.
+        const steps = self.load.autoplay() orelse return;
+        // Step 2's time marches on has nothing to do yet: Crane does not
+        // process text track cues there (a follow-up), and outside normal
+        // playback it fires no timeupdate.
+        _ = steps.time_marches_on;
+        if (steps.play_event) try self.event("play");
+        if (steps.notify_playing) try self.notifyPlaying();
     }
 
     /// The official playback position, just set, stays until the next stable
@@ -391,6 +555,8 @@ pub const InternalState = struct {
         const self: *InternalState = @ptrCast(@alignCast(context));
         if (self.activity.instance == null) return;
         self.advanceClock();
+        // The frame at the new position may have another size.
+        self.followSize(null);
         if (!self.load.potentiallyPlaying(self.looping())) return;
         // Time marches on, during normal playback: timeupdate.
         self.load.official_position = self.load.position;
@@ -448,6 +614,8 @@ fn seekStable(context: *anyopaque, generation: u64) void {
     if (generation != self.load.generation) return;
     // Step 14: only the newest seek finishes.
     if (!self.load.finishSeek(self.load.seek_id)) return;
+    // The frame at the new position may have another size.
+    self.followSize(null);
     // Steps 16-17: timeupdate, then seeked.
     self.event("timeupdate") catch {
         self.cancel();
@@ -503,7 +671,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn installHooks() void {
     dom.attribute_change_steps.install("audio", attributeChanged);
     dom.attribute_change_steps.install("video", attributeChanged);
-    dom.media_elements.installMediaElement(delaysLoad, trackParentChanged, trackModeChanged);
+    dom.media_elements.installMediaElement(delaysLoad, trackParentChanged, trackModeChanged, naturalSize);
     dom.mutation.registerInsertionStepsCallback(inserted) catch @panic("media insertion hook allocation");
     dom.mutation.registerRemovingStepsCallback(removed) catch @panic("media removing hook allocation");
     dom.document_fetches.install(.{ .discard = cancelRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
@@ -589,6 +757,38 @@ fn documentAbortSteps(context: ?*anyopaque) void {
     self.unregister();
     self.syncDelay();
     self.activity.sync();
+}
+/// The video's natural size, for HTMLVideoElement's videoWidth and
+/// videoHeight (dom.media_elements.videoSize).
+fn naturalSize(instance: *runtime.Instance) dom.media_elements.VideoSize {
+    const self = instance.getState(State).own._internal orelse return .{};
+    return .{ .width = self.video_size.width, .height = self.video_size.height };
+}
+/// Whether the element's node document's active sandboxing flag set has the
+/// sandboxed automatic features browsing context flag: its navigable is
+/// sandboxed without allow-scripts (HTML 7.1.5, "parse a sandboxing
+/// directive": the sandboxed automatic features browsing context flag,
+/// "unless tokens contains the allow-scripts keyword"). Document.zig's
+/// automaticFeaturesSandboxed reads it the same way for meta refresh.
+/// Also the CSP-derived sandboxing flags (HTML 7.1.5, "the CSP-derived
+/// sandboxing flags" of a response; CSP 3 6.3.2 sandbox): an enforced
+/// sandbox directive without allow-scripts sets the flag - the document's
+/// active sandboxing flag set is not recorded, so its policy container is
+/// read (content-security-policy/sandbox/autoplay-disabled-by-csp.html;
+/// Chrome, Firefox and Safari block that autoplay).
+fn automaticFeaturesSandboxed(instance: *runtime.Instance) bool {
+    const document = common.documentOf(instance) orelse return false;
+    if (dom.policy_containers.of(document)) |container| for (container.csp_list.policies.items) |*policy| {
+        if (policy.disposition != .enforce) continue;
+        const directive = policy.getDirective("sandbox") orelse continue;
+        const allows_scripts = for (directive.value.expressions.items) |token| {
+            if (std.ascii.eqlIgnoreCase(token.raw_value, "allow-scripts")) break true;
+        } else false;
+        if (!allows_scripts) return true;
+    };
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
+    const browsing_context = @import("html_core").window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    return !browsing_context.allowsScripts();
 }
 fn delaysLoad(document: *runtime.Instance) bool {
     const registry = common.liveRegistry(document.ctx) orelse return false;
@@ -782,6 +982,12 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
             self.finish(task.generation);
         },
         .event => if (task.event) |event| event.dispatch(),
+        // Resource selection's synchronous section (awaitSelection).
+        .select => {
+            // Running: no longer pending (awaitSelection's scan).
+            task.cancelled = true;
+            selection(self) catch self.cancel();
+        },
         .read => {
             self.read_queued = false;
             self.read() catch self.fail();
@@ -806,7 +1012,8 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
                 // A removed candidate must not stay alive while we wait.
                 self.candidate = null;
                 engine.forgetTracedChild(instance, .{ .name = "sourceCandidate" });
-                self.activity.stable(task.generation, stable) catch self.cancel();
+                // With an event loop, fail() queued the selection task already.
+                if (!self.hasEventLoop()) self.awaitSelection(task.generation) catch self.cancel();
             }
         },
         .release_delay => {
@@ -874,7 +1081,8 @@ pub fn call_load(instance: *runtime.Instance) anyerror!void {
     if (reset.queue_timeupdate) try self.event("timeupdate");
     if (reset.queue_ratechange) try self.event("ratechange");
     try self.register();
-    try self.activity.stable(reset.generation, stable);
+    self.delayUntilSelection();
+    try self.awaitSelection(reset.generation);
 }
 fn rejectPending(self: *InternalState, name: []const u8) !void {
     const exception = try engine.createDOMException(self.activity.instance.?.ctx, name, "");

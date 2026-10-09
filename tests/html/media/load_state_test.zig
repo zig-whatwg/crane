@@ -444,3 +444,39 @@ test "a decoder that reports no end of stream never claims enough data" {
     try testing.expectEqual(State.Ready.metadata, state.ready);
     try testing.expectEqual(State.Ready.metadata, state.readyNow(false));
 }
+
+test "autoplay: an element that can autoplay and is paused starts playing, once" {
+    var state = State.init(testing.allocator);
+    defer state.deinit();
+    _ = state.beginLoad();
+    // Substeps 1-4 (4.8.11.7, reaching HAVE_ENOUGH_DATA): paused false; the
+    // show poster flag cleared, with time marches on; play; notify about playing.
+    const steps = state.autoplay().?;
+    try testing.expect(!state.paused);
+    try testing.expect(!state.show_poster);
+    try testing.expect(steps.time_marches_on);
+    try testing.expect(steps.play_event);
+    try testing.expect(steps.notify_playing);
+    // No longer paused: not eligible again.
+    try testing.expectEqual(@as(?State.Autoplay, null), state.autoplay());
+}
+
+test "autoplay: pause() and play() clear the can autoplay flag; load sets it again" {
+    var state = State.init(testing.allocator);
+    defer state.deinit();
+    _ = state.beginLoad();
+    _ = state.pause();
+    try testing.expect(!state.can_autoplay);
+    try testing.expectEqual(@as(?State.Autoplay, null), state.autoplay());
+    try testing.expect(state.paused);
+    _ = state.beginLoad();
+    try testing.expect(state.can_autoplay);
+    _ = state.play(false);
+    _ = state.pause();
+    try testing.expectEqual(@as(?State.Autoplay, null), state.autoplay());
+    _ = state.beginLoad();
+    // The poster already hidden: no time marches on.
+    state.show_poster = false;
+    const steps = state.autoplay().?;
+    try testing.expect(!steps.time_marches_on);
+}

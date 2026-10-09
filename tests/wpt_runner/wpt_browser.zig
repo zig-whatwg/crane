@@ -52,7 +52,7 @@ const clock = @import("clock");
 const engine = @import("engine");
 const runtime = @import("runtime");
 const script_deadline = @import("script_deadline.zig");
-const wav_backend = @import("wav_backend.zig");
+const host_media = @import("host_media.zig");
 
 const log = std.log.scoped(.wpt_browser);
 
@@ -108,9 +108,9 @@ pub const WptBrowser = struct {
         const browser_instance = try Browser.init(allocator, .{
             .log_performance = true,
             // The runner is a host, and supplies media decoding as one: WAV
-            // linear PCM, which it really decodes (wav_backend.zig). Crane
-            // itself builds in no decoder.
-            .media_backend = wav_backend.backend,
+            // linear PCM and WebM (VP8/VP9, Vorbis/Opus), which it really
+            // reads (host_media.zig). Crane itself builds in no decoder.
+            .media_backend = host_media.backend,
         });
         errdefer browser_instance.deinit();
 
