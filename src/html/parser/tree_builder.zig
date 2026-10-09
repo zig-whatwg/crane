@@ -2328,6 +2328,120 @@ pub const TreeBuilder = struct {
             _ = try self.insertHtmlElement(tag);
             // Step 4.
             self.frameset_ok = false;
+        } else if (std.mem.eql(u8, name, "select")) {
+            // "In body", a start tag whose tag name is "select" (the select
+            // parser that keeps a select's contents in "in body").
+            if (self.fragmentContextIs("select")) {
+                // Fragment case, steps 1-2: parse error; ignore the token.
+                self.reportError(.invalid_first_character_of_tag_name);
+            } else if (self.hasElementInScope("select")) {
+                // Steps 1-3: parse error; ignore the token; pop until a
+                // select has been popped.
+                self.reportError(.invalid_first_character_of_tag_name);
+                self.popUntilTagName("select");
+            } else {
+                // Otherwise, steps 1-3.
+                try self.reconstructActiveFormattingElements();
+                _ = try self.insertHtmlElement(tag);
+                self.frameset_ok = false;
+            }
+        } else if (std.mem.eql(u8, name, "option")) {
+            // "In body", a start tag whose tag name is "option".
+            if (self.hasElementInScope("select")) {
+                // Step 1.
+                self.generateImpliedEndTags("optgroup");
+                // Step 2.
+                if (self.hasElementInScope("option")) self.reportError(.invalid_first_character_of_tag_name);
+            } else if (self.currentNodeIs("option")) {
+                // Otherwise, step 1.
+                _ = self.popCurrentNode();
+            }
+            try self.reconstructActiveFormattingElements();
+            _ = try self.insertHtmlElement(tag);
+        } else if (std.mem.eql(u8, name, "optgroup")) {
+            // "In body", a start tag whose tag name is "optgroup".
+            if (self.hasElementInScope("select")) {
+                // Step 1.
+                self.generateImpliedEndTags(null);
+                // Step 2.
+                if (self.hasElementInScope("option") or self.hasElementInScope("optgroup"))
+                    self.reportError(.invalid_first_character_of_tag_name);
+            } else if (self.currentNodeIs("option")) {
+                _ = self.popCurrentNode();
+            }
+            try self.reconstructActiveFormattingElements();
+            _ = try self.insertHtmlElement(tag);
+        } else if (std.mem.eql(u8, name, "rb") or std.mem.eql(u8, name, "rtc")) {
+            // "In body", a start tag whose tag name is one of: "rb", "rtc".
+            if (self.hasElementInScope("ruby")) self.generateImpliedEndTags(null);
+            if (!self.currentNodeIs("ruby")) self.reportError(.invalid_first_character_of_tag_name);
+            _ = try self.insertHtmlElement(tag);
+        } else if (std.mem.eql(u8, name, "rp") or std.mem.eql(u8, name, "rt")) {
+            // "In body", a start tag whose tag name is one of: "rp", "rt".
+            if (self.hasElementInScope("ruby")) self.generateImpliedEndTags("rtc");
+            if (!self.currentNodeIs("rtc") and !self.currentNodeIs("ruby")) self.reportError(.invalid_first_character_of_tag_name);
+            _ = try self.insertHtmlElement(tag);
+        } else if (std.mem.eql(u8, name, "area") or std.mem.eql(u8, name, "embed") or std.mem.eql(u8, name, "img") or
+            std.mem.eql(u8, name, "keygen") or std.mem.eql(u8, name, "wbr"))
+        {
+            // "In body", a start tag whose tag name is one of: "area", "br",
+            // "embed", "img", "keygen", "wbr" (br has its own branch below,
+            // shared with the br end tag): reconstruct, insert and pop,
+            // acknowledge the self-closing flag, frameset-ok "not ok".
+            try self.reconstructActiveFormattingElements();
+            _ = try self.insertHtmlElement(tag);
+            _ = self.popCurrentNode();
+            self.frameset_ok = false;
+        } else if (std.mem.eql(u8, name, "input")) {
+            // "In body", a start tag whose tag name is "input".
+            if (self.fragmentContextIs("select")) {
+                // Fragment case, steps 1-3: parse error; ignore; return.
+                self.reportError(.invalid_first_character_of_tag_name);
+                return;
+            }
+            if (self.hasElementInScope("select")) {
+                // Steps 1-2.
+                self.reportError(.invalid_first_character_of_tag_name);
+                self.popUntilTagName("select");
+            }
+            try self.reconstructActiveFormattingElements();
+            _ = try self.insertHtmlElement(tag);
+            _ = self.popCurrentNode();
+            if (!hasHiddenType(tag)) self.frameset_ok = false;
+        } else if (std.mem.eql(u8, name, "param") or std.mem.eql(u8, name, "source") or std.mem.eql(u8, name, "track")) {
+            // "In body", a start tag whose tag name is one of: "param",
+            // "source", "track": insert and pop.
+            _ = try self.insertHtmlElement(tag);
+            _ = self.popCurrentNode();
+        } else if (std.mem.eql(u8, name, "hr")) {
+            // "In body", a start tag whose tag name is "hr".
+            try self.closePElementIfInButtonScope();
+            if (self.hasElementInScope("select")) {
+                // Steps 1-2.
+                self.generateImpliedEndTags(null);
+                if (self.hasElementInScope("option") or self.hasElementInScope("optgroup"))
+                    self.reportError(.invalid_first_character_of_tag_name);
+            }
+            _ = try self.insertHtmlElement(tag);
+            _ = self.popCurrentNode();
+            self.frameset_ok = false;
+        } else if (std.mem.eql(u8, name, "image")) {
+            // "In body", a start tag whose tag name is "image": parse error;
+            // change the token's tag name to "img" and reprocess it.
+            self.reportError(.invalid_first_character_of_tag_name);
+            var img = try self.renamedToken(tag, "img");
+            defer img.deinit();
+            try self.processToken(.{ .start_tag = img });
+        } else if (std.mem.eql(u8, name, "xmp")) {
+            // "In body", a start tag whose tag name is "xmp".
+            try self.closePElementIfInButtonScope();
+            try self.reconstructActiveFormattingElements();
+            self.frameset_ok = false;
+            try self.parseGenericRawText(tag);
+        } else if (std.mem.eql(u8, name, "iframe")) {
+            // "In body", a start tag whose tag name is "iframe".
+            self.frameset_ok = false;
+            try self.parseGenericRawText(tag);
         } else if (isSpecialBlockElement(name)) {
             try self.closePElementIfInButtonScope();
             _ = try self.insertHtmlElement(tag);
@@ -2506,8 +2620,9 @@ pub const TreeBuilder = struct {
             }
             // Steps 1-3.
             self.closeListItem(name);
-        } else if (isSpecialBlockElement(name) or std.mem.eql(u8, name, "button")) {
-            // The block end tags: "address" ... "ul", with "button".
+        } else if (isSpecialBlockElement(name) or std.mem.eql(u8, name, "button") or std.mem.eql(u8, name, "select")) {
+            // The block end tags: "address" ... "ul", with "button" and
+            // "select" (a select start tag no longer leaves "in body").
             if (!self.hasElementInScope(name)) {
                 self.reportError(.invalid_first_character_of_tag_name);
                 return;
@@ -4201,6 +4316,35 @@ pub const TreeBuilder = struct {
         return false;
     }
 
+    /// Whether the current node is an HTML element named `name`.
+    fn currentNodeIs(self: *TreeBuilder, name: []const u8) bool {
+        const current = self.currentNode() orelse return false;
+        return current.namespace == .html and current.hasTagName(name);
+    }
+
+    /// Whether the parser's fragment context element is an HTML `name`
+    /// element (fragment case).
+    fn fragmentContextIs(self: *const TreeBuilder, name: []const u8) bool {
+        const context = self.fragment_context orelse return false;
+        return context.namespace == .html and context.hasTagName(name);
+    }
+
+    /// A copy of `tag` with the tag name `name`: the "image" start tag's
+    /// "change the token's tag name to img and reprocess it".
+    fn renamedToken(self: *TreeBuilder, tag: TagToken, name: []const u8) !TagToken {
+        var copy = TagToken.init(self.allocator, false);
+        errdefer copy.deinit();
+        copy.self_closing = tag.self_closing;
+        for (name) |byte| try copy.appendToTagName(byte);
+        for (tag.attributes.toSlice()) |attribute| {
+            try copy.startNewAttribute();
+            for (attribute.getName()) |byte| try copy.appendToAttributeName(byte);
+            for (attribute.getValue()) |byte| try copy.appendToAttributeValue(byte);
+        }
+        try copy.finishCurrentAttribute();
+        return copy;
+    }
+
     /// The li, dd and dt steps' common substeps: generate implied end tags
     /// except for `name` elements; a parse error unless the current node is
     /// now one; pop until a `name` element has been popped.
@@ -4960,6 +5104,15 @@ fn isFormattingElement(name: []const u8) bool {
 }
 
 /// Check if tag name is a void element.
+/// The input start tag's last step: a "type" attribute whose value is an
+/// ASCII case-insensitive match for "hidden" leaves frameset-ok alone.
+fn hasHiddenType(tag: TagToken) bool {
+    for (tag.attributes.toSlice()) |attribute| {
+        if (std.mem.eql(u8, attribute.getName(), "type")) return std.ascii.eqlIgnoreCase(attribute.getValue(), "hidden");
+    }
+    return false;
+}
+
 /// The li and dd/dt start tags' step: a special element other than these
 /// stops the walk up the stack.
 fn isAddressDivOrP(node: *const TreeNode) bool {

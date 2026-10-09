@@ -1,5 +1,6 @@
 //! HTML "in body" start and end tags that close what they imply: list
-//! items, definitions and buttons (HTML 13.2.6.4.7). The tree builder had no steps for
+//! items, definitions, buttons, options, ruby annotations, void elements and
+//! raw text elements (HTML 13.2.6.4.7). The tree builder had no steps for
 //! them, so "<li>x<li>y" made nested items, in the live parser and in
 //! DOMParser alike. Each case is parsed both ways - by document.write into a
 //! frame's document (the live, scripted parser) and by DOMParser (the
@@ -76,4 +77,26 @@ fn listsDefinitionsAndButtons() !void {
 
 test "li, dd, dt, p and button start tags close what they imply, live and in DOMParser" {
     try onFreshThread(listsDefinitionsAndButtons);
+}
+
+fn optionsRubyVoidAndRawText() !void {
+    try compare(
+        \\[
+        \\  ['<select><option>1<option>2</select>', '<select><option>1</option><option>2</option></select>'],
+        \\  ['<select><optgroup><option>1<optgroup><option>2</select>', '<select><optgroup><option>1</option></optgroup><optgroup><option>2</option></optgroup></select>'],
+        \\  ['<option>1<option>2', '<option>1</option><option>2</option>'],
+        \\  ['<select><select>x', '<select></select>x'],
+        \\  ['<ruby>a<rb>b<rt>c<rp>d</ruby>', '<ruby>a<rb>b</rb><rt>c</rt><rp>d</rp></ruby>'],
+        \\  ['<ruby>a<rtc>b<rt>c</ruby>', '<ruby>a<rtc>b<rt>c</rt></rtc></ruby>'],
+        \\  ['<p>a<hr>b', '<p>a</p><hr>b'],
+        \\  ['<image src=x>', '<img src="x">'],
+        \\  ['<xmp><p>x</xmp>y', '<xmp><p>x</xmp>y'],
+        \\  ['<iframe><p>x</iframe>y', '<iframe><p>x</iframe>y'],
+        \\  ['<select><option>a<hr><option>b</select>', '<select><option>a</option><hr><option>b</option></select>'],
+        \\]
+    );
+}
+
+test "option, optgroup, select, ruby, void and raw text start tags follow the in-body steps, live and in DOMParser" {
+    try onFreshThread(optionsRubyVoidAndRawText);
 }
