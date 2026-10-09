@@ -5,7 +5,8 @@
 //!
 //! ## Purpose
 //!
-//! This module exports the full browser runtime for use cases that need:
+//! Unlike platform/exports.zig which only exports platform VTables for mobile/native
+//! integration, this module exports the full browser runtime for use cases that need:
 //! - All WebIDL interfaces (Document, Element, Window, etc.)
 //! - All WebIDL namespaces (console, CSS, etc.)
 //! - V8 JavaScript engine bindings
@@ -80,6 +81,7 @@ const permissions = @import("permissions");
 const intl = @import("intl");
 
 // Platform abstraction (VTables for native integration)
+const platform = @import("platform");
 
 // ============================================================================
 // Force Zig to compile all modules by referencing their types
@@ -112,6 +114,9 @@ fn forceModuleCompilation() void {
 
     // Reference streams (access via internal.common)
     _ = streams.internal.common;
+
+    // Reference platform
+    _ = platform.PlatformBackend;
 }
 
 // ============================================================================
@@ -247,6 +252,25 @@ pub export fn whatwg_interface_count() callconv(.c) u32 {
     // Return approximate count based on registered interfaces
     return 800; // Approximate number of interfaces in the full runtime
 }
+
+// ============================================================================
+// Re-export Platform VTables for backward compatibility
+// ============================================================================
+
+// Re-export all platform VTable exports so existing code continues to work
+// Note: Using the platform module which provides the exports
+
+// Platform capability constants (re-export from platform module)
+pub const WHATWG_CAP_CLIPBOARD = platform.exports.WHATWG_CAP_CLIPBOARD;
+pub const WHATWG_CAP_TIMER = platform.exports.WHATWG_CAP_TIMER;
+pub const WHATWG_CAP_NETWORK = platform.exports.WHATWG_CAP_NETWORK;
+pub const WHATWG_CAP_STORAGE = platform.exports.WHATWG_CAP_STORAGE;
+
+// Platform lifecycle exports (re-export from platform module)
+pub const whatwg_platform_create = platform.exports.whatwg_platform_create;
+pub const whatwg_platform_destroy = platform.exports.whatwg_platform_destroy;
+pub const whatwg_platform_get_version = platform.exports.whatwg_platform_get_version;
+pub const whatwg_platform_is_compatible = platform.exports.whatwg_platform_is_compatible;
 
 // ============================================================================
 // Tests

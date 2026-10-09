@@ -2668,6 +2668,13 @@ pub const ClipboardFormat = clipboard_backend.ClipboardFormat;
 pub const ClipboardItem = clipboard_backend.ClipboardItem;
 pub const ClipboardResult = clipboard_backend.ClipboardResult;
 
+/// Step 0's own dead-code deletion (decision 15).
+pub const platform_backend = @import("platform_backend.zig");
+pub const PlatformBackend = platform_backend.PlatformBackend;
+pub const vtables = @import("vtables.zig");
+pub const exports = @import("exports.zig");
+pub const stub_platform_backend = @import("stub_platform_backend.zig");
+
 // ============================================================================
 // The contract, checked
 // ============================================================================

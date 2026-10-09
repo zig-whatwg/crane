@@ -197,6 +197,11 @@ src/permissions/status.zig PermissionStatus.next_id 1 G P-res decl:1dfcee87d8da8
 src/platform/host.zig cached_io 1 G P-res decl:5fde91e1f8769bc9
 src/platform/host.zig init_mutex 1 G P-res decl:ee0617868871b920
 src/platform/host.zig threaded 1 G P-res decl:46f2a8444cfc8e17
+src/platform/stub_platform_backend.zig stub_media_key_session_counter 1 G X decl:4453150e8b1a2ff8
+src/platform/stub_platform_backend.zig stub_media_keys_counter 1 G X decl:9f729446b02903c8
+src/platform/stub_platform_backend.zig stub_media_source_counter 1 G X decl:70744e4f422b61c0
+src/platform/stub_platform_backend.zig stub_media_stream_counter 1 G X decl:9b0ebdf4a70cbd20
+src/platform/stub_platform_backend.zig stub_source_buffer_counter 1 G X decl:84c69e75d098817a
 src/platform/timer_backend.zig custom_backend 1 TL H decl:3d002d161da743ae
 src/platform/timer_backend.zig default_backend_allocator 1 TL A decl:72369f58d4c42d35
 src/platform/timer_backend.zig default_backend_instance 1 TL A decl:0bf910b86e57773a
