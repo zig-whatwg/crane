@@ -99,7 +99,7 @@ loop, timers or lifetimes. Report the lint-platform baseline total beside the ot
 
 | Step | What | Lint references removed (approx.) | Risk |
 |---|---|---|---|
-| 0 | The seam, every operation declared, the lint, dead code deleted | 0 (the baseline is recorded) | low |
+| 0 | Per-platform module graphs in build.zig, the seam, every operation declared, the link-plan mechanics, the lint, dead code deleted | 0 (the baseline is recorded) | medium (the build.zig refactor) |
 | 1 | The clock | 228 | low, wide |
 | 2 | The network, per-Browser network state, the event-loop wait | 687 + 3 | HIGH |
 | 3 | Files and storage locations; in memory by default | 50 + 1 | low |
@@ -140,14 +140,20 @@ on a recorded baseline, and the dead platform code is gone. No behaviour change.
   code is still elsewhere (src/fetch/network, src/storage/backends, src/webcrypto) - one module per
   part, each linking only its own C library.
 - src/platform/adapters/{darwin,linux,testing}/protocol.zig: compositions of kit parts.
-- build.zig: `-Dplatform` (default from the target), `-Dplatform-module`, `-Dplatform-without`, the
-  `platform` and `platform_impl` modules (the engine binding's shape, build.zig:1366-1385),
-  `platformProtocolBinding` for tests/platform (the shape of `engineProtocolBinding`, :718-730). The
-  `platform` module stops importing fetch (build.zig:2212). Interim answer to the contract's Open
-  question 1: `wpt-runner` and `test` require `-Dplatform=testing`, until build.zig's module graph is
-  built per platform.
+- build.zig: `-Dplatform` (default from the target), `-Dplatform-module`, `-Dplatform-without`,
+  `-Dplatform-static`, the `platform` and `platform_impl` modules (the engine binding's shape,
+  build.zig:1366-1385), `platformProtocolBinding` for tests/platform (the shape of
+  `engineProtocolBinding`, :718-730). The `platform` module stops importing fetch (build.zig:2212).
+  **Per-platform module graphs** (settled, contract 1.1): build.zig's module wiring moves into one
+  function, `addCraneModules(b, target, platform)`, called once per platform the invocation needs - the
+  WPT runner and the test tiers get `testing`, the library, the CLI and the iOS build the target's
+  platform. This refactor is the largest piece of step 0; land it first, alone, with no platform change
+  (every artifact still bound to today's modules), then bind.
+- The link-plan mechanics (contract section 10, R0 below): each kit part that has a system alternative
+  takes a build option choosing system or static; darwin frameworks newer than the deployment target
+  are weak-linked; linux's optional libraries are loaded at run time.
 - tools/lint_platform_boundary.zig + tools/platform_boundary_baseline.txt + `zig build lint-platform`
-  in `test` (rules: contract section 10; key list: tmp/plans/platform-protocol-design.md 12.2-12.3,
+  in `test` (rules: contract section 11; key list: tmp/plans/platform-protocol-design.md 12.2-12.3,
   with SQLite, LevelDB and all of mbedTLS now confined to src/platform/).
 - Delete (decision 15, after counting each function's calls - the function-pointer-table lesson's
   method): src/platform/vtables.zig, platform_backend.zig, stub_platform_backend.zig, exports.zig's
@@ -170,6 +176,22 @@ exemption (tools/, tests/, test declarations, src/webdriver/), a swap, src/url's
 **Done when**: `zig build test` passes with lint-platform on the recorded baseline (about 1,510
 references in about 123 files), `zig build wpt-runner -Dplatform=testing` builds, an `aarch64-ios`
 build of the library compiles, and a WPT sample shows no change.
+
+### R0. A link-plan item: the system library, with the kit as its fallback
+
+```zig
+// In a platform (src/platform/adapters/darwin/protocol.zig): one choice per link-plan item, at build time
+const use_system_sqlite = !build_options.platform_static.has(.sqlite);
+pub const openStore = if (use_system_sqlite) system_sqlite.openStore else kit_sqlite.openStore;
+// build.zig: darwin_impl.linkSystemLibrary("sqlite3", .{}) when system; the kit module's static
+// amalgamation otherwise - never both linked for one item.
+```
+
+Where a system library covers only some parameters (SecKey's RSA-PSS salt, CommonCrypto's AES-CTR
+counter), the platform's function chooses per call, and both paths pass the same tests. Pitfall: a
+system library is only "acceptable" in its link-plan row when it is complete for Crane's use and
+trusted; record the evidence (the header, the package version) in the row, and mark what you could not
+check UNVERIFIED.
 
 ---
 
@@ -249,7 +271,9 @@ BrowserPlatform (one CURLSH, one connection pool, its trust and proxy), replacin
 (backend.zig:85, `setDefaultCertOptions`, which the WPT runner calls at tests/wpt_runner/wpt_browser.zig:170 -
 it passes `extra_trust_anchors_pem` instead); curl_global_init moves to `platform.initializePlatform`
 (crane.Process). darwin verifies with SecTrust through mbedTLS's verify callback (decision 6;
-Security.framework linked into the darwin platform only). The WebSocket per-host CONNECTING gate
+Security.framework linked into the darwin platform only) and links the system zlib (link plan 10.1);
+linux links the system zlib and nghttp2 and keeps static mbedTLS until kit/curl has an OpenSSL backend
+(link plan 10.2). The WebSocket per-host CONNECTING gate
 (threadlocal `handshake_gate`, src/websocket/connection.zig:198) moves onto the Browser.
 
 **Tests**: tests/platform/network_context_test.zig - two Browsers fetching one URL from a local server
@@ -368,11 +392,14 @@ navigation tests (tests/html/navigation/). WPT: IndexedDB/ A/B.
 **Files**: src/storage/backends/{sqlite,leveldb,memory}.zig move to src/platform/kit/{sqlite,leveldb,memory_store}/
 behind the store operations (contract 6.6); src/storage/backend.zig's engine choice by `builtin.os.tag`
 (:652-700) becomes `platform.identity.storage_engine` inside each platform; build.zig's
-`configureStorageBackends` (:20-114) links the libraries into the kit modules only. The IndexedDB layer
+`configureStorageBackends` (:20-114) goes, replaced by the link plans: darwin and linux link the system
+SQLite by default (macOS's LevelDB link today is Homebrew's, not the system's, and cannot ship),
+kit/sqlite's amalgamation is the static fallback, and kit/leveldb stays available as a static choice.
+The IndexedDB layer
 is re-expressed over the store operations - its SQL-shaped persistence
 (src/storage/indexeddb/object_store_persistence.zig, index_persistence.zig, sqlite_transactions.zig)
 becomes an order-preserving key encoding (database / object store / index / key prefixes) over the
-ordered key-value store, because LevelDB has no SQL (contract Open question 6). localStorage
+ordered key-value store, because LevelDB has no SQL (settled, contract 13). localStorage
 persistence, the Cache API and the permission store use the same operations.
 
 ### R8. A transaction over the store
@@ -443,11 +470,20 @@ const signature = platform.ecdsaSign(allocator, curve, hash, secret, message) ca
 
 Pitfall: the error a page sees is decided above the protocol, from `CryptoError`, never by the
 platform's library. A platform's implementation is accepted only when it passes the known-answer
-vectors (src/webcrypto/rsa_vectors.zig and siblings, which move with kit/crypto) - Open question 5
-covers darwin's own crypto.
+vectors (src/webcrypto/rsa_vectors.zig and siblings, which move with kit/crypto).
 
-**Tests**: the known-answer vectors run against kit/crypto through the protocol; a fill of 0 bytes and
-two 32-byte fills that differ. WPT: WebCryptoAPI/ (78 worklist files) A/B.
+**darwin's crypto for 0.1 follows its link plan (contract 10.1):** CommonCrypto for SHA-1/256/384/512,
+HMAC, PBKDF2, AES-CBC, AES-KW and AES-CTR while the counter cannot wrap; SecKey for RSASSA-PKCS1-v1_5,
+RSA-PSS with a salt equal to the hash length, RSA-OAEP with an empty label, RSA generation with the
+exponent SecKey uses, ECDSA, ECDH and EC generation; kit/crypto for HKDF, AES-GCM, Ed25519, X25519 and
+every parameter case Apple's libraries do not take - chosen per call (R0). linux links OpenSSL 3's
+libcrypto once its vectors pass, kit/crypto otherwise. Each path runs the same vectors.
+
+**Tests**: the known-answer vectors run through the protocol against kit/crypto, against darwin's
+CommonCrypto/SecKey paths (on macOS, and in an iOS build) and against linux's libcrypto, including the
+per-call boundaries (a PSS salt one byte off the hash length, an OAEP label, a CTR counter that wraps,
+which must take the kit path and give the kit's answer); a fill of 0 bytes and two 32-byte fills that
+differ. WPT: WebCryptoAPI/ (78 worklist files) A/B on each platform.
 
 ---
 
@@ -542,18 +578,31 @@ platform changed.
 
 ## Step 8. Permissions
 
-**Files**: src/permissions/ becomes the Browser's permission store (a BrowserScope supplement,
-persisted through the storage engine with a profile; `PermissionStatus.next_id`, src/permissions/status.zig:35,
-moves onto it); impls Permissions.zig (query, :60), PermissionStatus.zig, Navigator.zig:120,
-WorkerNavigator.zig:113; Permissions 5.1-5.3 around `platform.permissionStateConstraint` and
-`platform.promptForPermission` (R13); `Browser.setPermission` (also the `permission_changed` event's
-steps); testdriver's `set_permission` native in tests/wpt_runner/test_driver.zig (:68 lists today's
-natives) calling it; Storage's persist() through the model, replacing the process-global
-`StorageManager.permission_callback` (src/storage/storage_manager.zig:55-60, 152).
+The model is contract section 8: where the OS governs a descriptor (darwin: camera, microphone,
+geolocation, notifications) the OS's per-app decision is the state and Crane creates no prompt; where no
+OS governs it (everything on linux and the testing platform, the rest on darwin) Crane's store holds it
+per Browser, and the platform's policy answers a request in the prompt state without UI.
 
-**Tests**: unit tests of 5.1 (non-secure -> denied; a store entry wins; the constraint is asked last)
-and 5.2 (one prompt, the entry set from a task, PermissionStatus `change` queued). WPT: permissions/
-(14 worklist files; 7 call `test_driver.set_permission`).
+**Files**: src/permissions/ becomes the Browser's permission store for ungoverned descriptors (a
+BrowserScope supplement, persisted through the storage engine with a profile; `PermissionStatus.next_id`,
+src/permissions/status.zig:35, moves onto it); impls Permissions.zig (query, :60),
+PermissionStatus.zig, Navigator.zig:120, WorkerNavigator.zig:113; Permissions 5.1-5.2 around
+`platform.platformPermissionState` and `platform.requestPermission` (R13); `Browser.setPermission` for
+the store, and the `permission_changed` event's steps for both kinds; testdriver's `set_permission`
+native in tests/wpt_runner/test_driver.zig (:68 lists today's natives) calling `Browser.setPermission`;
+Storage's persist() through the model, replacing the process-global
+`StorageManager.permission_callback` (src/storage/storage_manager.zig:55-60, 152). darwin's governed
+descriptors map the OS authorization status (not determined = prompt, denied or restricted = denied,
+authorized = granted), and `requestPermission` calls the OS request API on the main queue.
+
+**Tests**: unit tests of 5.1 for both kinds (non-secure -> denied before anything else; a governed
+descriptor answers the platform's state and writes no entry; an ungoverned one answers its store entry,
+else the platform default) and 5.2 (a governed request calls the platform once and resolves from a
+task; an ungoverned request in the prompt state follows the platform's policy and sets the entry from a
+task; PermissionStatus `change` on `permission_changed`). On macOS, a tests/platform test of darwin's
+status mapping with the OS state stubbed at the adapter boundary. WPT: permissions/ (14 worklist files;
+7 call `test_driver.set_permission`) on the testing platform. Automation for OS-governed descriptors on
+darwin waits on contract 13's open question 1.
 
 ---
 
@@ -565,7 +614,9 @@ and 5.2 (one prompt, the entry set from a task, PermissionStatus `change` queued
   3492-3505) run HTML 8.9.1's steps - "cannot show simple dialogs", normalizing and truncation, the
   WebDriver BiDi user prompt handler - and only for a "none" handler ask `platform.runSimpleDialog` and
   pause (R15); `call_alert__1` (alert(message), NotImplemented today) is implemented; the stub UI
-  backend (Window.zig:115-118, 271-273, 497) and src/html/window/ui_backend.zig go.
+  backend (Window.zig:115-118, 271-273, 497) and src/html/window/ui_backend.zig go. darwin presents
+  the system alert over the app's key window (NSAlert on macOS, UIAlertController on iOS, on the main
+  queue); with no key window it drops the Reply and Crane takes "cannot show simple dialogs".
 - console.zig's printer (src/webidl/impls/console.zig:45-64) calls `platform.printConsoleMessage`.
 - window.open/close (Window.zig:3039, 2907) ask `createTopLevelTraversable` and report
   `traversableChanged`; moveTo/resizeTo (2441, 3487) call `requestWindowRect`; outer geometry reads
@@ -600,7 +651,9 @@ print, workers/WorkerNavigator_onLine.htm, the window-open files A/B.
 HTMLSelectElement.zig:515 (showPicker), File System Access's pickers (Window.zig:2359, 2448, 2469)
 calling `platform.showFilePicker` (R13), File's bytes through `readPickedFile` / `releasePickedFile`;
 the WPT runner's testdriver `file_upload` fills the testing platform's queue (un-exclude
-tests/wpt_runner/config.zig:251's `testdriver/file_upload`).
+tests/wpt_runner/config.zig:251's `testdriver/file_upload`). darwin presents the system pickers over
+the key window (NSOpenPanel / NSSavePanel on macOS; UIDocumentPickerViewController, and
+PHPickerViewController for image and video `accept`, on iOS); with no window, no file is chosen.
 
 **Tests**: a picked file's name, type, size and bytes reach the File; a canceled picker fires `cancel`.
 WPT: the 17 type=file and 17 showPicker worklist files A/B.
@@ -630,8 +683,8 @@ Rect); the CSSOM View members of Element/HTMLElement (offset*, client*, scroll*,
 getClientRects, scrollTo, elementFromPoint/elementsFromPoint, innerText's rendered-text steps) ask the
 layout operations behind `layout`, and take CSSOM View's no-layout-box answers in the `else` - the
 headless answer, as today. Selection's line granularities (src/webidl/impls/Selection.zig:549-596)
-likewise. Crane assigns `LayoutNode` ids per Browser. The tree reader is contract Open question 4,
-designed when a rendering host plugs in.
+likewise. Crane assigns `LayoutNode` ids per Browser. How a renderer reads the DOM and computed style
+is designed when the first real rendering host plugs in (settled, contract 13).
 
 **Tests**: with `layout` unsupported, every CSSOM View member answers what it answers today (pinned
 first); a testing-only layout stub that reports one fixed box shows the members read it. WPT: no
@@ -678,20 +731,23 @@ capability.
 
 ## Step 14. darwin's native capabilities, by demand
 
-Each a lane that implements one capability in src/platform/adapters/darwin/ and flips its constant:
-media decoding (AVFoundation/VideoToolbox), camera and microphone (AVFoundation, with the OS
-permission prompt), notifications (UserNotifications), geolocation (CoreLocation), audio output, and
-the presenter-dependent ones once contract Open question 2 is settled (simple dialogs, file pickers,
-per-origin prompts). Each with tests/platform tests on macOS, an `aarch64-ios` build, and its WPT
-directory A/B on macOS.
+Each a lane that implements one capability in src/platform/adapters/darwin/ through the system
+framework its link plan names (contract 10.1) and flips its constant: media decoding
+(AVFoundation/VideoToolbox/AudioToolbox), camera and microphone (AVFoundation; the OS permission
+system, contract section 8), notifications (UserNotifications), geolocation (CoreLocation), audio
+output (AVFAudio/AudioToolbox), and the rest by demand (GameController, CoreBluetooth, CoreMIDI, CoreNFC
+on iOS, IOKit on macOS, AuthenticationServices, PassKit, Speech). Dialogs and pickers are steps 9 and
+10. Each with tests/platform tests on macOS, an `aarch64-ios` build, and its WPT directory A/B on macOS.
+Before a platform's defaults are frozen, the deployment targets of contract 13's open question 2 are
+chosen and each link-plan row records its minimum OS version.
 
 ---
 
 ## Step 15. The C API (decision 4)
 
 **Files**: include/crane.h - `crane_browser_create(const crane_browser_config_t *)` with the
-BrowserOptions fields (profile directory, user agent, languages, proxy, trust anchors) and darwin's
-embedder delegate if Open question 2 settles on (a); Crane owns the Browser's thread
+BrowserOptions fields (profile directory, user agent, languages, proxy, trust anchors) - no app
+callbacks are needed for permissions, dialogs or pickers (contract 13, settled); Crane owns the Browser's thread
 (`crane_browser_create` starts it with `platform.spawnThread` at the app's requested priority, and every
 `crane_*` call posts to it - decision 13); `crane_browser_destroy`, `crane_browser_navigate`,
 `crane_browser_evaluate`, `crane_tab_*`. src/lib_exports.zig exports them; the header-less

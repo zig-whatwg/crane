@@ -38,6 +38,11 @@ src/platform/kit/                    Crane's reusable implementations, one modul
     memory_clipboard/   a per-Browser in-memory clipboard
 ```
 
+The kit is also every platform's static fallback: where a platform links a system library for a
+capability (section 10, the link plans), the kit's implementation is what it compiles instead when the
+system library is missing, does not do what Crane needs, or is not trusted - and a platform may carry
+both and choose at build time.
+
 - Consumers write `const platform = @import("platform");` and call `platform.op(...)`. Dispatch is
   static: each operation is a `pub inline fn` whose body calls the bound implementation's function of
   the same name, so a call site compiles to a direct call. No table, no optional unwrap, no run-time
@@ -62,9 +67,16 @@ src/platform/kit/                    Crane's reusable implementations, one modul
 |---|---|
 | `-Dplatform=darwin` / `linux` / `testing` | a built-in platform. Default: from the target (`darwin` for macOS and iOS, `linux` for Linux) |
 | `-Dplatform-module=<path>` | a THIRD-PARTY platform: the root file of an implementation that lives outside Crane (a Windows port, a console, an embedded board). build.zig makes it the `platform_impl` module, gives it the `platform` facade and the kit modules to import, and the same conformance check holds it to the contract. A package dependency can supply the path |
-| `-Dplatform-without=<capability>,...` | compile capabilities OUT (section 5): each named capability reads `.unsupported` whatever the platform declares, so neither Crane's feature code nor the platform's implementation of it is in the binary |
+| `-Dplatform-without=<capability>,...` | compile capabilities OUT (section 5): each named capability reads `.unsupported` whatever the platform declares, so neither Crane's feature code nor the platform's implementation of it is in the binary, and the system library it would link is not linked |
+| `-Dplatform-static=<item>,...` | compile the kit's static implementation for the named link-plan items instead of linking the system library (section 10); `all` for a fully static build |
 
 The JavaScript engine is chosen the same way (`-Dengine=`), and the two are independent.
+
+**Each artifact is built against its own platform.** build.zig builds its module graph through one
+function per platform, so one invocation can build the library, the CLI and the iOS build against the
+target's platform and the WPT runner and the test tiers against `testing`. Each artifact is already its
+own compile, so this costs no extra analysis; within one compile every file belongs to one module, as
+Zig requires (docs/lessons/architecture-a-module-bound-twice-cannot-share-a-compile.md).
 
 ### 1.2 Third-party platforms
 
@@ -90,7 +102,7 @@ platform beyond what a capability declares (storage and crypto especially: secti
 | `name` | `[]const u8` | for messages ("darwin", "testing") |
 | `capabilities` | `platform.Capabilities` | section 5 |
 | `identity` | `platform.Identity` | comptime identity constants (6.1) |
-| `PlatformBrowserOptions` | `extern struct`, every field defaulted (so `.{}` is valid) | the platform's own per-Browser options (3.2): the testing platform's fake devices and prompt policy, darwin's embedder delegate |
+| `PlatformBrowserOptions` | `extern struct`, every field defaulted (so `.{}` is valid) | the platform's own per-Browser options (3.2): the testing platform's fake devices, prompt policy and console sink |
 
 The facade also re-exports the bound implementation as `platform.adapter`, for surfaces only one
 platform has (the testing platform's control surface, section 9). Code that uses it compiles on that
@@ -153,8 +165,13 @@ pub inline fn destroyBrowserPlatform(browser: *BrowserPlatform) void
 
 Each platform declares `PlatformBrowserOptions` (section 1.3), which the facade re-exports under the same name.
 Examples: the testing platform's fake capture devices, its prompt policy and its console sink
-(section 9); darwin's embedder delegate and presenter (Open question 2). A host built for one platform
-sets that platform's fields; code meant for every platform leaves the field at `.{}`.
+(section 9). darwin needs none for its UI - it uses the OS's own permission system and native system UI
+over the app's key window (6.10, section 8) - and no app callbacks are required. A host built for one
+platform sets that platform's fields; code meant for every platform leaves the field at `.{}`.
+
+Per-Browser differences are options and state only. Implementations do not mix in one process, and
+state the OS owns is the OS's: darwin's permission decisions are per app, shared by every Browser in
+the process (section 8).
 
 ### 3.3 What the BrowserPlatform holds
 
@@ -245,10 +262,10 @@ system state (defaults allowed), console output.
 | `thread_qos` | native | unsupported | as its host OS | default priority |
 | `resident_memory` | native | native | native | diagnostics report nothing |
 | `layout` | unsupported (headless) | unsupported | unsupported | CSSOM View with no layout box: zero boxes, no hit (6.9) |
-| `permission_prompts` | emulated (the OS's own prompt per capability; no per-origin prompt until an embedder delegate exists - Open question 2) | unsupported | native (scripted, section 9) | every prompt denied |
-| `simple_dialogs` | unsupported until a presenter exists (Open question 2) | unsupported | native (dismiss) | HTML 8.9.1 "cannot show simple dialogs" |
+| `os_permissions` | native: the OS permission system, per app (section 8) | unsupported (no OS permission system: Crane's store and the platform's policy) | emulated (Crane's store; scripted policy, section 9) | a request in the prompt state is denied |
+| `simple_dialogs` | native: system alerts over the key window (NSAlert; UIAlertController), the unsupported path with no window | unsupported | native (dismiss) | HTML 8.9.1 "cannot show simple dialogs" |
 | `printing` | unsupported | unsupported | native (no output) | printing steps end without output |
-| `file_picker` | unsupported until a presenter exists | unsupported | native (testdriver queue) | no files chosen (`cancel`) |
+| `file_picker` | native: NSOpenPanel / NSSavePanel; UIDocumentPickerViewController, PHPickerViewController - over the key window, the unsupported path with no window | unsupported | native (testdriver queue) | no files chosen (`cancel`) |
 | `windows` | native | native | native | every popup allowed; rects ignored |
 | `media_decoding` | unsupported until built (AVFoundation) | unsupported | native (WAV; WebM/Ogg) | canPlayType "" |
 | `webcodecs`, `media_capabilities`, `encrypted_media` | unsupported | unsupported | unsupported | NotSupportedError |
@@ -397,8 +414,9 @@ WebCrypto's spec steps stay above the protocol - algorithm normalization, key ob
 extractability, the key formats (SPKI, PKCS#8, JWK, raw: src/webcrypto/key_formats.zig, jwk.zig,
 der.zig) and every error a page can observe. The platform supplies the primitives over raw key
 material. kit/crypto (Zig std.crypto + mbedTLS, today's src/webcrypto/{hash,hmac,kdf,okp,aes,ec,rsa}.zig)
-is the default; a platform may use its own (darwin: CommonCrypto and Security.framework where they
-cover a family - Open question 5).
+is the default and the static fallback; a platform links its system crypto where its link plan accepts
+it (section 10: darwin uses CommonCrypto and Security.framework's SecKey where they cover an algorithm
+and its parameters, and the kit for the rest, choosing per call; linux may link OpenSSL 3).
 
 All are synchronous, any thread (WebCrypto runs them "in parallel": Crane calls them off the agent's
 thread or in a task, src/webcrypto/tasks.zig), and return `CryptoError!` with
@@ -429,8 +447,9 @@ worklist files) on that platform before its constant can say `.native`.
 
 Crane does not lay out (the deliberate exclusion stands). A rendering host plugs in here; the
 headless answer is today's: no layout box anywhere. Nodes are named by `LayoutNode`, a stable
-per-Browser node id Crane assigns (no Instance pointer crosses). How a layout implementation reads the
-DOM and computed style is Open question 4.
+per-Browser node id Crane assigns (no Instance pointer crosses). The operations are defined now; how a
+layout implementation reads the DOM and computed style is designed when the first real rendering host
+plugs in (section 13).
 
 | Operation | Signature | Thread | Notes |
 |---|---|---|---|
@@ -450,12 +469,17 @@ Every operation below is per Browser, called on the agent's thread (section 4), 
 capability. "Unsupported path" is what Crane does with the capability `.unsupported`; kit/headless
 answers the same if called.
 
-#### 6.10.1 Permissions [permission_prompts] (section 8)
+**Native, never Crane's own UI.** Crane draws no prompt, dialog or picker. A platform uses the OS's own
+permission requests and native system UI - darwin presents system alerts and the system pickers over
+the app's key window - so a page in Crane looks like any other app's request. With no window (headless
+or background use) the operation drops its Reply and Crane takes the spec's unsupported path.
+
+#### 6.10.1 Permissions [os_permissions] (section 8)
 
 | Operation | Signature | Notes |
 |---|---|---|
-| `permissionStateConstraint` | `(browser, requester, descriptor) PermissionState` | sync. Permissions 5.1 step 8: the state when the store has no entry - an OS-level refusal answers denied. Headless: prompt. |
-| `promptForPermission` | `(browser, requester, descriptors: []const PermissionDescriptor, reply: Reply(PermissionDecisions)) void` | Permissions 5.2 step 3 / 5.3. One prompt for several descriptors (getUserMedia's camera + microphone). Unsupported: every descriptor denied. |
+| `platformPermissionState` | `(browser, requester, descriptor) PlatformPermission{ governed: bool, state: PermissionState }` | sync. Whether the OS governs the descriptor and, if so, its state - darwin: AVCaptureDevice authorization status for camera and microphone, CLLocationManager's for geolocation, UNUserNotificationCenter's for notifications (not determined = prompt, denied or restricted = denied, authorized = granted); a status the OS answers only asynchronously is cached and refreshed through `permission_changed`. Ungoverned: the platform's default state (Permissions 5.1 step 8; headless: prompt). |
+| `requestPermission` | `(browser, requester, descriptors: []const PermissionDescriptor, reply: Reply(PermissionDecisions)) void` | Permissions 5.2 step 3. A governed descriptor: the OS access request (AVCaptureDevice requestAccess, CLLocationManager authorization, UNUserNotificationCenter requestAuthorization); the OS presents whatever it presents, remembers the answer and returns granted or denied - Crane asks nothing of its own. An ungoverned descriptor in the prompt state: the platform's policy (headless and linux: denied; testing: decision 9). Unsupported: every descriptor denied. |
 | `cancelRequest` | `(browser, id: RequestId) void` | Any pending request (section 4). |
 
 #### 6.10.2 Dialogs, printing and windows
@@ -597,7 +621,7 @@ pub const EventSink = extern struct {
 | `preferences_changed(UserPreferences)` | media query re-evaluation |
 | `visibility_changed(tab, Visibility)` | the document visibility steps |
 | `memory_pressure(level)` | `engine.notifyMemoryPressure` on every agent of the Browser |
-| `permission_changed(descriptor, origin, top_level_origin, state)` | sets the store entry, PermissionStatus `change` (Permissions 5.4) |
+| `permission_changed(descriptor, origin, top_level_origin, state)` | an OS-governed decision changed (the user changed it in Settings), or a store entry was set; PermissionStatus `change` (Permissions 5.4) |
 | `media_devices_changed` | `devicechange` |
 | `capture_ended(source)`, `capture_muted(source, bool)` | MediaStreamTrack `ended` / `mute` / `unmute` |
 | `notification_event(id, click / close, action)` | Notification `click` / `close` |
@@ -609,27 +633,42 @@ pub const EventSink = extern struct {
 
 ## 8. The permission model
 
-The Permissions spec gives the user agent one permission store (3.2) and the algorithms around it;
-Crane is the user agent, the platform is the user's side of it.
+The Permissions spec gives the user agent a permission store (3.2) and the algorithms around it. On a
+platform with its own permission system, that system is the store for what it governs: **Crane creates
+no prompts of its own.**
 
-**Crane owns** (per Browser - docs/instances.md lists permissions on the Browser):
+**Where the OS governs a descriptor** (darwin: camera, microphone, geolocation, notifications - the
+platform says which through `platformPermissionState`):
+
+- The decision is the OS's, per app, shared by every Browser in the process, as in mobile Safari: the
+  first access triggers the OS opt-in (with the app's usage descriptions), the OS remembers the answer,
+  and the user changes it in Settings.
+- "Get the current permission state" (5.1) runs the spec's own checks first - a non-secure context is
+  denied, a policy-controlled feature the document may not use is denied - and then answers the OS's
+  state. No store entry is written.
+- "Request permission to use" (5.2) calls `requestPermission`, which accesses the resource through the
+  OS API; whatever the OS presents is the OS's. There is no per-site layer: Safari's per-website prompt
+  is Safari's UI, not iOS's. Once the app is allowed, pages in it have access subject to the spec's own
+  rules (secure context, permissions policy, user activation where required).
+- A denial reaches the page as the spec's failure (getUserMedia rejects with NotAllowedError,
+  permissions.query answers "denied"), and the page handles its fallback.
+- A change in Settings arrives as `permission_changed`, and PermissionStatus fires `change` (5.4).
+
+**Where no OS governs a descriptor** (every descriptor on linux and the testing platform; the rest on
+darwin - persistent-storage, clipboard-read, ...), Crane owns the state, per Browser
+(docs/instances.md lists permissions on the Browser):
 
 - the permission store, entries keyed by descriptor and permission key (3.2; the key from the settings
   object's top-level origin and origin, 5.1 step 5), persisted through the storage engine when the
   Browser has a profile;
-- "get the current permission state" (5.1): non-secure context -> denied; a policy-controlled feature
-  the document may not use -> denied; the store entry; then `permissionStateConstraint`;
-- "request permission to use" (5.2) and "prompt the user to choose" (5.3) around
-  `promptForPermission`, setting the store entry from a task (5.2 step 7);
+- 5.1 as written: the spec's checks, the store entry, else the platform's default state;
+- 5.2: a state other than prompt is the answer; in the prompt state the platform's policy decides
+  without UI (headless and linux deny - the spec's "otherwise denied"; the testing platform follows
+  decision 9), and the entry is set from a task (5.2 step 7);
 - PermissionStatus and its `change` events (6.3), on the permissions task source (3.4);
 - automation: WebDriver Set Permission (B.1.1) and BiDi `permissions.setPermission` (B.2.1.3.1) write
-  the store, scoped to a user context = a Browser. The WPT runner's testdriver `set_permission` calls
-  the same Browser function.
-
-**The platform decides**: the answer to a prompt (darwin: the OS's own - AVCaptureDevice,
-CoreLocation, UserNotifications - behind whatever per-origin UI the embedder supplies, Open question
-2); constraints with no entry (an OS-level refusal is denied); revocations, reported as
-`permission_changed`.
+  the store, scoped to a user context = a Browser; the WPT runner's testdriver `set_permission` calls
+  the same Browser function. (Automation for an OS-governed descriptor is section 13's open question.)
 
 Feature specs plug in through the same path: Notification.requestPermission (Notifications 2.2),
 getUserMedia (camera, microphone), Storage's persistent-storage (Storage 5), clipboard-read /
@@ -637,14 +676,20 @@ clipboard-write, geolocation, and the rest.
 
 ## 9. The built-in platforms
 
-**darwin** (macOS and iOS): kit/posix clocks, files, entropy and threads over `mach_absolute_time`,
-`arc4random_buf` and pthreads with QoS; kit/curl with SecTrust verification; kit/sqlite (iOS) and
-kit/leveldb (macOS) as today; kit/crypto (Open question 5); the system clipboard; OS permission prompts;
-screen, reachability, memory pressure and app lifecycle observed and reported as events. Capabilities
-not built yet alias kit/headless.
+**darwin** (macOS and iOS), following its link plan (10.1): libSystem's clocks, entropy and threads
+(`mach_absolute_time`, `arc4random_buf`, pthreads with QoS); kit/curl with mbedTLS for the transport
+(decision 5) and SecTrust for trust (decision 6); the system SQLite for storage on both macOS and iOS
+(today's macOS LevelDB comes from Homebrew, not the system, and cannot ship); the system zlib;
+CommonCrypto and SecKey where they cover an algorithm, kit/crypto for the rest; the system clipboard;
+the OS permission system (section 8); native system alerts and pickers over the key window; screen,
+reachability, memory pressure and app lifecycle observed and reported as events. Capabilities not
+built yet alias kit/headless.
 
-**linux**: kit/posix, kit/curl with the distro CA bundle, kit/leveldb, kit/crypto; the system
-clipboard when a display is present, kit/memory_clipboard otherwise.
+**linux**, following its link plan (10.2): glibc's clocks, entropy and threads; kit/curl (static: the
+distros' libcurl lacks or varies in WebSockets) with the system zlib and nghttp2; the system SQLite;
+OpenSSL 3 for TLS and crypto where its link plan accepts it, mbedTLS and kit/crypto otherwise; the
+distro CA bundle; the system clipboard through X11 or Wayland when a display is present (loaded at run
+time), kit/memory_clipboard otherwise.
 
 **testing** (decision 2, revised): the build machine's real OS services - darwin's or linux's, chosen by
 `builtin.os.tag` - plus compiled-in test capabilities, with all their state per Browser:
@@ -653,7 +698,7 @@ clipboard when a display is present, kit/memory_clipboard otherwise.
 |---|---|
 | media_decoding | WAV linear PCM (today tests/wpt_runner/wav_backend.zig) and WebM/Ogg (lane/webm), moved into the platform |
 | camera, microphone | one fake camera "fake_video_0" (640x480, 30 fps) and one fake microphone "fake_audio_0" (48 kHz mono); precedent Chrome's FakeVideoCaptureDeviceFactory, Gecko's MediaEngineFake, WebKit's MockRealtimeMediaSourceCenter |
-| permission_prompts | an unscripted prompt grants camera and microphone and denies everything else (decision 9); tests script anything else with `test_driver.set_permission`, which writes Crane's store |
+| os_permissions | governs no descriptor: Crane's store answers, and a request in the prompt state grants camera and microphone (the fake devices) and denies everything else (decision 9); tests script anything else with `test_driver.set_permission`, which writes the store |
 | simple_dialogs | dismissed at once (alert OK, confirm false, prompt null), logged to the test's output |
 | file_picker | answers from a per-Browser queue testdriver fills (`test_driver.file_upload`); canceled when empty |
 | clipboard | kit/memory_clipboard per Browser |
@@ -666,7 +711,96 @@ the prompt policy and the console sink; its control surface for testdriver (queu
 script a position) is `platform.adapter.control`, present only in a testing build. Fresh state per
 Browser is the point: WebKitTestRunner's process-global mocks need `resetStateToConsistentValues`.
 
-## 10. The boundary
+## 10. Link plans
+
+**The principle (the user, 2026-10-09): ship the smallest library.** For each capability - and, where it
+matters, each algorithm or feature - a platform dynamically links the system library when the platform
+ships one that does what Crane needs (complete and conformant for that use) and can be trusted.
+Otherwise it statically compiles Crane's kit implementation. It may carry both and choose at build time
+(`-Dplatform-static=<item>`), and where a system implementation covers only some parameters (an RSA-PSS
+salt length, an AES-CTR counter that wraps) it chooses per call, so every platform gives the same
+web-visible answer. A capability compiled out with `-Dplatform-without` links nothing. On darwin,
+frameworks newer than the deployment target are weak-linked; on linux, libraries a headless server may
+lack (display, audio, media) are loaded at run time (`std.DynLib`, inside the platform), never required
+at load.
+
+How this was checked: darwin against the macOS 27.0 and iOS 27.0 SDKs in Xcode (public headers and
+`.tbd` stubs, 2026-10-09) and `/usr/bin/curl -V` on macOS 27.0; linux against packages.debian.org and
+packages.ubuntu.com (2026-10-09). An SDK shows what the newest OS ships; whether an item is present on
+the oldest OS Crane will support depends on deployment targets not yet chosen (section 13). Anything
+not verified is marked UNVERIFIED.
+
+### 10.1 darwin
+
+"Both" = macOS and iOS. "Dynamic" = the default; the kit is the static fallback unless "none".
+
+| Item | System library | Available | Acceptable? | Static fallback | Default |
+|---|---|---|---|---|---|
+| clocks, entropy, threads, files, memory pressure, QoS | libSystem (`mach_absolute_time`, `arc4random_buf`, pthreads, `pthread_set_qos_class_self_np`, libdispatch memory-pressure sources) | both | yes - the OS itself; Apple requires libSystem dynamically | none | dynamic |
+| TLS trust | Security.framework SecTrust (`SecTrustCreateWithCertificates`, `SecTrustEvaluateWithError` - in both SDKs) | both | yes - the system roots and MDM-installed roots (decision 6) | kit/curl's anchor-file verification | dynamic |
+| TLS protocol | libboringssl.tbd (both SDKs, no public headers); Network.framework (both) | both | no for 0.1 - boringssl is private; Network.framework/URLSession do not expose what Fetch needs (raw header order, 1xx, HTTP/2-only refusal, transport timing) - decision 5 | mbedTLS (kit/curl) | static |
+| HTTP client | /usr/lib/libcurl.4.dylib, 8.7.1 (macOS SDK's curlver.h) | macOS only (no libcurl in the iOS SDK) | no - macOS's build has no WebSockets (`curl -V` lists no ws/wss), uses the deprecated SecureTransport/LibreSSL 3.3.6, and is pinned old | kit/curl | static |
+| HTTP/2 framing | nghttp2 (inside macOS's libcurl only; no libnghttp2 in either SDK) | - | no public library | static nghttp2 (build.zig `enable_http2`) | static |
+| zlib (Content-Encoding gzip/deflate, Compression Streams) | libz.tbd, zlib 1.2.12 (zlib.h in both SDKs) | both | yes - stable API; Apple's security backports to 1.2.12 UNVERIFIED | static zlib (today's) | dynamic |
+| Brotli (Content-Encoding br; not built today) | Compression framework `COMPRESSION_BROTLI` (compression.h: macOS 12, iOS 15; Apple's encoder is level 2 only) | both | yes for decoding, when br is added | static brotli | dynamic |
+| storage engine | libsqlite3.tbd, SQLite 3.54.0 (sqlite3.h in both SDKs) | both | yes - the ordered key-value contract (6.6) needs nothing version-specific | kit/sqlite (amalgamation); kit/leveldb (no system LevelDB on darwin - today's macOS link is Homebrew's) | dynamic |
+| SHA-1/256/384/512 | CommonCrypto `CC_SHA*` (CommonDigest.h) | both | yes | kit/crypto | dynamic |
+| HMAC | CommonCrypto `CCHmac` (SHA-1, -224, -256, -384, -512) | both | yes | kit/crypto | dynamic |
+| PBKDF2 | CommonCrypto `CCKeyDerivationPBKDF` (SHA-1 to SHA-512 PRFs) | both | yes | kit/crypto | dynamic |
+| HKDF | - (CommonKeyDerivation.h offers PBKDF2 only) | no | no public API | kit/crypto | static |
+| AES-CBC | CommonCrypto `CCCrypt`, kCCModeCBC with PKCS#7 | both | yes | kit/crypto | dynamic |
+| AES-CTR | CommonCrypto kCCModeCTR (`kCCModeOptionCTR_BE`, the whole 128-bit block counts) | both | partly - identical only while WebCrypto's `length`-bit counter does not wrap within the message; chosen per call | kit/crypto | per call |
+| AES-GCM | - (CommonCryptor.h's modes: ECB, CBC, CFB, CTR, OFB, RC4, CFB8; no GCM) | no | no public API | kit/crypto | static |
+| AES-KW | CommonCrypto `CCSymmetricKeyWrap` / `Unwrap`, kCCWRAPAES (RFC 3394, CommonSymmetricKeywrap.h) | both | yes - WebCrypto's AES-KW is RFC 3394 | kit/crypto | dynamic |
+| RSASSA-PKCS1-v1_5 | SecKey `kSecKeyAlgorithmRSASignatureMessagePKCS1v15SHA1` ... `SHA512` | both | yes | kit/crypto | dynamic |
+| RSA-PSS | SecKey `kSecKeyAlgorithmRSASignatureMessagePSSSHA1` ... `SHA512`; the salt length is fixed to the hash's output size (SecKey.h) | both | partly - only when `saltLength` equals the hash length; chosen per call | kit/crypto | per call |
+| RSA-OAEP | SecKey `kSecKeyAlgorithmRSAEncryptionOAEPSHA1` ... `SHA512`; no label parameter (SecKey.h) | both | partly - only with an empty `label`; chosen per call | kit/crypto | per call |
+| RSA key generation | SecKey `SecKeyCreateRandomKey`; no public-exponent attribute (SecKey.h, SecItem.h) | both | partly - only for the exponent SecKey uses (65537, UNVERIFIED); chosen per call | kit/crypto | per call |
+| ECDSA P-256/384/521 | SecKey `kSecKeyAlgorithmECDSASignatureMessageX962SHA1` ... `SHA512` (DER signatures; Crane converts to IEEE P1363) | both | yes (P-521 in SecKey UNVERIFIED) | kit/crypto | dynamic |
+| ECDH P-256/384/521 | SecKey `kSecKeyAlgorithmECDHKeyExchangeStandard` | both | yes (P-521 UNVERIFIED) | kit/crypto | dynamic |
+| EC key generation | SecKey `SecKeyCreateRandomKey`, `kSecAttrKeyTypeECSECPrimeRandom` | both | yes | kit/crypto | dynamic |
+| Ed25519, X25519 | - (no 25519 in SecKey.h; CryptoKit has them but is Swift-only, with no C or Objective-C API) | no | no callable API | kit/crypto | static |
+| Intl, collation, IDNA | libicucore.tbd, ICU 78.1 - but only 23 public headers in both SDKs (uchar, uidna, uregex, ustring, utext, ...; no collation, date or number formatting) | both | no - incomplete for Intl, V8 needs its own pinned ICU, and Unicode-version-dependent answers (IDNA, case mapping) would differ by OS version, breaking identical behaviour | V8's ICU, src/intl's CLDR data, src/url's IDNA | static |
+| media decoding | AVFoundation, AudioToolbox, VideoToolbox | both | yes for the formats Apple decodes (H.264, HEVC, AAC, MP3, ...); WebM/VP9/Opus support UNVERIFIED | none - Crane builds in no decoder ("host decoders only", the user, 2026-10-08) | dynamic |
+| camera, microphone; audio output | AVFoundation; AVFAudio, AudioToolbox | both | yes | none | dynamic |
+| clipboard | AppKit NSPasteboard; UIKit UIPasteboard | macOS; iOS | yes | kit/memory_clipboard | dynamic |
+| dialogs, pickers | AppKit NSAlert, NSOpenPanel, NSSavePanel; UIKit UIAlertController, UIDocumentPickerViewController, PhotosUI PHPickerViewController | macOS; iOS | yes | none (the spec's unsupported path) | dynamic |
+| notifications; geolocation; sensors | UserNotifications; CoreLocation; CoreMotion | both (CoreMotion's sensors on macOS UNVERIFIED) | yes | none | dynamic |
+| gamepad; Bluetooth; MIDI | GameController; CoreBluetooth; CoreMIDI | both | yes | none | dynamic |
+| NFC | CoreNFC | iOS only (not in the macOS SDK) | yes | none | dynamic (iOS) |
+| USB, HID, serial | IOKit | macOS only (not in the iOS SDK) | yes | none - unsupported on iOS | dynamic (macOS) |
+| speech | AVFAudio (synthesis), Speech (recognition) | both | yes | none | dynamic |
+| WebAuthn; payment; contacts | AuthenticationServices; PassKit; Contacts (ContactsUI on iOS) | both | yes | none | dynamic |
+| online state | Network.framework path monitor; SystemConfiguration (macOS, linked today) | both | yes | constant "online" | dynamic |
+| C++ runtime | libc++.dylib | both | the engine adapter's question, not the platform's: V8's prebuilt monolith may use its own libc++ (UNVERIFIED) | - | - |
+
+darwin crypto for 0.1 follows this table (decision OQ5): CommonCrypto and SecKey for the algorithms and
+parameters they cover, kit/crypto (std.crypto + mbedTLS) for HKDF, AES-GCM, Ed25519, X25519 and the
+parameter cases SecKey and CommonCrypto do not take. Both paths pass the same known-answer vectors and
+WebCryptoAPI/ before darwin's crypto is declared native (6.8). AES-KW is covered by CommonCrypto (an
+earlier assumption that Apple lacks it was wrong); AES-GCM and HKDF are the gaps.
+
+### 10.2 linux
+
+Versions are Debian bookworm / trixie and Ubuntu 22.04 / 24.04 (and newer where it matters); Fedora,
+RHEL and Arch are UNVERIFIED.
+
+| Item | System library | Available | Acceptable? | Static fallback | Default |
+|---|---|---|---|---|---|
+| clocks, entropy, threads, files | glibc (`clock_gettime`, `getrandom`, pthreads) | every glibc distro | yes | none (a musl build is fully static: `-Dplatform-static=all`) | dynamic |
+| TLS protocol and trust | OpenSSL 3: libssl3 3.0.22 (bookworm), libssl3t64 3.5.7 (trixie); 3.0.2 (22.04), 3.0.13 (24.04) | Debian, Ubuntu | yes - complete and trusted; kit/curl's ALPN read and verify hook are mbedTLS-specific today (src/fetch/network/curl_backend.zig:1131-1143), so this waits for kit/curl's OpenSSL backend | mbedTLS (kit/curl) | static until kit/curl supports OpenSSL, then dynamic |
+| CA certificates | the distro bundle file (/etc/ssl/certs/ca-certificates.crt on Debian and Ubuntu; Fedora and RHEL paths UNVERIFIED) | - | data, not a library | `extra_trust_anchors_pem` | - |
+| HTTP client | libcurl4 7.88.1 (bookworm), libcurl4t64 8.14.1 (trixie); 7.81.0 (22.04), 8.5.0 (24.04), 8.18.0 (26.04) | all | no by default - WebSockets became official only in curl 8.11.0 (curl's 8.11.0 changelog), so bookworm, 22.04 and 24.04 lack it; whether trixie's and 26.04's builds enable WebSockets is UNVERIFIED. A build-time choice on distros that have it | kit/curl | static |
+| HTTP/2 framing | libnghttp2-14 1.52.0 (bookworm), 1.64.0 (trixie) | Debian (Ubuntu UNVERIFIED) | yes | static nghttp2 | dynamic |
+| zlib | zlib1g 1.2.13 (bookworm), 1.3.1 (trixie) | all | yes | static zlib | dynamic |
+| storage engine | libsqlite3-0 3.40.1 (bookworm), 3.46.1 (trixie) | all | yes | kit/sqlite; kit/leveldb (libleveldb1d 1.23 exists in Debian but is not installed by default) | dynamic SQLite (replacing today's desktop LevelDB default) |
+| WebCrypto primitives | OpenSSL 3 libcrypto (above) | Debian, Ubuntu | yes - covers every algorithm, OAEP labels, any PSS salt, any RSA exponent, HKDF, AES-KW; AES-CTR's counter-wrap rule is chosen per call as on darwin | kit/crypto | dynamic once the vectors pass |
+| Intl | libicu (a versioned soname per release) | all | no - the soname changes per release, V8 needs its pinned ICU, and Unicode-dependent answers would vary by distro | V8's ICU, src/intl | static |
+| clipboard | libxcb / libX11 (X11), libwayland-client (Wayland), loaded at run time | desktops only | yes when a display is present | kit/memory_clipboard | run-time load |
+| media decoding, audio output | GStreamer or FFmpeg (libavcodec); PipeWire / PulseAudio / ALSA - loaded at run time | desktops (UNVERIFIED per distro) | to be decided when the capability is built | none | - |
+| notifications, geolocation, wake lock, file pickers | D-Bus services (org.freedesktop.Notifications, GeoClue2, xdg-desktop-portal), loaded at run time | desktops (UNVERIFIED per distro) | to be decided when built | none | - |
+
+## 11. The boundary
 
 **Crane's platform is an adapter, and the protocol is the only way to reach it.** Outside
 src/platform/: no OS API (`std.c`, `std.posix`, `std.os`, `std.process`, `std.Io.Dir/File/net/Clock`,
@@ -682,7 +816,7 @@ lacks fails, and the baseline only goes down - built like lint-engine. The start
 files 50, randomness 20, threads 13, target branches 11, environment 1; tmp/plans/platform-inventory.md
 has every one by file and line).
 
-## 11. Adding an operation
+## 12. Adding an operation
 
 A platform need that no operation meets becomes a new operation, requested from the integrator, who
 owns protocol.zig. It lands in one change:
@@ -695,62 +829,46 @@ owns protocol.zig. It lands in one change:
 3. **Each built-in platform**: an implementation, or the alias with the capability `.unsupported`.
 4. **Tests**: tests/platform for each built-in platform's implementation (bound with
    `platformProtocolBinding`), and a test of Crane's unsupported path with the capability forced off.
-5. **This file**: the operation table, the capability table, the event table if it reports events.
+5. **This file**: the operation table, the capability table, the event table if it reports events,
+   and each platform's link-plan row if the operation can be served by a system library.
 
-## 12. Open questions
+## 13. Settled, and what is still open
 
-These are real design questions the decisions leave open; none is decided silently above.
+**Settled** (the user, 2026-10-09; tmp/plans/platform-decisions.md, the OQ lines):
 
-1. **Two platforms in one build.** `-Dplatform` is per `zig build` invocation, but the WPT runner and
-   the test tiers need `testing` while the library, the CLI and the iOS build need `darwin`/`linux`.
-   Every module imports `platform`, so a second binding means a second module graph, and Zig rejects
-   one file in two modules within a compile (docs/lessons/architecture-a-module-bound-twice-cannot-share-a-compile.md)
-   - though separate artifacts are separate compiles, so it is legal per artifact. Options: (a) build.zig
-   builds its module graph through one function, `addCraneModules(b, target, platform)`, called once
-   per platform an invocation needs (wpt_runner and the test tiers get `testing`; everything else the
-   target's platform) - no extra compile cost, since each artifact is already its own root analysis,
-   but build.zig's 5,000 lines of wiring must be refactored into that function first; (b) one platform
-   per invocation, and `zig build wpt-runner` / `zig build test` require `-Dplatform=testing` (an error
-   otherwise). Recommendation: (a), with (b) as the interim while the refactor lands.
-2. **A C embedder's callbacks into a compiled-in darwin capability.** Capabilities are compiled into
-   darwin, but some need the embedding app: iOS cannot present a file picker, a simple dialog, a share
-   sheet or a per-origin permission prompt without the app's view controller or scene, and an app may
-   want its own UI and its own AVCaptureSession. Decision 4 puts the C API last. Options: (a) darwin's
-   `PlatformBrowserOptions` carries an embedder delegate - a C-compatible struct of callbacks plus a presenter
-   (UIWindowScene / NSWindow) - that each darwin capability calls when it is set and falls back from
-   (to the OS's own behaviour, or the unsupported path) when it is not; it is C-compatible from the
-   start, so the C API exports it unchanged, and a capability compiled out takes its delegate entry
-   with it; (b) a separate built-in platform, `embedded`, whose page capabilities all forward to C
-   callbacks and whose OS services are darwin's or linux's - the run-time host contract as one
-   build-time choice among the others; (c) darwin implements everything with the OS alone and needs
-   no presenter where the OS supplies one (UIDocumentPickerViewController still needs a presenting
-   controller, so this does not cover iOS pickers or dialogs). Recommendation: (a), with darwin's
-   `simple_dialogs`, `file_picker` and the per-origin prompt staying `.unsupported` until a delegate
-   can be supplied - so before the C API only Zig embedders (the CLI, tests) can supply one.
-3. **Per-Browser behaviour that differs in one process.** With capabilities compiled in, two Browsers
-   in one process run the same implementations; they differ only by data - `BrowserOptions`, the
-   platform's own `PlatformBrowserOptions`, and the delegate of question 2. A process cannot hold one Browser on the
-   testing platform and another on darwin, nor two different camera implementations. Recommendation:
-   accept that, and put every legitimate per-Browser difference (profile, fake devices, prompt policy,
-   presenter, delegate) into options; raise it again only if an embedder needs two implementations in
-   one process.
-4. **How a layout implementation reads the document.** The layout operations (6.9) take node ids, but
-   a rendering host must see the tree, attributes, text and computed style, and hear about changes.
-   Options: (a) a Crane-supplied, C-compatible `LayoutTreeReader` (children, node kind, attributes,
-   text, computed style values) passed to `createBrowserPlatform`, with `invalidateLayout` as the
-   change feed; (b) a render-tree mirror Crane builds and hands over. Recommendation: (a) - it adds no
-   copy and keeps the tree Crane's - designed when a rendering host first plugs in; until then
-   `layout` is `.unsupported` everywhere and only the headless answers are built.
-5. **Darwin's crypto.** Decision 11 names CommonCrypto/CryptoKit for darwin, but CryptoKit has no C
-   or Objective-C API (it is Swift-only, so Zig cannot call it without a Swift shim in the build), and
-   CommonCrypto plus Security.framework's SecKey cover digests, HMAC, AES (CBC, CTR), PBKDF2, RSA and
-   NIST-curve EC, not Ed25519/X25519 or AES-KW. darwin also keeps mbedTLS for TLS (decision 5), so
-   dropping it from WebCrypto saves no binary size. Recommendation: darwin uses kit/crypto for 0.1 and
-   moves a family to Apple's libraries only where that buys something (hardware-backed keys, FIPS
-   validation), each move gated on the known-answer vectors and WebCryptoAPI/ (6.8).
-6. **IndexedDB over the storage engine.** IndexedDB's persistence today is SQL-shaped
-   (src/storage/indexeddb/object_store_persistence.zig, index_persistence.zig, sqlite_transactions.zig),
-   and LevelDB - a default implementation - has no SQL. Re-expressing it over the ordered key-value
-   operations (6.6) with an order-preserving key encoding is the storage step's main work
-   (recipes step 4). Open: whether any SQLite-only feature (full-text, JSON) is wanted later; if so it
-   would be a capability, not a requirement.
+1. **Each artifact against its own platform.** build.zig builds one module graph per platform: the WPT
+   runner and the test tiers against `testing`, the library, the CLI and the iOS build against the
+   target's platform (section 1.1).
+2. **The platform's native permission system, and no prompts of Crane's own.** darwin's permission
+   capability is the OS permission system, per app: the adapter accesses the resource through the OS
+   API and the OS presents whatever it presents. No per-site layer (section 8).
+3. **Native system UI.** Dialogs and pickers are the platform's own, over the key window; with no window
+   the spec's unsupported path applies. No app delegate or presenter is required (6.10).
+4. **Per-Browser differences are options and state only**; implementations do not mix in one process,
+   and OS-owned state (darwin's permissions) is shared by every Browser in the process (3.2).
+5. **Layout input.** The layout operations are defined now (6.9); how a renderer reads the DOM and
+   computed style is designed when the first real rendering host plugs in.
+6. **Ship the smallest library** - the link-plan principle and the per-platform plans (section 10);
+   darwin crypto for 0.1 is CommonCrypto and SecKey where they cover, the static kit for the rest.
+7. **The storage engine contract** is the ordered, transactional key-value store with byte-ordered keys
+   (6.6); IndexedDB's SQL-based persistence is rewritten over it (recipes step 4).
+
+**Still open**
+
+1. **Automation for an OS-governed permission.** WebDriver Set Permission (Permissions B.1.1), BiDi
+   `permissions.setPermission` and testdriver's `set_permission` write the user agent's store, but on
+   darwin the OS owns camera, microphone, geolocation and notifications, and Crane cannot write the
+   OS's per-app decision. Options: (a) answer those descriptors with WebDriver's "unsupported
+   operation" error on darwin - tests that script them run on the testing platform, where no OS
+   governs anything; (b) an automation-only override in Crane's store that wins over the OS while a
+   WebDriver session drives the Browser. Recommendation: (a) - (b) would make the OS's answer depend on
+   who is driving.
+2. **Deployment targets.** The link plans list what the current SDKs and distros ship; which system
+   libraries a platform may rely on depends on the oldest macOS, iOS and distro releases Crane supports
+   (Compression's Brotli needs macOS 12 / iOS 15; a WebSocket-capable distro libcurl needs curl 8.11),
+   and those are not chosen. Recommendation: choose them before step 14 freezes a platform's defaults,
+   and record each item's minimum version in its link-plan row.
+3. **The engine's own libraries.** V8's ICU and its C++ runtime are linked by the engine adapter, not
+   the platform; whether V8's prebuilt monolith could use the system libc++ on darwin
+   (`use_custom_libcxx`) is UNVERIFIED and belongs to the engine protocol's work, noted here so the
+   smallest-library principle reaches it.
