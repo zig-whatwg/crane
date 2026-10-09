@@ -3606,3 +3606,12 @@ pub extern fn v8_Context_IsCodeGenerationFromStringsAllowed(context: *Context) b
 /// current one.
 pub extern fn v8_Isolate_RunningScriptLocation(isolate: *Isolate, url: *?[*]u8, url_len: *usize, line: *c_int, column: *c_int) bool;
 // ---- end lane: csp2 ----
+// ---- lane: cxsupport ----
+/// HTML 4.10.5.3.6, the pattern attribute (engine.matchesPatternAttribute),
+/// matched in a new context of `isolate` with its built-in RegExp, as
+/// v8_wrapper.cpp says why: 1 matches, 0 does not, -1 the pattern is invalid
+/// standalone (RegExpCreate(pattern, "v") threw), -2 no context could be
+/// made. Both strings are UTF-16 code units, lone surrogates kept. A native
+/// step: no kAuto microtask checkpoint. Nothing is retained.
+pub extern fn v8_MatchesPatternAttribute(isolate: *Isolate, pattern: [*]const u16, pattern_len: c_int, value: [*]const u16, value_len: c_int) c_int;
+// ---- end lane: cxsupport ----

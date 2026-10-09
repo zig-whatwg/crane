@@ -13656,3 +13656,82 @@ bool v8_Isolate_RunningScriptLocation(Isolate* isolate, char** url, size_t* url_
 } // extern "C"
 // ---- end lane: csp2 ----
 
+// ---- lane: cxsupport ----
+extern "C" {
+
+/// HTML 4.10.5.3.6 (engine.matchesPatternAttribute): the compiled pattern
+/// regular expression of `pattern` and whether it "matches" `value`, both as
+/// UTF-16 code units (a lone surrogate kept). 1: it matches; 0: it does not;
+/// -1: RegExpCreate(pattern, "v") threw - the element has no compiled pattern
+/// regular expression; -2: no context could be made (the heap is exhausted).
+///
+/// RegExp::Exec is not RegExpBuiltinExec. It is ECMAScript RegExpExec: V8's
+/// api.cc runs RegExpUtils::RegExpExec, which does Get(R, "exec") and calls
+/// what it finds through Execution::Call (regexp-utils.cc), so in the page's
+/// realm a replaced RegExp.prototype.exec would run - script - and decide the
+/// answer, and the built-in exec would write the page's legacy RegExp statics
+/// (RegExp.$1, lastMatch, input). So both regexps are made in a NEW context,
+/// whose intrinsics no script has touched or can reach: Get(R, "exec") finds
+/// that context's %RegExp.prototype.exec%, the built-in, whose steps are
+/// RegExpBuiltinExec; RegExp::New is RegExpCreate with the intrinsic
+/// %RegExp%, never the page's global `RegExp`. That is the browsers' design:
+/// Blink's ScriptRegexp compiles and matches in V8PerIsolateData's own
+/// ScriptRegexpContext, Gecko in a junk scope, WebKit with Yarr and no JS
+/// object at all - and in none of them does the page see the value in its
+/// statics. The context is not kept: nothing outlives this call's handle
+/// scope, and the collector takes the context (no retention).
+///
+/// A native step (NativeStepScope): the API calls here return to call depth
+/// >= 1, so none of them is a kAuto microtask checkpoint.
+int v8_MatchesPatternAttribute(Isolate* isolate, const uint16_t* pattern, int pattern_len, const uint16_t* value, int value_len) {
+    NativeStepScope native_step(isolate);
+    HandleScope handle_scope(isolate);
+    Local<Context> context = Context::New(isolate);
+    if (context.IsEmpty()) return -2;
+    Context::Scope context_scope(context);
+    TryCatch try_catch(isolate);
+
+    Local<String> source = String::Empty(isolate);
+    if (pattern_len > 0 && !String::NewFromTwoByte(isolate, pattern, NewStringType::kNormal, pattern_len).ToLocal(&source)) return -2;
+    Local<String> subject = String::Empty(isolate);
+    if (value_len > 0 && !String::NewFromTwoByte(isolate, value, NewStringType::kNormal, value_len).ToLocal(&subject)) return -2;
+    const RegExp::Flags v = RegExp::kUnicodeSets;
+
+    // 3. Let regexpCompletion be RegExpCreate(pattern, "v").
+    Local<RegExp> standalone;
+    if (!RegExp::New(context, source, v).ToLocal(&standalone)) {
+        if (try_catch.HasTerminated()) {
+            try_catch.ReThrow();
+            return 0;
+        }
+        // 4. If regexpCompletion is an abrupt completion, then return
+        //    nothing: no compiled pattern regular expression.
+        return -1;
+    }
+    // 5. Let anchoredPattern be "^(?:", followed by pattern, followed by ")$".
+    Local<String> anchored = String::Concat(isolate, String::Concat(isolate, String::NewFromUtf8Literal(isolate, "^(?:"), source), String::NewFromUtf8Literal(isolate, ")$"));
+    // 6. Return ! RegExpCreate(anchoredPattern, "v"). The "!" is the spec's
+    //    claim; a failure anyway (an engine limit) is treated as step 4's.
+    Local<RegExp> regexp;
+    if (!RegExp::New(context, anchored, v).ToLocal(&regexp)) {
+        if (try_catch.HasTerminated()) {
+            try_catch.ReThrow();
+            return 0;
+        }
+        return -1;
+    }
+    // "matches": ! RegExpBuiltinExec(regexp, input) is not null. Exec answers
+    // null as a Local<Object> holding Null (api.cc's own TODO). A throw the
+    // "!" rules out - an engine limit hit while matching - is no match, as in
+    // Blink (ScriptRegexp::Match answers -1, which PatternMismatchPerValue
+    // reads as not matched).
+    Local<Object> result;
+    if (!regexp->Exec(context, subject).ToLocal(&result)) {
+        if (try_catch.HasTerminated()) try_catch.ReThrow();
+        return 0;
+    }
+    return result.As<Value>()->IsNull() ? 0 : 1;
+}
+
+} // extern "C"
+// ---- end lane: cxsupport ----

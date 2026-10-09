@@ -69,7 +69,7 @@ pub fn stringFromWtf8(isolate: *ffi.Isolate, bytes: []const u8) EngineError!*ffi
 /// after ED the upper boundary stays BF rather than 9F, so a surrogate code
 /// point decodes to its own code unit. Anything else ill-formed becomes
 /// U+FFFD exactly as UTF-8 decode makes it.
-fn wtf8ToUtf16(bytes: []const u8, units: []u16) usize {
+pub fn wtf8ToUtf16(bytes: []const u8, units: []u16) usize {
     var out: usize = 0;
     var code_point: u21 = 0;
     var needed: u2 = 0;

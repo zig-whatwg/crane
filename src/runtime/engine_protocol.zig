@@ -1353,6 +1353,19 @@ pub inline fn serializeJsonToBytes(realm: Context, value: JSValue, allocator: st
     return impl.serializeJsonToBytes(realm, value, allocator);
 }
 
+/// HTML 4.10.5.3.6: the compiled pattern regular expression and "check if an
+/// input value matches". Steps: RegExpCreate(pattern, "v"); if it throws,
+/// error.InvalidPattern (the attribute imposes no constraint); otherwise
+/// RegExpCreate("^(?:" + pattern + ")$", "v") and RegExpBuiltinExec(regexp,
+/// value) != null. `pattern` and `value` are WTF-8: a lone surrogate is kept.
+/// Built-in intrinsics only: no page-overridable RegExp or RegExp.prototype
+/// member is called, nothing is retained, and no script runs. Callable from
+/// native code with no script on the stack, and no microtask checkpoint.
+/// JSC/QuickJS/test adapters: error.NotSupported until implemented.
+pub inline fn matchesPatternAttribute(realm: Context, pattern: []const u8, value: []const u8) error{ InvalidPattern, NotSupported, OutOfMemory }!bool {
+    return impl.matchesPatternAttribute(realm, pattern, value);
+}
+
 // ============================================================================
 // 4.6 WebIDL: ECMAScript to IDL
 // ============================================================================
