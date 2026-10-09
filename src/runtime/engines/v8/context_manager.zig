@@ -1044,6 +1044,19 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
     const state = &(manager_state orelse return);
     const raw_addr: ?*anyopaque = @ptrFromInt(key);
 
+    // The nodes this realm queued for deferred teardown (their wrappers were
+    // collected; wrapper_cache.queueCollectedNode) go first, while every
+    // object of the realm lives and before its coordinated teardown begins -
+    // the conditions the collector's second pass had, where they would have
+    // gone without the queue. A teardown may end another realm (an iframe in
+    // the tree), which drains its own.
+    if (state.contexts.get(key)) |entry| {
+        if (entry.runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+            const cache: *@import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(cache_storage));
+            cache.drainDeferred();
+        }
+    }
+
     if (state.contexts.fetchRemove(key)) |kv| {
         const entry = kv.value; // This is now *ContextEntry
         // Retire rather than destroy: Instances created in this context are not

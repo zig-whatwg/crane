@@ -89,6 +89,22 @@ class finalizer run inside their collectors, so those adapters queue the
 teardown the same way once they wrap platform objects; today they wrap none.
 `AsyncIteratorSteps.finalize` runs under the same rule.
 
+**A collected node's teardown is the host's to schedule.** When the host gives
+an agent a queue (`AgentOptions.deferred_teardown`, a
+`runtime.gc.DeferredTeardown` its AgentHost owns), the adapter queues a node
+whose wrapper was collected there instead of tearing it down, and the host's
+event loop frees it a slice at a time between tasks (`runSlice`: at most
+`slice_budget` nodes, leaves first, through `dom.tree_teardown`), so a
+collected tree of thousands of nodes never lands as one pause inside whatever
+script the collection interrupted. The checks above are made again when the
+queue reaches the node, since script has run in between. The node's realm's
+end, `requestGarbageCollection` and a `.critical` `notifyMemoryPressure` drain
+the queue; the agent's end finds it empty and closes it; past `high_water`
+queued nodes, the second pass that queued one frees as many inline. V8 queues
+from the second pass; JavaScriptCore, QuickJS and the test adapter take the
+field and tear down inline. The queue is engine-neutral: a reference-counted
+DOM queues an object whose count reached zero the same way.
+
 **A realm's end finalizes what no wrapper owns.** The host data behind a
 promise reaction that has not run (`PromiseReactionSteps.dropped`) and behind
 an asynchronous iterator still alive (`AsyncIteratorSteps.finalize`) is freed
@@ -207,7 +223,7 @@ adapter will use Crane's own walker (src/html/structured_clone).
 
 | Area | Operations |
 |---|---|
-| Engine and agents | `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks`), `destroyAgent`, `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `agentHost` (the AgentOptions.host pointer the agent was made with, handed back; null once destroyed), `requestGarbageCollection` (testing only), `abortRunningScript` [script_abort] (HTML 8.1.4.5 "abort a running script", from any thread: a resource limit's abort "without an exception") and `resumeScripts` [script_abort] (the agent may run script again) |
+| Engine and agents | `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks` and, optionally, its `deferred_teardown` queue), `destroyAgent`, `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `agentHost` (the AgentOptions.host pointer the agent was made with, handed back; null once destroyed), `requestGarbageCollection` (testing only), `abortRunningScript` [script_abort] (HTML 8.1.4.5 "abort a running script", from any thread: a resource limit's abort "without an exception") and `resumeScripts` [script_abort] (the agent may run script again) |
 | Realms | `createWindowRealm`, `destroyWindowRealm` (how, as `WindowRealmEnd`: `.global_detached` - its page is gone or a navigation replaced its Window, Blink kGlobalObjectIsDetached (a frame realm a navigation replaced is detached and ends once collected or with its page); `.navigable_destroyed` - HTML "destroy a child navigable", Blink kFrameIsDetached: the global stays attached, severed from the Window), `createWorkerRealm` (HTML "run a worker" step 5: `WorkerRealmOptions.global` picks the global object, a DedicatedWorkerGlobalScope or, for a shared worker, a SharedWorkerGlobalScope), `destroyWorkerRealm`, `currentRealm`, `entryRealm`, `incumbentRealm`, `functionRealm`, `installWindowOperations`, `defineBuiltinFunction` |
 | Running script (HTML 8.1.4) | `runClassicScript`, `evaluateClassicScript`, `evaluateClassicScriptToString`, `compileEventHandler`, `prepareToRunScript` / `cleanUpAfterRunningScript`, `runInRealm`, `runTaskInRealm`, `performMicrotaskCheckpoint` and `queueMicrotask` (the agent's - an event loop's; no dropped end, so host data that must be freed goes through `queueRealmMicrotask`), `extractErrorInformation`, `runningScriptLocation` (CSP 2.4.1 step 2: the agent's running script's URL - its `//# sourceURL=` for eval and Function code - and 1-based line and column, as a `ScriptLocation` whose URL the caller owns; null when no script runs. V8: StackTrace::CurrentStackTrace's top frame. JavaScriptCore and QuickJS: always null - violations carry no source location there; JSContextCreateBacktrace, public, is the JavaScriptCore route to a URL and line) |
 | Modules [module_scripts] | `parseModule`, `parseJSONModule`, `createDefaultExportSyntheticModule` (ECMA-262 CreateDefaultExportSyntheticModule, for HTML "create a CSS module script"), `moduleRequests`, `linkModule`, `evaluateModule`, `finishDynamicImport`, `releaseModuleRecord` |
