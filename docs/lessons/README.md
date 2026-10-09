@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A collected tree is freed between tasks, a slice at a time](architecture-a-collected-tree-is-freed-between-tasks-a-slice-at-a-time.md) - A teardown's cost lands where it runs: put a collected tree's teardown on the event loop, between tasks and in slices, and re-check ownership when it runs.
 - [Under kAuto, every do_callback=true API at call depth 0 is a microtask checkpoint](architecture-under-kauto-every-do-callback-api-at-depth-zero-is-a-checkpoint.md) - Under kAuto, a native step is a microtask checkpoint unless it proves otherwise: read the API's ENTER_V8 macro in api.cc for the version you link, and measure the call-completed callback rather than guessing which calls fire.
 - [A parent completes loading in its last child's task](architecture-a-parent-completes-loading-in-its-last-child-s-task.md) - When the spec spins the event loop before a load task, check how many tasks the browsers put there - Blink and Gecko put none between a last child and its parent - and make a Crane test read the state where the WPT test under study reads it.
 - [Parser association is not document activity](architecture-parser-association-is-not-document-activity.md) - A new parser follows its native document association even after the browsing context is destroyed.
@@ -353,6 +354,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+- [Time the work that makes the collection, not just any allocation](testing-time-the-work-that-makes-the-collection.md) - A pause probe that times the wrong allocation measures nothing: time the work that triggers the collection you are studying, and check with a control that moves the collection out.
 - [A count cannot see a tree's shape](testing-a-count-cannot-see-a-tree-shape.md) - Assert a parse by its serialization, through every parser path, never by counting nodes; read the large failure counts in OK files too.
 - [A queued-record test must collect without a task turn](testing-a-queued-record-test-must-collect-without-a-task-turn.md) - Know which checkpoint your helper crosses: an `await` delivers queued mutation records, so a test of the queue must collect, churn and read without one.
 - [Check the harness’s roots before asserting collection](testing-check-the-harness-roots-before-asserting-collection.md) - Invoke real GC, avoid test-owned strong references, and prove retention assertions fail without their collector edge.
