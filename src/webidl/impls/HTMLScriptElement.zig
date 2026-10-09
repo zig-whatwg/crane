@@ -138,6 +138,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // Erase borrowed membership before this element's identity can end.
     dom_module.document_rendering.unblock(instance);
+    script_element_state.forgetQueueMembership(instance);
     // Clean up internal state from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
