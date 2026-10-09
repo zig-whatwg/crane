@@ -457,9 +457,6 @@ src/intl/cldr/loader.zig host.cwd 1
 src/intl/cldr/loader.zig host.io 1
 src/intl/cldr/loader.zig std.Io 1
 src/intl/cldr/loader.zig std.Io.File 1
-src/lib_exports.zig platform.PlatformBackend 1
-src/lib_exports.zig platform.exports 8
-src/runtime/engines/v8/context_manager.zig host.@import 1
 src/runtime/engines/v8/frozen_context_manager.zig clock.@import 1
 src/runtime/engines/v8/frozen_context_manager.zig clock.monotonicMillis 8
 src/runtime/engines/v8/intl_binding.zig clock.@import 1
@@ -856,10 +853,6 @@ src/xhr/internal/progress_tracker.zig clock.@import 1
 src/xhr/internal/progress_tracker.zig clock.monotonicMillis 2
 tests/html/media/backend_test.zig platform.media_backend 1
 tests/html/media/host_backend_test.zig platform.media_backend 4
-tests/platform/platform_backend_test.zig platform.exports 1
-tests/platform/platform_backend_test.zig platform.platform_backend 4
-tests/platform/platform_backend_test.zig platform.stub_platform_backend 2
-tests/platform/platform_backend_test.zig platform.vtables 3
 tests/wpt_runner/host_media.zig platform.media_backend 9
 tests/wpt_runner/main.zig platform.timer_backend 1
 tests/wpt_runner/wav_backend.zig platform.media_backend 13

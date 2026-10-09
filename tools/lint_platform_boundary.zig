@@ -63,11 +63,6 @@ pub const transitional_names = [_][]const u8{
     "ClipboardItem",
     "StubClipboardBackend",
     "DeniedClipboardBackend",
-    "PlatformBackend",
-    "platform_backend",
-    "stub_platform_backend",
-    "vtables",
-    "exports",
 };
 
 /// How a file is held to the boundary.

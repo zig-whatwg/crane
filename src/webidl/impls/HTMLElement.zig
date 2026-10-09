@@ -28,9 +28,6 @@ const ElementImpl = @import("Element.zig");
 // Import CSSStyleDeclaration impl for inline style creation
 const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
 
-// Platform layout backend for CSSOM View metrics
-const layout_backend = @import("platform").layout_backend;
-
 pub const State = HTMLElement.State;
 
 pub const ImplError = error{

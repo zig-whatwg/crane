@@ -53,7 +53,6 @@ const fetch = @import("fetch");
 const iface_bindings_mod = @import("interface_bindings.zig");
 const helpers = @import("webidl").helpers;
 const shadow_realm = @import("shadow_realm.zig");
-const host = @import("host");
 const node_document = @import("dom").node_document;
 
 /// Context mapping entry
