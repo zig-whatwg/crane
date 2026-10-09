@@ -138,6 +138,138 @@ pub fn hasHistoryActionActivation(window: *Instance) bool {
     return timestamps.last_history_action_activation != timestamps.last_activation;
 }
 
+/// Whether a navigation of `target` (a navigable's html_core browsing
+/// context) to `url` that `source_document` started is refused: a frame
+/// navigating its top-level traversable away while it is cross-origin with
+/// it and has no user activation. HTML has no such step - its navigate only
+/// checks the sandboxing flags - so this is a deviation, stated (golden rule
+/// 2): Firefox and Safari ship it, Chrome stable does not, so it is a 2-of-3
+/// majority. wpt.fyi (run cc74d2669f): navigating-across-documents/
+/// cross-origin-top-navigation-without-user-activation.window.html and its
+/// -nested variant pass in Firefox 157 and Safari 27 and fail in Chrome 154.
+/// Gecko: BrowsingContext::CheckFramebusting, with
+/// BrowsingContext::ComputeIsFramebustingAllowed (docshell/base/
+/// BrowsingContext.cpp), called from LoadURI and nsDocShell::InternalLoad for
+/// every load. WebKit: Document::isNavigationBlockedByThirdPartyIFrameRedirectBlocking,
+/// called from Document::canNavigate (dom/Document.cpp), whose
+/// CanNavigateState::Unable the Location setter throws as a SecurityError
+/// (Location::setLocation).
+///
+/// It applies only when the target is a top-level traversable (Gecko IsTop();
+/// WebKit requester.topFrameID == targetFrame.frameID()) other than the
+/// source's own navigable, and only to the top of the source's own page
+/// (Gecko allows a source in another browser - a popup navigating its opener
+/// - and WebKit checks only the requester's own top). Each exception, and who
+/// allows it:
+/// - No source document - a navigation the engine or the embedder starts,
+///   not a page: allowed by all three (Gecko: a null SourceBrowsingContext).
+///   Traversals, reloads and a container navigating its own child never get
+///   here (the caller does not ask, or the target is not top-level).
+/// - The source's window has transient activation: allowed by all three
+///   (Gecko: nsDocShellLoadState::HasValidUserGestureActivation; WebKit:
+///   hasHadUserInteraction).
+/// - The source's window has sticky activation only (the transient window
+///   has passed or was consumed): allowed by WebKit (hasHadUserInteraction is
+///   "has the user ever interacted") and by Chrome; Gecko refuses - 2 of 3
+///   allow.
+/// - The source's navigable is same origin with the top-level traversable:
+///   allowed by all three (Gecko: SameOriginWithTop; WebKit:
+///   canAccessAncestor of the target's origin).
+/// - The source's navigable is sandboxed with allow-top-navigation and its
+///   parent is allowed by these rules: allowed by Gecko
+///   (ComputeIsFramebustingAllowed recurses to the parent), WebKit (an
+///   attribute sandbox whose parent is same origin with top) and Chrome.
+/// - The destination is same site with the top-level traversable's origin
+///   (same scheme, and same host or registrable domain): allowed by WebKit
+///   (the last step of its check) and Chrome; Gecko refuses - 2 of 3 allow.
+/// Not taken: Gecko's per-site popup permission (no permission store), and
+/// WebKit's "untrusted first-party iframe" (one that loaded both a
+/// third-party script and a third-party frame), which neither Gecko nor
+/// Chrome blocks.
+pub fn topNavigationBlocked(source_document: ?*Instance, target: *BrowsingContext, url: []const u8) bool {
+    if (target.parent != null) return false;
+    const source = source_document orelse return false;
+    const source_window = (interfaces.Document.get_defaultView(source) catch null) orelse return false;
+    const source_context = browsingContextOf(source_window) orelse return false;
+    if (source_context == target) return false;
+    if (source_context.getTop() != target) return false;
+    // Transient or sticky activation.
+    if (hasStickyActivation(source_window)) return false;
+    if (framebustingAllowed(source_context, target)) return false;
+    if (sameSiteWithTop(target, url)) return false;
+    return true;
+}
+
+/// Gecko's ComputeIsFramebustingAllowed for `context` under `top`: it is
+/// top, it is same origin with top, or it is sandboxed with
+/// allow-top-navigation and its parent is allowed.
+fn framebustingAllowed(context: *BrowsingContext, top: *BrowsingContext) bool {
+    var current = context;
+    var depth: usize = 0;
+    while (depth < max_windows) : (depth += 1) {
+        const parent = current.parent orelse return true;
+        if (current == top) return true;
+        if (sameOriginWith(current, top)) return true;
+        const flags = current.sandbox_flags orelse return false;
+        if (!flags.allow_top_navigation) return false;
+        current = parent;
+    }
+    return false;
+}
+
+/// Whether the active windows of `a` and `b` have the same origin (an opaque
+/// origin is the same as none other).
+fn sameOriginWith(a: *BrowsingContext, b: *BrowsingContext) bool {
+    const allocator = std.heap.page_allocator;
+    const origin_a = windowOriginOf(a, allocator) orelse return false;
+    defer allocator.free(origin_a);
+    const origin_b = windowOriginOf(b, allocator) orelse return false;
+    defer allocator.free(origin_b);
+    if (std.mem.eql(u8, origin_a, "null")) return false;
+    return std.mem.eql(u8, origin_a, origin_b);
+}
+
+/// The serialized origin of `context`'s active window, owned by `allocator`.
+fn windowOriginOf(context: *BrowsingContext, allocator: std.mem.Allocator) ?[]u8 {
+    const window = activeWindowOf(context) orelse return null;
+    const origin = interfaces.Window.get_origin(window) catch return null;
+    defer window.ctx.allocator.free(origin);
+    return allocator.dupe(u8, origin) catch null;
+}
+
+/// WebKit's last step: `url` has the scheme of `top`'s origin, and the same
+/// host or registrable domain.
+fn sameSiteWithTop(top: *BrowsingContext, url: []const u8) bool {
+    const allocator = std.heap.page_allocator;
+    const url_mod = @import("url");
+    const parse = url_mod.parser.basic_url_parser.parse;
+    const origin = windowOriginOf(top, allocator) orelse return false;
+    defer allocator.free(origin);
+    var top_record = parse(allocator, origin, null) catch return false;
+    defer top_record.deinit();
+    var destination = parse(allocator, url, null) catch return false;
+    defer destination.deinit();
+    if (!std.mem.eql(u8, top_record.scheme(), destination.scheme())) return false;
+    const top_host = top_record.host orelse return false;
+    const destination_host = destination.host orelse return false;
+    if (hostsEqual(top_host, destination_host)) return true;
+    const top_site = (url_mod.public_suffix.getRegistrableDomain(allocator, top_host) catch return false) orelse return false;
+    defer allocator.free(top_site);
+    const destination_site = (url_mod.public_suffix.getRegistrableDomain(allocator, destination_host) catch return false) orelse return false;
+    defer allocator.free(destination_site);
+    return std.ascii.eqlIgnoreCase(top_site, destination_site);
+}
+
+fn hostsEqual(a: anytype, b: @TypeOf(a)) bool {
+    return switch (a) {
+        .domain => |d| b == .domain and std.mem.eql(u8, d, b.domain),
+        .opaque_host => |o| b == .opaque_host and std.mem.eql(u8, o, b.opaque_host),
+        .ipv4 => |v| b == .ipv4 and v == b.ipv4,
+        .ipv6 => |v| b == .ipv6 and std.mem.eql(u16, &v, &b.ipv6),
+        .empty => b == .empty,
+    };
+}
+
 fn isSticky(timestamps: state.Timestamps, now: f64) bool {
     return now >= timestamps.last_activation;
 }
