@@ -54,7 +54,12 @@ both and choose at build time.
   requires the declarations of section 1.3. Helpers built over operations (`monotonicMillis`,
   `Stopwatch`) are plain `pub fn`s. In a test build the implementation's functions are compiled whole,
   so a stub nothing calls still type-checks.
-- **`platform` is a leaf.** The facade imports only std, `platform_impl` and `build_options`. Its
+- **`platform` is a leaf.** The facade imports only std, `platform_impl` and `platform_options` - the
+  binding's -Dplatform-* choices, a module of each graph's own, since two graphs in one invocation
+  differ in them (corrected in step 0: this said `build_options`, which every graph shares). Until
+  the facade's TRANSITIONAL section goes (today's media, timer and clipboard backends, re-exported
+  so their callers keep importing `platform`; each names the recipes step that removes it) it also
+  imports the `clock` bridge. Its
   types are its own (Instant, HttpRequest, PermissionDescriptor, ...): fetch, storage, webcrypto,
   html and the impls convert at their edge. That is what lets fetch, storage, cookiestore, infra,
   hr_time, dom, html, impls, runtime, websocket, webcrypto, browser and the engine adapter all import
@@ -66,7 +71,7 @@ both and choose at build time.
 | Option | Meaning |
 |---|---|
 | `-Dplatform=darwin` / `linux` / `testing` | a built-in platform. Default: from the target (`darwin` for macOS and iOS, `linux` for Linux) |
-| `-Dplatform-module=<path>` | a THIRD-PARTY platform: the root file of an implementation that lives outside Crane (a Windows port, a console, an embedded board). build.zig makes it the `platform_impl` module, gives it the `platform` facade and the kit modules to import, and the same conformance check holds it to the contract. A package dependency can supply the path |
+| `-Dplatform-module=<path>` | (`-Dplatform=external` is implied) a THIRD-PARTY platform: the root file of an implementation that lives outside Crane (a Windows port, a console, an embedded board). build.zig makes it the `platform_impl` module, gives it the `platform` facade and the kit modules to import, and the same conformance check holds it to the contract. A package dependency can supply the path |
 | `-Dplatform-without=<capability>,...` | compile capabilities OUT (section 5): each named capability reads `.unsupported` whatever the platform declares, so neither Crane's feature code nor the platform's implementation of it is in the binary, and the system library it would link is not linked |
 | `-Dplatform-static=<item>,...` | compile the kit's static implementation for the named link-plan items instead of linking the system library (section 10); `all` for a fully static build |
 
@@ -518,6 +523,7 @@ or background use) the operation drops its Reply and Crane takes the spec's unsu
 | `mediaCanPlayType` | media_decoding | `(browser, mime: Str) MediaSupport{ unsupported, maybe, probably }` - HTML canPlayType | "" |
 | `openMediaDecoder` | media_decoding | `(browser, mime: Str) Error!*MediaDecoder` | NotSupported |
 | `pushMediaData` | media_decoding | `(decoder, bytes: Bytes, end_of_stream: bool, metadata: *MediaMetadata) MediaResult{ need_more, unsupported, decode_error, metadata, current_data }` - synchronous, as src/platform/media_backend.zig's push is today | - |
+| `mediaVideoSize` | media_decoding | `(decoder, seconds: f64, size: *VideoSize) bool` - the intrinsic size at a position, media_backend.zig's `video_size_at` (added in step 0: the contract omitted it) | false |
 | `closeMediaDecoder` | media_decoding | `(decoder) void` | - |
 | `mediaDecodingInfo` | media_capabilities | `(browser, config) DecodingInfo` | supported false |
 | `openCodec`, `codecInput`, `codecFlush`, `closeCodec` | webcodecs | `(browser, config: *const CodecConfig, output: CodecSink) Error!*Codec`, `(codec, chunk, reply: Reply(void))`, `(codec, reply)`, `(codec)` | isConfigSupported false; configure NotSupportedError |

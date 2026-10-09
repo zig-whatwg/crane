@@ -882,23 +882,69 @@ fn useBuildableMacosSdk(b: *std.Build, target: std.Build.ResolvedTarget) void {
     b.libc_file = b.cache_root.join(b.allocator, &.{libc_name}) catch return;
 }
 
-/// A built-in platform (docs/platform-protocol.md 1.1). Step 0 of the platform
-/// protocol builds one module graph per platform with no platform binding yet:
-/// every graph is today's modules.
+/// The platform a module graph is built for (docs/platform-protocol.md 1.1):
+/// a built-in one, or `external` - the implementation -Dplatform-module names.
 const Platform = enum {
     darwin,
     linux,
     testing,
+    external,
 
     /// The platform a target gets by default: darwin for macOS and iOS, linux
-    /// for everything else (until another platform exists).
-    fn ofTarget(target: std.Build.ResolvedTarget) Platform {
+    /// for Linux; null where Crane has no built-in platform (pass
+    /// -Dplatform-module).
+    fn ofTarget(target: std.Build.ResolvedTarget) ?Platform {
         return switch (target.result.os.tag) {
             .macos, .ios => .darwin,
-            else => .linux,
+            .linux => .linux,
+            else => null,
         };
     }
 };
+
+/// The capabilities -Dplatform-without may name: src/platform/protocol.zig's
+/// Capabilities fields. The facade checks the names again at compile time;
+/// this list only makes a typo fail before any compile starts.
+const platform_capability_names = [_][]const u8{
+    "persistent_storage",   "file_urls",        "system_trust_store", "http2",             "http3",
+    "thread_qos",           "resident_memory",  "layout",             "os_permissions",    "simple_dialogs",
+    "printing",             "file_picker",      "windows",            "media_decoding",    "webcodecs",
+    "media_capabilities",   "encrypted_media",  "camera",             "microphone",        "screen_capture",
+    "audio_output",         "speech_synthesis", "speech_recognition", "clipboard",         "notifications",
+    "push",                 "background_sync",  "background_fetch",   "geolocation",       "sensors",
+    "device_orientation",   "usb",              "hid",                "serial",            "bluetooth",
+    "nfc",                  "midi",             "gamepad",            "payment",           "webauthn",
+    "identity_credentials", "share",            "contacts",           "fullscreen",        "pointer_lock",
+    "keyboard_lock",        "wake_lock",        "idle_detection",     "battery",           "vibration",
+    "badging",              "eyedropper",       "local_fonts",        "keyboard_map",      "screen_details",
+    "presentation",         "remote_playback",  "picture_in_picture", "media_session",     "network_information",
+    "compute_pressure",     "device_posture",   "virtual_keyboard",   "protocol_handlers",
+};
+
+/// The link-plan items -Dplatform-static may name (contract section 10): a
+/// platform compiles the kit's static implementation of each instead of
+/// linking the system library. `all` names every one.
+const platform_static_items = [_][]const u8{ "sqlite", "zlib", "brotli", "crypto", "trust_store", "curl", "nghttp2", "all" };
+
+/// A comma-separated option as a list of names, each checked against `valid`.
+fn optionList(b: *std.Build, option: []const u8, value: ?[]const u8, valid: []const []const u8) []const []const u8 {
+    const text = value orelse return &.{};
+    var names: std.ArrayList([]const u8) = .empty;
+    var it = std.mem.tokenizeScalar(u8, text, ',');
+    while (it.next()) |raw| {
+        const name = std.mem.trim(u8, raw, " ");
+        for (valid) |v| {
+            if (std.mem.eql(u8, v, name)) break;
+        } else {
+            std.debug.print("Error: -D{s} names '{s}', which is not one of: ", .{ option, name });
+            for (valid, 0..) |v, i| std.debug.print("{s}{s}", .{ if (i == 0) "" else ", ", v });
+            std.debug.print("\n", .{});
+            std.process.exit(1);
+        }
+        names.append(b.allocator, b.dupe(name)) catch @panic("OOM");
+    }
+    return names.items;
+}
 
 /// What every module graph shares, decided once in build().
 const ModuleConfig = struct {
@@ -913,7 +959,85 @@ const ModuleConfig = struct {
     static_libcurl: ?StaticLibcurl,
     /// The graph whose modules are registered by name for dependent packages.
     public_platform: Platform,
+    /// -Dplatform-without, -Dplatform-static and -Dplatform-module.
+    platform_without: []const []const u8,
+    platform_static: []const []const u8,
+    platform_module: ?[]const u8,
 };
+
+/// The platform protocol's modules for one platform (docs/platform-protocol.md
+/// section 1): the facade `platform` (src/platform/protocol.zig), the bound
+/// implementation `platform_impl`, the kit parts it composes and this
+/// binding's `platform_options`. The facade's comptime check holds the
+/// implementation to the contract whenever the facade is compiled.
+const PlatformBinding = struct {
+    facade: *std.Build.Module,
+    options: *std.Build.Module,
+};
+
+const PlatformBindingOptions = struct {
+    platform: Platform,
+    /// -Dplatform-module's root, for `.external`.
+    module_path: ?[]const u8 = null,
+    without: []const []const u8 = &.{},
+    static: []const []const u8 = &.{},
+    http2: bool,
+    /// Register the facade by name (the public graph).
+    public: bool = false,
+    /// Today's bridges, which kit/posix wraps and the facade's TRANSITIONAL
+    /// timer_backend reads.
+    clock: *std.Build.Module,
+    host: *std.Build.Module,
+    memory: *std.Build.Module,
+};
+
+fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: PlatformBindingOptions) PlatformBinding {
+    const platform_options = b.addOptions();
+    platform_options.addOption([]const u8, "platform_name", @tagName(options.platform));
+    platform_options.addOption([]const []const u8, "platform_without", options.without);
+    platform_options.addOption([]const []const u8, "platform_static", options.static);
+    platform_options.addOption(bool, "http2", options.http2);
+    const options_mod = platform_options.createModule();
+
+    const facade = graphModule(b, options.public, "platform", .{
+        .root_source_file = b.path("src/platform/protocol.zig"),
+        .target = target,
+    });
+    facade.addImport("platform_options", options_mod);
+    // TRANSITIONAL: the re-exported timer_backend reads the clock bridge.
+    facade.addImport("clock", options.clock);
+
+    const impl_root: std.Build.LazyPath = switch (options.platform) {
+        .external => .{ .cwd_relative = options.module_path.? },
+        else => b.path(b.fmt("src/platform/adapters/{s}/protocol.zig", .{@tagName(options.platform)})),
+    };
+    const impl = b.createModule(.{ .root_source_file = impl_root, .target = target, .link_libc = true });
+    impl.addImport("platform", facade);
+    impl.addImport("platform_options", options_mod);
+    facade.addImport("platform_impl", impl);
+
+    // The kit: one module per part, each importing the facade for its types;
+    // any platform, built-in or third-party, may import any of them.
+    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state" };
+    var kit: [kit_parts.len]*std.Build.Module = undefined;
+    for (kit_parts, 0..) |part, i| {
+        kit[i] = b.createModule(.{
+            .root_source_file = b.path(b.fmt("src/platform/kit/{s}/root.zig", .{part})),
+            .target = target,
+            .link_libc = true,
+        });
+        kit[i].addImport("platform", facade);
+        kit[i].addImport("platform_options", options_mod);
+        impl.addImport(b.fmt("kit_{s}", .{part}), kit[i]);
+    }
+    // kit/posix wraps today's clock, process Io and resident-memory bridges.
+    kit[0].addImport("clock", options.clock);
+    kit[0].addImport("host", options.host);
+    kit[0].addImport("memory", options.memory);
+    // kit/browser_state keeps a Browser's stores in kit/memory_store.
+    kit[6].addImport("kit_memory_store", kit[2]);
+    return .{ .facade = facade, .options = options_mod };
+}
 
 /// A module of a graph: registered by name when the graph is public, private
 /// otherwise (one name cannot be registered twice).
@@ -1184,7 +1308,19 @@ pub fn build(b: *std.Build) void {
     // The library, the CLI and the iOS build use the target's platform; the WPT
     // runner and the test tiers use `testing` (docs/platform-protocol.md 1.1).
     // Step 0 binds no platform yet, so both graphs are today's modules.
-    const target_platform = Platform.ofTarget(target);
+    // The platform protocol's build options (docs/platform-protocol.md 1.1).
+    const platform_module_path = b.option([]const u8, "platform-module", "A third-party platform: the root file of an implementation of src/platform/protocol.zig");
+    const platform_choice = b.option(Platform, "platform", "The platform: darwin, linux or testing (default: from the target)");
+    const target_platform: Platform = if (platform_module_path != null) .external else platform_choice orelse Platform.ofTarget(target) orelse {
+        std.debug.print("Error: no built-in platform for {s}; pass -Dplatform-module=<path>\n", .{@tagName(target.result.os.tag)});
+        std.process.exit(1);
+    };
+    if (platform_choice == .external and platform_module_path == null) {
+        std.debug.print("Error: -Dplatform=external needs -Dplatform-module=<path>\n", .{});
+        std.process.exit(1);
+    }
+    const platform_without = optionList(b, "platform-without", b.option([]const u8, "platform-without", "Capabilities to compile out (comma-separated; src/platform/protocol.zig Capabilities)"), &platform_capability_names);
+    const platform_static = optionList(b, "platform-static", b.option([]const u8, "platform-static", "Link-plan items to compile statically instead of linking the system library (comma-separated, or all)"), &platform_static_items);
     const module_config: ModuleConfig = .{
         .optimize = optimize,
         .build_options = build_options,
@@ -1194,6 +1330,9 @@ pub fn build(b: *std.Build) void {
         .enable_http2 = enable_http2,
         .static_libcurl = static_libcurl,
         .public_platform = target_platform,
+        .platform_without = platform_without,
+        .platform_static = platform_static,
+        .platform_module = platform_module_path,
     };
     const crane_graph = addCraneModules(b, target, target_platform, module_config);
     const testing_graph = if (target_platform == .testing) crane_graph else addCraneModules(b, target, .testing, module_config);
@@ -1957,10 +2096,47 @@ pub fn build(b: *std.Build) void {
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "platform", .module = testing_graph.platform },
+            .{ .name = "platform_options", .module = testing_graph.platform_options },
         };
         addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
         };
+
+        // The contract against every built-in platform (the directory's
+        // executable above binds `testing`), and once with capabilities
+        // compiled out: tests/platform/protocol_conformance_test.zig, each its
+        // own small executable - the facade, one platform, the kit, nothing
+        // of the engine.
+        const conformance_bindings = [_]struct { name: []const u8, platform: Platform, without: []const []const u8 }{
+            .{ .name = "darwin", .platform = .darwin, .without = &.{} },
+            .{ .name = "linux", .platform = .linux, .without = &.{} },
+            .{ .name = "testing_without_camera_clipboard", .platform = .testing, .without = &.{ "camera", "clipboard" } },
+        };
+        for (conformance_bindings) |binding| {
+            const bound = platformBinding(b, target, .{
+                .platform = binding.platform,
+                .without = binding.without,
+                .http2 = enable_http2 and !use_system_curl,
+                .clock = testing_graph.clock,
+                .host = testing_graph.host,
+                .memory = testing_graph.memory,
+            });
+            const conformance = b.addTest(.{
+                .name = b.fmt("platform_protocol_{s}", .{binding.name}),
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("tests/platform/protocol_conformance_test.zig"),
+                    .target = target,
+                    .imports = &.{
+                        .{ .name = "platform", .module = bound.facade },
+                        .{ .name = "platform_options", .module = bound.options },
+                    },
+                }),
+            });
+            const run_conformance = b.addRunArtifact(conformance);
+            // The file tests write under tmp/, relative to the repo root.
+            run_conformance.setCwd(b.path("."));
+            test_step.dependOn(&run_conformance.step);
+        }
 
         // The WPT runner's media backends (host decoders built only into
         // wpt_runner: WAV/PCM, WebM): their std.testing blocks, reached from
@@ -4012,6 +4188,8 @@ pub fn build(b: *std.Build) void {
 /// to one module, so an artifact takes ALL its Crane modules from one graph
 /// (docs/lessons/architecture-a-module-bound-twice-cannot-share-a-compile.md).
 const CraneModules = struct {
+    /// The platform binding's options module (tests/platform reads it).
+    platform_options: *std.Build.Module,
     whatwg: *std.Build.Module,
     clock: *std.Build.Module,
     host: *std.Build.Module,
@@ -5166,15 +5344,21 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // Add websocket to impls for WebSocket interface implementation
     impls_mod.addImport("websocket", websocket_mod);
 
-    // Platform module (Platform abstraction layer)
-    const platform_mod = graphModule(b, public, "platform", .{
-        .root_source_file = b.path("src/platform/root.zig"),
-        .target = target,
+    // The platform protocol (module `platform`, src/platform/protocol.zig),
+    // bound to this graph's platform. A leaf: it no longer imports fetch.
+    const platform_binding = platformBinding(b, target, .{
+        .platform = platform,
+        .module_path = config.platform_module,
+        .without = config.platform_without,
+        .static = config.platform_static,
+        .http2 = enable_http2 and !use_system_curl,
+        .public = public,
+        .clock = clock_mod,
+        .host = host_mod,
+        .memory = memory_mod,
     });
-    platform_mod.addImport("clock", clock_mod);
-    platform_mod.addImport("host", host_mod);
-    // Platform module needs fetch for NetworkBackend adapter (bridges old/new interfaces)
-    platform_mod.addImport("fetch", fetch_mod);
+    const platform_mod = platform_binding.facade;
+    const platform_options_mod = platform_binding.options;
 
     // HTML Core module (WHATWG HTML Standard) - Interface-free subset
     // Contains parser (§13), window (§7), event loop (§8.1.7), structured clone (§2.7)
@@ -5410,6 +5594,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .hr_time = hr_time_mod,
         .websocket = websocket_mod,
         .platform = platform_mod,
+        .platform_options = platform_options_mod,
         .html_core = html_core_mod,
         .html = html_mod,
         .permissions = permissions_mod,

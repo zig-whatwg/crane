@@ -26,7 +26,7 @@ A migrated file has **zero platform-boundary references**: no `@import("clock")`
 const platform = @import("platform");
 ```
 
-`platform` is a leaf module (it imports only std, `platform_impl` and `build_options`), so any module
+`platform` is a leaf module (it imports only std, `platform_impl` and `platform_options`), so any module
 may import it. A module that does not have the import yet needs `<mod>.addImport("platform",
 platform_mod)` in build.zig - ask the integrator, who owns build.zig and protocol.zig. Never import
 `platform_impl` or a kit module outside src/platform/ (the WPT runner's use of the testing platform's
@@ -181,7 +181,7 @@ build of the library compiles, and a WPT sample shows no change.
 
 ```zig
 // In a platform (src/platform/adapters/darwin/protocol.zig): one choice per link-plan item, at build time
-const use_system_sqlite = !build_options.platform_static.has(.sqlite);
+const use_system_sqlite = !hasItem(platform_options.platform_static, "sqlite"); // or "all"
 pub const openStore = if (use_system_sqlite) system_sqlite.openStore else kit_sqlite.openStore;
 // build.zig: darwin_impl.linkSystemLibrary("sqlite3", .{}) when system; the kit module's static
 // amalgamation otherwise - never both linked for one item.
