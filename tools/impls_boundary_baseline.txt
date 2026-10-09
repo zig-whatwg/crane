@@ -372,8 +372,6 @@ src/webidl/impls/HTMLSelectElement.zig Node.getInternalState 1
 src/webidl/impls/HTMLSelectElement.zig Node.getParent 5
 src/webidl/impls/HTMLSelectedContentElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLSelectedContentElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLSlotElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLSlotElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLSpanElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLSpanElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLTableCaptionElement.zig HTMLElement.deinit 2
@@ -502,7 +500,6 @@ src/webidl/impls/SharedWorkerGlobalScope.zig EventTarget.eventHandler 1
 src/webidl/impls/SharedWorkerGlobalScope.zig EventTarget.setEventHandler 1
 src/webidl/impls/SharedWorkerGlobalScope.zig WorkerGlobalScope.deinit 2
 src/webidl/impls/SharedWorkerGlobalScope.zig WorkerGlobalScope.init 1
-src/webidl/impls/Slottable.zig Node.getParent 1
 src/webidl/impls/StaticRange.zig Node.NodeType 4
 src/webidl/impls/StaticRange.zig Node.getNodeType 2
 src/webidl/impls/StorageEvent.zig Event.call_initEvent 1
