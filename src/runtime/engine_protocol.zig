@@ -1540,6 +1540,17 @@ pub inline fn createRejectedPromise(realm: Context, reason: JSValue) Error!Owned
     return impl.createRejectedPromise(realm, reason);
 }
 
+/// ECMAScript PromiseResolve(C, x) with C = `realm`'s %Promise% and x =
+/// `value` (BORROWED; a platform object is its wrapper): x itself when
+/// IsPromise(x) and Get(x, "constructor") is %Promise% - the same promise,
+/// so reactions to it take no extra microtask ticks - else a new promise of
+/// `realm` resolved with x (a thenable is adopted). `.throw` when
+/// Get(x, "constructor") throws. Both OWNED. For the places the browsers
+/// keep a promise script returned rather than wrap it in a new one.
+pub inline fn promiseResolve(realm: Context, value: JSValue) Error!Completion {
+    return impl.promiseResolve(realm, value);
+}
+
 /// WebIDL "react to" `promise`: `steps` upon fulfillment and upon rejection.
 pub inline fn reactToPromise(realm: Context, promise: JSValue, steps: *const PromiseReactionSteps, data: ?*anyopaque) Error!void {
     return impl.reactToPromise(realm, promise, steps, data);

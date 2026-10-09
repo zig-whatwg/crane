@@ -600,6 +600,19 @@ pub fn createRejectedPromise(realm: Context, reason: JSValue) Error!Owned {
     return owned(value_construction.createRejectedPromise(realm, relevant.value) catch |err| return protocolError(err));
 }
 
+/// ECMAScript PromiseResolve(%Promise%, x) in `realm`
+/// (protocol_support.promiseResolve).
+pub fn promiseResolve(realm: Context, value: JSValue) Error!engine.Completion {
+    const entered = try enter(realm);
+    defer entered.leave();
+    const x = try support.ownGlobal(entered, value);
+    defer ffi.v8_Global_Dispose(x);
+    return switch (try support.promiseResolve(entered, x)) {
+        .normal => |promise| .{ .normal = support.owned(promise) },
+        .thrown => |thrown| .{ .throw = support.owned(thrown) },
+    };
+}
+
 pub const reactToPromise = @import("protocol_promises.zig").reactToPromise;
 
 pub fn queueResolvedPromiseReaction(realm: Context, steps: *const engine.PromiseReactionSteps, data: ?*anyopaque) Error!void {
