@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Under kAuto, every do_callback=true API at call depth 0 is a microtask checkpoint](architecture-under-kauto-every-do-callback-api-at-depth-zero-is-a-checkpoint.md) - Under kAuto, a native step is a microtask checkpoint unless it proves otherwise: read the API's ENTER_V8 macro in api.cc for the version you link, and measure the call-completed callback rather than guessing which calls fire.
 - [A parent completes loading in its last child's task](architecture-a-parent-completes-loading-in-its-last-child-s-task.md) - When the spec spins the event loop before a load task, check how many tasks the browsers put there - Blink and Gecko put none between a last child and its parent - and make a Crane test read the state where the WPT test under study reads it.
 - [Parser association is not document activity](architecture-parser-association-is-not-document-activity.md) - A new parser follows its native document association even after the browsing context is destroyed.
 - [A load makes a new Document and never empties the old one](architecture-a-load-makes-a-new-document-and-never-empties-the-old-one.md) - Never empty a document to reuse it: make a new one, abort the old, leave its storage to its wrapper, and destroy it from a task once nothing of it is on the stack.
@@ -323,6 +324,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Codegen
 
+- [An iterable declaration's members are not operations](codegen-an-iterable-declaration-s-members-are-not-operations.md) - When the spec says "define" members, the binding defines them; codegen must not turn them into operations for an impl to implement.
 - [Nullable dictionary members can need a presence bit](codegen-nullable-dictionary-members-can-need-a-presence-bit.md) - Preserve absence separately from null when the consuming algorithm distinguishes them.
 - [Inherited indexed access needs the parent facade](codegen-inherited-indexed-access-needs-the-parent-facade.md) - Generate exotic-access metadata even when methods come from a prototype.
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
