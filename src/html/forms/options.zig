@@ -55,6 +55,7 @@ fn mutationError(err: anyerror) anyerror {
     return switch (err) {
         error.HierarchyRequestError => error.HierarchyRequestError,
         error.NotFoundError => error.NotFoundError,
+        error.OutOfMemory => error.OutOfMemory,
         else => error.InvalidStateError,
     };
 }
@@ -129,6 +130,16 @@ pub fn setIndex(select: *runtime.Instance, index: u32, option: ?*runtime.Instanc
     var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
     defer options.deinit(select.ctx.allocator);
     try collect(select, select.ctx.allocator, &options);
+    // Deviation from HTML 2.6.4.3 indexed setter step 4: cap sparse growth
+    // before creating dummy options. Blink HTMLSelectElement::SetOption
+    // (third_party/blink/renderer/core/html/forms/html_select_element.cc)
+    // and WebKit HTMLSelectElement::setItem (Source/WebCore/html/) reject
+    // index > length && index >= 100000. Gecko HTMLOptionsCollection::
+    // IndexedSetter delegates to HTMLSelectElement::SetLength (dom/html/),
+    // whose growth cap is also 100000; it reports an error above the cap.
+    // Follow Blink/WebKit's no-op majority, while allowing replacements
+    // and append-at-length in an already large, explicitly built select.
+    if (index > options.items.len and index >= 100_000) return;
     if (index >= options.items.len) {
         try appendBlank(select, index - @as(u32, @intCast(options.items.len)));
         return insert(select, value, null);
