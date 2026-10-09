@@ -24,6 +24,7 @@ const callbacks = @import("callbacks");
 const StaticRange = interfaces.StaticRange;
 const AbstractRange = interfaces.AbstractRange;
 const range_boundaries = @import("dom").range_boundaries;
+const same_object = @import("same_object.zig");
 
 // Import related impls
 const NodeImpl = @import("Node.zig");
@@ -39,6 +40,15 @@ pub const ImplError = error{
 
 /// Internal state for StaticRange implementation
 /// Stores boundary points that don't update when tree mutates
+///
+/// The range keeps both containers for as long as it lives: Blink's
+/// StaticRange traces Member<Node> start_container_ and end_container_
+/// (third_party/blink/renderer/core/dom/static_range.h), WebKit's holds
+/// Ref<Node>. As bare pointers, a container script let go was freed by the
+/// next collection and the range answered from its freed slot
+/// (crane/ed-static-range-gc.html). Each is an edge from the range's wrapper
+/// - waiting, held strongly, while a constructor's range has none yet
+/// (engine.traceChild).
 pub const InternalState = struct {
     /// Start boundary point - node
     start_container: ?*runtime.Instance,
@@ -48,6 +58,9 @@ pub const InternalState = struct {
     end_container: ?*runtime.Instance,
     /// End boundary point - offset
     end_offset: u32,
+    /// The edges that keep the two containers.
+    kept_start: same_object.Traced = .{ .slot = .{ .name = "startContainer" } },
+    kept_end: same_object.Traced = .{ .slot = .{ .name = "endContainer" } },
 
     pub fn init() InternalState {
         return .{
@@ -101,6 +114,10 @@ fn removeInternal(instance: *runtime.Instance) void {
     // Return the block, not just the map entry. StaticRange keeps its own storage
     // map rather than using InstanceRegistry, so it needs its own release.
     if (internal_storage.fetchRemove(instance)) |kv| {
+        // A range freed unwrapped (a failed construction) lets the edges
+        // waiting for its wrapper go; a collected one's went with it.
+        kv.value.kept_start.release(instance);
+        kv.value.kept_end.release(instance);
         const Arena = @import("runtime").ArenaAllocator;
         if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, kv.value);
     }
@@ -171,11 +188,8 @@ pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.StaticRang
     errdefer deinit(instance);
 
     // Step 2: Set start and end boundary points
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.start_container = start_instance;
-    internal.start_offset = init_data.startOffset;
-    internal.end_container = end_instance;
-    internal.end_offset = init_data.endOffset;
+    try setStart(instance, start_instance, init_data.startOffset);
+    try setEnd(instance, end_instance, init_data.endOffset);
 
     return instance;
 }
@@ -184,16 +198,18 @@ pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.StaticRang
 // Setters for boundary points (used by Selection and other code)
 // =============================================================================
 
-/// Set the start boundary point
+/// Set the start boundary point; the range keeps its container.
 pub fn setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.start_container = node;
     internal.start_offset = offset;
+    internal.kept_start.hold(instance, node);
 }
 
-/// Set the end boundary point
+/// Set the end boundary point; the range keeps its container.
 pub fn setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.end_container = node;
     internal.end_offset = offset;
+    internal.kept_end.hold(instance, node);
 }
