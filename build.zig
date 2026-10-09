@@ -2102,6 +2102,29 @@ pub fn build(b: *std.Build) void {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
         };
 
+        // TRANSITIONAL: the old platform code step 0 keeps, compiled until each
+        // recipes step that replaces it retires it (tests/platform/
+        // retained_old_platform.zig). Its own executable: the old root shares
+        // files with the facade, so it cannot join a compile that has `platform`.
+        const old_platform = b.createModule(.{
+            .root_source_file = b.path("src/platform/root.zig"),
+            .target = target,
+            .imports = &.{
+                .{ .name = "clock", .module = testing_graph.clock },
+                .{ .name = "host", .module = testing_graph.host },
+                .{ .name = "fetch", .module = testing_graph.fetch },
+            },
+        });
+        const retained_old_platform = b.addTest(.{
+            .name = "retained_old_platform",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/platform/retained_old_platform.zig"),
+                .target = target,
+                .imports = &.{.{ .name = "platform_legacy", .module = old_platform }},
+            }),
+        });
+        test_step.dependOn(&b.addRunArtifact(retained_old_platform).step);
+
         // The contract against every built-in platform (the directory's
         // executable above binds `testing`), and once with capabilities
         // compiled out: tests/platform/protocol_conformance_test.zig, each its
