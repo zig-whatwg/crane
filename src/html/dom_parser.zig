@@ -223,12 +223,13 @@ pub const ScriptingParseOptions = struct {
     base_url: []const u8 = "",
     /// Script loader for external scripts (null = no external script loading)
     script_loader: ?ScriptLoader = null,
-    /// Existing document to populate (null = create new document)
-    /// When provided, the parser populates this document instead of creating a new one.
-    /// This is critical for WPT runner: the document must be registered in V8 BEFORE
-    /// parsing so that scripts executing during parsing can access DOM elements via
-    /// document.getElementById(), document.querySelector(), etc.
-    existing_document: ?*runtime.Instance = null,
+    /// The document to parse into, which navigation made for this load and
+    /// already made its window's (HTML "create and initialize a Document
+    /// object" steps 9-10) - so the page's scripts, run by this parser, see
+    /// the document they are in. A NEW document, every time: a parser never
+    /// empties a document to reuse it (a parser of the old one may still be
+    /// on the native stack, naming its nodes). Null creates one here.
+    document: ?*runtime.Instance = null,
     /// The input is the page's byte stream, decoded with the encoding HTML's
     /// encoding sniffing algorithm determines (see
     /// html.scripted_parser.ByteStream); null when it is characters.
@@ -239,10 +240,10 @@ pub const ScriptingParseOptions = struct {
 ///
 /// The parse itself is html's `scripted_parser` - the one parser every
 /// document with scripting uses, with the input stream document.write()
-/// inserts into. This adds what is the top-level page's own: an existing
-/// document (registered in V8 before parsing, so the page's scripts see it) is
-/// emptied first, the embedder's script loader is used for external scripts,
-/// and "the end" runs when the parser has stopped.
+/// inserts into. This adds what is the top-level page's own: the document
+/// navigation made for the load (registered in V8 before parsing, so the
+/// page's scripts see it), the embedder's script loader for external scripts,
+/// and "the end" when the parser has stopped.
 ///
 /// @param allocator Memory allocator for DOM nodes
 /// @param ctx Runtime context for DOM instances
@@ -256,12 +257,6 @@ pub fn parseHTMLWithScripting(
     options: ScriptingParseOptions,
 ) ParseError!*runtime.Instance {
     if (options.parser_canceled) |canceled| canceled.* = false;
-    // The document: the one navigation already registered in V8, so the
-    // page's scripts see it - emptied of a previous run's tree - or a new one.
-    if (options.existing_document) |existing| {
-        dom.document_lifecycle.discardParser(existing, null);
-        document_internals.clearChildren(existing);
-    }
 
     // The parse: html_mod.scripted_parser is the one parser every document
     // with scripting uses - this page's, a frame's, a script-created one's -
@@ -270,7 +265,7 @@ pub fn parseHTMLWithScripting(
     const document = html_mod.scripted_parser.parseHTMLWithScripting(allocator, ctx, html, .{
         .scripting_enabled = options.scripting_enabled,
         .parser_canceled = &parser_canceled,
-        .document = options.existing_document,
+        .document = options.document,
         .script_loader = options.script_loader,
         .base_url = options.base_url,
         .byte_stream = options.byte_stream,
