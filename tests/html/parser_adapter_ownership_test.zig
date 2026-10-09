@@ -55,7 +55,7 @@ test "DomTreeAdapter.deinit - frees a node the parser never attached" {
 
     const orphan_tn = try createElement(&adapter, allocator, "div");
     defer orphan_tn.deinit();
-    const orphan = adapter.node_map.get(orphan_tn).?;
+    const orphan = adapter.getDomNode(orphan_tn).?;
 
     adapter.deinit();
 
@@ -86,8 +86,8 @@ test "DomTreeAdapter.deinit - leaves a node a script detached after the parser a
     const child_tn = try createElement(&adapter, allocator, "span");
     defer child_tn.deinit();
 
-    const parent = adapter.node_map.get(parent_tn).?;
-    const child = adapter.node_map.get(child_tn).?;
+    const parent = adapter.getDomNode(parent_tn).?;
+    const child = adapter.getDomNode(child_tn).?;
 
     // The parser attached the child, then a script detached it again. Its parent
     // is null now - which is all the sweep used to look at.
@@ -125,8 +125,8 @@ test "DomTreeAdapter.deinit - does not follow a slab slot the GC recycled" {
     const child_tn = try createElement(&adapter, allocator, "span");
     defer child_tn.deinit();
 
-    const parent = adapter.node_map.get(parent_tn).?;
-    const child = adapter.node_map.get(child_tn).?;
+    const parent = adapter.getDomNode(parent_tn).?;
+    const child = adapter.getDomNode(child_tn).?;
 
     try adapter.onChildAppended(parent_tn, child_tn);
     _ = try interfaces.Node.call_removeChild(parent, child);

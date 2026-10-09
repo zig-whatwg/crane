@@ -527,8 +527,17 @@ fn convertChildrenToDom(
     owner_document: ?*runtime.Instance,
     conversion: Conversion,
 ) ParseError!void {
+    // A tree node with no children converts nothing (most of them: text,
+    // void elements, leaves) - and looks nothing up.
+    var child: ?*TreeNode = tree_node.first_child orelse return;
     const target = dom.template_contents.insertionTarget(parent_dom) catch return error.InvalidStateError;
-    const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse owner_document;
+    // The children are made in the intended parent's node document. The
+    // caller made `parent_dom` in `owner_document`; only a template's
+    // contents are in a document of their own.
+    const document = if (target != parent_dom)
+        (interfaces.Node.get_ownerDocument(target) catch null) orelse owner_document
+    else
+        owner_document;
     // Create-for-token step 6 uses the intended parent's registry. A
     // template's insertion target is its content DocumentFragment, whose
     // registry lookup is null even when the template itself has one.
@@ -536,7 +545,6 @@ fn convertChildrenToDom(
         .{ .fragment = conversion.fragment, .registry = .{ .explicit = null } }
     else
         conversion;
-    var child = tree_node.first_child;
     while (child) |tree_child| {
         const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, document, child_conversion);
         _ = interfaces.Node.call_appendChild(target, dom_node) catch {

@@ -17,6 +17,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Associate a parser after the last reentrant step](architecture-associate-a-parser-after-the-last-reentrant-step.md) - Release the parser present at association, including one installed by a callback in the same operation.
 
 - [Parser tracing uses a fixed member and collectible storage](architecture-parser-tracing-uses-a-fixed-member-and-collectible-storage.md) - Keep variable parser graphs collectible and active calls rooted through native cleanup.
+- [A parser's holds are its own structures, and a detached tree is rescued through its root](architecture-parser-holds-are-its-structures-and-detached-trees-are-rescued.md) - Hold what your own structures name natively; pay one wrapper for a detached root, never one per node, and end holds at release, not detach.
 - [An internal mutation keeps its caller's reaction scope](architecture-an-internal-mutation-keeps-its-callers-reaction-scope.md) - Use shared DOM algorithms inside the owning public operation's reaction boundary.
 
 - [A script-created parser outlives each write](architecture-a-script-created-parser-outlives-each-write.md) - Keep the script-created parser across consecutive document.write calls until the stream closes.
@@ -341,6 +342,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+- [A count cannot see a tree's shape](testing-a-count-cannot-see-a-tree-shape.md) - Assert a parse by its serialization, through every parser path, never by counting nodes; read the large failure counts in OK files too.
 - [Check the harness’s roots before asserting collection](testing-check-the-harness-roots-before-asserting-collection.md) - Invoke real GC, avoid test-owned strong references, and prove retention assertions fail without their collector edge.
 
 - [A shared suite can hide missing hook setup](testing-a-shared-suite-can-hide-missing-hook-setup.md) - Each test file owns its process-wide prerequisites.

@@ -1,5 +1,7 @@
 # Architecture: Parser tracing uses a fixed member and collectible storage
 
+**Status** (2026-10-08, lane pholds): superseded for parsed nodes. The parser no longer wraps or traces every node it creates; the fixed member is now `document-parser:kept-roots`, and it holds only the roots of trees script detached from under a parser (one wrapper per detach, cleared at the parser's release). The rules below - fixed member names, dense numeric `defineOwnProperty`, publication read-back, no engine calls during a collection - still govern that container. See [A parser's holds are its own structures](architecture-parser-holds-are-its-structures-and-detached-trees-are-rescued.md).
+
 **Date**: 2026-10-08
 **Lesson**: Variable parser references belong in a collectible container under one fixed Document member, with temporary roots for active native calls.
 
