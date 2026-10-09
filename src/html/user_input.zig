@@ -986,11 +986,22 @@ fn deleteContent(target: *Instance, kind: TextControl, direction: DeleteDirectio
     }
     if (!fireInputEvent(target, "beforeinput", input_type, null)) return;
     if (!isConnected(target)) return;
+    // A beforeinput listener may replace the value. Keep the pending
+    // deletion range, as the previous setRangeText path did, but apply it
+    // to the live editor text with both endpoints clamped (HTML 4.10.20,
+    // setRangeText steps 5–6). Preserve the pre-batch pending-range policy;
+    // browser behavior when the listener moves the caret is unverified.
+    var live_value = getValue(target) orelse return;
+    defer live_value.deinit(target.ctx.allocator);
+    const live_text = live_value.asSlice();
+    const live_length = form_associated.utf16Length(live_text);
+    range[0] = @min(range[0], live_length);
+    range[1] = @min(range[1], live_length);
     focus.willEditByUser(target);
     if (kind == .none) return;
-    const cut_start = form_associated.byteOffsetOfUtf16(current, range[0]);
-    const cut_end = form_associated.byteOffsetOfUtf16(current, range[1]);
-    const joined = std.mem.concat(target.ctx.allocator, u8, &.{ current[0..cut_start], current[cut_end..] }) catch return;
+    const cut_start = form_associated.byteOffsetOfUtf16(live_text, range[0]);
+    const cut_end = form_associated.byteOffsetOfUtf16(live_text, range[1]);
+    const joined = std.mem.concat(target.ctx.allocator, u8, &.{ live_text[0..cut_start], live_text[cut_end..] }) catch return;
     defer target.ctx.allocator.free(joined);
     if (!(dom.form_controls.userEdit(target, .{ .text = joined, .selection_start = range[0], .selection_end = range[0] }) catch return)) {
         switch (kind) {
