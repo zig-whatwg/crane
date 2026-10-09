@@ -13,9 +13,13 @@ const common = html.media_runtime;
 const LoadState = @import("html_core").media.LoadState;
 const backend = @import("platform").media_backend;
 const same_object = @import("same_object.zig");
+const clock = @import("clock");
 const hooks = dom.media_elements;
 pub const State = interfaces.HTMLMediaElement.State;
-const Kind = enum(u16) { event, failure, read, next_source, release_delay, pause, track_event, select_tracks, track_change, progress_tick, stalled, fatal_network, fatal_decode };
+const Kind = enum(u16) { event, failure, read, next_source, release_delay, pause, track_event, select_tracks, track_change, progress_tick, stalled, fatal_network, fatal_decode, playing, resolve_play, reached_end };
+/// "time marches on" fires timeupdate every 15 to 250ms of normal playback
+/// (4.8.11.8 step 6); Chromium and Gecko both use 250ms.
+const timeupdate_interval_ms: u64 = 250;
 
 pub const InternalState = struct {
     activity: common.Activity,
@@ -44,6 +48,17 @@ pub const InternalState = struct {
     tracks: @import("html_core").media.track_selection.State = .{},
     fetch_document: ?same_object.Link = null,
     document_abort_pending: ?u64 = null,
+    /// The media timeline's clock while potentially playing: the monotonic
+    /// time the current playback position was last advanced to, and the
+    /// timer that runs "time marches on". Crane plays nothing out loud; the
+    /// host's decoder holds the data, and the position moves on this clock.
+    clock_anchor: ?i128 = null,
+    clock_timer: @import("html_core").media.Deadline(runtime.TimerInterface) = .{},
+    /// The official playback position was set from the clock in this task;
+    /// a stable state clears it (4.8.11.8: "Any time the user agent provides a
+    /// stable state, the official playback position must be set to the
+    /// current playback position").
+    official_fresh: bool = false,
 
     fn queue(self: *InternalState, kind: Kind, target: ?*runtime.Instance, name: ?[]const u8) !void {
         return self.activity.queue(@intFromEnum(kind), self.load.generation, target, name);
@@ -85,11 +100,14 @@ pub const InternalState = struct {
         if (generation != self.load.generation) return;
         self.endFetch();
         self.load.endLoadDelay(generation);
-        self.unregister();
+        // A playing element stays in the live registry, so the document's
+        // unload and discard reach it (syncClock).
+        if (!self.activity.playing) self.unregister();
         self.syncDelay();
         self.activity.sync();
     }
     fn cancel(self: *InternalState) void {
+        self.stopClock();
         self.activity.discardTasks(false);
         self.tracks.takeChange();
         self.load.cancel();
@@ -111,7 +129,7 @@ pub const InternalState = struct {
         // insertions before its stable section cannot advance its pointer twice.
         // Step 24 can delay document load again, so restore the live registry.
         try self.register();
-        if (self.activity.hasStable(self.load.generation)) return;
+        if (self.activity.hasStableFor(self.load.generation, stable)) return;
         try self.activity.stable(self.load.generation, stable);
     }
     fn fail(self: *InternalState) void {
@@ -218,10 +236,10 @@ pub const InternalState = struct {
                         self.progress.received();
                         try self.armStall();
                     }
-                    if (self.decoder) |decoder| if (try self.decoded(decoder.push(bytes, false))) return;
+                    if (self.decoder) |decoder| if (try self.decoded(decoder.push(bytes, false), false)) return;
                 },
                 .eof => {
-                    if (self.decoder) |decoder| if (try self.decoded(decoder.push("", true))) return;
+                    if (self.decoder) |decoder| if (try self.decoded(decoder.push("", true), true)) return;
                     if (self.load.ready == .nothing) {
                         self.fail();
                         return;
@@ -239,30 +257,210 @@ pub const InternalState = struct {
             }
         }
     }
-    fn decoded(self: *InternalState, result: backend.Result) !bool {
+    /// Media data processing for one decoder answer; `end_of_stream` says it
+    /// answered the last push. True when the resource failed.
+    fn decoded(self: *InternalState, result: backend.Result, end_of_stream: bool) !bool {
         switch (result) {
             .unsupported, .decode_error => {
+                // Before metadata the resource is unusable: the candidate
+                // fails (the dedicated failure, or the next source). After
+                // it, this is the fatal decode error steps (MEDIA_ERR_DECODE),
+                // never a network error.
                 if (self.load.ready == .nothing) self.fail() else self.fatal(.fatal_decode);
                 return true;
             },
             .need_more => {},
             .metadata, .current_data => |metadata| {
-                self.load.duration = metadata.duration;
-                if (self.load.ready == .nothing) {
-                    self.load.ready = .metadata;
-                    try self.event("durationchange");
-                    try self.event("loadedmetadata");
-                }
-                if (result == .current_data and self.load.ready == .metadata) {
-                    self.load.haveCurrentData(self.load.generation);
-                    self.syncDelay();
-                    try self.event("loadeddata");
-                }
+                // The duration first, then the ready state (processing steps:
+                // durationchange is queued before loadedmetadata).
+                if (self.load.setDuration(metadata.duration)) try self.event("durationchange");
+                const data_kind: LoadState.Data = if (result == .current_data) .current_data else .metadata;
+                const change = self.load.decoderData(self.load.generation, data_kind, end_of_stream, self.looping()) orelse return false;
+                try self.readyChanged(change);
             },
         }
         return false;
     }
+
+    /// Queue what a ready-state change asks (4.8.11.7), in its order.
+    fn readyChanged(self: *InternalState, change: LoadState.ReadyChange) !void {
+        if (change.loadedmetadata) try self.event("loadedmetadata");
+        if (change.loadeddata) {
+            self.syncDelay();
+            try self.event("loadeddata");
+        }
+        if (change.timeupdate_waiting) {
+            try self.event("timeupdate");
+            try self.event("waiting");
+        }
+        if (change.canplay) try self.event("canplay");
+        if (change.notify_playing) try self.notifyPlaying();
+        if (change.canplaythrough) try self.event("canplaythrough");
+        self.syncClock();
+    }
+
+    /// The official playback position, just set, stays until the next stable
+    /// state: script reading currentTime in this task sees it.
+    fn holdOfficial(self: *InternalState) void {
+        self.official_fresh = true;
+        if (self.activity.hasStableFor(self.load.generation, clearOfficial)) return;
+        self.activity.stable(self.load.generation, clearOfficial) catch {
+            self.official_fresh = false;
+        };
+    }
+
+    /// Notify about playing: take the pending play promises; a task fires
+    /// playing, then resolves them.
+    fn notifyPlaying(self: *InternalState) !void {
+        try self.activity.queueResolve(@intFromEnum(Kind.playing), self.load.generation, "playing", &self.pending_play);
+    }
+
+    fn looping(self: *InternalState) bool {
+        const instance = self.activity.instance orelse return false;
+        return interfaces.Element.call_hasAttribute(instance, .initInterned("loop")) catch false;
+    }
+
+    // ------------------------------------------------------------------
+    // The media timeline's clock (4.8.11.8)
+    // ------------------------------------------------------------------
+
+    /// Move the current playback position to now, if potentially playing.
+    fn advanceClock(self: *InternalState) void {
+        const anchor = self.clock_anchor orelse return;
+        const now = clock.monotonicNanos();
+        self.clock_anchor = now;
+        const elapsed = @as(f64, @floatFromInt(now - anchor)) / std.time.ns_per_s;
+        switch (self.load.advance(elapsed, self.looping())) {
+            .none => {},
+            .end => self.reachedEnd(),
+            // Playing backwards to the start: a timeupdate task only.
+            .start => {
+                self.load.official_position = self.load.position;
+                self.event("timeupdate") catch self.cancel();
+                self.syncClock();
+            },
+        }
+    }
+
+    /// Start or stop the clock to match "potentially playing".
+    fn syncClock(self: *InternalState) void {
+        const playing = self.load.potentiallyPlaying(self.looping());
+        if (playing) {
+            if (self.clock_anchor == null) self.clock_anchor = clock.monotonicNanos();
+            if (!self.clock_timer.pending()) self.armClock() catch self.cancel();
+        } else {
+            self.clock_anchor = null;
+            self.clock_timer.cancel();
+        }
+        if (self.activity.playing != playing) {
+            self.activity.playing = playing;
+            // While it plays, the element is in its agent's live registry,
+            // as while it fetches: unloading and discarding its document
+            // cancel it (cancelRealm), stopping the clock and its timer.
+            if (playing) {
+                self.register() catch self.cancel();
+            } else if (!self.activity.fetching) self.unregister();
+            self.activity.sync();
+        }
+    }
+
+    fn stopClock(self: *InternalState) void {
+        self.clock_anchor = null;
+        self.clock_timer.cancel();
+        if (self.activity.playing) {
+            self.activity.playing = false;
+            self.activity.sync();
+        }
+    }
+
+    /// The next "time marches on": 250ms from now, or sooner if the end of
+    /// the media resource comes first.
+    fn armClock(self: *InternalState) !void {
+        const instance = self.activity.instance orelse return;
+        const timer = instance.ctx.getOptionalTimer() orelse return;
+        var delay = timeupdate_interval_ms;
+        const rate = self.load.playback_rate;
+        if (rate > 0 and !std.math.isNan(self.load.duration)) {
+            const remaining_ms = (self.load.duration - self.load.position) / rate * std.time.ms_per_s;
+            if (remaining_ms < @as(f64, @floatFromInt(delay))) delay = @intFromFloat(@max(0, @ceil(remaining_ms)));
+        }
+        try self.clock_timer.start(self.load.allocator, timer, delay, clockDue, self);
+    }
+
+    fn clockDue(context: *anyopaque) void {
+        const self: *InternalState = @ptrCast(@alignCast(context));
+        if (self.activity.instance == null) return;
+        self.advanceClock();
+        if (!self.load.potentiallyPlaying(self.looping())) return;
+        // Time marches on, during normal playback: timeupdate.
+        self.load.official_position = self.load.position;
+        self.event("timeupdate") catch {
+            self.cancel();
+            return;
+        };
+        self.armClock() catch self.cancel();
+    }
+
+    /// "When the current playback position reaches the end of the media
+    /// resource when the direction of playback is forwards" (4.8.11.8).
+    fn reachedEnd(self: *InternalState) void {
+        self.load.official_position = self.load.position;
+        // Step 1: a loop attribute seeks to the earliest possible position.
+        if (self.looping()) {
+            self.seek(0) catch self.cancel();
+            return;
+        }
+        // No more data in the direction of playback: HAVE_CURRENT_DATA, which
+        // queues nothing since playback has ended.
+        _ = self.load.changeReady(self.load.readyNow(false), false);
+        self.syncClock();
+        // Step 3: the task that fires timeupdate, pauses, and fires ended.
+        self.queue(.reached_end, null, null) catch self.cancel();
+    }
+
+    // ------------------------------------------------------------------
+    // Seeking (4.8.11.9)
+    // ------------------------------------------------------------------
+
+    /// The seek algorithm, to `target`. Every byte of the resource is held,
+    /// so the data for any position is available at once (step 12).
+    fn seek(self: *InternalState, target: f64) !void {
+        // Steps 2-11: nothing with no resource; the position moves now.
+        self.advanceClock();
+        _ = self.load.beginSeek(target) orelse return;
+        self.holdOfficial();
+        try self.seekInParallel();
+    }
+
+    /// Seek steps 10-13, once the position is set.
+    fn seekInParallel(self: *InternalState) !void {
+        try self.event("seeking");
+        // The data at the new position decides the ready state (HAVE_ENOUGH_DATA
+        // again after the end, for a resource fully held).
+        try self.readyChanged(self.load.changeReady(self.load.readyNow(self.looping()), self.looping()));
+        // Step 13: await a stable state.
+        try self.activity.stable(self.load.generation, seekStable);
+    }
 };
+
+fn seekStable(context: *anyopaque, generation: u64) void {
+    const self: *InternalState = @ptrCast(@alignCast(context));
+    if (generation != self.load.generation) return;
+    // Step 14: only the newest seek finishes.
+    if (!self.load.finishSeek(self.load.seek_id)) return;
+    // Steps 16-17: timeupdate, then seeked.
+    self.event("timeupdate") catch {
+        self.cancel();
+        return;
+    };
+    self.event("seeked") catch self.cancel();
+    self.syncClock();
+}
+
+fn clearOfficial(context: *anyopaque, _: u64) void {
+    const self: *InternalState = @ptrCast(@alignCast(context));
+    self.official_fresh = false;
+}
 
 fn data(instance: *runtime.Instance) *InternalState {
     return instance.getState(State).own._internal.?;
@@ -621,14 +819,43 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
             self.activity.sync();
         },
         .pause => {
+            // Internal pause steps 2.3: timeupdate, pause, then the promises'
+            // rejection - one task.
+            fire(instance, "timeupdate");
             if (task.event) |event| event.dispatch();
             task.rejectPromises("AbortError");
+        },
+        .playing => {
+            // Notify about playing, step 2: playing, then resolve.
+            if (task.event) |event| event.dispatch();
+            task.resolvePromises();
+        },
+        .resolve_play => task.resolvePromises(),
+        .reached_end => {
+            // Reaching the end, step 3.
+            fire(instance, "timeupdate");
+            if (self.load.endedPlayback(self.looping()) and self.load.playback_rate >= 0 and !self.load.paused) {
+                self.load.paused = true;
+                self.syncClock();
+                fire(instance, "pause");
+                rejectPending(self, "AbortError") catch {};
+            }
+            fire(instance, "ended");
         },
     }
 }
 
+/// Fire a trusted event made now, inside a running task.
+fn fire(instance: *runtime.Instance, name: []const u8) void {
+    const event = common.Event.init(instance, name) catch return;
+    defer event.deinit();
+    event.dispatch();
+}
+
 pub fn call_load(instance: *runtime.Instance) anyerror!void {
     const self = data(instance);
+    self.stopClock();
+    self.official_fresh = false;
     // Load steps 1–5: settle queued play outcomes before invalidating tasks.
     self.activity.discardTasks(true);
     self.endFetch();
@@ -660,32 +887,46 @@ fn rejectPending(self: *InternalState, name: []const u8) !void {
 }
 pub fn call_play(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const self = data(instance);
+    // Step 2: the dedicated media source failure steps ran.
     if (self.load.error_code == .source_not_supported) {
         const exception = try engine.createDOMException(instance.ctx, "NotSupportedError", "");
         defer exception.release();
         return (try engine.createRejectedPromise(instance.ctx, exception.value)).take();
     }
+    // Step 5: a new promise in the list of pending play promises.
     var promise = try engine.createPromise(instance.ctx);
     errdefer engine.releasePromiseCapability(&promise);
     const result = try engine.retainValue(instance.ctx, promise.promise);
     errdefer result.release();
     try self.pending_play.append(self.load.allocator, promise);
-    if (self.load.network == .empty) self.selectLater() catch self.cancel();
-    if (self.load.paused) {
-        self.load.paused = false;
-        self.event("play") catch self.cancel();
-        self.event("waiting") catch self.cancel();
+    // Step 6: the internal play steps.
+    self.advanceClock();
+    const loop = self.looping();
+    const steps = self.load.play(loop);
+    if (steps.select) self.selectLater() catch self.cancel();
+    // Step 2's seek sets the position now; the rest of it runs in parallel
+    // (seek step 5), so its events and ready-state change follow step 3's.
+    if (steps.seek_to_start) {
+        _ = self.load.beginSeek(0);
+        self.holdOfficial();
     }
-    self.load.can_autoplay = false;
+    if (steps.play_event) self.event("play") catch self.cancel();
+    if (steps.waiting) self.event("waiting") catch self.cancel();
+    if (steps.notify_playing) self.notifyPlaying() catch self.cancel();
+    if (steps.resolve_pending) self.activity.queueResolve(@intFromEnum(Kind.resolve_play), self.load.generation, null, &self.pending_play) catch self.cancel();
+    if (steps.seek_to_start) self.seekInParallel() catch self.cancel();
+    self.syncClock();
     return result.take();
 }
 pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     const self = data(instance);
     if (self.load.network == .empty) try self.selectLater();
-    self.load.can_autoplay = false;
-    if (self.load.paused) return;
-    self.load.paused = true;
-    try self.event("timeupdate");
+    // The current playback position up to now, before it stops moving.
+    self.advanceClock();
+    if (!self.load.pause()) return;
+    self.syncClock();
+    // Internal pause steps 2.2-2.3: take the pending play promises; one task
+    // fires timeupdate and pause, then rejects them.
     try self.activity.queuePlay(@intFromEnum(Kind.pause), self.load.generation, "pause", &self.pending_play, "AbortError");
 }
 pub fn call_canPlayType(instance: *runtime.Instance, mime: runtime.DOMString) anyerror!enums.CanPlayTypeResult {
@@ -713,22 +954,40 @@ pub fn get_paused(instance: *runtime.Instance) anyerror!bool {
 pub fn get_seeking(instance: *runtime.Instance) anyerror!bool {
     return data(instance).load.seeking;
 }
-pub fn get_ended(_: *runtime.Instance) anyerror!bool {
-    return false;
+/// True when playback has ended in the forwards direction (4.8.11.8).
+pub fn get_ended(instance: *runtime.Instance) anyerror!bool {
+    const self = data(instance);
+    self.advanceClock();
+    return self.load.playback_rate >= 0 and self.load.endedPlayback(self.looping());
 }
 pub fn get_duration(instance: *runtime.Instance) anyerror!f64 {
     return data(instance).load.duration;
 }
+/// The official playback position (4.8.11.6), or the default playback start
+/// position with no media data. While playing, the official position is the
+/// clock's position at the first read in a task, kept until the next stable
+/// state, as Chromium does (official_playback_position_needs_update_).
 pub fn get_currentTime(instance: *runtime.Instance) anyerror!f64 {
-    const load = &data(instance).load;
-    return if (load.ready == .nothing) load.default_start_position else load.official_position;
-}
-pub fn set_currentTime(instance: *runtime.Instance, value: f64) anyerror!void {
-    const load = &data(instance).load;
-    if (load.ready == .nothing) load.default_start_position = value else {
-        load.position = value;
-        load.official_position = value;
+    const self = data(instance);
+    const load = &self.load;
+    if (load.ready == .nothing) return load.default_start_position;
+    if (self.clock_anchor != null and !self.official_fresh) {
+        self.advanceClock();
+        load.official_position = load.position;
+        if (self.clock_anchor != null) self.holdOfficial();
     }
+    return load.official_position;
+}
+/// Setting currentTime: the default playback start position with no media
+/// data; otherwise the official playback position, and a seek (4.8.11.6).
+pub fn set_currentTime(instance: *runtime.Instance, value: f64) anyerror!void {
+    const self = data(instance);
+    if (self.load.ready == .nothing) {
+        self.load.default_start_position = value;
+        return;
+    }
+    self.load.official_position = value;
+    try self.seek(value);
 }
 pub fn get_buffered(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return interfaces.TimeRanges.init(instance.ctx.allocator, instance.ctx);
@@ -769,9 +1028,17 @@ pub fn get_playbackRate(instance: *runtime.Instance) anyerror!f64 {
     return data(instance).load.playback_rate;
 }
 pub fn set_playbackRate(instance: *runtime.Instance, value: f64) anyerror!void {
-    if (data(instance).load.playback_rate == value) return;
-    data(instance).load.playback_rate = value;
-    try data(instance).event("ratechange");
+    const self = data(instance);
+    if (self.load.playback_rate == value) return;
+    // The position so far moved at the old rate.
+    self.advanceClock();
+    self.load.playback_rate = value;
+    try self.event("ratechange");
+    if (self.clock_anchor != null) {
+        // The end comes at another time now.
+        self.clock_timer.cancel();
+    }
+    self.syncClock();
 }
 pub fn get_preservesPitch(instance: *runtime.Instance) anyerror!bool {
     return data(instance).preserves_pitch;
@@ -811,8 +1078,11 @@ pub fn get_preload(instance: *runtime.Instance) anyerror!runtime.DOMString {
 pub fn set_preload(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try interfaces.Element.call_setAttribute(instance, .initInterned("preload"), .{ .domstring = value });
 }
+/// fastSeek: a seek with the approximate-for-speed flag; every position of a
+/// held resource is as fast as any other, so it is the exact seek.
 pub fn call_fastSeek(instance: *runtime.Instance, time: f64) anyerror!void {
-    try set_currentTime(instance, time);
+    if (data(instance).load.ready == .nothing) return;
+    try data(instance).seek(time);
 }
 
 pub fn get_audioTracks(instance: *runtime.Instance) anyerror!*runtime.Instance {

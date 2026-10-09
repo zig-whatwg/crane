@@ -12,10 +12,33 @@ const core = @import("html_core");
 const requests = @import("../script_request.zig");
 pub const Registry = core.media.Registry(*anyopaque, *anyopaque);
 
-/// Q4: host wiring belongs to BrowserScope. This is the single realm lookup
-/// that the host-backend follow-up will change; the platform stays realm-free.
-pub fn forRealm(_: runtime.Context) @import("platform").media_backend.MediaBackend {
-    return @import("platform").media_backend.no_decoder;
+const media_backend = @import("platform").media_backend;
+
+/// The host's media backend for one Browser: a supplement of its scope
+/// (runtime.BrowserScope, docs/instances.md rule 2). The Browser sets it once,
+/// at its start, from BrowserConfig.media_backend - borrowed from the host for
+/// the Browser's lifetime - and every realm of the Browser (its page, frames
+/// and popups carry its scope) reads it here. Crane builds in no decoder: a
+/// Browser whose host passed none keeps no_decoder, so canPlayType answers ""
+/// and no fetched byte becomes playable data.
+pub const MediaHost = struct {
+    backend: media_backend.MediaBackend = media_backend.no_decoder,
+
+    pub fn init(_: std.mem.Allocator) MediaHost {
+        return .{};
+    }
+    /// Nothing to free: the backend is the host's.
+    pub fn deinit(_: *MediaHost) void {}
+};
+
+/// The media backend of `realm`'s Browser: what its host supplied, or
+/// no_decoder for a realm with no Browser scope (a test realm) or whose
+/// Browser was given none. The single realm lookup; the platform stays
+/// realm-free.
+pub fn forRealm(realm: runtime.Context) media_backend.MediaBackend {
+    const scope = realm.browser_scope orelse return media_backend.no_decoder;
+    const host = scope.existing(MediaHost) orelse return media_backend.no_decoder;
+    return host.backend;
 }
 
 /// The one registry lookup: the relevant realm's agent, never thread-local state.
@@ -230,10 +253,14 @@ pub const Activity = struct {
     microtasks: std.ArrayList(*StableContinuation) = .empty,
     running_stable: usize = 0,
     fetching: bool = false,
+    /// Potentially playing: "Media elements must not stop playing just because
+    /// all references to them have been removed" (HTML 4.8.11.20) - the clock
+    /// keeps the element while it plays.
+    playing: bool = false,
 
     pub fn sync(self: *Activity) void {
         const instance = self.instance orelse return;
-        if (self.fetching or self.head != null or self.microtasks.items.len != 0 or self.running_stable != 0)
+        if (self.fetching or self.playing or self.head != null or self.microtasks.items.len != 0 or self.running_stable != 0)
             engine.keepPlatformObjectAlive(instance)
         else
             engine.releasePlatformObject(instance);
@@ -266,6 +293,13 @@ pub const Activity = struct {
         for (self.microtasks.items) |continuation| if (continuation.generation == generation) return true;
         return false;
     }
+    /// Whether a pending stable section of `generation` runs `callback` - so
+    /// another algorithm's (a seek's, a currentTime read's) is not mistaken
+    /// for resource selection's.
+    pub fn hasStableFor(self: *const Activity, generation: u64, callback: *const fn (*anyopaque, u64) void) bool {
+        for (self.microtasks.items) |continuation| if (continuation.generation == generation and continuation.callback == callback) return true;
+        return false;
+    }
     pub fn queue(self: *Activity, kind: u16, generation: u64, target: ?*runtime.Instance, name: ?[]const u8) !void {
         const instance = self.instance orelse return error.InvalidStateError;
         const event = if (name) |event_name| try Event.init(target orelse instance, event_name) else null;
@@ -282,6 +316,13 @@ pub const Activity = struct {
     pub fn queuePlay(self: *Activity, kind: u16, generation: u64, name: []const u8, promises: *std.ArrayList(engine.PromiseCapability), rejection: []const u8) !void {
         const instance = self.instance orelse return error.InvalidStateError;
         return self.queuePrepared(kind, generation, try Event.init(instance, name), promises, rejection, true);
+    }
+    /// A task that resolves the promises it takes (notify about playing, or
+    /// play() while already playing): `name`, if any, is its event.
+    pub fn queueResolve(self: *Activity, kind: u16, generation: u64, name: ?[]const u8, promises: *std.ArrayList(engine.PromiseCapability)) !void {
+        const instance = self.instance orelse return error.InvalidStateError;
+        const event = if (name) |event_name| try Event.init(instance, event_name) else null;
+        return self.queuePrepared(kind, generation, event, promises, null, true);
     }
     fn queuePrepared(self: *Activity, kind: u16, generation: u64, event: ?Event, promises: ?*std.ArrayList(engine.PromiseCapability), rejection: ?[]const u8, resource_bound: bool) !void {
         errdefer if (event) |value| value.deinit();
@@ -301,12 +342,16 @@ pub const Activity = struct {
         queueTask(instance, Task.run, task, Task.drop) catch unreachable;
     }
     /// Load algorithm steps 3–5: immediately settle promises from queued tasks
-    /// in their original order, then discard the tasks' remaining behavior.
+    /// in their original order - resolving those a task would resolve,
+    /// rejecting those it would reject - then discard the tasks' remaining
+    /// behavior.
     pub fn discardTasks(self: *Activity, settle: bool) void {
         var cursor = self.head;
         while (cursor) |task| : (cursor = task.next) {
             if (settle and !task.resource_bound) continue;
-            if (settle) task.rejectPromises(task.rejection orelse "AbortError");
+            if (settle) {
+                if (task.rejection) |name| task.rejectPromises(name) else if (task.promises.items.len != 0) task.resolvePromises();
+            }
             task.cancelled = true;
         }
     }
@@ -401,6 +446,14 @@ pub const Task = struct {
                 defer exception.release();
                 for (self.promises.items) |*promise| engine.rejectPromise(promise, exception.value) catch {};
             } else |_| {}
+        }
+        self.releasePromises();
+    }
+    /// Resolve pending play promises: each with undefined.
+    pub fn resolvePromises(self: *Task) void {
+        if (self.promises.items.len == 0) return;
+        if (self.activity.instance != null) {
+            for (self.promises.items) |*promise| engine.resolvePromise(promise, .undefined) catch {};
         }
         self.releasePromises();
     }

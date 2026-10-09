@@ -63,6 +63,7 @@ const Storage = storage_mod.Storage;
 /// The page agent's event loop - the host's (HTML 8.1.7).
 const EventLoop = @import("event_loop.zig").EventLoop;
 const Process = @import("process.zig").Process;
+const media_backend_mod = @import("platform").media_backend;
 
 /// A similar-origin window agent's host hooks: HostPromiseRejectionTracker
 /// and "notify about rejected promises" (html/rejected_promises.zig), and
@@ -98,6 +99,14 @@ pub const BrowserConfig = struct {
     snapshot_path: ?[]const u8 = null,
     /// Whether to log performance information
     log_performance: bool = false,
+    /// The host's media decoding (src/platform/media_backend.zig). Crane
+    /// builds in no decoder: fetch, CORS, CSP, events and HTML state stay in
+    /// Crane, and the host supplies what it can decode. BORROWED for the
+    /// Browser's whole lifetime - the host keeps the backend (its `ptr` and
+    /// vtable) alive until `deinit` returns. Every realm of the Browser reaches
+    /// it through the Browser's scope (html.media_runtime.forRealm). The
+    /// default, no_decoder, makes canPlayType answer "" for every type.
+    media_backend: media_backend_mod.MediaBackend = media_backend_mod.no_decoder,
 };
 
 /// Browser instance managing a single V8 isolate
@@ -216,6 +225,9 @@ pub const Browser = struct {
         errdefer allocator.destroy(scope);
         scope.* = runtime.BrowserScope.init(allocator);
         errdefer scope.deinit();
+        // The host's media backend, which every realm of this Browser reads
+        // (html.media_runtime.MediaHost), set before any realm exists.
+        (try scope.of(@import("html").media_runtime.MediaHost)).backend = config.media_backend;
 
         // Allocate browser struct
         const browser = try allocator.create(Browser);

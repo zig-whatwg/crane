@@ -4584,6 +4584,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 return @ptrCast(@alignCast(js));
             }
 
+            // A WebIDL enumeration value is the String of its value (WebIDL
+            // 3.2.24) - "" included: canPlayType's "" answer. The conversion
+            // and ownership the attribute getter path uses (enumToV8String
+            // makes the string; released once set). Without this case an
+            // enum fell to the fallback below and reached script as undefined.
+            if (type_info == .@"enum") {
+                owned.* = true;
+                return conv.enumToV8String(ReturnType, isolate, result);
+            }
+
             // Handle union types (e.g., ReadableStreamReader)
             if (type_info == .@"union") {
                 // Use the generic toV8Value conversion which handles unions

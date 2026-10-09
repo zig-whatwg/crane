@@ -15,6 +15,7 @@ pub const Result = union(enum) {
     metadata: Metadata,
     /// The decoder really has data at the current playback position. Container
     /// recognition or metadata alone must never produce this result.
+    /// On the end_of_stream push: the whole resource is held, so HAVE_ENOUGH_DATA (HTML 4.8.11.7).
     current_data: Metadata,
 };
 

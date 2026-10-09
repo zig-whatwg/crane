@@ -2337,6 +2337,8 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);
+    // BrowserConfig.media_backend: the host's media decoding.
+    browser_mod.addImport("platform", platform_mod);
     // A navigation's URL string is parsed and serialized before it is fetched.
     browser_mod.addImport("basic_parser", url_basic_parser_mod);
     browser_mod.addImport("url_serializer", url_serializer_mod);
@@ -3115,6 +3117,20 @@ pub fn build(b: *std.Build) void {
         addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
         };
+
+        // The WPT runner's WAV/PCM media backend (a host decoder built only
+        // into wpt_runner): its std.testing blocks. No V8 - only the media
+        // backend contract and MIME Sniffing's parser.
+        const wav_backend_tests = b.addTest(.{ .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/wpt_runner/wav_backend.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "platform", .module = platform_mod },
+                .{ .name = "mimesniff", .module = mimesniff_mod },
+            },
+        }) });
+        test_step.dependOn(&b.addRunArtifact(wav_backend_tests).step);
     }
 
     // Benchmark tests (requires V8 + browser)
@@ -4043,6 +4059,9 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "file", .module = file_mod },
                 // The cookie store, for testdriver's cookie commands (test_driver.zig)
                 .{ .name = "cookiestore", .module = cookiestore_mod },
+                // MIME Sniffing's parser, for the WAV test backend's canPlayType
+                // (wav_backend.zig)
+                .{ .name = "mimesniff", .module = mimesniff_mod },
             },
         }),
     });
