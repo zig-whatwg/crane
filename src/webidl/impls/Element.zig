@@ -3242,6 +3242,9 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     // for its whole life - nothing else does - by an edge from its wrapper,
     // which script holds: it is calling this.
     internal.shadow_root = shadow_root;
+    // The node's shadow host bit, the slot steps' fast-path guard
+    // (NodeBase.is_shadow_host).
+    if (dom.instance_bridge.getNodeBase(instance)) |base| base.is_shadow_host = true;
     internal.shadow_root_kept.made(shadow_root);
     internal.shadow_root_kept.handOut(instance, shadow_root, .{ .name = "shadowRoot" });
     // And the shadow root keeps its host, whose `host` it answers for its

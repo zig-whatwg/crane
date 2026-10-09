@@ -11,8 +11,8 @@
 //! keep separate bookkeeping to signal slotchange at the same points; eager
 //! needs none, and its cost is confined to trees with shadow roots:
 //!
-//! - A tree with no shadow root pays, per insertion or removal, a check of
-//!   whether the parent is a shadow host (one state lookup), a vtable
+//! - A tree with no shadow root pays, per insertion or removal, a test of
+//!   the parent's shadow host bit (NodeBase.is_shadow_host), a vtable
 //!   comparison (is the parent a slot) and a walk to the parent's root
 //!   (whose node type is a Document's, or no fragment that is a shadow root).
 //! - "Assign slottables for a tree" (insert step 7.6, remove step 10) runs
@@ -375,7 +375,7 @@ pub fn runInsertionSlotSteps(allocator: Allocator, node: *NodeBase, parent: *Nod
     // whose "Moving c4 into place should reveal the assignment" appends a
     // manually assigned node to its host and reads the slot's assigned
     // nodes. "Find a slot" already answers a manual shadow root.
-    if (slot_helpers.isSlottable(node) and parent.node_type == ELEMENT_NODE) {
+    if (parent.is_shadow_host and slot_helpers.isSlottable(node)) {
         if (tree_helpers.shadowRootForHost(parent) != null) try assignSlot(allocator, node);
     }
 
@@ -405,8 +405,10 @@ pub fn runInsertionSlotSteps(allocator: Allocator, node: *NodeBase, parent: *Nod
 /// Spec: https://dom.spec.whatwg.org/#concept-node-remove
 pub fn runRemovingSlotSteps(allocator: Allocator, node: *NodeBase, parent: *NodeBase) Error!void {
     // Step 8: "If node is assigned, then run assign slottables for node's
-    // assigned slot."
-    if (slot_helpers.isSlottable(node)) {
+    // assigned slot." A node is assigned only while it is a child of its
+    // slot's shadow host (assign slottables unassigns it otherwise), so a
+    // parent that is no host means a node that is not assigned.
+    if (parent.is_shadow_host and slot_helpers.isSlottable(node)) {
         if (slot_helpers.slottable(node)) |slottable| {
             if (slottable.state.assignedSlot()) |slot| try assignSlottables(allocator, slot);
         }
