@@ -134,6 +134,7 @@ pub const InternalState = struct {
         const generation = self.load.beginSelection();
         self.syncDelay();
         try self.register();
+        self.delayUntilSelection();
         try self.awaitSelection(generation);
     }
     fn resumeSelection(self: *InternalState) !void {
@@ -141,7 +142,24 @@ pub const InternalState = struct {
         // insertions before its stable section cannot advance its pointer twice.
         // Step 24 can delay document load again, so restore the live registry.
         try self.register();
+        self.delayUntilSelection();
         try self.awaitSelection(self.load.generation);
+    }
+    /// With selection's wait a task (awaitSelection), the document's load
+    /// event could fire between the invocation and the synchronous section
+    /// that sets the delaying-the-load-event flag (step 4; children step 24).
+    /// Chromium sets the flag when the algorithm is invoked
+    /// (InvokeResourceSelectionAlgorithm: "3 - Set the media element's
+    /// delaying-the-load-event flag to true"), the step's place before HTML
+    /// moved it for lazy loading; Crane loads media eagerly, so it does the
+    /// same. resource-selection-invoke-set-src.html, -insert-source.html,
+    /// -audio-constructor.html and others wait for loadstart before
+    /// window.onload; Chrome and Safari pass them. Without an event loop the
+    /// microtask runs before any load event can, and nothing changes.
+    fn delayUntilSelection(self: *InternalState) void {
+        if (!self.hasEventLoop()) return;
+        self.load.delaying_load_event = true;
+        self.syncDelay();
     }
     /// The resource selection algorithm's "await a stable state" (4.8.11.5:
     /// step 4, and children steps 11 and 25), for load(), the insertion
@@ -1000,6 +1018,7 @@ pub fn call_load(instance: *runtime.Instance) anyerror!void {
     if (reset.queue_timeupdate) try self.event("timeupdate");
     if (reset.queue_ratechange) try self.event("ratechange");
     try self.register();
+    self.delayUntilSelection();
     try self.awaitSelection(reset.generation);
 }
 fn rejectPending(self: *InternalState, name: []const u8) !void {
