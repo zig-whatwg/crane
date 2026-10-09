@@ -49,7 +49,8 @@ pub const InternalState = struct {
 const ControlValue = union(enum) {
     none,
     string: []const u8,
-    file: *runtime.Instance,
+    /// Kept by the internals' traced edge; checked on every read (CE2-M2).
+    file: ce.KeptInstance,
     form_data: struct { instance: *runtime.Instance, native_owned: bool, generation: u64 },
 
     fn deinit(value: *ControlValue, allocator: std.mem.Allocator) void {
@@ -60,10 +61,12 @@ const ControlValue = union(enum) {
         }
         value.* = .none;
     }
+    /// The object this value keeps while it is live: a File whose edge was
+    /// lost, or a FormData freed under it, reads as none.
     fn object(value: ControlValue) ?*runtime.Instance {
         return switch (value) {
-            .file => |file| file,
-            .form_data => |data| data.instance,
+            .file => |file| file.get(),
+            .form_data => |data| if (runtime.SlabAllocator.generationOf(data.instance) == data.generation) data.instance else null,
             else => null,
         };
     }
@@ -1054,7 +1057,7 @@ fn copyControlValue(instance: *runtime.Instance, value: ?typedefs.FileOrUSVStrin
     const supplied = value orelse return .{ .value = .none };
     var prepared: PreparedValue = .{ .value = switch (supplied) {
         .usvstring => |text| .{ .string = try instance.ctx.allocator.dupe(u8, text) },
-        .file => |file| .{ .file = file },
+        .file => |file| .{ .file = ce.KeptInstance.of(file) },
         .form_data => blk: {
             const clone = try interfaces.FormData.call_constructor(instance.ctx, .notPassed(), .notPassed());
             break :blk .{ .form_data = .{ .instance = clone, .native_owned = !instance.ctx.hasEngine(), .generation = runtime.SlabAllocator.generationOf(clone) } };
@@ -1094,14 +1097,16 @@ fn appendFormEntries(instance: *runtime.Instance, form_data: *runtime.Instance) 
     const target = try formAssociatedTarget(instance);
     const internal = try getInternal(instance);
     // HTML 4.13.7.3 entry-construction step 1 precedes the name check.
-    if (internal.submission == .form_data) return appendDataEntries(form_data, internal.submission.form_data.instance);
+    if (internal.submission == .form_data) return appendDataEntries(form_data, internal.submission.object() orelse return);
     const name = (try form_associated.attributeValue(internal.allocator, target, "name")) orelse return;
     defer internal.allocator.free(name);
     if (name.len == 0) return;
     switch (internal.submission) {
         .none => {},
         .string => |text| try interfaces.FormData.call_append(form_data, name, text),
-        .file => |file| try interfaces.FormData.call_append__1(form_data, name, file, .notPassed()),
+        // A File that is gone is submitted as nothing, never as whatever
+        // reissued its slot.
+        .file => |file| if (file.get()) |live| try interfaces.FormData.call_append__1(form_data, name, live, .notPassed()),
         .form_data => unreachable,
     }
 }

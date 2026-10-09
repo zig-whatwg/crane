@@ -602,7 +602,7 @@ pub fn createRejectedPromise(realm: Context, reason: JSValue) Error!Owned {
 
 pub const reactToPromise = @import("protocol_promises.zig").reactToPromise;
 
-pub fn queueResolvedPromiseReaction(realm: Context, steps: *const engine.PromiseReactionSteps, data: ?*anyopaque) Error!void {
+pub fn queueRealmMicrotask(realm: Context, steps: *const engine.PromiseReactionSteps, data: ?*anyopaque) Error!void {
     const isolate = realm_entry.agentOf(realm) orelse return error.OperationFailed;
     var pending: struct {
         realm: Context,

@@ -134,7 +134,11 @@ pub const InternalState = struct {
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
+/// Null for anything that is not a CustomElementRegistry: every hook here
+/// takes a registry from code that may hand it another platform object, and
+/// `Accessor.get` alone would read that object's state as a registry's.
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    if (instance.stateAs(State) == null) return null;
     return Accessor.get(instance);
 }
 

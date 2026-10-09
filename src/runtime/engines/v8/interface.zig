@@ -4840,6 +4840,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             };
 
+            // An instance its own construction already wrapped (a traced edge
+            // made its wrapper): that wrapper, given NewTarget's prototype, is
+            // the result - binding `this_obj` instead would replace it, and
+            // every edge drawn on it with it (WrapperCache.set refuses). The
+            // receiver is then bound to nothing.
+            if (adoptExistingWrapper(info, this_obj, instance, constructor_context)) {
+                v8.v8_Object_Dispose(this_obj);
+                return;
+            }
+
             // Store the Zig instance in the V8 object's internal field (slot 0)
             // Also store WrapperTypeInfo in slot 1 for type-safe unwrapping
             const wrapper_type_info_registry_ctor = @import("wrapper_type_info_registry.zig");
@@ -4939,7 +4949,18 @@ pub fn V8Interface(comptime Interface: type) type {
             //        every constructor's path); a prototype of NewTarget's own
             //        is never re-read, so its getter's script ran once, before
             //        the host's steps (the hook's single-call contract).
-            if (receiverHasActivePrototype(this_obj, active, current_context)) {
+            //    V8's fallback for a non-object is %Object.prototype% of
+            //    GetFunctionRealm(NewTarget) for an API constructor
+            //    (JSFunction::GetDerivedMap: OBJECT_FUNCTION_INDEX when the
+            //    constructor names no intrinsic), never an interface
+            //    prototype - so a receiver given that object needs the
+            //    fallback too (CE-S1: newtarget.html, newtarget-customized-
+            //    builtins.html). The fallback re-reads NewTarget.prototype
+            //    and changes nothing for a real object, so a NewTarget whose
+            //    prototype IS that %Object.prototype% stays as it is.
+            if (receiverHasActivePrototype(this_obj, active, current_context) or
+                receiverHasRealmObjectPrototype(this_obj, new_target, isolate))
+            {
                 handleNewTargetPrototypeFallback(info, this_obj, isolate, current_context, interface_name);
             }
 
@@ -4954,32 +4975,30 @@ pub fn V8Interface(comptime Interface: type) type {
             switch (constructed) {
                 // 9. A new element: wrapped in the receiver, whose prototype is
                 //    NewTarget's (9.1). The construction's result is the
-                //    receiver, as for any constructor.
+                //    receiver, as for any constructor - unless the element's
+                //    creation already wrapped it (an edge traced to it made
+                //    its wrapper): that wrapper is then the element's, and
+                //    takes the receiver's prototype as an upgrade's does
+                //    (steps 14 and 16 below). Binding the receiver would
+                //    replace it, and every edge drawn on it with it (a
+                //    template's content, PR-M1); WrapperCache.set refuses.
                 .created => |element| {
+                    if (adoptExistingWrapper(info, this_obj, element, function_context)) return;
                     receiver_taken = bindConstructedElement(this_obj, element, isolate);
                 },
                 .upgrading => |element| {
-                    const cache = elementWrapperCache(element);
-                    const existing = if (cache) |c| c.get(element) else null;
-                    const wrapper = existing orelse {
-                        // Never wrapped: the receiver becomes its wrapper, with
-                        // the prototype already set (step 14) - and is the
-                        // result (step 16).
-                        receiver_taken = bindConstructedElement(this_obj, element, isolate);
-                        return;
-                    };
                     // 14. Perform ? element.[[SetPrototypeOf]](prototype). An
                     //     ordinary object's answers false rather than throwing
                     //     (non-extensible): a normal completion, so nothing is
                     //     thrown.
-                    if (v8.v8_Object_GetPrototypeV2(this_obj)) |prototype| {
-                        defer v8.v8_Value_Dispose(prototype);
-                        _ = v8.v8_Object_SetPrototypeV2(wrapper, function_context, prototype);
-                    }
                     // 16. Return element: its wrapper is the construction's
                     //     result (V8 takes an API constructor's object return
                     //     value). The receiver is discarded, bound to nothing.
-                    info.setReturnValue(@ptrCast(wrapper));
+                    if (adoptExistingWrapper(info, this_obj, element, function_context)) return;
+                    // Never wrapped: the receiver becomes its wrapper, with
+                    // the prototype already set (step 14) - and is the result
+                    // (step 16).
+                    receiver_taken = bindConstructedElement(this_obj, element, isolate);
                 },
             }
         }
@@ -5006,6 +5025,28 @@ pub fn V8Interface(comptime Interface: type) type {
             const prototype = v8.v8_Object_GetPrototypeV2(receiver) orelse return true;
             defer v8.v8_Value_Dispose(prototype);
             return v8.v8_Value_StrictEquals(prototype, active_prototype);
+        }
+
+        /// Whether V8 gave `receiver` %Object.prototype% of
+        /// GetFunctionRealm(`new_target`) - what it does for an API
+        /// constructor when NewTarget's `prototype` is not an object. A
+        /// prototype whose own [[Prototype]] is not null cannot be it, and is
+        /// answered without finding the realm.
+        fn receiverHasRealmObjectPrototype(receiver: *v8.Object, new_target: *v8.Value, isolate: *v8.Isolate) bool {
+            const prototype = v8.v8_Object_GetPrototypeV2(receiver) orelse return false;
+            defer v8.v8_Value_Dispose(prototype);
+            if (!v8.v8_Value_IsObject(prototype)) return false;
+            const above = v8.v8_Object_GetPrototypeV2(@ptrCast(prototype)) orelse return false;
+            defer v8.v8_Value_Dispose(above);
+            if (!v8.v8_Value_IsNull(above)) return false;
+            const realm = getFunctionRealm(new_target, isolate) orelse return false;
+            defer v8.v8_Context_Dispose(realm);
+            // An ordinary object made in that realm has its %Object.prototype%.
+            const probe = v8.v8_Object_NewInContext(realm) orelse return false;
+            defer v8.v8_Object_Dispose(probe);
+            const object_prototype = v8.v8_Object_GetPrototypeV2(probe) orelse return false;
+            defer v8.v8_Value_Dispose(object_prototype);
+            return v8.v8_Value_StrictEquals(prototype, object_prototype);
         }
 
         /// The wrapper cache of `element`'s relevant realm.
@@ -9066,6 +9107,35 @@ pub fn setInstanceWithTypeInfo(
 /// 'prototype' property of NewTarget. If the prototype is not an object,
 /// the prototype will be the interface prototype object of the associated
 /// global object's relevant Realm."
+/// A constructor's instance that already has a wrapper - its construction
+/// wrapped it: an edge traced to it, a host step that handed it to script -
+/// keeps that wrapper. It is given `receiver`'s prototype (NewTarget's, or
+/// the fallback's), and is the construction's result: V8 takes an API
+/// constructor's object return value over its receiver
+/// (Builtins::HandleApiConstruct), as for an upgrade's element (HTML 3.2.3
+/// steps 14 and 16). Binding the receiver instead would replace the wrapper
+/// and drop every edge drawn on it - the template whose content was freed
+/// under it (PR-M1, tests/v8/constructed_wrapper_test.zig). Whether it did;
+/// `receiver` is the caller's to release either way, bound to nothing when
+/// this answers true.
+fn adoptExistingWrapper(info: *const v8.FunctionCallbackInfo, receiver: *v8.Object, instance: *runtime.Instance, function_context: *v8.Context) bool {
+    const storage = instance.ctx.getV8WrapperCacheStorage() orelse return false;
+    const cache: *@import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(storage));
+    if (cache.is_tearing_down) return false;
+    const borrowed = cache.existingWrapper(instance) orelse return false;
+    // Held at once: the cache holds it weakly, and the prototype calls
+    // below allocate.
+    const wrapper = v8.v8_Global_Clone(@ptrCast(borrowed)) orelse return false;
+    defer v8.v8_Global_Dispose(wrapper);
+    if (v8.v8_Value_IsUndefined(wrapper) or !v8.v8_Value_IsObject(wrapper)) return false;
+    if (v8.v8_Object_GetPrototypeV2(receiver)) |prototype| {
+        defer v8.v8_Value_Dispose(prototype);
+        _ = v8.v8_Object_SetPrototypeV2(@ptrCast(wrapper), function_context, prototype);
+    }
+    info.setReturnValue(wrapper);
+    return true;
+}
+
 fn handleNewTargetPrototypeFallback(
     info: *const v8.FunctionCallbackInfo,
     this_obj: *v8.Object,
@@ -9165,7 +9235,11 @@ fn getFunctionRealmWithDepth(func: *v8.Value, isolate: *v8.Isolate, depth: u32) 
     if (v8.v8_Value_IsProxy(func)) {
         const proxy_obj: *v8.Object = @ptrCast(func);
         if (v8.v8_Proxy_GetTarget(proxy_obj)) |target| {
-            // Recurse on the target
+            // OWNED (a Global per call): released once the recursion has
+            // its answer, a Context of its own. Kept, it was one leaked
+            // handle per proxy NewTarget whose prototype fell back
+            // (`leaks --atExit`: ROOT LEAK <malloc in v8_Proxy_GetTarget>).
+            defer v8.v8_Value_Dispose(target);
             return getFunctionRealmWithDepth(target, isolate, depth + 1);
         }
         // Revoked proxy or error - fall through to function check

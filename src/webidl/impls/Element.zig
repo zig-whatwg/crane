@@ -951,7 +951,7 @@ pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Spec: https://html.spec.whatwg.org/#dom-element-customelementregistry
 ///
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.value;
+    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.get();
 }
 
 /// Getter for onfullscreenchange
@@ -3194,6 +3194,12 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
     // Steps 1–2: an omitted member uses the document's registry; null stays null.
     const registry = init_data.customElementRegistry.getOrDefault(document_registry);
     if (registry) |value| {
+        // The member is a `CustomElementRegistry?`: WebIDL converts a value
+        // to an interface type only if it implements that interface (3.2.21),
+        // else TypeError. The binding hands interface-typed dictionary
+        // members over as any platform object, so the check is here; read
+        // as a registry, another object's state was a garbage cast (CE2-M1).
+        if (value.stateAs(interfaces.CustomElementRegistry.State) == null) return error.TypeError;
         if (!dom.custom_elements.isScoped(value) and value != document_registry) return error.NotSupportedError;
     }
     return attachShadow(instance, init_data, registry);
@@ -3221,7 +3227,7 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     // Step 3: "If element's local name is a valid custom element name, or
     // element's is value is non-null": if its definition's disable shadow is
     // true, throw a NotSupportedError DOMException.
-    if (dom.custom_elements.lookup(internal.custom_element_registry.value, namespace, local_name, if (internal.is_value) |value| value.asSlice() else null)) |definition| {
+    if (dom.custom_elements.lookup(internal.custom_element_registry.get(), namespace, local_name, if (internal.is_value) |value| value.asSlice() else null)) |definition| {
         if (definition.disable_shadow) return error.NotSupportedError;
     }
 

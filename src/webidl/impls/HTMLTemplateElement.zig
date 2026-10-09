@@ -43,8 +43,14 @@ fn establishContents(instance: *runtime.Instance) !void {
     try dom.template_contents.setHost(content, instance);
     internal.content = content;
     internal.content_generation = runtime.SlabAllocator.generationOf(content);
-    // Collector edges, as WebKit's template and TemplateContentDocumentFragment
-    // keep each other; no root outlives the template's graph.
+    // The fragment is this template's natively: while the template lives,
+    // its content is never the collector's to free
+    // (dom.template_contents.ownedByLiveTemplate), and deinit below frees it
+    // or hands it to its wrapper. This edge only keeps the content's WRAPPER
+    // - its identity and expandos - while the template's lives. The template
+    // has no wrapper yet (nothing here makes one: a wrapper made now would be
+    // replaced when a constructor binds the template to NewTarget's object),
+    // so the edge waits for it in the realm's wrapper cache.
     engine.traceChild(instance, content, .{ .name = "content" });
     engine.traceChild(content, owner, .{ .name = "template owner document" });
 }
@@ -94,13 +100,21 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     if (Registry.get(instance)) |internal| {
         engine.forgetTracedChild(instance, .{ .name = "content" });
-        // Engine-free callers own the unwrapped fragment. A wrapped fragment
-        // is the collector's, and can survive a forced host teardown.
+        // The template owns its content (establishContents): it goes with
+        // the template. Script may still hold the content's wrapper - it can
+        // hold `t.content` without `t` - so a wrapped fragment is first made
+        // nobody's template contents and left to its wrapper, whose
+        // collection then frees it; an unwrapped one is freed now. During a
+        // coordinated teardown the realm's own sweep frees what is left, and
+        // a wrapper cache is never queried then.
         if (internal.content) |content| {
-            if (runtime.SlabAllocator.generationOf(content) == internal.content_generation and
-                (!instance.ctx.hasEngine() or
-                    (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(content))))
-                dom.node_creation.destroyUninserted(content);
+            if (runtime.SlabAllocator.generationOf(content) == internal.content_generation) {
+                dom.template_contents.releaseHost(content);
+                if (!instance.ctx.hasEngine() or
+                    (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(content)))
+                    dom.node_creation.destroyUninserted(content);
+            }
+            internal.content = null;
         }
     }
     Registry.remove(instance);
@@ -122,7 +136,12 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// Getter for content
 pub fn get_content(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = Registry.get(instance) orelse return error.InvalidStateError;
-    return internal.content orelse error.InvalidStateError;
+    const content = internal.content orelse return error.InvalidStateError;
+    // Never a fragment freed, or its slot reissued, under the template: the
+    // template owns it, so this holds unless that ownership is broken - and
+    // then this answers InvalidStateError rather than another object.
+    if (runtime.SlabAllocator.generationOf(content) != internal.content_generation) return error.InvalidStateError;
+    return content;
 }
 
 /// Getter for shadowRootMode
