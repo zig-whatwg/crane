@@ -377,3 +377,29 @@ fn creationsThatRanScriptAreChecked() !void {
 test "a creation that ran script keeps its wrapper check and pending hold; one that ran none skips it" {
     try onFreshThread(creationsThatRanScriptAreChecked);
 }
+
+fn retainedDestroyedDocumentRescues() !void {
+    const browser = try openBrowser();
+    defer browser.deinit();
+    const page = browser.current_context.?;
+    const owned = try browser.evaluateScript("globalThis.retired = document.implementation.createHTMLDocument('retired')");
+    defer owned.release();
+    const document = engine.convertToPlatformObject(browser.getRealm().?, owned.borrow()) orelse return error.NoDocument;
+    // A document whose navigable is gone can still be opened and parsed.
+    dom.document_lifecycle.destroy(document);
+    try page.runScript("retired.open(); retired.write('<!doctype html><body><div id=a><span id=s>')");
+    const parser = try activeParser(document);
+    const span = Saved.of(try byId(document, "s"));
+    try page.runScript("retired.body.innerHTML = ''");
+    try testing.expectEqual(@as(usize, 1), parser.rescues.items.len);
+    try collect(browser);
+    try testing.expect(span.alive());
+    try page.runScript("retired.write('kept</span></div>'); retired.close()");
+    const text = try textOf(span.node);
+    defer testing.allocator.free(text);
+    try testing.expectEqualStrings("kept", text);
+}
+
+test "a retained document whose navigable was destroyed still rescues what its new parser holds" {
+    try onFreshThread(retainedDestroyedDocumentRescues);
+}
