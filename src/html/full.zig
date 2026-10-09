@@ -92,6 +92,7 @@ pub const documentClose = core.documentClose;
 /// one another.
 pub const autofill = @import("autofill.zig");
 pub const form_associated = @import("form_associated.zig");
+pub const forms = @import("forms/root.zig");
 pub const custom_elements = @import("custom_elements.zig");
 pub const custom_element_creation = @import("custom_elements/creation.zig");
 pub const custom_element_constructor = @import("custom_elements/constructor.zig");
