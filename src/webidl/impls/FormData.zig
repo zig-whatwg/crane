@@ -144,6 +144,7 @@ pub fn createFromInternal(
 /// Fetch formData(), multipart steps 1–3: construct actual Files before the
 /// parsed entry list becomes observable. Native byte records are not Instances.
 fn materializeParsedFiles(instance: *runtime.Instance, internal: *InternalState) !?engine.Owned {
+    internal.form_data.pruneGone();
     var count: usize = 0;
     for (internal.form_data.entries.items) |entry| if (entry.value != .string) {
         count += 1;
@@ -165,7 +166,7 @@ fn materializeParsedFiles(instance: *runtime.Instance, internal: *InternalState)
     for (internal.form_data.entries.items) |*entry| {
         const file = switch (entry.value) {
             .string => continue,
-            .blob_instance => |object| @as(*runtime.Instance, @ptrCast(@alignCast(object))),
+            .blob_instance => |blob| fileOf(blob),
             .file => |record| blk: {
                 const bytes = try engine.createArrayBuffer(instance.ctx, record.data);
                 defer bytes.release();
@@ -189,7 +190,7 @@ fn materializeParsedFiles(instance: *runtime.Instance, internal: *InternalState)
     const trace = try engine.createSequenceOfValues(instance.ctx, values);
     for (prepared) |item| {
         if (item.entry.value == .file) item.entry.value.deinit(internal.form_data.allocator);
-        item.entry.value = .{ .blob_instance = item.file };
+        item.entry.value = .{ .blob_instance = storedFile(item.file) };
     }
     return trace;
 }
@@ -218,8 +219,30 @@ pub fn call_append__1(instance: *runtime.Instance, name: runtime.USVString, blob
     defer if (file != blob) file.releaseIfUnwrapped(generation);
     const trace = try prepareFileTrace(instance, internal, null, file);
     defer if (trace) |value| value.release();
-    try internal.form_data.appendBlobInstance(name, file, null);
+    try internal.form_data.appendBlobInstance(name, storedFile(file), null);
     setFileTrace(instance, internal, trace);
+}
+
+/// A File an entry keeps: with its slab generation and realm, and the check
+/// that reads them. The traced "entryFiles" array keeps it; when that edge
+/// is lost the entry reads as gone - dropped, never a freed or reissued
+/// object (CE2-M2; dom.custom_elements.KeptInstance's rule).
+fn storedFile(file: *runtime.Instance) xhr.form_data.BlobInstance {
+    return .{ .object = file, .generation = runtime.SlabAllocator.generationOf(file), .realm = file.ctx, .is_live = &fileIsLive };
+}
+
+fn keptFile(blob: xhr.form_data.BlobInstance) @import("dom").custom_elements.KeptInstance {
+    return .{ .instance = @ptrCast(@alignCast(blob.object)), .generation = blob.generation, .realm = @ptrCast(@alignCast(blob.realm)) };
+}
+
+fn fileIsLive(blob: xhr.form_data.BlobInstance) bool {
+    return keptFile(blob).get() != null;
+}
+
+/// An entry's File, read after the entry list dropped the gone ones
+/// (InternalFormData.pruneGone).
+fn fileOf(blob: xhr.form_data.BlobInstance) *runtime.Instance {
+    return @ptrCast(@alignCast(blob.object));
 }
 
 fn entryFile(realm: runtime.Context, blob: *runtime.Instance, filename: webidl.Opt(runtime.USVString)) !*runtime.Instance {
@@ -233,12 +256,13 @@ fn entryFile(realm: runtime.Context, blob: *runtime.Instance, filename: webidl.O
 
 fn prepareFileTrace(instance: *runtime.Instance, internal: *InternalState, excluding_name: ?[]const u8, added: ?*runtime.Instance) !?engine.Owned {
     if (!instance.ctx.hasEngine()) return null;
+    internal.form_data.pruneGone();
     var files: std.ArrayList(*runtime.Instance) = .empty;
     defer files.deinit(internal.allocator);
     for (internal.form_data.entries.items) |entry| {
         if (excluding_name) |name| if (std.mem.eql(u8, entry.name, name)) continue;
         switch (entry.value) {
-            .blob_instance => |object| try files.append(internal.allocator, @ptrCast(@alignCast(object))),
+            .blob_instance => |blob| try files.append(internal.allocator, fileOf(blob)),
             else => {},
         }
     }
@@ -281,7 +305,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?
     return switch (entry) {
         .string => |s| .{ .usvstring = s }, // USVString is []const u8
         .file => unreachable, // Construction materializes every native record.
-        .blob_instance => |ptr| .{ .file = @ptrCast(@alignCast(ptr)) }, // Return the stored Blob/File instance
+        .blob_instance => |blob| .{ .file = fileOf(blob) }, // The stored File (get dropped gone ones)
     };
 }
 
@@ -299,7 +323,7 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
     defer internal.allocator.free(js_values);
     for (values, js_values) |entry, *value| value.* = switch (entry) {
         .string => |text| runtime.JSValue.fromStringRef(text),
-        .blob_instance => |object| .{ .instance = @ptrCast(@alignCast(object)) },
+        .blob_instance => |blob| .{ .instance = fileOf(blob) },
         .file => unreachable, // Construction materializes every native record.
     };
     const array = try engine.createSequenceOfValues(instance.ctx, js_values);
@@ -335,7 +359,7 @@ pub fn call_set__1(instance: *runtime.Instance, name: runtime.USVString, blob: *
     defer if (file != blob) file.releaseIfUnwrapped(generation);
     const trace = try prepareFileTrace(instance, internal, name, file);
     defer if (trace) |value| value.release();
-    try internal.form_data.setBlobInstance(name, file, null);
+    try internal.form_data.setBlobInstance(name, storedFile(file), null);
     setFileTrace(instance, internal, trace);
 }
 
@@ -363,6 +387,7 @@ pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const IterableEntry
 
     // Build array of IterableEntry from internal form data entries
     // We need to store these in InternalState since the slice must outlive this call
+    internal.form_data.pruneGone();
     const entries = internal.form_data.entries.items;
 
     // Allocate space for iterable entries (cached in internal state)
@@ -381,8 +406,8 @@ pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const IterableEntry
             .value = switch (entry.value) {
                 .string => |s| .{ .usvstring = s },
                 .file => unreachable, // Construction materializes every native record.
-                // blob_instance is already a runtime.Instance (File or Blob)
-                .blob_instance => |b| .{ .file = @ptrCast(@alignCast(b)) },
+                // A File the entry keeps (gone ones were just dropped).
+                .blob_instance => |blob| .{ .file = fileOf(blob) },
             },
         };
     }

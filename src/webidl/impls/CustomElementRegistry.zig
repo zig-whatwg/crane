@@ -157,7 +157,6 @@ pub fn installHooks() void {
         .cancel_element = html.custom_elements.cancelElement,
         .is_scoped = &isScoped,
         .associate_document = &associateDocument,
-        .form_tree_changed = html.custom_elements.formTreeChanged,
     });
     dom.unloading_cleanup.install(html.custom_elements.clearRealm);
 }
@@ -345,7 +344,7 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     // Step 16: "Append definition to this's custom element definition set."
     try internal.addDefinition(def);
     registered = true;
-    def.registry = instance;
+    def.setRegistry(instance);
     if (@import("html").custom_elements.stateForRealm(instance.ctx)) |agent_state| {
         def.agent_definition_count = &agent_state.definition_count;
         agent_state.definition_count += 1;

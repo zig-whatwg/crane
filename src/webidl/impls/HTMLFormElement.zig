@@ -45,6 +45,7 @@ const Registry = utils.InstanceRegistry(InternalState);
 /// Internal state for HTMLFormElement implementation
 pub const InternalState = struct {
     elements: ?*runtime.Instance = null,
+    elements_generation: u64 = 0,
     elements_traced: bool = false,
     /// HTML § 4.10.22.3 "planned navigation": the token of the queued task
     /// that will navigate, or 0 for null.
@@ -99,7 +100,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         if (internal.elements_traced) engine.forgetTracedChild(instance, .{ .name = "elements" });
-        if (!internal.elements_traced) if (internal.elements) |collection| runtime.Instance.deinit(collection);
+        if (!internal.elements_traced) if (liveChild(internal.elements, internal.elements_generation)) |collection| runtime.Instance.deinit(collection);
         internal.deinit();
     }
     Registry.remove(instance);
@@ -216,7 +217,7 @@ pub fn get_method(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-elements
 pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = Registry.get(instance) orelse return error.InvalidState;
-    if (internal.elements) |collection| return collection;
+    if (liveChild(internal.elements, internal.elements_generation)) |collection| return collection;
     const collection = try interfaces.HTMLFormControlsCollection.init(instance.ctx.allocator, instance.ctx);
     errdefer runtime.Instance.deinit(collection);
     try @import("dom").live_collections.formControls(collection, instance, false);
@@ -225,7 +226,19 @@ pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
         internal.elements_traced = true;
     }
     internal.elements = collection;
+    internal.elements_generation = runtime.SlabAllocator.generationOf(collection);
     return collection;
+}
+
+/// A [SameObject] child kept beside the owner's traced edge to it: the
+/// child while it is still the one made - its slot not freed or reissued,
+/// not torn down. The edge is what keeps it; a child whose edge was lost
+/// reads as gone and is made again, never a freed or reissued object
+/// (PR-N1, the 2026-10-03 lesson).
+fn liveChild(child: ?*runtime.Instance, generation: u64) ?*runtime.Instance {
+    const value = child orelse return null;
+    if (runtime.SlabAllocator.generationOf(value) != generation or runtime.instance_lifecycle.isCleanedUp(value)) return null;
+    return value;
 }
 
 /// Getter for length

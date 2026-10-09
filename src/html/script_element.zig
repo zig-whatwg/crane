@@ -248,6 +248,54 @@ pub fn of(element: *runtime.Instance) ?*State {
     return impl.state(element);
 }
 
+/// Take `element` out of every script list of its documents - its
+/// preparation-time document's set of scripts that will execute as soon as
+/// possible, list of scripts that will execute in order as soon as possible
+/// and list of scripts that will execute when the document has finished
+/// parsing, and the pending parsing-blocking script of its parser (or
+/// preparation-time) document - and out of currentScript (DW-N3).
+///
+/// For explicit destruction only: HTMLScriptElement.deinit calls it, before
+/// the element's identity can end. A queued element is never collected - its
+/// queue holds an execution root (State.execution_root) until it executes or
+/// is discarded, as browsers' queues keep theirs alive (Blink's ScriptRunner
+/// and HTMLParserScriptRunner trace their PendingScripts; WebKit's
+/// PendingScript holds a Ref to its element), so a queued script removed
+/// from the document and unreferenced still runs
+/// (crane/lf2-script-queue-removed-gc.html). Only a native teardown destroys
+/// one while queued, and its bare pointer must not wait there for the next
+/// drain. The documents are reached by address (dom.document_scripts.of
+/// never dereferences one), and the element is removed by identity.
+pub fn forgetQueueMembership(element: *runtime.Instance) void {
+    const state = of(element) orelse return;
+    const document_scripts = @import("dom").document_scripts;
+    if (state.preparation_time_document) |document| {
+        if (runtime.SlabAllocator.generationOf(document) == state.preparation_time_document_generation) {
+            if (document_scripts.of(document)) |scripts| forgetIn(scripts, element);
+        }
+    }
+    if (state.parser_document) |document| {
+        if (document != state.preparation_time_document) {
+            if (document_scripts.of(document)) |scripts| forgetIn(scripts, element);
+        }
+    }
+}
+
+fn forgetIn(scripts: *@import("dom").document_scripts.Scripts, element: *runtime.Instance) void {
+    if (scripts.pending_parsing_blocking_script == element) scripts.pending_parsing_blocking_script = null;
+    if (scripts.current_script == element) scripts.current_script = null;
+    scripts.removeAsap(element);
+    removeAll(&scripts.scripts_to_execute_in_order_asap, element);
+    removeAll(&scripts.scripts_to_execute_when_parsing_finished, element);
+}
+
+fn removeAll(list: *std.ArrayList(*runtime.Instance), element: *runtime.Instance) void {
+    var i: usize = 0;
+    while (i < list.items.len) {
+        if (list.items[i] == element) _ = list.orderedRemove(i) else i += 1;
+    }
+}
+
 test "without an installed implementation no element has script element state" {
     const saved = implementation;
     defer implementation = saved;

@@ -4,6 +4,7 @@
 const std = @import("std");
 const infra = @import("infra");
 const Reactions = @import("reactions.zig").Reactions;
+pub const FormIdObservers = @import("form_observers.zig").FormIdObservers;
 
 pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload: type, comptime Root: type, comptime Returns: type, comptime realmIsLive: fn (Realm) bool) type {
     return struct {
@@ -43,6 +44,9 @@ pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload
         invoking: usize = 0,
         definition_count: usize = 0,
         form_definition_count: usize = 0,
+        /// Form-associated custom elements with a form attribute, by the ID
+        /// it names (form_observers.zig; reset by custom_elements/form_owner.zig).
+        form_id_observers: FormIdObservers(Element, Realm) = .{},
         active_constructors: infra.List(ActiveConstructor),
         returns: Returns,
 
@@ -60,6 +64,7 @@ pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload
             self.releasePending();
             self.queues.deinit();
             self.elements.deinit();
+            self.form_id_observers.deinit(self.allocator);
             self.active_constructors.deinit();
             self.returns.deinit();
             self.* = undefined;
@@ -147,6 +152,9 @@ pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload
         /// address may immediately be reissued; stale queue slots keep this
         /// cancelled identity, never the replacement's record.
         pub fn cancelElement(self: *Self, element: Element) void {
+            // A torn-down element observes no ID (form_owner.observe marks
+            // an observer enqueued, so its teardown comes here).
+            self.form_id_observers.remove(self.allocator, element);
             const entry = self.elements.fetchRemove(element) orelse return;
             const record = entry.value;
             record.cancelled = true;
@@ -160,6 +168,7 @@ pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload
         /// safe to run afterwards; cancelled records contain no callable work.
         pub fn clearRealm(self: *Self, realm: Realm) void {
             self.returns.clearRealm(realm);
+            self.form_id_observers.removeRealm(self.allocator, realm);
             // Keep the scope slots until their callers pop them, including a
             // caller whose script destroys its own realm during construction.
             for (self.active_constructors.toSliceMut()) |*entry| {

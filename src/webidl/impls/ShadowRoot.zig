@@ -62,8 +62,8 @@ pub const InternalState = struct {
     /// Stored as runtime.JSValue with global handle scope for persistence
     onslotchange: ?runtime.JSValue = null,
 
-    /// Custom element registry (from DocumentOrShadowRoot mixin)
-    custom_element_registry: ?*runtime.Instance,
+    /// Custom element registry (from DocumentOrShadowRoot mixin), read
+    /// through `get()`: a registry whose keeper went reads null (CE2-M2).
     registry_edge: @import("dom").custom_elements.RegistryAssociation = .{},
 
     /// Fullscreen element (from DocumentOrShadowRoot mixin)
@@ -102,7 +102,6 @@ pub const InternalState = struct {
             .keep_custom_element_registry_null = false,
             .host = null,
             .onslotchange = null,
-            .custom_element_registry = null,
             .fullscreen_element = null,
             .active_element = null,
             .picture_in_picture_element = null,
@@ -216,11 +215,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (registry) |value| if (try interfaces.Node.get_ownerDocument(instance)) |document| {
-        try @import("dom").custom_elements.associateDocument(value, document);
+    const document = try interfaces.Node.get_ownerDocument(instance);
+    if (registry) |value| if (document) |owner| {
+        try @import("dom").custom_elements.associateDocument(value, owner);
     };
-    internal.registry_edge.set(instance, registry);
-    internal.custom_element_registry = registry;
+    // CE2-S2: the document keeps its own global registry; only another one is
+    // traced from the shadow root.
+    const document_registry = if (document) |owner| try interfaces.Document.get_customElementRegistry(owner) else null;
+    internal.registry_edge.setForNode(instance, registry, document_registry);
 }
 
 fn createForHost(host: *runtime.Instance, options: dictionaries.ShadowRootInit, registry: ?*runtime.Instance) !*runtime.Instance {
@@ -393,7 +395,7 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
 /// Returns null if no custom element registry is associated
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.custom_element_registry;
+    return internal.registry_edge.get();
 }
 
 /// DocumentOrShadowRoot.fullscreenElement getter

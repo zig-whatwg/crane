@@ -575,10 +575,14 @@ fn markCustomElementEnqueued(instance: *runtime.Instance) void {
 
 fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (registry) |value| if (try interfaces.Node.get_ownerDocument(instance)) |document| {
-        try dom.custom_elements.associateDocument(value, document);
+    const document = try interfaces.Node.get_ownerDocument(instance);
+    if (registry) |value| if (document) |owner| {
+        try dom.custom_elements.associateDocument(value, owner);
     };
-    internal.custom_element_registry.set(instance, registry);
+    // CE2-S2: the document keeps its own global registry; only another one is
+    // traced from the element.
+    const document_registry = if (document) |owner| try interfaces.Document.get_customElementRegistry(owner) else null;
+    internal.custom_element_registry.setForNode(instance, registry, document_registry);
 }
 
 fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementData {
@@ -1333,8 +1337,10 @@ fn handleAttributeChanges(
     // Step 3: "Run the attribute change steps with element, attribute's local
     // name, oldValue, newValue, and attribute's namespace."
     attributeChangeSteps(instance, local_name, old_value, new_value, namespace);
+    // HTML 4.10.18.3 / 4.10.19.5: form, id and disabled can change a
+    // form-associated custom element's owner or disabled state.
     if (namespace == null and (std.mem.eql(u8, local_name, "form") or std.mem.eql(u8, local_name, "id") or std.mem.eql(u8, local_name, "disabled"))) {
-        dom.custom_elements.formTreeChanged(instance);
+        dom.custom_elements.formAttributeChanged(instance, local_name, old_value, new_value);
     }
 }
 

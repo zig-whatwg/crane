@@ -64,17 +64,45 @@ pub const KeptInstance = struct {
     }
 };
 
-/// A native association plus an engine-traced edge, never a persistent root.
-/// A document/element can outlive its browsing context; defaultView is not its
-/// registry. Blink's Document/ElementRareData/ShadowRoot trace the same edge.
-/// Read it with `get`: the edge is what keeps the registry, and a registry
-/// whose edge was lost reads null (CE2-M2). `value` is the raw pointer, for
-/// readers not converted yet (Document, ShadowRoot).
+/// A native association plus, where nothing else keeps the registry, an
+/// engine-traced edge - never a persistent root. A document/element can
+/// outlive its browsing context; defaultView is not its registry. Blink's
+/// Document/ElementRareData/ShadowRoot trace the same edge. Read it with
+/// `get`: a registry whose keeper went reads null (CE2-M2).
 pub const RegistryAssociation = struct {
-    value: ?*runtime.Instance = null,
     kept: ?KeptInstance = null,
     traced: bool = false,
 
+    /// An element's or shadow root's association (CE2-S2). DOM gives a node
+    /// a global registry only as its node document's own (flatten element
+    /// creation options 3.2.3, importNode 3, clone a single node 2.3, adopt
+    /// 3.3.2.4, attachShadow), and the document's association keeps that
+    /// registry: such a node draws no edge of its own - one per created
+    /// element was a Global waiting in the wrapper cache for every unwrapped
+    /// one, or a private property on every wrapped one. Only a registry the
+    /// document does not keep - a scoped one, or a global one that is not
+    /// `document_registry` - is traced from the node.
+    ///
+    /// The global case keeps the pointer with its generation rather than
+    /// re-reading the node document's registry on `get`: a node can outlive
+    /// a document that lost its browsing context (its wrapper is then weak
+    /// and a detached node keeps no edge to it), and the node document is a
+    /// bare pointer. Deviation, stated: when that document and its registry
+    /// are collected while the node lives, the node's association reads null
+    /// where DOM would still answer the old registry.
+    pub fn setForNode(self: *RegistryAssociation, owner: *runtime.Instance, value: ?*runtime.Instance, document_registry: ?*runtime.Instance) void {
+        if (value) |registry| {
+            if (registry == document_registry and !isScoped(registry)) {
+                self.release(owner);
+                self.kept = KeptInstance.of(registry);
+                return;
+            }
+        }
+        self.set(owner, value);
+    }
+
+    /// A document's own association, and a node's whose registry its
+    /// document does not keep: traced from `owner`.
     pub fn set(self: *RegistryAssociation, owner: *runtime.Instance, value: ?*runtime.Instance) void {
         if (value) |registry| {
             if (owner.ctx.hasEngine()) {
@@ -82,7 +110,6 @@ pub const RegistryAssociation = struct {
                 self.traced = true;
             }
         } else self.release(owner);
-        self.value = value;
         self.kept = if (value) |registry| KeptInstance.of(registry) else null;
     }
     /// The registry, or null: none was set, or the one set is gone.
@@ -145,9 +172,15 @@ pub const OwnerSteps = struct {
     cancel_element: *const fn (*runtime.Instance) void,
     is_scoped: *const fn (*runtime.Instance) bool,
     associate_document: *const fn (*runtime.Instance, *runtime.Instance) anyerror!void,
-    form_tree_changed: *const fn (*runtime.Instance) void,
 };
-const Implementation = struct { element: ?ElementSteps = null, owner: ?OwnerSteps = null, document: ?DocumentSteps = null, shadow: ?ShadowSteps = null, html_element: ?HTMLElementSteps = null, internals: ?InternalsSteps = null, custom_states: ?CustomStateSteps = null, validity: ?ValiditySteps = null };
+/// HTML 4.10.18.3 "reset the form owner" and the disabled state of
+/// form-associated custom elements, where a mutation can change them
+/// (html/custom_elements/form_owner.zig; CE2-S1).
+pub const FormSteps = struct {
+    subtree_moved: *const fn (node: *runtime.Instance, old_parent: ?*runtime.Instance, new_parent: ?*runtime.Instance) void,
+    attribute_changed: *const fn (element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, new_value: ?[]const u8) void,
+};
+const Implementation = struct { form: ?FormSteps = null, element: ?ElementSteps = null, owner: ?OwnerSteps = null, document: ?DocumentSteps = null, shadow: ?ShadowSteps = null, html_element: ?HTMLElementSteps = null, internals: ?InternalsSteps = null, custom_states: ?CustomStateSteps = null, validity: ?ValiditySteps = null };
 // process-wide: immutable function pointers installed at process start; all mutable data belongs to elements or agents, so many Browsers and threads share no reaction state
 var implementation: Implementation = .{};
 
@@ -158,6 +191,10 @@ pub fn installElement(steps: ElementSteps) void {
 pub fn installOwner(steps: OwnerSteps) void {
     process_start.assertInstalling();
     implementation.owner = steps;
+}
+pub fn installForm(steps: FormSteps) void {
+    process_start.assertInstalling();
+    implementation.form = steps;
 }
 pub fn installDocument(steps: DocumentSteps) void {
     process_start.assertInstalling();
@@ -265,8 +302,14 @@ pub fn shadowAvailableToInternals(shadow: *runtime.Instance) bool {
 pub fn shadowKeepsRegistryNull(shadow: *runtime.Instance) bool {
     return (implementation.shadow orelse return false).keeps_registry_null(shadow);
 }
-pub fn formTreeChanged(root: *runtime.Instance) void {
-    (implementation.owner orelse return).form_tree_changed(root);
+/// `node` was inserted (`old_parent` null), removed (`new_parent` null) or
+/// moved; the tree is in its new shape.
+pub fn formSubtreeMoved(node: *runtime.Instance, old_parent: ?*runtime.Instance, new_parent: ?*runtime.Instance) void {
+    (implementation.form orelse return).subtree_moved(node, old_parent, new_parent);
+}
+/// An attribute in no namespace changed on `element`.
+pub fn formAttributeChanged(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, new_value: ?[]const u8) void {
+    (implementation.form orelse return).attribute_changed(element, local_name, old_value, new_value);
 }
 /// DOM's effective global custom element registry: a scoped registry yields null.
 pub fn effectiveGlobal(registry: ?*runtime.Instance) ?*runtime.Instance {

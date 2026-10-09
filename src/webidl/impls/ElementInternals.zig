@@ -29,9 +29,11 @@ pub const InternalState = struct {
     target_generation: u64 = 0,
     target_traced: bool = false,
     states: ?*runtime.Instance = null,
+    states_generation: u64 = 0,
     states_traced: bool = false,
     validity_flags: ce.ValidityFlags = .{},
     validity: ?*runtime.Instance = null,
+    validity_generation: u64 = 0,
     validity_traced: bool = false,
     validation_message: []const u8 = "",
     validation_anchor_traced: bool = false,
@@ -43,8 +45,20 @@ pub const InternalState = struct {
     form_owner_generation: u64 = 0,
     disabled: bool = false,
     labels: ?*runtime.Instance = null,
+    labels_generation: u64 = 0,
     labels_traced: bool = false,
 };
+
+/// A [SameObject] child kept beside the owner's traced edge to it: the
+/// child while it is still the one made - its slot not freed or reissued,
+/// not torn down. The edge is what keeps it; a child whose edge was lost
+/// reads as gone and is made again, never a freed or reissued object
+/// (PR-N1, the 2026-10-03 lesson).
+fn liveChild(child: ?*runtime.Instance, generation: u64) ?*runtime.Instance {
+    const value = child orelse return null;
+    if (runtime.SlabAllocator.generationOf(value) != generation or runtime.instance_lifecycle.isCleanedUp(value)) return null;
+    return value;
+}
 
 const ControlValue = union(enum) {
     none,
@@ -94,6 +108,10 @@ fn formAssociatedTarget(instance: *runtime.Instance) !*runtime.Instance {
 pub fn installHooks() void {
     ce.installInternals(.{ .set_target = &setTarget, .states = &statesIfCreated, .validity_flags = &validityFlags, .refresh_form = &refreshForm, .append_form_entries = &appendFormEntries, .validation_state = &form_associated.validationState, .disabled_state = &form_associated.customDisabledState });
     @import("dom").form_controls.install(.{ .is = &ce.isFormAssociated, .reset = &resetControl });
+    // CE2-S1: the mutations that can change a form-associated custom
+    // element's owner or disabled state reset just the elements they reach.
+    const form_owner = @import("html").custom_elements.form_owner;
+    ce.installForm(.{ .subtree_moved = &form_owner.subtreeMoved, .attribute_changed = &form_owner.attributeChanged });
 }
 
 fn resetControl(element: *runtime.Instance) void {
@@ -118,10 +136,14 @@ fn refreshForm(instance: *runtime.Instance) void {
         internal.disabled = disabled;
         @import("html").custom_elements.enqueueCallback(target, definition, .form_disabled, .{ .form_disabled = disabled }) catch {};
     }
+    // The ID its form attribute names is now the one to watch (HTML
+    // 4.10.18.3's ID-target resets), or none.
+    @import("html").custom_elements.form_owner.observe(target);
 }
 
 fn statesIfCreated(instance: *runtime.Instance) ?*runtime.Instance {
-    return (getInternal(instance) catch return null).states;
+    const internal = getInternal(instance) catch return null;
+    return liveChild(internal.states, internal.states_generation);
 }
 
 fn validityFlags(instance: *runtime.Instance) ce.ValidityFlags {
@@ -170,9 +192,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (internal.labels_traced) engine.forgetTracedChild(instance, .{ .name = "labels" });
     // In engine-free tests the owner is responsible for lazily created
     // children. With an engine, the traced wrapper graph owns their lifetime.
-    if (!internal.states_traced) if (internal.states) |child| runtime.Instance.deinit(child);
-    if (!internal.validity_traced) if (internal.validity) |child| runtime.Instance.deinit(child);
-    if (!internal.labels_traced) if (internal.labels) |child| runtime.Instance.deinit(child);
+    if (!internal.states_traced) if (liveChild(internal.states, internal.states_generation)) |child| runtime.Instance.deinit(child);
+    if (!internal.validity_traced) if (liveChild(internal.validity, internal.validity_generation)) |child| runtime.Instance.deinit(child);
+    if (!internal.labels_traced) if (liveChild(internal.labels, internal.labels_generation)) |child| runtime.Instance.deinit(child);
     if (internal.validation_anchor_traced) engine.forgetTracedChild(instance, .{ .name = "validationAnchor" });
     internal.allocator.free(internal.validation_message);
     if (internal.submission_traced) engine.forgetTracedChild(instance, .{ .name = "submissionValue" });
@@ -215,7 +237,7 @@ pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
 pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = try formAssociatedTarget(instance);
     const internal = try getInternal(instance);
-    if (internal.validity) |validity| return validity;
+    if (liveChild(internal.validity, internal.validity_generation)) |validity| return validity;
     const validity = try interfaces.ValidityState.init(internal.allocator, instance.ctx);
     errdefer runtime.Instance.deinit(validity);
     try ce.setValidityInternals(validity, instance);
@@ -224,6 +246,7 @@ pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
         internal.validity_traced = true;
     }
     internal.validity = validity;
+    internal.validity_generation = runtime.SlabAllocator.generationOf(validity);
     return validity;
 }
 
@@ -237,7 +260,7 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const target = try formAssociatedTarget(instance);
     const internal = try getInternal(instance);
-    if (internal.labels) |labels| return labels;
+    if (liveChild(internal.labels, internal.labels_generation)) |labels| return labels;
     const list = try interfaces.NodeList.init(internal.allocator, instance.ctx);
     errdefer runtime.Instance.deinit(list);
     try @import("dom").node_lists.labels(list, target);
@@ -246,13 +269,14 @@ pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
         internal.labels_traced = true;
     }
     internal.labels = list;
+    internal.labels_generation = runtime.SlabAllocator.generationOf(list);
     return list;
 }
 
 /// Getter for states
 pub fn get_states(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = try getInternal(instance);
-    if (internal.states) |states| return states;
+    if (liveChild(internal.states, internal.states_generation)) |states| return states;
     // HTML 4.13.7.5: the target's initially empty set, with stable identity.
     const states = try interfaces.CustomStateSet.init(internal.allocator, instance.ctx);
     errdefer runtime.Instance.deinit(states);
@@ -262,6 +286,7 @@ pub fn get_states(instance: *runtime.Instance) anyerror!*runtime.Instance {
         internal.states_traced = true;
     }
     internal.states = states;
+    internal.states_generation = runtime.SlabAllocator.generationOf(states);
     return states;
 }
 

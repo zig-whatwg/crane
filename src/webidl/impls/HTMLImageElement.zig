@@ -615,11 +615,17 @@ const ImageFetch = struct {
         self.allocator.destroy(self);
     }
 
+    /// Take this fetch out of its element's state, by identity (DW-N2). The
+    /// state is keyed by the element's address and never dereferences the
+    /// element, and a state reissued at that address holds its own fetch -
+    /// so no liveness gate: one cleared only while the element was live
+    /// left a state whose slot a teardown had freed pointing at this fetch,
+    /// which `gone` destroys, for that state's cancelFetch to destroy again.
     fn detach(self: *ImageFetch) void {
         self.fetch = null;
-        if (self.elementIsLive()) if (getInternal(self.element)) |internal| {
+        if (getInternal(self.element)) |internal| {
             if (internal.active_fetch == self) internal.active_fetch = null;
-        };
+        }
     }
 
     /// The response, body and all: the image is available, or the request
