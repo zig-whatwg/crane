@@ -99,7 +99,7 @@ loop, timers or lifetimes. Report the lint-platform baseline total beside the ot
 
 | Step | What | Lint references removed (approx.) | Risk |
 |---|---|---|---|
-| 0 | Per-platform module graphs in build.zig, the seam, every operation declared, the link-plan mechanics, the lint, dead code deleted | 0 (the baseline is recorded) | medium (the build.zig refactor) |
+| 0 | Per-platform module graphs in build.zig, the seam, every operation declared, the link-plan mechanics, the lint (old code kept until each step replaces it) | 0 (the baseline is recorded) | medium (the build.zig refactor) |
 | 1 | The clock | 228 | low, wide |
 | 2 | The network, per-Browser network state, the event-loop wait | 687 + 3 | HIGH |
 | 3 | Files and storage locations; in memory by default | 50 + 1 | low |
@@ -125,7 +125,7 @@ testing platform needs per-Browser state and the port), and 8-13 need 7.
 
 **Goal**: the protocol and its check exist, every operation of platform-protocol.md is declared, every
 built-in platform conforms (implementing today's behaviour or aliasing kit/headless), the lint passes
-on a recorded baseline, and the dead platform code is gone. No behaviour change.
+on a recorded baseline, and the old platform code is kept, re-exported where callers use it, until the step that replaces it. No behaviour change.
 
 **Files**
 
@@ -155,15 +155,16 @@ on a recorded baseline, and the dead platform code is gone. No behaviour change.
 - tools/lint_platform_boundary.zig + tools/platform_boundary_baseline.txt + `zig build lint-platform`
   in `test` (rules: contract section 11; key list: tmp/plans/platform-protocol-design.md 12.2-12.3,
   with SQLite, LevelDB and all of mbedTLS now confined to src/platform/).
-- Delete (decision 15, after counting each function's calls - the function-pointer-table lesson's
-  method): src/platform/vtables.zig, platform_backend.zig, stub_platform_backend.zig, exports.zig's
-  Zig side and src/lib_exports.zig:264-273's re-exports, the eight adapters (timer, layout, clipboard,
-  notification, push, network, filesystem, ui), the four legacy backends (layout, clipboard,
-  notification, push - layout_backend's types move into the protocol's layout records, step 12),
-  timer_backend.zig with the html/event_loop EventLoop it serves once src/webidl/impls/WorkerGlobalScope.zig:102's
-  pointer is shown dead, tests/platform/platform_backend_test.zig, the unused imports
-  (src/webidl/impls/HTMLElement.zig:32, src/runtime/engines/v8/context_manager.zig:56). The C headers
-  stay until step 15.
+- Keep; each step removes what it replaces (decision 15 as the user changed it, 2026-10-09: "keep
+  the code for now and attempt to extract out or replace everything first. Then delete."). Step 0
+  deletes nothing of the old platform code. The facade re-exports what today's callers import from
+  the old `platform` module in a TRANSITIONAL section (media_backend, media_adapter, timer_backend,
+  the clipboard backend's types, the PlatformBackend/vtables/exports surface), lint-platform keys
+  each use as `platform.<name>`, and the old src/platform/root.zig stays unbound. Each later step
+  names the old files it retires below ("Retires"): it deletes them once its replacement is in place
+  and tested, counting callers first (the function-pointer-table lesson's method), and drops their
+  TRANSITIONAL entries and lint names. The caller counts taken in step 0 are in
+  tmp/plans/lane-platform0-handoff.md.
 
 **Tests**: tests/platform/protocol_conformance_test.zig - each built-in platform binds and every
 operation type-checks; the signature comparison the conformance block uses is a function returning
@@ -237,6 +238,8 @@ The highest-risk step: per-Browser network state, and the event loop's wait. Fou
 
 ### 2a. Move libcurl behind the protocol
 
+**Retires**: src/platform/network_adapter.zig (the NetworkVTable bridge into fetch).
+
 **Files**: src/fetch/network/{curl_ffi,curl_backend,connection_pool,scheduler,curl_error}.zig and
 src/websocket/curl_backend.zig move to src/platform/kit/curl/; `NetworkRequest` / `NetworkResponse`
 / `NetworkError` (src/fetch/network/backend.zig:103-258) become the facade's `HttpRequest`,
@@ -283,6 +286,8 @@ the worklist) A/B, reporting runner time as well as status (per-Browser contexts
 reuse).
 
 ### 2c. One port per event loop, and a real wait (decision 16)
+
+**Retires**: src/platform/timer_backend.zig and timer_adapter.zig, with the html/event_loop EventLoop they serve (step 0 counted it dead: `EventLoop.init` runs only in its own tests, `WorkerGlobalScope.setEventLoop` has no caller) and tests/wpt_runner/main.zig's `timer_backend.deinitDefault()`.
 
 **Files**: src/browser/event_loop.zig and each worker's loop (src/html/worker_thread.zig) create their
 `EventLoopPort` and destroy it at their end, replacing the threadlocal `thread_scheduler`
@@ -339,6 +344,8 @@ html/browsers/browsing-the-web/).
 ---
 
 ## Step 3. Files and storage locations
+
+**Retires**: src/platform/filesystem_adapter.zig, and src/runtime/engines/v8/context_manager.zig:56's unused `host` import.
 
 **Files**: the inventory's filesystem table - src/storage/indexeddb/blob_storage.zig,
 src/intl/cldr/loader.zig, src/runtime/engines/v8/snapshot_loader.zig, src/browser/process.zig,
@@ -526,6 +533,8 @@ WPT: workers/ and html/webappapis/system-state-and-capabilities/ A/B.
 
 ## Step 7. The testing platform, platform events, media decoding
 
+**Retires**: src/platform/media_backend.zig and media_adapter.zig (their callers move to the media_decoding operations).
+
 **Goal**: the WPT runner builds with `-Dplatform=testing` and stops passing backends through
 BrowserConfig; platform events reach Crane; media decoding is a capability.
 
@@ -608,6 +617,8 @@ darwin waits on contract 13's open question 1.
 
 ## Step 9. Dialogs, printing, console, windows, screen and system state
 
+**Retires**: src/platform/ui_adapter.zig.
+
 **Files**
 
 - Window.zig's alert/confirm/prompt/print (src/webidl/impls/Window.zig:1920-1946, 2509-2518,
@@ -662,6 +673,8 @@ WPT: the 17 type=file and 17 showPicker worklist files A/B.
 
 ## Step 11. The clipboard (decision 8)
 
+**Retires**: src/platform/clipboard_backend.zig and clipboard_adapter.zig (selection_ops.zig's ClipboardBackend moves to the protocol's clipboard).
+
 **Files**: impls Clipboard.zig (:60, 67), Navigator.zig:96 (`navigator.clipboard`), ClipboardItem,
 execCommand copy/cut/paste (src/html/editing/executor.zig:126, selection_ops.zig:302) through
 `platform.readClipboard` / `writeClipboard`, with the Async Clipboard API's permission and activation
@@ -678,6 +691,8 @@ clipboard-apis/ when it joins the worklist (58 files, 0 today), and the execComm
 
 ## Step 12. Layout (decision 14)
 
+**Retires**: src/platform/layout_backend.zig and layout_adapter.zig, and src/webidl/impls/HTMLElement.zig:32's unused `layout_backend` import.
+
 **Files**: src/platform/layout_backend.zig's types become the protocol's layout records (BoxMetrics,
 Rect); the CSSOM View members of Element/HTMLElement (offset*, client*, scroll*, getBoundingClientRect,
 getClientRects, scrollTo, elementFromPoint/elementsFromPoint, innerText's rendered-text steps) ask the
@@ -693,6 +708,8 @@ change expected (css/cssom-view/ is outside the worklist).
 ---
 
 ## Step 13. Every other page capability behind its gate (decision 7)
+
+**Retires**: src/platform/notification_backend.zig, notification_adapter.zig, push_backend.zig and push_adapter.zig.
 
 Every operation of contract 6.10 exists from step 0, and every built-in platform answers its
 unsupported path. This step makes each API's impl call its operation behind its gate, with the spec's
@@ -744,6 +761,8 @@ chosen and each link-plan row records its minimum OS version.
 ---
 
 ## Step 15. The C API (decision 4)
+
+**Retires**: the old C ABI - src/platform/exports.zig, platform_backend.zig, vtables.zig and stub_platform_backend.zig, build.zig's `lib` step (libwhatwg) with its packaging in .github/workflows/{swift,kotlin,release}.yml, src/lib_exports.zig's whatwg_platform_* re-exports and PlatformBackend reference, tests/platform/platform_backend_test.zig, include/whatwg_backend.h and docs/swift-integration.md's section - and the old src/platform/root.zig, once nothing it lists remains.
 
 **Files**: include/crane.h - `crane_browser_create(const crane_browser_config_t *)` with the
 BrowserOptions fields (profile directory, user agent, languages, proxy, trust anchors) - no app

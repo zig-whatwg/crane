@@ -2647,7 +2647,8 @@ pub const EventSink = extern struct {
 // TRANSITIONAL: today's backends, re-exported so their callers keep importing
 // `@import("platform")` while the protocol replaces them (the integrator's
 // ruling for step 0, 2026-10-09). None of these is part of the contract: each
-// goes with the recipes step named beside it. lint-platform counts every use
+// goes with the recipes step named beside it, once its replacement is in place
+// and tested (decision 15 as changed: nothing old is deleted before that). lint-platform counts every use
 // as `platform.<name>` against its baseline, so today's callers are allowed
 // and a new one fails. They are std-only except timer_backend, which reads the
 // `clock` bridge - the facade's one import beyond its leaf set, until it goes.
@@ -2657,7 +2658,7 @@ pub const EventSink = extern struct {
 pub const media_backend = @import("media_backend.zig");
 /// Recipes step 7.
 pub const media_adapter = @import("media_adapter.zig");
-/// Recipes step 2c (the event loop's wait), or step 6 as dead code.
+/// Recipes step 2c (the event loop's wait; step 0 counted it dead).
 pub const timer_backend = @import("timer_backend.zig");
 /// Recipes step 11 (the clipboard).
 pub const clipboard_backend = @import("clipboard_backend.zig");
@@ -2668,7 +2669,7 @@ pub const ClipboardFormat = clipboard_backend.ClipboardFormat;
 pub const ClipboardItem = clipboard_backend.ClipboardItem;
 pub const ClipboardResult = clipboard_backend.ClipboardResult;
 
-/// Step 0's own dead-code deletion (decision 15).
+/// Recipes step 15 (the C API replaces the old C ABI and libwhatwg).
 pub const platform_backend = @import("platform_backend.zig");
 pub const PlatformBackend = platform_backend.PlatformBackend;
 pub const vtables = @import("vtables.zig");
