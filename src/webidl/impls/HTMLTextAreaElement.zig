@@ -208,8 +208,9 @@ fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
 }
 
 fn editorText(instance: *runtime.Instance) !runtime.DOMString {
-    if (StateMap.get(instance)) |state| if (state.raw_value) |raw| return runtime.DOMString.initDupe(instance.ctx.allocator, raw);
-    return runtime.DOMString.initOwned(try childTextContent(instance, instance.ctx.allocator));
+    // HTML 4.10.20: selection offsets refer to the API value. Editing must
+    // splice that same normalized string, including clean child text content.
+    return runtime.DOMString.initOwned(try currentApiValue(instance));
 }
 
 fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void {
