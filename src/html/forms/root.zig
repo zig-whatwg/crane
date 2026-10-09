@@ -133,9 +133,17 @@ fn validEmailAddress(value: []const u8) bool {
     return true;
 }
 
-/// HTML 4.10.5.1.4. Like Blink URLInputType::TypeMismatchFor (url_input_type.cc),
-/// parse with no base URL. Recoverable URL validation errors do not make an
-/// otherwise parsed absolute URL a type mismatch.
+/// HTML 4.10.5.1.4. Browser deviation from "valid absolute URL": accept a
+/// successful parse without a base, including recoverable validation errors.
+/// Blink URLInputType::TypeMismatchFor (html/forms/url_input_type.cc),
+/// WebKit URLInputType::typeMismatchFor (Source/WebCore/html/URLInputType.cpp),
+/// and Gecko URLInputType::HasTypeMismatch (dom/html/input/SingleLineTextInputTypes.cpp)
+/// all ask their URL parser for success, without rejecting validation errors.
+/// https://wpt.fyi/results/html/semantics/forms/constraints/form-validation-validity-typeMismatch.html
+/// Aligned stable 2026-10-06: Chrome/Firefox/Safari each 11/11. Two-step
+/// /api/runs then /api/search run_ids: 6218298311311360,4877098740350976,
+/// 5164107446878208. These are conformance controls; the source above establishes
+/// the parser rule, pinned here by fm-url-validation-errors.html.
 pub fn urlTypeMismatch(allocator: std.mem.Allocator, value: []const u8) error{OutOfMemory}!bool {
     if (value.len == 0) return false;
     var record = @import("api_parser").parseURL(allocator, value, null) catch |err| switch (err) {
