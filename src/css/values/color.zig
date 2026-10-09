@@ -270,8 +270,10 @@ pub const ColorParser = struct {
     }
 
     fn clampColorComponent(value: f64) u8 {
-        const clamped = std.math.clamp(@as(i32, @intFromFloat(@round(value))), 0, 255);
-        return @intCast(clamped);
+        // CSS Color 4 §5.1 clamps at parsed-value time; CSS Values 4
+        // §10.9.2 censors NaN to zero. Clamp before the integer conversion.
+        const clamped = if (std.math.isNan(value)) 0.0 else std.math.clamp(value, 0.0, 255.0);
+        return @intFromFloat(@round(clamped));
     }
 };
 
@@ -316,6 +318,20 @@ fn getNamedColor(name: []const u8) ?Color {
 // ============================================================================
 // Tests
 // ============================================================================
+
+test "color components clamp before converting to an integer" {
+    const cases = .{
+        .{ @as(f64, 1e100), @as(u8, 255) },
+        .{ @as(f64, -1e100), @as(u8, 0) },
+        .{ std.math.inf(f64), @as(u8, 255) },
+        .{ -std.math.inf(f64), @as(u8, 0) },
+        .{ std.math.nan(f64), @as(u8, 0) },
+        .{ @as(f64, 254.5), @as(u8, 255) },
+        .{ @as(f64, 0.4), @as(u8, 0) },
+        .{ @as(f64, 127.6), @as(u8, 128) },
+    };
+    inline for (cases) |case| try std.testing.expectEqual(case[1], ColorParser.clampColorComponent(case[0]));
+}
 
 test "ColorParser - hex colors" {
     const allocator = std.testing.allocator;
