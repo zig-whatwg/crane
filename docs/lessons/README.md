@@ -33,6 +33,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Rendering snapshots documents before callback maps](architecture-rendering-snapshots-documents-before-callback-maps.md) - Snapshot eligible documents before script and each document's callbacks when its turn begins; release permanently removed targets.
 - [Task drop must relinquish dependent owners](architecture-task-drop-must-relinquish-dependent-owners.md) - A dropped completion task must clear the work awaiting it, including preparations not yet enqueued.
 - [Shadow removal must walk shadow trees](architecture-shadow-removal-must-walk-shadow-trees.md) - Shadow-including lifecycle algorithms and allocation-failure fallbacks must traverse the same shadow edges in the same order.
+- [Eager slot assignment stays off trees without shadow roots, by its own invariant](architecture-eager-slot-assignment-stays-off-trees-without-shadow-roots.md) - Before making a spec algorithm lazy for speed, find the invariant that says when each step is a no-op: an eager implementation guarded by it can be as cheap on the common path, and stays exact at every observation point.
 - [Native owner liveness differs from realm callability](architecture-native-owner-liveness-differs-from-realm-callability.md) - Detach live native owners independently of whether their realms can run callbacks.
 
 - [Share fragment parser state initialization](architecture-share-fragment-parser-state-initialization.md) - Reuse state transitions and test resulting trees.
