@@ -70,6 +70,10 @@ pub const CSSTransformValue = struct {
 
         pub const has_constructor = true;
 
+        /// The anonymous indexed getter (`getter T (unsigned long index)`,
+        /// `call_getter`) is implemented: the binding installs indexed access.
+        pub const indexed_getter_implemented = @hasDecl(CSSTransformValueImpl, "call_getter");
+
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "CSSTransformComponent",
@@ -148,7 +152,11 @@ pub const CSSTransformValue = struct {
     }
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        return try CSSTransformValueImpl.call_getter(instance, index);
+        if (comptime @hasDecl(CSSTransformValueImpl, "call_getter")) {
+            return try CSSTransformValueImpl.call_getter(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
     }
 
     pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {

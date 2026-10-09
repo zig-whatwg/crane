@@ -67,6 +67,10 @@ pub const CSSKeyframesRule = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// The anonymous indexed getter (`getter T (unsigned long index)`,
+        /// `call_getter`) is implemented: the binding installs indexed access.
+        pub const indexed_getter_implemented = @hasDecl(CSSKeyframesRuleImpl, "call_getter");
     };
 
     pub const State = runtime.FlattenedState(
@@ -146,7 +150,11 @@ pub const CSSKeyframesRule = struct {
     }
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        return try CSSKeyframesRuleImpl.call_getter(instance, index);
+        if (comptime @hasDecl(CSSKeyframesRuleImpl, "call_getter")) {
+            return try CSSKeyframesRuleImpl.call_getter(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
     }
 
     pub fn call_findRule(instance: *runtime.Instance, select: CSSOMString) anyerror!?*runtime.Instance {

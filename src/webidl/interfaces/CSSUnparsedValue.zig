@@ -63,6 +63,10 @@ pub const CSSUnparsedValue = struct {
 
         pub const has_constructor = true;
 
+        /// The anonymous indexed getter (`getter T (unsigned long index)`,
+        /// `call_getter`) is implemented: the binding installs indexed access.
+        pub const indexed_getter_implemented = @hasDecl(CSSUnparsedValueImpl, "call_getter");
+
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "CSSUnparsedSegment",
@@ -133,6 +137,10 @@ pub const CSSUnparsedValue = struct {
     }
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!CSSUnparsedSegment {
-        return try CSSUnparsedValueImpl.call_getter(instance, index);
+        if (comptime @hasDecl(CSSUnparsedValueImpl, "call_getter")) {
+            return try CSSUnparsedValueImpl.call_getter(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
     }
 };
