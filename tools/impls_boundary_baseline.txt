@@ -2,12 +2,9 @@
 # A ratchet - `zig build lint-impls`, part of `zig build test`, fails if any
 # count rises or a new pair appears. After paying debt down, lower it with
 # `zig build lint-impls -- --update`. Never raise it by hand.
-src/browser/Context.zig Document.setDefaultView 1
-src/browser/Context.zig HTMLParser.parseHTMLWithScripting 1
 src/browser/Context.zig Location.setWindow 1
 src/browser/Context.zig Window.getInternal 1
 src/browser/Context.zig Window.setBoundV8Global 1
-src/browser/Context.zig Window.setDocument 1
 src/browser/Context.zig Window.setLocation 1
 src/browser/Context.zig Window.setNavigator 1
 src/browser/Context.zig Window.setOrigin 1
@@ -16,9 +13,6 @@ src/dom/document_internals.zig Document.DocType 1
 src/dom/document_internals.zig Document.InternalState 1
 src/dom/document_internals.zig Document.SpeculationEagerness 1
 src/dom/document_internals.zig Document.getInternal 1
-src/dom/document_internals.zig Node.deinitNodeByType 1
-src/dom/document_internals.zig Node.getFirstChild 1
-src/dom/document_internals.zig Node.getNextSibling 1
 src/dom/mutation.zig Node.getInternalState 1
 src/dom/mutation.zig NodeIterator.preRemoveSteps 1
 src/dom/mutation.zig NodeList.createFromSlice 1
