@@ -12,10 +12,33 @@ const core = @import("html_core");
 const requests = @import("../script_request.zig");
 pub const Registry = core.media.Registry(*anyopaque, *anyopaque);
 
-/// Q4: host wiring belongs to BrowserScope. This is the single realm lookup
-/// that the host-backend follow-up will change; the platform stays realm-free.
-pub fn forRealm(_: runtime.Context) @import("platform").media_backend.MediaBackend {
-    return @import("platform").media_backend.no_decoder;
+const media_backend = @import("platform").media_backend;
+
+/// The host's media backend for one Browser: a supplement of its scope
+/// (runtime.BrowserScope, docs/instances.md rule 2). The Browser sets it once,
+/// at its start, from BrowserConfig.media_backend - borrowed from the host for
+/// the Browser's lifetime - and every realm of the Browser (its page, frames
+/// and popups carry its scope) reads it here. Crane builds in no decoder: a
+/// Browser whose host passed none keeps no_decoder, so canPlayType answers ""
+/// and no fetched byte becomes playable data.
+pub const MediaHost = struct {
+    backend: media_backend.MediaBackend = media_backend.no_decoder,
+
+    pub fn init(_: std.mem.Allocator) MediaHost {
+        return .{};
+    }
+    /// Nothing to free: the backend is the host's.
+    pub fn deinit(_: *MediaHost) void {}
+};
+
+/// The media backend of `realm`'s Browser: what its host supplied, or
+/// no_decoder for a realm with no Browser scope (a test realm) or whose
+/// Browser was given none. The single realm lookup; the platform stays
+/// realm-free.
+pub fn forRealm(realm: runtime.Context) media_backend.MediaBackend {
+    const scope = realm.browser_scope orelse return media_backend.no_decoder;
+    const host = scope.existing(MediaHost) orelse return media_backend.no_decoder;
+    return host.backend;
 }
 
 /// The one registry lookup: the relevant realm's agent, never thread-local state.

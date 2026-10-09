@@ -2337,6 +2337,8 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);
+    // BrowserConfig.media_backend: the host's media decoding.
+    browser_mod.addImport("platform", platform_mod);
     // A navigation's URL string is parsed and serialized before it is fetched.
     browser_mod.addImport("basic_parser", url_basic_parser_mod);
     browser_mod.addImport("url_serializer", url_serializer_mod);
