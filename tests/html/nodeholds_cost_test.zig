@@ -177,3 +177,50 @@ fn oneWrapperPerRescuedTree() !void {
 test "removing a subtree a static list holds rescues its root alone" {
     try onFreshThread(oneWrapperPerRescuedTree);
 }
+
+fn slabAllocated() !usize {
+    const slab = try @import("runtime").SlabAllocator.tryGet();
+    return slab.stats().total_allocated;
+}
+
+/// An observed mutation whose record script never reads makes no NodeList:
+/// the record holds its nodes itself and makes its lists on first read
+/// (Blink's RecordWithEmptyNodeLists, generalized). The carrier lists every
+/// tree mutation used to build - two per record batch, never freed unless
+/// script read them - are gone, and nodes of a document with a window are
+/// held without a rescue (no wrapper).
+fn unreadRecordsMakeNoListAndNoRescue() !void {
+    const browser = try openPage("<!doctype html><body><div id=src></div><div id=dst></div><div id=dst2></div></body>");
+    defer browser.deinit();
+    const page = browser.current_context orelse return error.NoPage;
+    try page.runScript(
+        \\globalThis.src = document.getElementById('src');
+        \\globalThis.dst = document.getElementById('dst');
+        \\src.innerHTML = '<i></i>'.repeat(200);
+        \\globalThis.nodes = [...src.childNodes];
+        \\globalThis.mo = new MutationObserver(() => {});
+        \\mo.observe(dst, { childList: true });
+        \\mo.observe(document.getElementById('dst2'), { childList: true });
+    );
+    const before = try slabAllocated();
+    try page.runScript("for (const node of nodes) dst.appendChild(node); mo.disconnect(); mo.observe(document.getElementById('dst2'), { childList: true });");
+    const allocated = (try slabAllocated()) - before;
+    // One record per mutation; each used to bring two NodeLists with it.
+    if (allocated >= 300) {
+        std.debug.print("200 observed mutations allocated {d} instances\n", .{allocated});
+        return error.NodeListPerUnreadRecord;
+    }
+    // A parsed subtree inserted under an observer: its record holds 200 nodes
+    // of the document - no rescue, so no wrapper - and is dropped unread.
+    const wrappers_before = try wrapperEntries(browser);
+    try page.runScript("document.getElementById('dst2').innerHTML = '<b></b>'.repeat(200); mo.disconnect();");
+    const wrappers_after = try wrapperEntries(browser);
+    if (wrappers_after - wrappers_before >= wrapper_slack) {
+        std.debug.print("an unread record of 200 inserted nodes left {d} wrappers\n", .{wrappers_after - wrappers_before});
+        return error.RescueForUnreadRecord;
+    }
+}
+
+test "an observed mutation whose record script never reads makes no NodeList and takes no rescue" {
+    try onFreshThread(unreadRecordsMakeNoListAndNoRescue);
+}
