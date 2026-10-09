@@ -13,14 +13,14 @@ fn exercise() !void {
     defer context.deinit();
     const document = try interfaces.Document.init(testing.allocator, &context);
     defer interfaces.Document.deinit(document);
-    const select = try interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("select"), .notPassed());
+    const select = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), runtime.DOMString.initInterned("select"), .notPassed());
     var select_live = true;
     defer if (select_live) dom.node_creation.destroyUninserted(select);
     const options = try interfaces.HTMLOptionsCollection.init(testing.allocator, &context);
     defer runtime.Instance.deinit(options);
     try dom.live_collections.selectOptions(options, select, false);
     try testing.expectEqual(select, dom.live_collections.rootOf(options).?);
-    const option = try interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("option"), .notPassed());
+    const option = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), runtime.DOMString.initInterned("option"), .notPassed());
     _ = try interfaces.Node.call_appendChild(select, option);
     try testing.expectEqual(@as(u32, 1), try interfaces.HTMLOptionsCollection.get_length(options));
     try testing.expectEqual(option, (try interfaces.HTMLCollection.call_item(options, 0)).?);
