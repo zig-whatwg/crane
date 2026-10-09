@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A parent completes loading in its last child's task](architecture-a-parent-completes-loading-in-its-last-child-s-task.md) - When the spec spins the event loop before a load task, check how many tasks the browsers put there - Blink and Gecko put none between a last child and its parent - and make a Crane test read the state where the WPT test under study reads it.
 - [Parser association is not document activity](architecture-parser-association-is-not-document-activity.md) - A new parser follows its native document association even after the browsing context is destroyed.
 - [Reuse slots inside a collectible traced value](architecture-reuse-slots-inside-a-collectible-traced-value.md) - Temporary owners share a fixed trace member and recycle ordinary array slots instead of registering immortal keys.
 - [Load-delay notification is not permission to run script](architecture-load-delay-notification-is-not-permission-to-run-script.md) - Synchronous readiness callbacks queue parser and deferred-script continuation on a guarded document task.
@@ -244,6 +245,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A callback can end its own environment](architecture-a-callback-can-end-its-own-environment.md) - Before freeing per-environment records at the environment's end, ask which of them a task is in the middle of using: any callback the task invokes can end the environment re-entrantly. Mark the record as the task's before the script runs, and let the end skip it.
 
 ### Spec Compliance
+- [An intervention's exceptions are decided one by one](spec-compliance-an-intervention-s-exceptions-are-decided-one-by-one.md) - For a behaviour the spec does not have, list each exception the shipping engines make, mark who allows it - counting a non-blocking engine as allowing - and test every line.
 
 - [Check the XHR send flag when abort is delivered](spec-compliance-check-the-xhr-send-flag-when-abort-is-delivered.md) - A queued document abort must recheck completed request state before touching its response or firing errors.
 
