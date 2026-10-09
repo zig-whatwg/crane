@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Tracing a holder's nodes makes a wrapper for every node it holds](architecture-tracing-a-holders-nodes-makes-a-wrapper-per-node.md) - Before choosing traced edges for a holder, count the wrappers its hottest fill path makes: an edge per held node is a wrapper per held node, so a holder of many nodes needs a native hold the teardown respects, not a trace.
 - [Reuse slots inside a collectible traced value](architecture-reuse-slots-inside-a-collectible-traced-value.md) - Temporary owners share a fixed trace member and recycle ordinary array slots instead of registering immortal keys.
 - [Load-delay notification is not permission to run script](architecture-load-delay-notification-is-not-permission-to-run-script.md) - Synchronous readiness callbacks queue parser and deferred-script continuation on a guarded document task.
 
@@ -341,6 +342,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+- [A queued-record test must collect without a task turn](testing-a-queued-record-test-must-collect-without-a-task-turn.md) - Know which checkpoint your helper crosses: an `await` delivers queued mutation records, so a test of the queue must collect, churn and read without one.
 - [Check the harness’s roots before asserting collection](testing-check-the-harness-roots-before-asserting-collection.md) - Invoke real GC, avoid test-owned strong references, and prove retention assertions fail without their collector edge.
 
 - [A shared suite can hide missing hook setup](testing-a-shared-suite-can-hide-missing-hook-setup.md) - Each test file owns its process-wide prerequisites.
@@ -422,6 +424,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Measure the WPT process, not its supervisor](testing-measure-the-wpt-process-not-its-supervisor.md) - Even `--parallel=1` changes the process measured by `leaks --atExit`; compare direct runners.
 
 ### Debugging
+- [Give the objects that reissue a freed slot a voice](debugging-give-the-objects-that-reissue-a-freed-slot-a-voice.md) - Make the impostor talk: churn objects that announce themselves, so a reissued slot fails the assertion with its name instead of passing or crashing elsewhere.
 
 - [Inspect the DOM before changing a serializer](debugging-inspect-the-dom-before-changing-a-serializer.md) - Locate the first incorrect representation before repairing a later result.
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
