@@ -129,7 +129,7 @@ fn findLibraryArtifact(dependency: *std.Build.Dependency, name: []const u8) ?*st
 /// The TLS library libcurl uses - chosen here and nowhere else. mbedTLS today.
 /// HTTP/3 (ngtcp2 + nghttp3) needs a QUIC-capable TLS library - BoringSSL or
 /// OpenSSL 3.5+ - so adding it means a new member here, the curl options
-/// derived from this in configureStaticLibcurl, and the ALPN query in
+/// derived from this in buildStaticLibcurl, and the ALPN query in
 /// src/fetch/network/curl_backend.zig (`negotiatedHttp2`), which knows each
 /// backend's session type.
 const TlsBackend = enum { mbedtls };
@@ -153,13 +153,16 @@ const tls_backend: TlsBackend = .mbedtls;
 /// - libidn2 (IDN - URL module handles IDNA)
 /// - brotli, zstd (additional compression)
 /// - FTP, TFTP, Telnet, etc. (non-HTTP protocols)
-fn configureStaticLibcurl(
+///
+/// Built ONCE per invocation (build() calls it before any module graph), because
+/// it mutates the memoized curl artifact and builds nghttp2: every module graph
+/// links the same libcurl through linkStaticLibcurl.
+fn buildStaticLibcurl(
     b: *std.Build,
-    module: *std.Build.Module,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     enable_http2: bool,
-) ?*std.Build.Step.Compile {
+) ?StaticLibcurl {
     // Get the curl dependency with appropriate options
     const curl_dep = b.lazyDependency("curl", .{
         .target = target,
@@ -231,12 +234,6 @@ fn configureStaticLibcurl(
     // variable in upstream curl that no C source of curl or mbedTLS reads. Drop it
     // rather than leave a false "3.6.4" on every libcurl compile line.
     removeCMacro(libcurl.root_module, "MBEDTLS_VERSION");
-
-    // The module doing the `@cImport` needs the SDK's headers too. translate-c
-    // resolves `#include <sys/types.h>` against the IMPORTING module's include
-    // paths, not the library's, so curl_ffi.zig fails on its own even after every
-    // C artifact is pointed at the SDK.
-    if (target.result.os.tag == .ios) addIosSdkPaths(module, iosSdkPath(b));
 
     // Turn Zig's C UBSan OFF for libcurl's own sources.
     //
@@ -312,6 +309,29 @@ fn configureStaticLibcurl(
         applyIosSdkRecursively(b, &libcurl.step, iosSdkPath(b));
     }
 
+    // The mbedTLS libcurl links, for WebCrypto: one library, one PSA key store.
+    return .{ .libcurl = libcurl, .mbedtls = mbedtls };
+}
+
+/// libcurl and the mbedTLS it links, built once by buildStaticLibcurl.
+const StaticLibcurl = struct {
+    libcurl: *std.Build.Step.Compile,
+    mbedtls: *std.Build.Step.Compile,
+};
+
+/// Link the static libcurl into `module` (one module graph's fetch).
+fn linkStaticLibcurl(
+    b: *std.Build,
+    module: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    libcurl: *std.Build.Step.Compile,
+) void {
+    // The module doing the `@cImport` needs the SDK's headers too. translate-c
+    // resolves `#include <sys/types.h>` against the IMPORTING module's include
+    // paths, not the library's, so curl_ffi.zig fails on its own even after every
+    // C artifact is pointed at the SDK.
+    if (target.result.os.tag == .ios) addIosSdkPaths(module, iosSdkPath(b));
+
     // Link the static library to the module
     module.linkLibrary(libcurl);
 
@@ -331,8 +351,6 @@ fn configureStaticLibcurl(
         module.linkSystemLibrary("pthread", .{});
     }
     // macOS: No additional libraries needed with mbedTLS
-    // The mbedTLS libcurl links, for WebCrypto: one library, one PSA key store.
-    return mbedtls;
 }
 
 /// Point `library` at `replacement` wherever it links the artifact named `name`:
@@ -363,7 +381,7 @@ fn replaceLinkedLibrary(library: *std.Build.Step.Compile, name: []const u8, repl
     };
     if (links != 1 or includes != 1) std.debug.panic(
         "{s} links {d} artifact(s) and {d} header tree(s) named '{s}', expected one of each; " ++
-            "the dependency changed how it links '{s}' - re-check configureStaticLibcurl",
+            "the dependency changed how it links '{s}' - re-check buildStaticLibcurl",
         .{ library.name, links, includes, name, name },
     );
     // What Module.linkLibrary records too: the build needs the binary.
@@ -434,7 +452,7 @@ const nghttp2_sources = [_][]const u8{
 /// just returns `CURLE_UNSUPPORTED_PROTOCOL` at runtime - invisible at build
 /// time, and afterwards indistinguishable from a Crane bug. macOS still ships
 /// 8.7.1, whose `curl-config --features` has no `WebSockets` entry; the vendored
-/// curl (8.18.0, see `configureStaticLibcurl`) has it compiled in.
+/// curl (8.18.0, see `buildStaticLibcurl`) has it compiled in.
 ///
 /// Advisory only: `-Dsystem-curl` is a legitimate shortcut for work that never
 /// opens a WebSocket, so a missing feature must warn rather than fail.
@@ -864,6 +882,45 @@ fn useBuildableMacosSdk(b: *std.Build, target: std.Build.ResolvedTarget) void {
     b.libc_file = b.cache_root.join(b.allocator, &.{libc_name}) catch return;
 }
 
+/// A built-in platform (docs/platform-protocol.md 1.1). Step 0 of the platform
+/// protocol builds one module graph per platform with no platform binding yet:
+/// every graph is today's modules.
+const Platform = enum {
+    darwin,
+    linux,
+    testing,
+
+    /// The platform a target gets by default: darwin for macOS and iOS, linux
+    /// for everything else (until another platform exists).
+    fn ofTarget(target: std.Build.ResolvedTarget) Platform {
+        return switch (target.result.os.tag) {
+            .macos, .ios => .darwin,
+            else => .linux,
+        };
+    }
+};
+
+/// What every module graph shares, decided once in build().
+const ModuleConfig = struct {
+    optimize: std.builtin.OptimizeMode,
+    build_options: *std.Build.Step.Options,
+    debug_options: *std.Build.Step.Options,
+    engine_choice: []const u8,
+    use_system_curl: bool,
+    enable_http2: bool,
+    /// libcurl and its mbedTLS, built once for every graph (null with
+    /// -Dsystem-curl or when the lazy dependencies are not fetched yet).
+    static_libcurl: ?StaticLibcurl,
+    /// The graph whose modules are registered by name for dependent packages.
+    public_platform: Platform,
+};
+
+/// A module of a graph: registered by name when the graph is public, private
+/// otherwise (one name cannot be registered twice).
+fn graphModule(b: *std.Build, public: bool, name: []const u8, options: std.Build.Module.CreateOptions) *std.Build.Module {
+    return if (public) b.addModule(name, options) else b.createModule(options);
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -1114,1283 +1171,70 @@ pub fn build(b: *std.Build) void {
     }
 
     // ========================================================================
-    // LIBRARY MODULE
+    // MODULE GRAPHS - one per platform this invocation builds for
     // ========================================================================
 
-    const whatwg_mod = b.addModule("whatwg", .{
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-    });
+    // The C libraries every graph links, built once: a second graph links the
+    // same artifacts rather than building its own.
+    const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else buildStaticLibcurl(b, target, optimize, enable_http2);
+    // A system libcurl may lack WebSockets. Say so now rather than leaving it to
+    // a runtime CURLE_UNSUPPORTED_PROTOCOL.
+    if (use_system_curl) warnIfSystemCurlLacksWebSockets(b);
 
-    // ========================================================================
-    // INDIVIDUAL SPEC MODULES
-    // ========================================================================
-
-    // Process clocks. Zig 0.16 removed std.time's milliTimestamp/nanoTimestamp/
-    // timestamp/sleep/Timer; the replacements live on std.Io and need an Io value
-    // in scope. src/platform/clock.zig provides them over libc instead, so the 203
-    // call sites do not have to wait for the Io architecture.
-    //
-    // ZERO dependencies, deliberately. It is imported by fetch, storage, runtime,
-    // impls and others, and platform_mod already imports fetch - so putting the
-    // clock in platform would make fetch -> platform -> fetch. A leaf module cannot
-    // participate in a cycle.
-    const clock_mod = b.addModule("clock", .{
-        .root_source_file = b.path("src/platform/clock.zig"),
-        .target = target,
-    });
-    clock_mod.link_libc = true;
-
-    // The process std.Io. Zig 0.16 moved the filesystem, networking and timers onto
-    // std.Io, which is passed like an Allocator; Crane has ~150 filesystem sites in
-    // leaf code reached from C-ABI callbacks that cannot take another parameter.
-    // Zero dependencies for the same reason as clock_mod.
-    const host_mod = b.addModule("host", .{
-        .root_source_file = b.path("src/platform/host.zig"),
-        .target = target,
-    });
-    host_mod.link_libc = true;
-
-    // Current resident memory, for measuring whether memory is actually reclaimed.
-    // Zero dependencies for the same reason as clock_mod and host_mod: it is read
-    // from measurement loops in leaf code, and a leaf module cannot form a cycle.
-    const memory_mod = b.addModule("memory", .{
-        .root_source_file = b.path("src/platform/memory.zig"),
-        .target = target,
-    });
-    memory_mod.link_libc = true;
-
-    const infra_mod = b.addModule("infra", .{
-        .root_source_file = b.path("src/infra/root.zig"),
-        .target = target,
-    });
-    infra_mod.addImport("clock", clock_mod);
-    infra_mod.addImport("host", host_mod);
-
-    const webidl_mod = b.addModule("webidl", .{
-        .root_source_file = b.path("src/webidl/root.zig"),
-        .target = target,
-    });
-    webidl_mod.addImport("infra", infra_mod);
-    // src/webidl/root.zig re-exports codegen/root.zig, so the codegen sources are
-    // part of THIS module, not just of codegen_mod - and they need host for std.Io.
-    webidl_mod.addImport("host", host_mod);
-    webidl_mod.addImport("clock", clock_mod);
-    webidl_mod.addOptions("debug_options", debug_options);
-
-    // Storage module (IndexedDB and Storage Standard backend)
-    const storage_mod = b.addModule("storage", .{
-        .root_source_file = b.path("src/storage/root.zig"),
-        .target = target,
-    });
-    storage_mod.addImport("clock", clock_mod);
-    storage_mod.addImport("host", host_mod);
-    storage_mod.addImport("infra", infra_mod);
-
-    // Configure platform-specific storage backend linking (Phase 9)
-    // - iOS: System SQLite (Phase 9.1)
-    // - Android: System SQLite (Phase 9.2)
-    // - Desktop: SQLite + LevelDB static linking (Phase 9.3)
-    configureStorageBackends(storage_mod, target);
-
-    // CookieStore module (WHATWG Cookie Store API)
-    const cookiestore_mod = b.addModule("cookiestore", .{
-        .root_source_file = b.path("src/cookiestore/root.zig"),
-        .target = target,
-    });
-    cookiestore_mod.addImport("clock", clock_mod);
-    cookiestore_mod.addImport("host", host_mod);
-
-    // Runtime module (WebIDL runtime infrastructure)
-    const runtime_mod = b.addModule("runtime", .{
-        .root_source_file = b.path("src/runtime/root.zig"),
-        .target = target,
-    });
-    runtime_mod.addImport("clock", clock_mod);
-    runtime_mod.addImport("host", host_mod);
-    runtime_mod.addImport("webidl", webidl_mod);
-    runtime_mod.addImport("infra", infra_mod);
-    runtime_mod.addImport("storage", storage_mod);
-    runtime_mod.addOptions("build_options", build_options);
-    runtime_mod.addOptions("debug_options", debug_options);
-
-    // V8 bindings module
-    const v8_mod = b.addModule("v8", .{
-        .root_source_file = b.path("src/runtime/engines/v8/root.zig"),
-        .target = target,
-    });
-    // Phase 8 (DCE): interface_bindings consults build_options.interface_allowlist.
-    v8_mod.addOptions("build_options", build_options);
-    v8_mod.addImport("clock", clock_mod);
-    v8_mod.addImport("infra", infra_mod);
-    v8_mod.addImport("host", host_mod);
-    v8_mod.addImport("runtime", runtime_mod);
-    v8_mod.addOptions("debug_options", debug_options);
-    // v8_mod will need event_loop - added later after streams_event_loop_mod is defined
-
-    // JS bindings module
-    const js_bindings_mod = b.addModule("js_bindings", .{
-        .root_source_file = b.path("src/js_bindings/root.zig"),
-        .target = target,
-    });
-    js_bindings_mod.addImport("runtime", runtime_mod);
-
-    // WebIDL codegen module
-    const codegen_mod = b.addModule("codegen", .{
-        .root_source_file = b.path("src/webidl/codegen/root.zig"),
-        .target = target,
-    });
-    codegen_mod.addImport("webidl", webidl_mod);
-    codegen_mod.addImport("infra", infra_mod);
-    codegen_mod.addImport("host", host_mod);
-
-    // ========================================================================
-    // WEBIDL CALLBACKS MODULE
-    // ========================================================================
-
-    const callbacks_mod = b.addModule("callbacks", .{
-        .root_source_file = b.path("src/webidl/callbacks/root.zig"),
-        .target = target,
-    });
-    callbacks_mod.addImport("runtime", runtime_mod);
-    callbacks_mod.addImport("webidl", webidl_mod); // For Opt wrapper in optional parameters
-
-    // ========================================================================
-    // WEBIDL DICTIONARIES MODULE
-    // ========================================================================
-
-    const dictionaries_mod = b.addModule("dictionaries", .{
-        .root_source_file = b.path("src/webidl/dictionaries/root.zig"),
-        .target = target,
-    });
-    dictionaries_mod.addImport("runtime", runtime_mod);
-    dictionaries_mod.addImport("webidl", webidl_mod);
-
-    // ========================================================================
-    // WEBIDL ENUMS MODULE
-    // ========================================================================
-
-    const enums_mod = b.addModule("enums", .{
-        .root_source_file = b.path("src/webidl/enums/root.zig"),
-        .target = target,
-    });
-
-    // ========================================================================
-    // WEBIDL NAMESPACES MODULE
-    // ========================================================================
-
-    const namespaces_mod = b.addModule("namespaces", .{
-        .root_source_file = b.path("src/webidl/namespaces/root.zig"),
-        .target = target,
-    });
-    namespaces_mod.addImport("runtime", runtime_mod);
-    namespaces_mod.addImport("webidl", webidl_mod); // For Opt wrapper in optional parameters
-    namespaces_mod.addOptions("build_options", build_options);
-    namespaces_mod.addOptions("debug_options", debug_options);
-
-    // ========================================================================
-    // WEBIDL TYPEDEFS MODULE
-    // ========================================================================
-
-    const typedefs_mod = b.addModule("typedefs", .{
-        .root_source_file = b.path("src/webidl/typedefs/root.zig"),
-        .target = target,
-    });
-    typedefs_mod.addImport("runtime", runtime_mod);
-    typedefs_mod.addImport("callbacks", callbacks_mod);
-    typedefs_mod.addImport("webidl", webidl_mod);
-    typedefs_mod.addImport("dictionaries", dictionaries_mod);
-    typedefs_mod.addImport("enums", enums_mod);
-
-    // ========================================================================
-    // INTERFACES MODULE (WebIDL interface definitions)
-    // All interfaces in one module so they can import each other with relative paths
-    // ========================================================================
-
-    const interfaces_mod = b.addModule("interfaces", .{
-        .root_source_file = b.path("src/webidl/interfaces/root.zig"),
-        .target = target,
-    });
-    interfaces_mod.addImport("runtime", runtime_mod);
-    interfaces_mod.addImport("webidl", webidl_mod); // For Opt wrapper and other WebIDL types
-
-    // ========================================================================
-    // IMPLEMENTATIONS MODULE (WebIDL interface implementations)
-    // ========================================================================
-
-    const impls_mod = b.addModule("impls", .{
-        .root_source_file = b.path("src/webidl/impls/root.zig"),
-        .target = target,
-    });
-    impls_mod.addImport("clock", clock_mod);
-    impls_mod.addImport("host", host_mod);
-    impls_mod.addImport("runtime", runtime_mod);
-    impls_mod.addImport("storage", storage_mod); // For IndexedDB and Storage impl connections
-    impls_mod.addImport("cookiestore", cookiestore_mod); // For CookieStore impl
-
-    // Web Cryptography API primitives. Keep the pure algorithms independently
-    // testable; their tests use std.testing.allocator and injected Io.
-    const webcrypto_mod = b.addModule("webcrypto", .{
-        .root_source_file = b.path("src/webcrypto/root.zig"),
-        .target = target,
+    // The library, the CLI and the iOS build use the target's platform; the WPT
+    // runner and the test tiers use `testing` (docs/platform-protocol.md 1.1).
+    // Step 0 binds no platform yet, so both graphs are today's modules.
+    const target_platform = Platform.ofTarget(target);
+    const module_config: ModuleConfig = .{
         .optimize = optimize,
-    });
-    impls_mod.addImport("webcrypto", webcrypto_mod);
-    webcrypto_mod.addImport("runtime", runtime_mod);
-
-    const eventsource_mod = b.addModule("eventsource", .{
-        .root_source_file = b.path("src/eventsource/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    eventsource_mod.addImport("infra", infra_mod);
-    impls_mod.addImport("eventsource", eventsource_mod);
-    impls_mod.addOptions("build_options", build_options);
-    impls_mod.addOptions("debug_options", debug_options);
-
-    // ========================================================================
-    // ENGINE PROTOCOL (module `engine`)
-    // ========================================================================
-    //
-    // AGENTS.md "The engine boundary": consumers `@import("engine")` and call
-    // `engine.op(...)`. The facade forwards every operation, inline, to
-    // `engine_impl.protocol` - the adapter `-Dengine=` selects - so dispatch
-    // is static, and a missing or mis-typed adapter function is a compile
-    // error in the facade. In a V8 build `engine_impl` IS the v8 module (its
-    // root re-exports src/runtime/engines/v8/protocol.zig), because the
-    // protocol functions live beside the adapter files they call, and a file
-    // of another module cannot import those by relative path. One module
-    // each, shared by every artifact: binding it adds no root-module
-    // analysis, and runtime already imports v8, so it adds no module cycle.
-    const engine_protocol_root = b.path("src/runtime/engine_protocol.zig");
-    const engine_mod = b.addModule("engine", .{
-        .root_source_file = engine_protocol_root,
-        .target = target,
-    });
-    engine_mod.addImport("runtime", runtime_mod);
-    const engine_impl_mod = if (std.mem.eql(u8, engine_choice, "v8")) v8_mod else b.createModule(.{
-        .root_source_file = b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{engine_choice})),
-        .target = target,
-    });
-    engine_impl_mod.addImport("engine", engine_mod);
-    engine_mod.addImport("engine_impl", engine_impl_mod);
-    impls_mod.addImport("engine", engine_mod);
-    webcrypto_mod.addImport("engine", engine_mod);
-    // The runtime reaches the engine the way everything else does: an
-    // unwrapped instance asks engine.hasWrapper, [PutForwards] and
-    // [Replaceable] setters use its Set and DefineOwnProperty. The facade
-    // imports runtime, so this is a cycle - the same shape as facade and
-    // adapter.
-    runtime_mod.addImport("engine", engine_mod);
-
-    // Cross-imports for WebIDL modules
-    interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
-    interfaces_mod.addImport("impls", impls_mod);
-    namespaces_mod.addImport("impls", impls_mod); // Namespaces need access to impls
-    interfaces_mod.addImport("typedefs", typedefs_mod);
-    interfaces_mod.addImport("dictionaries", dictionaries_mod);
-    interfaces_mod.addImport("enums", enums_mod);
-    interfaces_mod.addImport("callbacks", callbacks_mod);
-    impls_mod.addImport("interfaces", interfaces_mod);
-    impls_mod.addImport("typedefs", typedefs_mod);
-    impls_mod.addImport("dictionaries", dictionaries_mod);
-    impls_mod.addImport("enums", enums_mod);
-    impls_mod.addImport("callbacks", callbacks_mod);
-    impls_mod.addImport("webidl", webidl_mod); // For error types and WebIDL infrastructure
-
-    // V8 module needs interfaces for automatic constructor inheritance setup
-    v8_mod.addImport("interfaces", interfaces_mod);
-    // V8 module needs dictionaries for async iterator options parsing
-    v8_mod.addImport("dictionaries", dictionaries_mod);
-    // V8 module needs webidl for error types (Exception)
-    v8_mod.addImport("webidl", webidl_mod);
-    // V8 module needs typedefs for HeadersInit conversion
-    v8_mod.addImport("typedefs", typedefs_mod);
-    // V8 module needs impls for ReadableStream start callback invocation
-    v8_mod.addImport("impls", impls_mod);
-
-    // Dictionaries module needs typedefs, enums and callbacks for RequestInit and other dictionaries
-    dictionaries_mod.addImport("typedefs", typedefs_mod);
-    dictionaries_mod.addImport("enums", enums_mod);
-    dictionaries_mod.addImport("callbacks", callbacks_mod);
-
-    // AGENTS.md "The engine boundary": no module outside the V8 adapter (and
-    // its tests and tools) imports "v8" - the module graph, not only
-    // lint-engine, keeps V8 inside the adapter. The engine is reached through
-    // `engine`, which build.zig binds to the adapter.
-    // The adapter registers the namespaces a snapshot lacks when it creates a
-    // Window realm (an Engine function pointer cannot take a comptime module).
-    v8_mod.addImport("namespaces", namespaces_mod);
-
-    // DOM module
-    const dom_mod = b.addModule("dom", .{
-        .root_source_file = b.path("src/dom/root.zig"),
-        .target = target,
-    });
-    dom_mod.addImport("clock", clock_mod);
-    dom_mod.addImport("host", host_mod);
-    dom_mod.addImport("infra", infra_mod);
-    // The user agent's cookie jar, which a settings object hands out.
-    dom_mod.addImport("cookiestore", cookiestore_mod);
-    dom_mod.addImport("webcrypto", webcrypto_mod);
-    webcrypto_mod.addImport("dom", dom_mod);
-    dom_mod.addImport("webidl", webidl_mod);
-    dom_mod.addImport("runtime", runtime_mod);
-    dom_mod.addImport("storage", storage_mod);
-    dom_mod.addImport("engine", engine_mod);
-    dom_mod.addImport("interfaces", interfaces_mod);
-    dom_mod.addImport("impls", impls_mod); // For document_internals to access Document.InternalState
-    // CSP violation events (csp_violations.zig): a queued task run in the
-    // global's realm (the engine protocol), and the event's init dictionary.
-    dom_mod.addImport("engine", engine_mod);
-    dom_mod.addImport("dictionaries", dictionaries_mod);
-    dom_mod.addImport("enums", enums_mod);
-
-    // Quirks module (WHATWG Quirks Mode Standard)
-    const quirks_mod = b.addModule("quirks", .{
-        .root_source_file = b.path("src/quirks/root.zig"),
-        .target = target,
-    });
-
-    // CSS module (CSS property value parser)
-    const css_mod = b.addModule("css", .{
-        .root_source_file = b.path("src/css/root.zig"),
-        .target = target,
-    });
-    css_mod.addImport("quirks", quirks_mod);
-    // The CSSOM's model (src/dom/cssom.zig) holds a sheet's parsed rules.
-    dom_mod.addImport("css", css_mod);
-
-    // Selector module (CSS Selectors Level 4 implementation)
-    const selector_mod = b.addModule("selector", .{
-        .root_source_file = b.path("src/selector/root.zig"),
-        .target = target,
-    });
-    selector_mod.addImport("infra", infra_mod);
-    selector_mod.addImport("dom", dom_mod);
-    selector_mod.addImport("quirks", quirks_mod);
-
-    // Add selector to dom (after selector_mod is defined to avoid undefined reference)
-    dom_mod.addImport("selector", selector_mod);
-    // Add unified interfaces module
-    dom_mod.addImport("interfaces", interfaces_mod);
-
-    // V8 module needs dom for document initialization
-    v8_mod.addImport("dom", dom_mod);
-
-    // MIXINS MODULE (Shared WebIDL mixin implementations)
-    // ========================================================================
-    const mixins_mod = b.addModule("mixins", .{
-        .root_source_file = b.path("src/webidl/mixins/root.zig"),
-        .target = target,
-    });
-    mixins_mod.addImport("runtime", runtime_mod);
-    mixins_mod.addImport("interfaces", interfaces_mod);
-    mixins_mod.addImport("impls", impls_mod);
-    mixins_mod.addImport("selector", selector_mod);
-    mixins_mod.addImport("typedefs", typedefs_mod);
-    mixins_mod.addImport("enums", enums_mod);
-    mixins_mod.addImport("dictionaries", dictionaries_mod);
-    mixins_mod.addImport("callbacks", callbacks_mod);
-    mixins_mod.addImport("webidl", webidl_mod);
-    mixins_mod.addImport("mixins", mixins_mod); // Self-import for cross-mixin refs
-
-    // Add mixins to impls (so impls can use shared mixin code)
-    impls_mod.addImport("mixins", mixins_mod);
-    // Add selector to impls (for ParentNode querySelector/querySelectorAll)
-    impls_mod.addImport("selector", selector_mod);
-    // Add css to impls (the CSS namespace: CSS.supports, CSS.escape)
-    impls_mod.addImport("css", css_mod);
-
-    // Add mixins to interfaces (for ParentNode.NodeOrString and other mixin types)
-    interfaces_mod.addImport("mixins", mixins_mod);
-
-    const encoding_mod = b.addModule("encoding", .{
-        .root_source_file = b.path("src/encoding/root.zig"),
-        .target = target,
-    });
-    encoding_mod.addImport("infra", infra_mod);
-    encoding_mod.addImport("webidl", webidl_mod);
-
-    // URL internal modules that generated interfaces need
-    // URL internal modules need to be created first for cross-dependencies
-    const url_internal_host_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/internal/host.zig"),
-        .target = target,
-    });
-
-    const url_internal_path_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/internal/path.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-        },
-    });
-
-    const url_blob_url_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/blob_url.zig"),
-        .target = target,
-    });
-
-    const url_internal_url_record_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/internal/url_record.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "host", .module = url_internal_host_mod },
-            .{ .name = "path", .module = url_internal_path_mod },
-            .{ .name = "blob_url", .module = url_blob_url_mod },
-        },
-    });
-
-    const url_parser_api_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/parser/api_url_parser.zig"),
-        .target = target,
-    });
-
-    const url_host_serializer_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/serialization/host_serializer.zig"),
-        .target = target,
-    });
-    url_host_serializer_mod.addImport("host", url_internal_host_mod);
-    url_host_serializer_mod.addImport("infra", infra_mod);
-
-    const url_path_serializer_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/serialization/url_path_serializer.zig"),
-        .target = target,
-    });
-    url_path_serializer_mod.addImport("url_record", url_internal_url_record_mod);
-    url_path_serializer_mod.addImport("infra", infra_mod);
-
-    const url_serializer_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/serialization/url_serializer.zig"),
-        .target = target,
-    });
-    url_serializer_mod.addImport("url_record", url_internal_url_record_mod);
-    url_serializer_mod.addImport("path_serializer", url_path_serializer_mod);
-    url_serializer_mod.addImport("host_serializer", url_host_serializer_mod);
-    url_serializer_mod.addImport("infra", infra_mod);
-
-    const url_basic_parser_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/parser/basic_url_parser.zig"),
-        .target = target,
-    });
-    url_basic_parser_mod.addImport("infra", infra_mod);
-    url_basic_parser_mod.addImport("url_record", url_internal_url_record_mod);
-    url_basic_parser_mod.addImport("host", url_internal_host_mod);
-    url_basic_parser_mod.addImport("path", url_internal_path_mod);
-
-    // Add imports to url_parser_api_mod now that dependencies are defined
-    url_parser_api_mod.addImport("infra", infra_mod);
-    url_parser_api_mod.addImport("url_record", url_internal_url_record_mod);
-    url_parser_api_mod.addImport("basic_parser", url_basic_parser_mod);
-    // encodingParseAndSerialize serializes what it parses.
-    url_parser_api_mod.addImport("url_serializer", url_serializer_mod);
-
-    const url_parser_state_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/parser/parser_state.zig"),
-        .target = target,
-    });
-
-    const url_helpers_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/parser/helpers.zig"),
-        .target = target,
-    });
-
-    // Add late imports to url_basic_parser_mod now that helpers and parser_state are defined
-    url_basic_parser_mod.addImport("parser_state", url_parser_state_mod);
-    url_basic_parser_mod.addImport("helpers", url_helpers_mod);
-
-    const url_percent_encoding_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/encoding/percent_encoding.zig"),
-        .target = target,
-        .imports = &[_]std.Build.Module.Import{
-            .{ .name = "infra", .module = infra_mod },
-        },
-    });
-
-    const url_encode_sets_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/encoding/encode_sets.zig"),
-        .target = target,
-    });
-
-    const url_search_params_impl_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/internal/url_search_params_impl.zig"),
-        .target = target,
-        .imports = &[_]std.Build.Module.Import{
-            .{ .name = "infra", .module = infra_mod },
-        },
-    });
-
-    const url_form_parser_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/form_urlencoded/parser.zig"),
-        .target = target,
-    });
-    url_form_parser_mod.addImport("infra", infra_mod);
-    url_form_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
-
-    const url_form_serializer_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/form_urlencoded/serializer.zig"),
-        .target = target,
-    });
-    url_form_serializer_mod.addImport("form_parser", url_form_parser_mod);
-    url_form_serializer_mod.addImport("infra", infra_mod);
-    url_form_serializer_mod.addImport("percent_encoding", url_percent_encoding_mod);
-    url_form_serializer_mod.addImport("encode_sets", url_encode_sets_mod);
-
-    // Additional URL modules for internal use
-    const url_validation_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/validation.zig"),
-        .target = target,
-    });
-
-    const url_ipv4_serializer_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/serialization/ipv4_serializer.zig"),
-        .target = target,
-        .imports = &[_]std.Build.Module.Import{
-            .{ .name = "infra", .module = infra_mod },
-        },
-    });
-
-    const url_ipv6_serializer_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/serialization/ipv6_serializer.zig"),
-        .target = target,
-        .imports = &[_]std.Build.Module.Import{
-            .{ .name = "infra", .module = infra_mod },
-        },
-    });
-
-    // Add serializer dependencies to host_serializer (needed after ipv4/ipv6 serializers are defined)
-    url_host_serializer_mod.addImport("ipv4_serializer", url_ipv4_serializer_mod);
-    url_host_serializer_mod.addImport("ipv6_serializer", url_ipv6_serializer_mod);
-
-    const url_ipv4_parser_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/parser/ipv4_parser.zig"),
-        .target = target,
-    });
-
-    const url_ipv6_parser_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/parser/ipv6_parser.zig"),
-        .target = target,
-    });
-
-    const url_idna_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/idna/root.zig"),
-        .target = target,
-    });
-    url_idna_mod.addImport("infra", infra_mod);
-
-    const url_host_parser_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/parser/host_parser.zig"),
-        .target = target,
-    });
-    url_host_parser_mod.addImport("infra", infra_mod);
-    url_host_parser_mod.addImport("idna", url_idna_mod);
-    url_host_parser_mod.addImport("validation", url_validation_mod);
-    url_host_parser_mod.addImport("host", url_internal_host_mod);
-    url_host_parser_mod.addImport("ipv4_parser", url_ipv4_parser_mod);
-    url_host_parser_mod.addImport("ipv6_parser", url_ipv6_parser_mod);
-    url_host_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
-    url_host_parser_mod.addImport("encode_sets", url_encode_sets_mod);
-
-    // Add host_parser import to url_basic_parser_mod now that it's defined
-    url_basic_parser_mod.addImport("host_parser", url_host_parser_mod);
-
-    const url_windows_drive_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/internal/windows_drive.zig"),
-        .target = target,
-        .imports = &[_]std.Build.Module.Import{
-            .{ .name = "infra", .module = infra_mod },
-        },
-    });
-
-    // Add remaining imports to url_basic_parser_mod now that all dependencies are defined
-    url_basic_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
-    url_basic_parser_mod.addImport("encode_sets", url_encode_sets_mod);
-    url_basic_parser_mod.addImport("windows_drive", url_windows_drive_mod);
-    // The URL parser's query state percent-encodes after encoding with the
-    // given encoding (HTML "encoding-parse a URL": the document's).
-    url_basic_parser_mod.addImport("encoding", encoding_mod);
-
-    const url_special_schemes_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/internal/special_schemes.zig"),
-        .target = target,
-    });
-
-    const url_origin_mod_internal = b.createModule(.{
-        .root_source_file = b.path("src/url/origin.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "url_record", .module = url_internal_url_record_mod },
-            .{ .name = "host", .module = url_internal_host_mod },
-            .{ .name = "host_serializer", .module = url_host_serializer_mod },
-            .{ .name = "path", .module = url_internal_path_mod },
-            .{ .name = "path_serializer", .module = url_path_serializer_mod },
-            .{ .name = "api_url_parser", .module = url_parser_api_mod },
-        },
-    });
-
-    const url_equivalence_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/equivalence.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "url_record", .module = url_internal_url_record_mod },
-            .{ .name = "host", .module = url_internal_host_mod },
-            .{ .name = "url_serializer", .module = url_serializer_mod },
-            .{ .name = "path", .module = url_internal_path_mod },
-        },
-    });
-
-    // Add dependencies for internal modules
-    url_search_params_impl_mod.addImport("form_parser", url_form_parser_mod);
-    url_search_params_impl_mod.addImport("form_serializer", url_form_serializer_mod);
-
-    url_ipv4_parser_mod.addImport("infra", infra_mod);
-    url_ipv4_parser_mod.addImport("validation", url_validation_mod);
-    url_ipv6_parser_mod.addImport("infra", infra_mod);
-    url_ipv6_parser_mod.addImport("validation", url_validation_mod);
-    url_percent_encoding_mod.addImport("encode_sets", url_encode_sets_mod);
-    url_blob_url_mod.addImport("origin", url_origin_mod_internal);
-
-    // Main url module
-    const url_mod = b.addModule("url", .{
-        .root_source_file = b.path("src/url/root.zig"),
-        .target = target,
-    });
-    url_mod.addImport("infra", infra_mod);
-    url_mod.addImport("webidl", webidl_mod);
-    url_mod.addImport("encoding", encoding_mod);
-    url_mod.addImport("url_search_params_impl", url_search_params_impl_mod);
-    url_mod.addImport("url_record", url_internal_url_record_mod);
-    url_mod.addImport("host_serializer", url_host_serializer_mod);
-    url_mod.addImport("basic_parser", url_basic_parser_mod);
-    url_mod.addImport("parser_state", url_parser_state_mod);
-    url_mod.addImport("encode_sets", url_encode_sets_mod);
-    url_mod.addImport("percent_encoding", url_percent_encoding_mod);
-    url_mod.addImport("windows_drive", url_windows_drive_mod);
-    url_mod.addImport("special_schemes", url_special_schemes_mod);
-    url_mod.addImport("validation", url_validation_mod);
-    url_mod.addImport("host", url_internal_host_mod);
-    url_mod.addImport("ipv4_parser", url_ipv4_parser_mod);
-    url_mod.addImport("ipv6_parser", url_ipv6_parser_mod);
-    url_mod.addImport("idna", url_idna_mod);
-    url_mod.addImport("host_parser", url_host_parser_mod);
-    url_mod.addImport("ipv4_serializer", url_ipv4_serializer_mod);
-    url_mod.addImport("ipv6_serializer", url_ipv6_serializer_mod);
-    url_mod.addImport("helpers", url_helpers_mod);
-    url_mod.addImport("origin", url_origin_mod_internal);
-    url_mod.addImport("blob_url", url_blob_url_mod);
-    url_mod.addImport("equivalence", url_equivalence_mod);
-    url_mod.addImport("path_serializer", url_path_serializer_mod);
-
-    // URL infrastructure modules for impls (needed by URL.zig and URLSearchParams.zig impl)
-    impls_mod.addImport("url_record", url_internal_url_record_mod);
-    impls_mod.addImport("api_parser", url_parser_api_mod);
-    impls_mod.addImport("basic_parser", url_basic_parser_mod);
-    impls_mod.addImport("url_serializer", url_serializer_mod);
-    impls_mod.addImport("host_serializer", url_host_serializer_mod);
-    impls_mod.addImport("path_serializer", url_path_serializer_mod);
-    impls_mod.addImport("origin", url_origin_mod_internal);
-    impls_mod.addImport("percent_encoding", url_percent_encoding_mod);
-    impls_mod.addImport("encode_sets", url_encode_sets_mod);
-    impls_mod.addImport("parser_state", url_parser_state_mod);
-    impls_mod.addImport("form_parser", url_form_parser_mod);
-    impls_mod.addImport("form_serializer", url_form_serializer_mod);
-
-    // Infra module for URLSearchParams (List type)
-    impls_mod.addImport("infra", infra_mod);
-
-    // Encoding module for TextDecoder/TextEncoder implementations
-    impls_mod.addImport("encoding", encoding_mod);
-    eventsource_mod.addImport("encoding", encoding_mod);
-
-    // ========================================================================
-    // URLPATTERN MODULE (WHATWG URLPattern Standard)
-    // ========================================================================
-
-    const urlpattern_mod = b.addModule("urlpattern", .{
-        .root_source_file = b.path("src/urlpattern/root.zig"),
-        .target = target,
-    });
-    urlpattern_mod.addImport("url", url_mod);
-
-    const console_mod = b.addModule("console", .{
-        .root_source_file = b.path("src/console/root.zig"),
-        .target = target,
-    });
-    console_mod.addImport("webidl", webidl_mod);
-    console_mod.addImport("interfaces", interfaces_mod);
-    console_mod.addImport("namespaces", namespaces_mod);
-
-    // Streams internal modules (used by both root.zig and generated interfaces)
-    // All internal files need to import each other via modules to avoid circular file ownership
-
-    const streams_common_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/common.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
-
-    const streams_event_loop_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/event_loop.zig"),
-        .target = target,
-    });
-
-    const streams_async_promise_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/async_promise.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "event_loop", .module = streams_event_loop_mod },
-            .{ .name = "common", .module = streams_common_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "infra", .module = infra_mod },
-        },
-    });
-
-    const streams_test_event_loop_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/test_event_loop.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "event_loop", .module = streams_event_loop_mod },
-            .{ .name = "infra", .module = infra_mod },
-        },
-    });
-
-    const streams_queue_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/queue_with_sizes.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "common", .module = streams_common_mod },
-        },
-    });
-
-    const streams_read_request_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/read_request.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "common", .module = streams_common_mod },
-        },
-    });
-
-    const streams_write_request_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/write_request.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "queue_with_sizes", .module = streams_queue_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "event_loop", .module = streams_event_loop_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
-
-    const streams_read_into_request_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/read_into_request.zig"),
-        .target = target,
-    });
-
-    const streams_read_into_request_promise_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/read_into_request_promise.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "event_loop", .module = streams_event_loop_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "read_into_request", .module = streams_read_into_request_mod },
-        },
-    });
-
-    const streams_pull_into_descriptor_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/pull_into_descriptor.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
-
-    const streams_async_iterator_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/async_iterator.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "common", .module = streams_common_mod },
-        },
-    });
-
-    const streams_message_port_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/message_port.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "common", .module = streams_common_mod },
-        },
-    });
-
-    const streams_cross_realm_transform_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/cross_realm_transform.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "common", .module = streams_common_mod },
-            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
-            .{ .name = "message_port", .module = streams_message_port_mod },
-        },
-    });
-
-    const streams_view_construction_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/view_construction.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
-        },
-    });
-
-    const streams_structured_clone_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/structured_clone.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "common", .module = streams_common_mod },
-            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
-            .{ .name = "message_port", .module = streams_message_port_mod },
-        },
-    });
-
-    // Main streams module
-    const streams_mod = b.addModule("streams", .{
-        .root_source_file = b.path("src/streams/root.zig"),
-        .target = target,
-    });
-    streams_mod.addImport("infra", infra_mod);
-    streams_mod.addImport("webidl", webidl_mod);
-    streams_mod.addImport("runtime", runtime_mod);
-    streams_mod.addImport("dom", dom_mod);
-
-    // Add event loop to runtime and v8 for async operations (streams, promises)
-    runtime_mod.addImport("event_loop", streams_event_loop_mod);
-    v8_mod.addImport("event_loop", streams_event_loop_mod);
-    v8_mod.addImport("streams_async_promise", streams_async_promise_mod);
-
-    // Add internal modules so root.zig can access them
-    streams_mod.addImport("common", streams_common_mod);
-    streams_mod.addImport("event_loop", streams_event_loop_mod);
-    streams_mod.addImport("async_promise", streams_async_promise_mod);
-    streams_mod.addImport("test_event_loop", streams_test_event_loop_mod);
-    streams_mod.addImport("queue_with_sizes", streams_queue_mod);
-    streams_mod.addImport("read_request", streams_read_request_mod);
-    streams_mod.addImport("read_into_request", streams_read_into_request_mod);
-    streams_mod.addImport("pull_into_descriptor", streams_pull_into_descriptor_mod);
-    streams_mod.addImport("write_request", streams_write_request_mod);
-    streams_mod.addImport("structured_clone", streams_structured_clone_mod);
-    streams_mod.addImport("view_construction", streams_view_construction_mod);
-    streams_mod.addImport("async_iterator", streams_async_iterator_mod);
-    streams_mod.addImport("message_port", streams_message_port_mod);
-    streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
-    // Add unified interfaces module
-    streams_mod.addImport("interfaces", interfaces_mod);
-
-    // Add streams event loop to interfaces for ReadableStreamBYOBReader init
-    interfaces_mod.addImport("streams_event_loop", streams_event_loop_mod);
-
-    // Add streams modules to impls for ReadableStream, WritableStream, TransformStream implementations
-    impls_mod.addImport("streams_common", streams_common_mod);
-    impls_mod.addImport("streams_event_loop", streams_event_loop_mod);
-    impls_mod.addImport("streams_async_promise", streams_async_promise_mod);
-    impls_mod.addImport("streams_test_event_loop", streams_test_event_loop_mod);
-    impls_mod.addImport("streams_queue", streams_queue_mod);
-    impls_mod.addImport("streams_read_request", streams_read_request_mod);
-    impls_mod.addImport("streams_write_request", streams_write_request_mod);
-    impls_mod.addImport("streams_read_into_request", streams_read_into_request_mod);
-    impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
-    impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
-    impls_mod.addImport("streams_internal", streams_message_port_mod);
-
-    // DOM module for XPath implementations
-    impls_mod.addImport("dom", dom_mod);
-
-    // Quirks module for Document quirks mode support
-    impls_mod.addImport("quirks", quirks_mod);
-
-    // ArrayBufferView is part of runtime module, no separate module needed
-    // (ReadableStreamBYOBReader accesses it via runtime.arraybuffer_view)
-
-    const mimesniff_mod = b.addModule("mimesniff", .{
-        .root_source_file = b.path("src/mimesniff/root.zig"),
-        .target = target,
-    });
-    mimesniff_mod.addImport("infra", infra_mod);
-    impls_mod.addImport("mimesniff", mimesniff_mod); // FileReader's package data parses a Blob's type
-
-    // File API module (W3C File API - Blob, File, FileReader)
-    const file_mod = b.addModule("file", .{
-        .root_source_file = b.path("src/file/root.zig"),
-        .target = target,
-    });
-    file_mod.addImport("clock", clock_mod);
-    file_mod.addImport("host", host_mod);
-    // File module dependencies can be added here when needed:
-    // file_mod.addImport("infra", infra_mod);
-    // file_mod.addImport("encoding", encoding_mod);
-    // file_mod.addImport("streams", streams_mod);
-
-    // Add file module to impls (for Blob, File, FileReader implementations)
-    impls_mod.addImport("file", file_mod);
-
-    // File System Access API module (WHATWG File System Standard)
-    const fs_mod = b.addModule("fs", .{
-        .root_source_file = b.path("src/fs/root.zig"),
-        .target = target,
-    });
-    fs_mod.addImport("clock", clock_mod);
-    fs_mod.addImport("host", host_mod);
-    // fs_mod dependencies will be added as implementation progresses:
-    // fs_mod.addImport("storage", storage_mod);
-    // fs_mod.addImport("streams", streams_mod);
-
-    // Add fs to storage module for StorageManager.getDirectory()
-    // Per WHATWG File System spec, navigator.storage.getDirectory() returns FileSystemDirectoryHandle
-    storage_mod.addImport("fs", fs_mod);
-
-    // Referrer Policy module (W3C Referrer Policy)
-    const referrer_policy_mod = b.addModule("referrer_policy", .{
-        .root_source_file = b.path("src/referrer_policy/root.zig"),
-        .target = target,
-    });
-
-    // CSP module (W3C Content Security Policy Level 3)
-    const csp_mod = b.addModule("csp", .{
-        .root_source_file = b.path("src/csp/root.zig"),
-        .target = target,
-    });
-    csp_mod.addImport("clock", clock_mod);
-    csp_mod.addImport("host", host_mod);
-
-    // Fetch API module (WHATWG Fetch Standard)
-    const fetch_mod = b.addModule("fetch", .{
-        .root_source_file = b.path("src/fetch/root.zig"),
-        .target = target,
-    });
-    fetch_mod.addImport("clock", clock_mod);
-    fetch_mod.addImport("host", host_mod);
-    fetch_mod.addImport("referrer_policy", referrer_policy_mod);
-    // A request's policy container holds its client's CSP list, which main
-    // fetch checks the request against (CSP 4.1).
-    fetch_mod.addImport("csp", csp_mod);
-    // HTTP-redirect fetch parses a `Location` value against the response URL.
-    // The same three URL modules `xhr_mod` takes, for the same reason.
-    fetch_mod.addImport("url_record", url_internal_url_record_mod);
-    fetch_mod.addImport("basic_parser", url_basic_parser_mod);
-    fetch_mod.addImport("url_serializer", url_serializer_mod);
-    // Main fetch step 12 and the CORS check compare origins (URL "origin").
-    fetch_mod.addImport("origin", url_origin_mod_internal);
-    // Main fetch step 19: a JavaScript MIME type essence match (MIME Sniffing).
-    fetch_mod.addImport("mimesniff", mimesniff_mod);
-    // HTTP-network-or-cache fetch sends and stores cookies in the jar.
-    fetch_mod.addImport("cookiestore", cookiestore_mod);
-    // The network layer asks the vendored TLS library what ALPN chose, and
-    // tests that HTTP/2 is live when the build asked for it. Its own options
-    // module: one options file imported as a module by two others in the same
-    // compilation is an error ("file exists in modules"), and build_options
-    // already is, through runtime and impls.
-    const curl_options = b.addOptions();
-    curl_options.addOption(bool, "http2", enable_http2 and !use_system_curl);
-    curl_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
-    fetch_mod.addOptions("curl_options", curl_options);
-    // A base64 data: URL body is Infra's forgiving-base64 decode.
-    fetch_mod.addImport("infra", infra_mod);
-
-    // Configure libcurl for network requests
-    const linked_mbedtls = if (use_system_curl) blk: {
-        // Development: Use system libcurl for faster builds
-        fetch_mod.linkSystemLibrary("curl", .{});
-        // ...which may be a libcurl without WebSockets. Say so now rather than
-        // leaving it to a runtime CURLE_UNSUPPORTED_PROTOCOL.
-        warnIfSystemCurlLacksWebSockets(b);
-        break :blk null;
-    } else blk: {
-        // Production: Statically compile libcurl with mbedTLS
-        break :blk configureStaticLibcurl(b, fetch_mod, target, optimize, enable_http2);
+        .build_options = build_options,
+        .debug_options = debug_options,
+        .engine_choice = engine_choice,
+        .use_system_curl = use_system_curl,
+        .enable_http2 = enable_http2,
+        .static_libcurl = static_libcurl,
+        .public_platform = target_platform,
     };
-
-    // WebCrypto shares curl's exact mbedTLS artifact - build.zig.zon's
-    // `.mbedtls`, which configureStaticLibcurl links into libcurl - including its
-    // installed headers.
-    if (linked_mbedtls) |library| webcrypto_mod.linkLibrary(library);
-    const webcrypto_options = b.addOptions();
-    webcrypto_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
-    webcrypto_mod.addOptions("options", webcrypto_options);
-    webcrypto_mod.addCMacro("MBEDTLS_THREADING_C", "");
-    webcrypto_mod.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
-    if (target.result.os.tag == .ios) addIosSdkPaths(webcrypto_mod, iosSdkPath(b));
-
-    // fetch_mod dependencies will be added as implementation progresses:
-    // fetch_mod.addImport("url", url_mod);
-    // fetch_mod.addImport("streams", streams_mod);
-    // fetch_mod.addImport("encoding", encoding_mod);
-
-    // XMLHttpRequest module (WHATWG XHR Standard)
-    const xhr_mod = b.addModule("xhr", .{
-        .root_source_file = b.path("src/xhr/root.zig"),
-        .target = target,
-    });
-    xhr_mod.addImport("clock", clock_mod);
-    xhr_mod.addImport("host", host_mod);
-    xhr_mod.addImport("fetch", fetch_mod); // XHR uses Fetch infrastructure
-    xhr_mod.addImport("mimesniff", mimesniff_mod); // XHR uses MIME type parsing for overrideMimeType
-    // open() resolves a relative URL against the document base URL, which needs
-    // the URL parser. Without this, `parseURL` accepted only absolute http(s),
-    // data and file URLs and threw SyntaxError on everything else - and every
-    // WPT XHR test asks for `resources/*.py`, so `send()` was never reached.
-    // `url_mod`'s root does not re-export the serializer, and the parser is
-    // reachable only as `url.parser.basic_url_parser`, so take the same three
-    // modules `impls_mod` does (build.zig:1332-1335).
-    xhr_mod.addImport("url_record", url_internal_url_record_mod);
-    xhr_mod.addImport("basic_parser", url_basic_parser_mod);
-    xhr_mod.addImport("url_serializer", url_serializer_mod);
-    //
-    // `runtime` is deliberately NOT an import here. `src/xhr/internal/context.zig`
-    // was the only file that wanted it, for a `runtime.event_loop.Scheduler`
-    // that does not exist; that file is gone. Keeping xhr free of `runtime`
-    // also breaks the cycle `impls -> xhr -> runtime -> v8 -> impls`, which is
-    // what stopped `xhr_mod` from being cloned into a test root, and lets the
-    // test block below run without linking V8.
-
-    // Allow impls to access fetch for Headers, Request, Response implementations
-    impls_mod.addImport("fetch", fetch_mod);
-    impls_mod.addImport("url", url_mod); // For Request constructor URL parsing
-    impls_mod.addImport("urlpattern", urlpattern_mod); // For URLPattern implementation
-    impls_mod.addImport("xhr", xhr_mod); // For FormData implementation
-
-    // Trusted Types module (W3C Trusted Types)
-    const trusted_types_mod = b.addModule("trusted_types", .{
-        .root_source_file = b.path("src/trusted_types/root.zig"),
-        .target = target,
-    });
-    // trusted_types_mod dependencies will be added as implementation progresses:
-    // trusted_types_mod.addImport("infra", infra_mod);
-    // trusted_types_mod.addImport("webidl", webidl_mod);
-
-    // Add trusted_types to impls for TrustedHTML, TrustedScript, etc. implementations
-    impls_mod.addImport("trusted_types", trusted_types_mod);
-
-    // Add csp to impls for Document CSP checks
-    impls_mod.addImport("csp", csp_mod);
-
-    // HR-Time module (W3C High Resolution Time)
-    const hr_time_mod = b.addModule("hr_time", .{
-        .root_source_file = b.path("src/hr_time/root.zig"),
-        .target = target,
-    });
-    hr_time_mod.addImport("clock", clock_mod);
-    hr_time_mod.addImport("host", host_mod);
-
-    // Add hr_time to impls for Performance implementation
-    impls_mod.addImport("hr_time", hr_time_mod);
-
-    // WebSocket module (WHATWG WebSockets API)
-    const websocket_mod = b.addModule("websocket", .{
-        .root_source_file = b.path("src/websocket/root.zig"),
-        .target = target,
-    });
-    // WebSocket needs fetch for curl backend
-    websocket_mod.addImport("fetch", fetch_mod);
-    // The opening handshake's cookies come from and go to the jar.
-    websocket_mod.addImport("cookiestore", cookiestore_mod);
-
-    // Add websocket to impls for WebSocket interface implementation
-    impls_mod.addImport("websocket", websocket_mod);
-
-    // Platform module (Platform abstraction layer)
-    const platform_mod = b.addModule("platform", .{
-        .root_source_file = b.path("src/platform/root.zig"),
-        .target = target,
-    });
-    platform_mod.addImport("clock", clock_mod);
-    platform_mod.addImport("host", host_mod);
-    // Platform module needs fetch for NetworkBackend adapter (bridges old/new interfaces)
-    platform_mod.addImport("fetch", fetch_mod);
-
-    // HTML Core module (WHATWG HTML Standard) - Interface-free subset
-    // Contains parser (§13), window (§7), event loop (§8.1.7), structured clone (§2.7)
-    // This module can be safely imported by impls without creating a cycle.
-    // NO imports of: interfaces, impls, runtime
-    //
-    // ARCHITECTURAL NOTE: fetch_mod is safe to import here because:
-    // - fetch_mod only imports: referrer_policy_mod (no cycles possible)
-    // - This enables real HTTP(S) fetching for navigation and workers
-    // - See whatwg-aujed for the analysis that led to this decision
-    const html_core_mod = b.addModule("html_core", .{
-        .root_source_file = b.path("src/html/root.zig"),
-        .target = target,
-    });
-    html_core_mod.addImport("clock", clock_mod);
-    html_core_mod.addImport("host", host_mod);
-    html_core_mod.addImport("infra", infra_mod);
-    html_core_mod.addImport("dom", dom_mod);
-    html_core_mod.addImport("eventsource", eventsource_mod);
-    html_core_mod.addImport("platform", platform_mod);
-    html_core_mod.addImport("fetch", fetch_mod);
-    html_core_mod.addImport("storage", storage_mod); // For web_storage.zig Storage backend
-    html_core_mod.addImport("encoding", encoding_mod); // For iframe document loading encoding detection
-    // HTML "determining the character encoding": the transport layer's charset
-    // is the charset parameter of the Content-Type, parsed as a MIME type.
-    html_core_mod.addImport("mimesniff", mimesniff_mod);
-    // WorkerLocation's origin is the URL Standard's origin of the worker's URL.
-    html_core_mod.addImport("origin", url_origin_mod_internal);
-    html_core_mod.addImport("basic_parser", url_basic_parser_mod);
-    // A browsing context reaches the user agent's cookie jar.
-    html_core_mod.addImport("cookiestore", cookiestore_mod);
-
-    // HTML module (full WHATWG HTML Standard) - Includes interface-dependent code
-    // Uses full.zig as root which re-exports html_core plus adds interface access.
-    // Contains everything in html_core PLUS access to:
-    // - interfaces module (for script execution files)
-    // - impls module (for script execution coordination)
-    // - runtime module (for JS execution context)
-    //
-    // Dependency graph (no cycle):
-    //   html_core_mod ← infra, dom, platform (NO interfaces)
-    //        ↓
-    //   impls_mod ← html_core_mod, interfaces_mod, ...
-    //        ↓
-    //   html_mod ← interfaces_mod, impls_mod, runtime_mod (CAN use interfaces)
-    //
-    // html_mod does NOT feed back into impls_mod, so no cycle is created.
-    const html_mod = b.addModule("html", .{
-        .root_source_file = b.path("src/html/full.zig"),
-        .target = target,
-    });
-    // Import html_core as a module (not file import) to avoid file ownership conflicts
-    html_mod.addImport("html_core", html_core_mod);
-    // Interface access for script execution files (now in src/html/)
-    html_mod.addImport("interfaces", interfaces_mod);
-    html_mod.addImport("impls", impls_mod);
-    html_mod.addImport("runtime", runtime_mod);
-    html_mod.addImport("platform", platform_mod);
-    // WebIDL types needed by custom_elements.zig and upgrade.zig
-    html_mod.addImport("webidl", webidl_mod);
-    // Dependencies for script_execution.zig, script_runner.zig, event_utils.zig
-    html_mod.addImport("infra", infra_mod);
-    html_mod.addImport("fetch", fetch_mod);
-    html_mod.addImport("csp", csp_mod);
-    // The engine protocol (AGENTS.md "The engine boundary"): html's
-    // engine-neutral code calls `engine.op`.
-    html_mod.addImport("engine", engine_mod);
-    html_mod.addImport("dictionaries", dictionaries_mod);
-    // The Unicode bidi classes, for HTML's directionality (form_associated.zig).
-    html_mod.addImport("url", url_mod);
-    // DOM module for document_internals access in parser_script_execution.zig
-    html_mod.addImport("dom", dom_mod);
-    // HTML "encoding-parse a URL" (html.encoding_parse) runs the URL parser
-    // with a document's encoding.
-    html_mod.addImport("api_parser", url_parser_api_mod);
-    // A style sheet's @import rules, for style_sheet_loading.zig.
-    html_mod.addImport("css", css_mod);
-
-    // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
-    // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
-    impls_mod.addImport("html_core", html_core_mod);
-
-    // Add platform to impls for Worker to access TimerBackend
-    impls_mod.addImport("platform", platform_mod);
-
-    // Add html_core and csp to dom for document_internals
-    dom_mod.addImport("html_core", html_core_mod);
-    dom_mod.addImport("csp", csp_mod);
-    dom_mod.addImport("trusted_types", trusted_types_mod);
-    // A settings object is a request's client: global_settings.requestClient
-    // hands fetch what "populate request from client" reads.
-    dom_mod.addImport("fetch", fetch_mod);
-
-    // Add html to impls for script execution algorithms
-    // Note: This creates html ↔ impls mutual dependency. Zig handles this because
-    // the dependency is only at the module level, not at function call time during
-    // module initialization. The imports are lazy (evaluated when used).
-    impls_mod.addImport("html", html_mod);
-
-    // Permissions module (W3C Permissions API)
-    const permissions_mod = b.addModule("permissions", .{
-        .root_source_file = b.path("src/permissions/root.zig"),
-        .target = target,
-    });
-
-    // Add permissions to impls for navigator.permissions implementation
-    impls_mod.addImport("permissions", permissions_mod);
-
-    // Browser module - Single V8 isolate browser implementation for WPT
-    const browser_mod = b.addModule("browser", .{
-        .root_source_file = b.path("src/browser/root.zig"),
-        .target = target,
-    });
-    browser_mod.addImport("clock", clock_mod);
-    browser_mod.addImport("host", host_mod);
-    browser_mod.addImport("engine", engine_mod);
-    browser_mod.addImport("runtime", runtime_mod);
-    browser_mod.addImport("interfaces", interfaces_mod);
-    // crane.Process installs the mixins' hooks (mixins.installHooks).
-    browser_mod.addImport("mixins", mixins_mod);
-    browser_mod.addImport("namespaces", namespaces_mod);
-    browser_mod.addImport("fetch", fetch_mod);
-    // The Browser owns the user agent's cookie jar.
-    browser_mod.addImport("cookiestore", cookiestore_mod);
-    browser_mod.addImport("impls", impls_mod);
-    browser_mod.addImport("webidl", webidl_mod);
-    browser_mod.addImport("dom", dom_mod);
-    browser_mod.addImport("html", html_mod);
-    // BrowserConfig.media_backend: the host's media decoding.
-    browser_mod.addImport("platform", platform_mod);
-    // A navigation's URL string is parsed and serialized before it is fetched.
-    browser_mod.addImport("basic_parser", url_basic_parser_mod);
-    browser_mod.addImport("url_serializer", url_serializer_mod);
-
-    // WebDriver module - W3C WebDriver protocol implementation for wptrunner
-    const webdriver_mod = b.addModule("webdriver", .{
-        .root_source_file = b.path("src/webdriver/root.zig"),
-        .target = target,
-    });
-    webdriver_mod.addImport("clock", clock_mod);
-    webdriver_mod.addImport("host", host_mod);
-    webdriver_mod.addImport("browser", browser_mod);
-
-    // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
-    const intl_mod = b.addModule("intl", .{
-        .root_source_file = b.path("src/intl/root.zig"),
-        .target = target,
-    });
-    intl_mod.addImport("infra", infra_mod);
-    intl_mod.addImport("host", host_mod);
-
-    // V8 module needs intl for pure Zig Intl.DateTimeFormat implementation
-    v8_mod.addImport("intl", intl_mod);
-
-    // V8 module needs fetch for ES module loading from HTTP URLs
-    v8_mod.addImport("fetch", fetch_mod);
-
-    // Wire spec modules into whatwg module
-    whatwg_mod.addImport("infra", infra_mod);
-    whatwg_mod.addImport("webidl", webidl_mod);
-    whatwg_mod.addImport("runtime", runtime_mod);
-    whatwg_mod.addImport("dom", dom_mod);
-    whatwg_mod.addImport("encoding", encoding_mod);
-    whatwg_mod.addImport("url", url_mod);
-    whatwg_mod.addImport("console", console_mod);
-    whatwg_mod.addImport("streams", streams_mod);
-    whatwg_mod.addImport("mimesniff", mimesniff_mod);
-    whatwg_mod.addImport("interfaces", interfaces_mod);
-    whatwg_mod.addImport("impls", impls_mod);
-    whatwg_mod.addImport("quirks", quirks_mod);
-    whatwg_mod.addImport("css", css_mod);
-    whatwg_mod.addImport("file", file_mod);
-    whatwg_mod.addImport("fs", fs_mod);
-    whatwg_mod.addImport("fetch", fetch_mod);
-    whatwg_mod.addImport("trusted_types", trusted_types_mod);
-    whatwg_mod.addImport("csp", csp_mod);
-    whatwg_mod.addImport("hr_time", hr_time_mod);
-    whatwg_mod.addImport("websocket", websocket_mod);
-    whatwg_mod.addImport("permissions", permissions_mod);
-    whatwg_mod.addImport("html", html_mod);
-    whatwg_mod.addImport("browser", browser_mod);
-    whatwg_mod.addImport("intl", intl_mod);
+    const crane_graph = addCraneModules(b, target, target_platform, module_config);
+    const testing_graph = if (target_platform == .testing) crane_graph else addCraneModules(b, target, .testing, module_config);
+    const whatwg_mod = crane_graph.whatwg;
+    const clock_mod = crane_graph.clock;
+    const host_mod = crane_graph.host;
+    const memory_mod = crane_graph.memory;
+    const infra_mod = crane_graph.infra;
+    const webidl_mod = crane_graph.webidl;
+    const storage_mod = crane_graph.storage;
+    const runtime_mod = crane_graph.runtime;
+    const v8_mod = crane_graph.v8;
+    const codegen_mod = crane_graph.codegen;
+    const callbacks_mod = crane_graph.callbacks;
+    const dictionaries_mod = crane_graph.dictionaries;
+    const enums_mod = crane_graph.enums;
+    const namespaces_mod = crane_graph.namespaces;
+    const typedefs_mod = crane_graph.typedefs;
+    const interfaces_mod = crane_graph.interfaces;
+    const impls_mod = crane_graph.impls;
+    const engine_mod = crane_graph.engine;
+    const dom_mod = crane_graph.dom;
+    const mixins_mod = crane_graph.mixins;
+    const encoding_mod = crane_graph.encoding;
+    const url_mod = crane_graph.url;
+    const console_mod = crane_graph.console;
+    const streams_mod = crane_graph.streams;
+    const mimesniff_mod = crane_graph.mimesniff;
+    const csp_mod = crane_graph.csp;
+    const fetch_mod = crane_graph.fetch;
+    const linked_mbedtls: ?*std.Build.Step.Compile = if (static_libcurl) |static| static.mbedtls else null;
+    const trusted_types_mod = crane_graph.trusted_types;
+    const hr_time_mod = crane_graph.hr_time;
+    const websocket_mod = crane_graph.websocket;
+    const platform_mod = crane_graph.platform;
+    const html_core_mod = crane_graph.html_core;
+    const html_mod = crane_graph.html;
+    const permissions_mod = crane_graph.permissions;
+    const browser_mod = crane_graph.browser;
+    const webdriver_mod = crane_graph.webdriver;
+    const intl_mod = crane_graph.intl;
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -2404,9 +1248,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    eventsource_test_mod.addImport("eventsource", eventsource_mod);
-    eventsource_test_mod.addImport("infra", infra_mod);
-    eventsource_test_mod.addImport("fetch", fetch_mod);
+    eventsource_test_mod.addImport("eventsource", testing_graph.eventsource);
+    eventsource_test_mod.addImport("infra", testing_graph.infra);
+    eventsource_test_mod.addImport("fetch", testing_graph.fetch);
     const eventsource_tests = b.addTest(.{ .root_module = eventsource_test_mod });
     const run_eventsource_tests = b.addRunArtifact(eventsource_tests);
     const eventsource_test_step = b.step("test-eventsource", "Run server-sent event parser and connection tests");
@@ -2415,7 +1259,7 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_eventsource_tests.step);
     }
 
-    const webcrypto_tests = b.addTest(.{ .root_module = webcrypto_mod });
+    const webcrypto_tests = b.addTest(.{ .root_module = testing_graph.webcrypto });
     const run_webcrypto_tests = b.addRunArtifact(webcrypto_tests);
     const webcrypto_test_step = b.step("test-webcrypto", "Run Web Cryptography API primitive tests");
     webcrypto_test_step.dependOn(&run_webcrypto_tests.step);
@@ -2431,7 +1275,7 @@ pub fn build(b: *std.Build) void {
         const deps_test_mod = b.createModule(.{
             .root_source_file = b.path("tests/linked_libraries/versions_test.zig"),
             .target = target,
-            .imports = &.{.{ .name = "fetch", .module = fetch_mod }},
+            .imports = &.{.{ .name = "fetch", .module = testing_graph.fetch }},
         });
         deps_test_mod.linkLibrary(mbedtls_library);
         deps_test_mod.addCMacro("MBEDTLS_THREADING_C", "");
@@ -2458,25 +1302,25 @@ pub fn build(b: *std.Build) void {
     const test_css = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "css"));
 
     if (test_infra) {
-        const infra_tests = b.addTest(.{ .root_module = infra_mod });
+        const infra_tests = b.addTest(.{ .root_module = testing_graph.infra });
         const run_infra_tests = b.addRunArtifact(infra_tests);
         test_step.dependOn(&run_infra_tests.step);
     }
 
     if (test_webidl) {
-        const webidl_tests = b.addTest(.{ .root_module = webidl_mod });
+        const webidl_tests = b.addTest(.{ .root_module = testing_graph.webidl });
         const run_webidl_tests = b.addRunArtifact(webidl_tests);
         test_step.dependOn(&run_webidl_tests.step);
 
         // Add dedicated test files from tests/webidl/
         const webidl_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "dom", .module = dom_mod },
-            .{ .name = "streams", .module = streams_mod },
-            .{ .name = "console", .module = console_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "infra", .module = testing_graph.infra },
+            .{ .name = "webidl", .module = testing_graph.webidl },
+            .{ .name = "dom", .module = testing_graph.dom },
+            .{ .name = "streams", .module = testing_graph.streams },
+            .{ .name = "console", .module = testing_graph.console },
         };
         addTestFilesFromDir(b, test_step, "tests/webidl", target, &webidl_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add webidl test files: {}\n", .{err});
@@ -2484,22 +1328,22 @@ pub fn build(b: *std.Build) void {
     }
 
     if (test_dom) {
-        const dom_tests = b.addTest(.{ .root_module = dom_mod });
+        const dom_tests = b.addTest(.{ .root_module = testing_graph.dom });
         const run_dom_tests = b.addRunArtifact(dom_tests);
         test_step.dependOn(&run_dom_tests.step);
 
         // Add dedicated test files from tests/dom/
         const dom_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "dom", .module = dom_mod },
-            .{ .name = "selector", .module = selector_mod },
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "interfaces", .module = interfaces_mod },
-            .{ .name = "impls", .module = impls_mod },
-            .{ .name = "enums", .module = enums_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "infra", .module = testing_graph.infra },
+            .{ .name = "webidl", .module = testing_graph.webidl },
+            .{ .name = "dom", .module = testing_graph.dom },
+            .{ .name = "selector", .module = testing_graph.selector },
+            .{ .name = "runtime", .module = testing_graph.runtime },
+            .{ .name = "interfaces", .module = testing_graph.interfaces },
+            .{ .name = "impls", .module = testing_graph.impls },
+            .{ .name = "enums", .module = testing_graph.enums },
         };
         // link_v8 = true: tests/dom/mutation_test.zig calls dom.mutation.insert
         // and .adopt, and src/dom/mutation.zig reaches impls.NodeList/Range/
@@ -2513,17 +1357,17 @@ pub fn build(b: *std.Build) void {
     }
 
     if (test_selector) {
-        const selector_tests = b.addTest(.{ .root_module = selector_mod });
+        const selector_tests = b.addTest(.{ .root_module = testing_graph.selector });
         const run_selector_tests = b.addRunArtifact(selector_tests);
         test_step.dependOn(&run_selector_tests.step);
 
         // Add dedicated test files from tests/selector/
         const selector_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "dom", .module = dom_mod },
-            .{ .name = "selector", .module = selector_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "infra", .module = testing_graph.infra },
+            .{ .name = "dom", .module = testing_graph.dom },
+            .{ .name = "selector", .module = testing_graph.selector },
         };
         addTestFilesFromDir(b, test_step, "tests/selector", target, &selector_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add selector test files: {}\n", .{err});
@@ -2531,17 +1375,17 @@ pub fn build(b: *std.Build) void {
     }
 
     if (test_encoding) {
-        const encoding_tests = b.addTest(.{ .root_module = encoding_mod });
+        const encoding_tests = b.addTest(.{ .root_module = testing_graph.encoding });
         const run_encoding_tests = b.addRunArtifact(encoding_tests);
         test_step.dependOn(&run_encoding_tests.step);
 
         // Add dedicated test files from tests/encoding/
         const encoding_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "encoding", .module = encoding_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "infra", .module = testing_graph.infra },
+            .{ .name = "webidl", .module = testing_graph.webidl },
+            .{ .name = "encoding", .module = testing_graph.encoding },
         };
         addTestFilesFromDir(b, test_step, "tests/encoding", target, &encoding_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add encoding test files: {}\n", .{err});
@@ -2549,18 +1393,18 @@ pub fn build(b: *std.Build) void {
     }
 
     if (test_url) {
-        const url_tests = b.addTest(.{ .root_module = url_mod });
+        const url_tests = b.addTest(.{ .root_module = testing_graph.url });
         const run_url_tests = b.addRunArtifact(url_tests);
         test_step.dependOn(&run_url_tests.step);
 
         // Add dedicated test files from tests/url/
         const url_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "encoding", .module = encoding_mod },
-            .{ .name = "url", .module = url_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "infra", .module = testing_graph.infra },
+            .{ .name = "webidl", .module = testing_graph.webidl },
+            .{ .name = "encoding", .module = testing_graph.encoding },
+            .{ .name = "url", .module = testing_graph.url },
         };
         addTestFilesFromDir(b, test_step, "tests/url", target, &url_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add url test files: {}\n", .{err});
@@ -2568,16 +1412,16 @@ pub fn build(b: *std.Build) void {
     }
 
     if (test_urlpattern) {
-        const urlpattern_tests = b.addTest(.{ .root_module = urlpattern_mod });
+        const urlpattern_tests = b.addTest(.{ .root_module = testing_graph.urlpattern });
         const run_urlpattern_tests = b.addRunArtifact(urlpattern_tests);
         test_step.dependOn(&run_urlpattern_tests.step);
 
         // Add dedicated test files from tests/urlpattern/
         const urlpattern_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "urlpattern", .module = urlpattern_mod },
-            .{ .name = "url", .module = url_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "urlpattern", .module = testing_graph.urlpattern },
+            .{ .name = "url", .module = testing_graph.url },
         };
         addTestFilesFromDir(b, test_step, "tests/urlpattern", target, &urlpattern_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add urlpattern test files: {}\n", .{err});
@@ -2585,17 +1429,17 @@ pub fn build(b: *std.Build) void {
     }
 
     if (test_console) {
-        const console_tests = b.addTest(.{ .root_module = console_mod });
+        const console_tests = b.addTest(.{ .root_module = testing_graph.console });
         const run_console_tests = b.addRunArtifact(console_tests);
         test_step.dependOn(&run_console_tests.step);
 
         // Add dedicated test files from tests/console/
         const console_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "console", .module = console_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "infra", .module = testing_graph.infra },
+            .{ .name = "webidl", .module = testing_graph.webidl },
+            .{ .name = "console", .module = testing_graph.console },
         };
         addTestFilesFromDir(b, test_step, "tests/console", target, &console_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add console test files: {}\n", .{err});
@@ -2610,24 +1454,24 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/streams/
         const streams_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "dom", .module = dom_mod },
-            .{ .name = "streams", .module = streams_mod },
-            .{ .name = "interfaces", .module = interfaces_mod },
-            .{ .name = "impls", .module = impls_mod },
-            .{ .name = "dictionaries", .module = dictionaries_mod },
-            .{ .name = "streams_common", .module = streams_common_mod },
-            .{ .name = "streams_queue", .module = streams_queue_mod },
-            .{ .name = "streams_async_promise", .module = streams_async_promise_mod },
-            .{ .name = "streams_read_request", .module = streams_read_request_mod },
-            .{ .name = "streams_write_request", .module = streams_write_request_mod },
-            .{ .name = "streams_read_into_request", .module = streams_read_into_request_mod },
-            .{ .name = "streams_pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
-            .{ .name = "streams_event_loop", .module = streams_event_loop_mod },
-            .{ .name = "streams_test_event_loop", .module = streams_test_event_loop_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "infra", .module = testing_graph.infra },
+            .{ .name = "webidl", .module = testing_graph.webidl },
+            .{ .name = "dom", .module = testing_graph.dom },
+            .{ .name = "streams", .module = testing_graph.streams },
+            .{ .name = "interfaces", .module = testing_graph.interfaces },
+            .{ .name = "impls", .module = testing_graph.impls },
+            .{ .name = "dictionaries", .module = testing_graph.dictionaries },
+            .{ .name = "streams_common", .module = testing_graph.streams_common },
+            .{ .name = "streams_queue", .module = testing_graph.streams_queue },
+            .{ .name = "streams_async_promise", .module = testing_graph.streams_async_promise },
+            .{ .name = "streams_read_request", .module = testing_graph.streams_read_request },
+            .{ .name = "streams_write_request", .module = testing_graph.streams_write_request },
+            .{ .name = "streams_read_into_request", .module = testing_graph.streams_read_into_request },
+            .{ .name = "streams_pull_into_descriptor", .module = testing_graph.streams_pull_into_descriptor },
+            .{ .name = "streams_event_loop", .module = testing_graph.streams_event_loop },
+            .{ .name = "streams_test_event_loop", .module = testing_graph.streams_test_event_loop },
         };
         addTestFilesFromDir(b, test_step, "tests/streams", target, &streams_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add streams test files: {}\n", .{err});
@@ -2635,16 +1479,16 @@ pub fn build(b: *std.Build) void {
     }
 
     if (test_mimesniff) {
-        const mimesniff_tests = b.addTest(.{ .root_module = mimesniff_mod });
+        const mimesniff_tests = b.addTest(.{ .root_module = testing_graph.mimesniff });
         const run_mimesniff_tests = b.addRunArtifact(mimesniff_tests);
         test_step.dependOn(&run_mimesniff_tests.step);
 
         // Add dedicated test files from tests/mimesniff/
         const mimesniff_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "mimesniff", .module = mimesniff_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "infra", .module = testing_graph.infra },
+            .{ .name = "mimesniff", .module = testing_graph.mimesniff },
         };
         addTestFilesFromDir(b, test_step, "tests/mimesniff", target, &mimesniff_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add mimesniff test files: {}\n", .{err});
@@ -2652,15 +1496,15 @@ pub fn build(b: *std.Build) void {
     }
 
     if (test_quirks) {
-        const quirks_tests = b.addTest(.{ .root_module = quirks_mod });
+        const quirks_tests = b.addTest(.{ .root_module = testing_graph.quirks });
         const run_quirks_tests = b.addRunArtifact(quirks_tests);
         test_step.dependOn(&run_quirks_tests.step);
 
         // Add dedicated test files from tests/quirks/
         const quirks_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "quirks", .module = quirks_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "quirks", .module = testing_graph.quirks },
         };
         addTestFilesFromDir(b, test_step, "tests/quirks", target, &quirks_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add quirks test files: {}\n", .{err});
@@ -2668,16 +1512,16 @@ pub fn build(b: *std.Build) void {
     }
 
     if (test_css) {
-        const css_tests = b.addTest(.{ .root_module = css_mod });
+        const css_tests = b.addTest(.{ .root_module = testing_graph.css });
         const run_css_tests = b.addRunArtifact(css_tests);
         test_step.dependOn(&run_css_tests.step);
 
         // Add dedicated test files from tests/css/
         const css_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "css", .module = css_mod },
-            .{ .name = "quirks", .module = quirks_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "css", .module = testing_graph.css },
+            .{ .name = "quirks", .module = testing_graph.quirks },
         };
         addTestFilesFromDir(b, test_step, "tests/css", target, &css_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add css test files: {}\n", .{err});
@@ -2686,14 +1530,14 @@ pub fn build(b: *std.Build) void {
 
     // HTML tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "html")) {
-        // NOT V8-linked, and it cannot be - see below. `html_mod` imports
+        // NOT V8-linked, and it cannot be - see below. `testing_graph.html` imports
         // `runtime`, `impls`, `interfaces` and `v8`, so this target links today
         // only for as long as Zig's lazy analysis never walks from a test block
         // in `src/html/` into a `v8_*` extern. The day one does, this goes red
         // with ~238 `undefined symbol: _v8_*`. `tests/dom/` hit exactly that
         // wall with 246 and was fixed by passing `link_v8 = true` for the files
         // under `tests/dom/`; the module-root target still is not linked, so
-        // `dom_mod`, `intl_mod` and `platform_mod` all carry the same latency.
+        // `testing_graph.dom`, `testing_graph.intl` and `testing_graph.platform` all carry the same latency.
         //
         // Neither way of linking it works from build.zig alone. Both measured:
         //
@@ -2701,15 +1545,15 @@ pub fn build(b: *std.Build) void {
         //   own link objects - so the linkage stays local to the test:
         //     src/webidl/impls/HTMLIFrameElement.zig:1:1: error: file exists in
         //     modules 'root' and 'html'
-        //   because `impls_mod.addImport("html", html_mod)` above makes
-        //   `html_mod` a transitive dependency of itself. The clone is rooted
-        //   at `src/html/full.zig` and so is `html_mod`, and both end up in the
+        //   because `testing_graph.impls.addImport("html", testing_graph.html)` above makes
+        //   `testing_graph.html` a transitive dependency of itself. The clone is rooted
+        //   at `src/html/full.zig` and so is `testing_graph.html`, and both end up in the
         //   one compilation: `-Mroot=src/html/full.zig ... -Mhtml=src/html/full.zig`.
         //
-        //   `linkV8(b, html_mod, target)` - link it in place:
+        //   `linkV8(b, testing_graph.html, target)` - link it in place:
         //     844 `error: duplicate symbol definition:` (_crane_callback_*,
         //     CallbackManager::instance_, ...)
-        //   because `html_mod` is a dependency of `wpt_runner`, `full_static_lib`,
+        //   because `testing_graph.html` is a dependency of `wpt_runner`, `full_static_lib`,
         //   `crane` and `crane_exe`, each of which already compiles
         //   `v8_wrapper.cpp` into itself. A module's link objects belong to every
         //   artifact downstream of it.
@@ -2721,35 +1565,35 @@ pub fn build(b: *std.Build) void {
         // The fix is a source change, so it is not made here. Either:
         //   1. break the cycle - have `src/webidl/impls/**` reach HTML through
         //      `html_core` (as it already does for DOMParser, innerHTML and
-        //      Window) instead of `html`, which leaves `html_mod` a leaf that
+        //      Window) instead of `html`, which leaves `testing_graph.html` a leaf that
         //      can be cloned; or
         //   2. keep every V8-reaching HTML test under `tests/html/`, which IS
         //      V8-linked below, and treat `src/html/**` test blocks as
         //      pure-Zig-only. That is the convention `tests/dom/` follows.
-        const html_tests = b.addTest(.{ .root_module = html_mod });
+        const html_tests = b.addTest(.{ .root_module = testing_graph.html });
         const run_html_tests = b.addRunArtifact(html_tests);
         test_step.dependOn(&run_html_tests.step);
 
         // Add dedicated test files from tests/html/
         const html_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "html", .module = html_mod },
-            .{ .name = "html_core", .module = html_core_mod },
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "platform", .module = platform_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "html", .module = testing_graph.html },
+            .{ .name = "html_core", .module = testing_graph.html_core },
+            .{ .name = "infra", .module = testing_graph.infra },
+            .{ .name = "runtime", .module = testing_graph.runtime },
+            .{ .name = "platform", .module = testing_graph.platform },
             // The engine protocol html already reaches, for tests whose host
             // makes an agent and a realm (the worker-thread tests).
-            .{ .name = "engine", .module = engine_mod },
+            .{ .name = "engine", .module = testing_graph.engine },
             // For tests that make platform objects with no Browser: the hooks
             // (interfaces.process_hooks.startHooksForTest).
-            .{ .name = "interfaces", .module = interfaces_mod },
+            .{ .name = "interfaces", .module = testing_graph.interfaces },
             // Media owner-hook tests reach only the public DOM seam.
-            .{ .name = "dom", .module = dom_mod },
+            .{ .name = "dom", .module = testing_graph.dom },
             // Document abort tests measure transports through a browser host.
-            .{ .name = "browser", .module = browser_mod },
-            .{ .name = "fetch", .module = fetch_mod },
+            .{ .name = "browser", .module = testing_graph.browser },
+            .{ .name = "fetch", .module = testing_graph.fetch },
         };
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
@@ -2758,7 +1602,7 @@ pub fn build(b: *std.Build) void {
 
     // Browser tests (the single-isolate browser that WPT drives)
     //
-    // `src/browser/` had no test root in this file at all - `browser_mod` was
+    // `src/browser/` had no test root in this file at all - `testing_graph.browser` was
     // only ever a dependency of `wpt_runner`, `crane_exe` and friends - so its
     // test blocks compiled as part of those binaries and were never run. That
     // is 13 of them, 9 added to `navigation.zig` on 2026-09-21 alone, and
@@ -2766,8 +1610,8 @@ pub fn build(b: *std.Build) void {
     // that pulls the other three files in. It was wired to nothing.
     //
     // V8-linked, and it has to be: `Browser.init` creates an isolate, and
-    // `browser_mod` imports `v8`, `runtime` and `impls`. Unlike `html_mod`
-    // above, nothing imports `browser_mod`, so it is not a dependency of itself
+    // `testing_graph.browser` imports `v8`, `runtime` and `impls`. Unlike `testing_graph.html`
+    // above, nothing imports `testing_graph.browser`, so it is not a dependency of itself
     // and `addModuleTestWithV8` can clone it without two modules claiming
     // `src/browser/root.zig`.
     //
@@ -2775,22 +1619,22 @@ pub fn build(b: *std.Build) void {
     // `tests/browser_document_test.zig` hangs off the separate `test-browser`
     // step. Register the directory here if one is ever added.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "browser")) {
-        const browser_tests = addModuleTestWithV8(b, browser_mod, target);
+        const browser_tests = addModuleTestWithV8(b, testing_graph.browser, target);
         const run_browser_tests = b.addRunArtifact(browser_tests);
         test_step.dependOn(&run_browser_tests.step);
     }
 
     // File API tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "file")) {
-        const file_tests = b.addTest(.{ .root_module = file_mod });
+        const file_tests = b.addTest(.{ .root_module = testing_graph.file });
         const run_file_tests = b.addRunArtifact(file_tests);
         test_step.dependOn(&run_file_tests.step);
 
         // Add dedicated test files from tests/file/ when they exist
         const file_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "file", .module = file_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "file", .module = testing_graph.file },
         };
         addTestFilesFromDir(b, test_step, "tests/file", target, &file_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add file test files: {}\n", .{err});
@@ -2799,20 +1643,20 @@ pub fn build(b: *std.Build) void {
 
     // Fetch API tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "fetch")) {
-        const fetch_tests = b.addTest(.{ .root_module = fetch_mod });
+        const fetch_tests = b.addTest(.{ .root_module = testing_graph.fetch });
         const run_fetch_tests = b.addRunArtifact(fetch_tests);
         test_step.dependOn(&run_fetch_tests.step);
 
         // Referrer Policy is a module of its own, so the fetch test binary,
         // though it imports it, never runs its test blocks.
-        const referrer_policy_tests = b.addTest(.{ .root_module = referrer_policy_mod });
+        const referrer_policy_tests = b.addTest(.{ .root_module = testing_graph.referrer_policy });
         test_step.dependOn(&b.addRunArtifact(referrer_policy_tests).step);
 
         // Add dedicated test files from tests/fetch/ when they exist
         const fetch_imports = [_]std.Build.Module.Import{
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "fetch", .module = fetch_mod },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "fetch", .module = testing_graph.fetch },
         };
         addTestFilesFromDir(b, test_step, "tests/fetch", target, &fetch_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add fetch test files: {}\n", .{err});
@@ -2823,30 +1667,30 @@ pub fn build(b: *std.Build) void {
     //
     // These were opt-in behind `-Dspec=xhr` and left out of `all` while
     // `src/xhr/` carried 30 compile errors across 8 files - a module that
-    // nothing had ever compiled, because `impls_mod` imports `xhr` but Zig
+    // nothing had ever compiled, because `testing_graph.impls` imports `xhr` but Zig
     // analyses only what is REFERENCED, and `call_send` never called into it.
     //
     // All 30 are fixed, so this runs with `all` like every other spec. Keep it
     // that way: a gated test block is a test block that rots.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "xhr")) {
-        const xhr_tests = b.addTest(.{ .root_module = xhr_mod });
+        const xhr_tests = b.addTest(.{ .root_module = testing_graph.xhr });
         const run_xhr_tests = b.addRunArtifact(xhr_tests);
         test_step.dependOn(&run_xhr_tests.step);
 
-        // `xhr_mod` already carries `fetch`, which is where the curl linkage
+        // `testing_graph.xhr` already carries `fetch`, which is where the curl linkage
         // comes from, so the test root needs nothing beyond `xhr` itself. No V8
         // link: nothing under `src/xhr/` reaches a `v8_*` extern, which is now
         // structural rather than incidental - the module has no `runtime`
         // import at all.
         const xhr_imports = [_]std.Build.Module.Import{
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "xhr", .module = xhr_mod },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "xhr", .module = testing_graph.xhr },
             // A response-shaped test fixture needs `InternalResponse` and
             // `Body`: a state carrying received bytes but no response is one
             // the algorithms cannot reach, and the text response algorithm
             // reads "" out of it.
-            .{ .name = "fetch", .module = fetch_mod },
+            .{ .name = "fetch", .module = testing_graph.fetch },
         };
         addTestFilesFromDir(b, test_step, "tests/xhr", target, &xhr_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add xhr test files: {}\n", .{err});
@@ -2865,15 +1709,15 @@ pub fn build(b: *std.Build) void {
     // All 14 are fixed, so this runs with `all` like every other spec. Keep it
     // that way: a gated test block is a test block that rots.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "websocket")) {
-        const websocket_tests = b.addTest(.{ .root_module = websocket_mod });
+        const websocket_tests = b.addTest(.{ .root_module = testing_graph.websocket });
         const run_websocket_tests = b.addRunArtifact(websocket_tests);
         test_step.dependOn(&run_websocket_tests.step);
 
         // Add dedicated test files from tests/websocket/
-        // `websocket_mod` already carries its own `fetch` import, which is where
+        // `testing_graph.websocket` already carries its own `fetch` import, which is where
         // the curl linkage comes from, so the test root needs nothing else.
         const websocket_imports = [_]std.Build.Module.Import{
-            .{ .name = "websocket", .module = websocket_mod },
+            .{ .name = "websocket", .module = testing_graph.websocket },
         };
         addTestFilesFromDir(b, test_step, "tests/websocket", target, &websocket_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add websocket test files: {}\n", .{err});
@@ -2882,15 +1726,15 @@ pub fn build(b: *std.Build) void {
 
     // File System Access API tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "fs")) {
-        const fs_tests = b.addTest(.{ .root_module = fs_mod });
+        const fs_tests = b.addTest(.{ .root_module = testing_graph.fs });
         const run_fs_tests = b.addRunArtifact(fs_tests);
         test_step.dependOn(&run_fs_tests.step);
 
         // Add dedicated test files from tests/fs/ when they exist
         const fs_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "fs", .module = fs_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "fs", .module = testing_graph.fs },
         };
         addTestFilesFromDir(b, test_step, "tests/fs", target, &fs_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add fs test files: {}\n", .{err});
@@ -2899,15 +1743,15 @@ pub fn build(b: *std.Build) void {
 
     // Trusted Types tests (W3C Trusted Types)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "trusted_types")) {
-        const trusted_types_tests = b.addTest(.{ .root_module = trusted_types_mod });
+        const trusted_types_tests = b.addTest(.{ .root_module = testing_graph.trusted_types });
         const run_trusted_types_tests = b.addRunArtifact(trusted_types_tests);
         test_step.dependOn(&run_trusted_types_tests.step);
 
         // Add dedicated test files from tests/trusted_types/ when they exist
         const trusted_types_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "trusted_types", .module = trusted_types_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "trusted_types", .module = testing_graph.trusted_types },
         };
         addTestFilesFromDir(b, test_step, "tests/trusted_types", target, &trusted_types_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add trusted_types test files: {}\n", .{err});
@@ -2916,15 +1760,15 @@ pub fn build(b: *std.Build) void {
 
     // CSP tests (W3C Content Security Policy Level 3)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "csp")) {
-        const csp_tests = b.addTest(.{ .root_module = csp_mod });
+        const csp_tests = b.addTest(.{ .root_module = testing_graph.csp });
         const run_csp_tests = b.addRunArtifact(csp_tests);
         test_step.dependOn(&run_csp_tests.step);
 
         // Add dedicated test files from tests/csp/ when they exist
         const csp_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "csp", .module = csp_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "csp", .module = testing_graph.csp },
         };
         addTestFilesFromDir(b, test_step, "tests/csp", target, &csp_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add csp test files: {}\n", .{err});
@@ -2933,15 +1777,15 @@ pub fn build(b: *std.Build) void {
 
     // Permissions tests (W3C Permissions API)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "permissions")) {
-        const permissions_tests = b.addTest(.{ .root_module = permissions_mod });
+        const permissions_tests = b.addTest(.{ .root_module = testing_graph.permissions });
         const run_permissions_tests = b.addRunArtifact(permissions_tests);
         test_step.dependOn(&run_permissions_tests.step);
 
         // Add dedicated test files from tests/permissions/ when they exist
         const permissions_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "permissions", .module = permissions_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "permissions", .module = testing_graph.permissions },
         };
         addTestFilesFromDir(b, test_step, "tests/permissions", target, &permissions_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add permissions test files: {}\n", .{err});
@@ -2950,15 +1794,15 @@ pub fn build(b: *std.Build) void {
 
     // Storage tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "storage")) {
-        const storage_tests = b.addTest(.{ .root_module = storage_mod });
+        const storage_tests = b.addTest(.{ .root_module = testing_graph.storage });
         const run_storage_tests = b.addRunArtifact(storage_tests);
         test_step.dependOn(&run_storage_tests.step);
 
         // Add dedicated test files from tests/storage/
         const storage_imports = [_]std.Build.Module.Import{
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "storage", .module = storage_mod },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "storage", .module = testing_graph.storage },
         };
         addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add storage test files: {}\n", .{err});
@@ -2967,18 +1811,18 @@ pub fn build(b: *std.Build) void {
 
     // CookieStore tests (WHATWG Cookie Store API)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "cookiestore")) {
-        const cookiestore_tests = b.addTest(.{ .root_module = cookiestore_mod });
+        const cookiestore_tests = b.addTest(.{ .root_module = testing_graph.cookiestore });
         const run_cookiestore_tests = b.addRunArtifact(cookiestore_tests);
         test_step.dependOn(&run_cookiestore_tests.step);
 
         // Add dedicated test files from tests/cookiestore/
         const cookiestore_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "cookiestore", .module = cookiestore_mod },
-            .{ .name = "impls", .module = impls_mod },
-            .{ .name = "interfaces", .module = interfaces_mod },
-            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "cookiestore", .module = testing_graph.cookiestore },
+            .{ .name = "impls", .module = testing_graph.impls },
+            .{ .name = "interfaces", .module = testing_graph.interfaces },
+            .{ .name = "runtime", .module = testing_graph.runtime },
         };
         addTestFilesFromDir(b, test_step, "tests/cookiestore", target, &cookiestore_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add cookiestore test files: {}\n", .{err});
@@ -2993,19 +1837,19 @@ pub fn build(b: *std.Build) void {
         // A second binding of the facade cannot share a compile with the
         // production one: Zig checks that a file belongs to one module over
         // the whole import graph, analysed or not ("file exists in modules
-        // 'engine' and 'engine0'"). runtime_mod reaches the V8 binding
+        // 'engine' and 'engine0'"). testing_graph.runtime reaches the V8 binding
         // through a `v8` import (runtime -> v8 -> impls -> engine), so these
         // tests use runtime without one - the runtime tier as the engine
         // boundary leaves it. (runtime itself imports no v8 any more: its last
         // use, realm.zig's populateIntrinsics, moved into the adapter's
         // createWindowRealm.)
         //
-        // The runtime imports "engine" too, so a tier is a copy of runtime_mod
-        // bound to its own facade: every import of runtime_mod except v8 and
+        // The runtime imports "engine" too, so a tier is a copy of testing_graph.runtime
+        // bound to its own facade: every import of testing_graph.runtime except v8 and
         // engine, plus the facade the tier's adapter makes. A copy that kept
-        // runtime_mod's engine would reach the V8-bound facade a second way,
+        // testing_graph.runtime's engine would reach the V8-bound facade a second way,
         // and the facade's file cannot be in two modules of one compile.
-        const test_adapter_tier = runtimeTier(b, target, runtime_mod, b.path("tests/runtime/protocol_test_adapter.zig"));
+        const test_adapter_tier = runtimeTier(b, target, testing_graph.runtime, b.path("tests/runtime/protocol_test_adapter.zig"));
         const runtime_tier_mod = test_adapter_tier.runtime;
         const test_adapter_engine_mod = test_adapter_tier.engine;
         // Every tests/runtime file sees the protocol bound to the runtime
@@ -3016,7 +1860,7 @@ pub fn build(b: *std.Build) void {
         // own: compiling the facade against an adapter is what checks it
         // against the protocol.
         for ([_][]const u8{ "jsc", "quickjs" }) |adapter| {
-            const adapter_tier = runtimeTier(b, target, runtime_mod, b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{adapter})));
+            const adapter_tier = runtimeTier(b, target, testing_graph.runtime, b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{adapter})));
             const conformance = b.addTest(.{
                 .name = b.fmt("engine_protocol_{s}", .{adapter}),
                 .root_module = b.createModule(.{
@@ -3031,10 +1875,10 @@ pub fn build(b: *std.Build) void {
             test_step.dependOn(&b.addRunArtifact(conformance).step);
         }
         const runtime_imports = [_]std.Build.Module.Import{
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "host", .module = testing_graph.host },
             .{ .name = "runtime", .module = runtime_tier_mod },
-            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "webidl", .module = testing_graph.webidl },
             .{ .name = "engine", .module = test_adapter_engine_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/runtime", target, &runtime_imports, false, test_selection) catch |err| {
@@ -3050,22 +1894,22 @@ pub fn build(b: *std.Build) void {
     // written next to the code it covers is a test that does not exist.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "v8")) {
         const v8_test_imports = [_]std.Build.Module.Import{
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "engine", .module = engine_mod },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "runtime", .module = testing_graph.runtime },
+            .{ .name = "v8", .module = testing_graph.v8 },
+            .{ .name = "webidl", .module = testing_graph.webidl },
+            .{ .name = "engine", .module = testing_graph.engine },
             // The generated interfaces, for a test host that makes platform
             // objects - a Window for a realm (page_realm_operations_test.zig).
-            .{ .name = "interfaces", .module = interfaces_mod },
+            .{ .name = "interfaces", .module = testing_graph.interfaces },
             // The impl helpers a tests/v8 test reaches through an impl's
             // re-export (Response.streams_js, for the Deferred lifetime test).
-            .{ .name = "impls", .module = impls_mod },
+            .{ .name = "impls", .module = testing_graph.impls },
             // DOM's hooks, for a test that fires a trusted event
             // (dom.fire_event) - the one module already in this graph
             // through impls, not a second binding of it.
-            .{ .name = "dom", .module = dom_mod },
+            .{ .name = "dom", .module = testing_graph.dom },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
@@ -3075,11 +1919,11 @@ pub fn build(b: *std.Build) void {
     // Codegen tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {
         const codegen_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "codegen", .module = codegen_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "codegen", .module = testing_graph.codegen },
+            .{ .name = "webidl", .module = testing_graph.webidl },
+            .{ .name = "infra", .module = testing_graph.infra },
         };
         addTestFilesFromDir(b, test_step, "tests/codegen", target, &codegen_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add codegen test files: {}\n", .{err});
@@ -3088,15 +1932,15 @@ pub fn build(b: *std.Build) void {
 
     // Intl tests (ECMA-402 Internationalization APIs)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "intl")) {
-        const intl_tests = b.addTest(.{ .root_module = intl_mod });
+        const intl_tests = b.addTest(.{ .root_module = testing_graph.intl });
         const run_intl_tests = b.addRunArtifact(intl_tests);
         test_step.dependOn(&run_intl_tests.step);
 
         // Add dedicated test files from tests/intl/
         const intl_imports = [_]std.Build.Module.Import{
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "intl", .module = intl_mod },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "intl", .module = testing_graph.intl },
         };
         addTestFilesFromDir(b, test_step, "tests/intl", target, &intl_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add intl test files: {}\n", .{err});
@@ -3105,14 +1949,14 @@ pub fn build(b: *std.Build) void {
 
     // Platform tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "platform")) {
-        const platform_tests = b.addTest(.{ .root_module = platform_mod });
+        const platform_tests = b.addTest(.{ .root_module = testing_graph.platform });
         const run_platform_tests = b.addRunArtifact(platform_tests);
         test_step.dependOn(&run_platform_tests.step);
 
         const platform_imports = [_]std.Build.Module.Import{
-            .{ .name = "host", .module = host_mod },
-            .{ .name = "clock", .module = clock_mod },
-            .{ .name = "platform", .module = platform_mod },
+            .{ .name = "host", .module = testing_graph.host },
+            .{ .name = "clock", .module = testing_graph.clock },
+            .{ .name = "platform", .module = testing_graph.platform },
         };
         addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
@@ -3127,8 +1971,8 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "platform", .module = platform_mod },
-                .{ .name = "mimesniff", .module = mimesniff_mod },
+                .{ .name = "platform", .module = testing_graph.platform },
+                .{ .name = "mimesniff", .module = testing_graph.mimesniff },
             },
         }) });
         test_step.dependOn(&b.addRunArtifact(wav_backend_tests).step);
@@ -3187,7 +2031,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "browser", .module = browser_mod },
+                .{ .name = "browser", .module = testing_graph.browser },
             },
         }),
     });
@@ -3988,8 +2832,8 @@ pub fn build(b: *std.Build) void {
                     // host is std-only (plus libc); it keeps these modules free
                     // of V8 and libuv while giving them the process std.Io.
                     .imports = &.{
-                        .{ .name = "clock", .module = clock_mod },
-                        .{ .name = "host", .module = host_mod },
+                        .{ .name = "clock", .module = testing_graph.clock },
+                        .{ .name = "host", .module = testing_graph.host },
                     },
                 }),
             });
@@ -4029,40 +2873,40 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = wpt_runner_optimize,
             .imports = &.{
-                .{ .name = "clock", .module = clock_mod },
-                .{ .name = "host", .module = host_mod },
-                .{ .name = "runtime", .module = runtime_mod },
-                .{ .name = "engine", .module = engine_mod },
-                .{ .name = "interfaces", .module = interfaces_mod },
-                .{ .name = "namespaces", .module = namespaces_mod },
-                .{ .name = "fetch", .module = fetch_mod },
+                .{ .name = "clock", .module = testing_graph.clock },
+                .{ .name = "host", .module = testing_graph.host },
+                .{ .name = "runtime", .module = testing_graph.runtime },
+                .{ .name = "engine", .module = testing_graph.engine },
+                .{ .name = "interfaces", .module = testing_graph.interfaces },
+                .{ .name = "namespaces", .module = testing_graph.namespaces },
+                .{ .name = "fetch", .module = testing_graph.fetch },
                 // Platform abstraction for timer backend
-                .{ .name = "platform", .module = platform_mod },
+                .{ .name = "platform", .module = testing_graph.platform },
                 // HTML event loop and timer manager (core module without interfaces)
-                .{ .name = "html", .module = html_core_mod },
+                .{ .name = "html", .module = testing_graph.html_core },
                 // HTML full module with custom_elements for thread-local cleanup
-                .{ .name = "html_full", .module = html_mod },
+                .{ .name = "html_full", .module = testing_graph.html },
                 // DOM module for mutation observer thread-local cleanup
-                .{ .name = "dom", .module = dom_mod },
+                .{ .name = "dom", .module = testing_graph.dom },
                 // Infra primitives
-                .{ .name = "infra", .module = infra_mod },
+                .{ .name = "infra", .module = testing_graph.infra },
                 // Browser module for single-isolate WPT execution
-                .{ .name = "browser", .module = browser_mod },
+                .{ .name = "browser", .module = testing_graph.browser },
                 // Impls module for HTMLParser (needed for HTML test parsing)
-                .{ .name = "impls", .module = impls_mod },
+                .{ .name = "impls", .module = testing_graph.impls },
                 // WebIDL module for Optional type wrappers
-                .{ .name = "webidl", .module = webidl_mod },
+                .{ .name = "webidl", .module = testing_graph.webidl },
                 // Dictionaries module for Event init dictionaries
-                .{ .name = "dictionaries", .module = dictionaries_mod },
+                .{ .name = "dictionaries", .module = testing_graph.dictionaries },
                 // Storage module for cleanup
-                .{ .name = "storage", .module = storage_mod },
+                .{ .name = "storage", .module = testing_graph.storage },
                 // File module for blob URL store cleanup
-                .{ .name = "file", .module = file_mod },
+                .{ .name = "file", .module = testing_graph.file },
                 // The cookie store, for testdriver's cookie commands (test_driver.zig)
-                .{ .name = "cookiestore", .module = cookiestore_mod },
+                .{ .name = "cookiestore", .module = testing_graph.cookiestore },
                 // MIME Sniffing's parser, for the WAV test backend's canPlayType
                 // (wav_backend.zig)
-                .{ .name = "mimesniff", .module = mimesniff_mod },
+                .{ .name = "mimesniff", .module = testing_graph.mimesniff },
             },
         }),
     });
@@ -5157,4 +4001,1420 @@ pub fn build(b: *std.Build) void {
     });
 
     setup_step.dependOn(&setup_data.step);
+}
+
+/// Every Crane module, built for one platform (docs/platform-protocol.md 1.1).
+///
+/// build.zig builds its module graph once per platform an invocation needs: the
+/// WPT runner and the test tiers against `testing`, the library, the CLI and the
+/// iOS build against the target's platform. Each artifact is its own compile, so
+/// a second graph costs no extra analysis; within one compile every file belongs
+/// to one module, so an artifact takes ALL its Crane modules from one graph
+/// (docs/lessons/architecture-a-module-bound-twice-cannot-share-a-compile.md).
+const CraneModules = struct {
+    whatwg: *std.Build.Module,
+    clock: *std.Build.Module,
+    host: *std.Build.Module,
+    memory: *std.Build.Module,
+    infra: *std.Build.Module,
+    webidl: *std.Build.Module,
+    storage: *std.Build.Module,
+    cookiestore: *std.Build.Module,
+    runtime: *std.Build.Module,
+    v8: *std.Build.Module,
+    codegen: *std.Build.Module,
+    callbacks: *std.Build.Module,
+    dictionaries: *std.Build.Module,
+    enums: *std.Build.Module,
+    namespaces: *std.Build.Module,
+    typedefs: *std.Build.Module,
+    interfaces: *std.Build.Module,
+    impls: *std.Build.Module,
+    webcrypto: *std.Build.Module,
+    eventsource: *std.Build.Module,
+    engine: *std.Build.Module,
+    dom: *std.Build.Module,
+    quirks: *std.Build.Module,
+    css: *std.Build.Module,
+    selector: *std.Build.Module,
+    mixins: *std.Build.Module,
+    encoding: *std.Build.Module,
+    url: *std.Build.Module,
+    urlpattern: *std.Build.Module,
+    console: *std.Build.Module,
+    streams_common: *std.Build.Module,
+    streams_event_loop: *std.Build.Module,
+    streams_async_promise: *std.Build.Module,
+    streams_test_event_loop: *std.Build.Module,
+    streams_queue: *std.Build.Module,
+    streams_read_request: *std.Build.Module,
+    streams_write_request: *std.Build.Module,
+    streams_read_into_request: *std.Build.Module,
+    streams_pull_into_descriptor: *std.Build.Module,
+    streams: *std.Build.Module,
+    mimesniff: *std.Build.Module,
+    file: *std.Build.Module,
+    fs: *std.Build.Module,
+    referrer_policy: *std.Build.Module,
+    csp: *std.Build.Module,
+    fetch: *std.Build.Module,
+    xhr: *std.Build.Module,
+    trusted_types: *std.Build.Module,
+    hr_time: *std.Build.Module,
+    websocket: *std.Build.Module,
+    platform: *std.Build.Module,
+    html_core: *std.Build.Module,
+    html: *std.Build.Module,
+    permissions: *std.Build.Module,
+    browser: *std.Build.Module,
+    webdriver: *std.Build.Module,
+    intl: *std.Build.Module,
+};
+
+/// One graph of Crane modules for `platform`. The graph of the target's own platform
+/// is `public`: its modules are registered by name (b.addModule) for packages that
+/// depend on Crane; any other graph is private to this build.
+fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Platform, config: ModuleConfig) CraneModules {
+    const public = platform == config.public_platform;
+    const optimize = config.optimize;
+    const build_options = config.build_options;
+    const debug_options = config.debug_options;
+    const engine_choice = config.engine_choice;
+    const use_system_curl = config.use_system_curl;
+    const enable_http2 = config.enable_http2;
+    // ========================================================================
+    // LIBRARY MODULE
+    // ========================================================================
+
+    const whatwg_mod = graphModule(b, public, "whatwg", .{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+    });
+
+    // ========================================================================
+    // INDIVIDUAL SPEC MODULES
+    // ========================================================================
+
+    // Process clocks. Zig 0.16 removed std.time's milliTimestamp/nanoTimestamp/
+    // timestamp/sleep/Timer; the replacements live on std.Io and need an Io value
+    // in scope. src/platform/clock.zig provides them over libc instead, so the 203
+    // call sites do not have to wait for the Io architecture.
+    //
+    // ZERO dependencies, deliberately. It is imported by fetch, storage, runtime,
+    // impls and others, and platform_mod already imports fetch - so putting the
+    // clock in platform would make fetch -> platform -> fetch. A leaf module cannot
+    // participate in a cycle.
+    const clock_mod = graphModule(b, public, "clock", .{
+        .root_source_file = b.path("src/platform/clock.zig"),
+        .target = target,
+    });
+    clock_mod.link_libc = true;
+
+    // The process std.Io. Zig 0.16 moved the filesystem, networking and timers onto
+    // std.Io, which is passed like an Allocator; Crane has ~150 filesystem sites in
+    // leaf code reached from C-ABI callbacks that cannot take another parameter.
+    // Zero dependencies for the same reason as clock_mod.
+    const host_mod = graphModule(b, public, "host", .{
+        .root_source_file = b.path("src/platform/host.zig"),
+        .target = target,
+    });
+    host_mod.link_libc = true;
+
+    // Current resident memory, for measuring whether memory is actually reclaimed.
+    // Zero dependencies for the same reason as clock_mod and host_mod: it is read
+    // from measurement loops in leaf code, and a leaf module cannot form a cycle.
+    const memory_mod = graphModule(b, public, "memory", .{
+        .root_source_file = b.path("src/platform/memory.zig"),
+        .target = target,
+    });
+    memory_mod.link_libc = true;
+
+    const infra_mod = graphModule(b, public, "infra", .{
+        .root_source_file = b.path("src/infra/root.zig"),
+        .target = target,
+    });
+    infra_mod.addImport("clock", clock_mod);
+    infra_mod.addImport("host", host_mod);
+
+    const webidl_mod = graphModule(b, public, "webidl", .{
+        .root_source_file = b.path("src/webidl/root.zig"),
+        .target = target,
+    });
+    webidl_mod.addImport("infra", infra_mod);
+    // src/webidl/root.zig re-exports codegen/root.zig, so the codegen sources are
+    // part of THIS module, not just of codegen_mod - and they need host for std.Io.
+    webidl_mod.addImport("host", host_mod);
+    webidl_mod.addImport("clock", clock_mod);
+    webidl_mod.addOptions("debug_options", debug_options);
+
+    // Storage module (IndexedDB and Storage Standard backend)
+    const storage_mod = graphModule(b, public, "storage", .{
+        .root_source_file = b.path("src/storage/root.zig"),
+        .target = target,
+    });
+    storage_mod.addImport("clock", clock_mod);
+    storage_mod.addImport("host", host_mod);
+    storage_mod.addImport("infra", infra_mod);
+
+    // Configure platform-specific storage backend linking (Phase 9)
+    // - iOS: System SQLite (Phase 9.1)
+    // - Android: System SQLite (Phase 9.2)
+    // - Desktop: SQLite + LevelDB static linking (Phase 9.3)
+    configureStorageBackends(storage_mod, target);
+
+    // CookieStore module (WHATWG Cookie Store API)
+    const cookiestore_mod = graphModule(b, public, "cookiestore", .{
+        .root_source_file = b.path("src/cookiestore/root.zig"),
+        .target = target,
+    });
+    cookiestore_mod.addImport("clock", clock_mod);
+    cookiestore_mod.addImport("host", host_mod);
+
+    // Runtime module (WebIDL runtime infrastructure)
+    const runtime_mod = graphModule(b, public, "runtime", .{
+        .root_source_file = b.path("src/runtime/root.zig"),
+        .target = target,
+    });
+    runtime_mod.addImport("clock", clock_mod);
+    runtime_mod.addImport("host", host_mod);
+    runtime_mod.addImport("webidl", webidl_mod);
+    runtime_mod.addImport("infra", infra_mod);
+    runtime_mod.addImport("storage", storage_mod);
+    runtime_mod.addOptions("build_options", build_options);
+    runtime_mod.addOptions("debug_options", debug_options);
+
+    // V8 bindings module
+    const v8_mod = graphModule(b, public, "v8", .{
+        .root_source_file = b.path("src/runtime/engines/v8/root.zig"),
+        .target = target,
+    });
+    // Phase 8 (DCE): interface_bindings consults build_options.interface_allowlist.
+    v8_mod.addOptions("build_options", build_options);
+    v8_mod.addImport("clock", clock_mod);
+    v8_mod.addImport("infra", infra_mod);
+    v8_mod.addImport("host", host_mod);
+    v8_mod.addImport("runtime", runtime_mod);
+    v8_mod.addOptions("debug_options", debug_options);
+    // v8_mod will need event_loop - added later after streams_event_loop_mod is defined
+
+    // JS bindings module
+    const js_bindings_mod = graphModule(b, public, "js_bindings", .{
+        .root_source_file = b.path("src/js_bindings/root.zig"),
+        .target = target,
+    });
+    js_bindings_mod.addImport("runtime", runtime_mod);
+
+    // WebIDL codegen module
+    const codegen_mod = graphModule(b, public, "codegen", .{
+        .root_source_file = b.path("src/webidl/codegen/root.zig"),
+        .target = target,
+    });
+    codegen_mod.addImport("webidl", webidl_mod);
+    codegen_mod.addImport("infra", infra_mod);
+    codegen_mod.addImport("host", host_mod);
+
+    // ========================================================================
+    // WEBIDL CALLBACKS MODULE
+    // ========================================================================
+
+    const callbacks_mod = graphModule(b, public, "callbacks", .{
+        .root_source_file = b.path("src/webidl/callbacks/root.zig"),
+        .target = target,
+    });
+    callbacks_mod.addImport("runtime", runtime_mod);
+    callbacks_mod.addImport("webidl", webidl_mod); // For Opt wrapper in optional parameters
+
+    // ========================================================================
+    // WEBIDL DICTIONARIES MODULE
+    // ========================================================================
+
+    const dictionaries_mod = graphModule(b, public, "dictionaries", .{
+        .root_source_file = b.path("src/webidl/dictionaries/root.zig"),
+        .target = target,
+    });
+    dictionaries_mod.addImport("runtime", runtime_mod);
+    dictionaries_mod.addImport("webidl", webidl_mod);
+
+    // ========================================================================
+    // WEBIDL ENUMS MODULE
+    // ========================================================================
+
+    const enums_mod = graphModule(b, public, "enums", .{
+        .root_source_file = b.path("src/webidl/enums/root.zig"),
+        .target = target,
+    });
+
+    // ========================================================================
+    // WEBIDL NAMESPACES MODULE
+    // ========================================================================
+
+    const namespaces_mod = graphModule(b, public, "namespaces", .{
+        .root_source_file = b.path("src/webidl/namespaces/root.zig"),
+        .target = target,
+    });
+    namespaces_mod.addImport("runtime", runtime_mod);
+    namespaces_mod.addImport("webidl", webidl_mod); // For Opt wrapper in optional parameters
+    namespaces_mod.addOptions("build_options", build_options);
+    namespaces_mod.addOptions("debug_options", debug_options);
+
+    // ========================================================================
+    // WEBIDL TYPEDEFS MODULE
+    // ========================================================================
+
+    const typedefs_mod = graphModule(b, public, "typedefs", .{
+        .root_source_file = b.path("src/webidl/typedefs/root.zig"),
+        .target = target,
+    });
+    typedefs_mod.addImport("runtime", runtime_mod);
+    typedefs_mod.addImport("callbacks", callbacks_mod);
+    typedefs_mod.addImport("webidl", webidl_mod);
+    typedefs_mod.addImport("dictionaries", dictionaries_mod);
+    typedefs_mod.addImport("enums", enums_mod);
+
+    // ========================================================================
+    // INTERFACES MODULE (WebIDL interface definitions)
+    // All interfaces in one module so they can import each other with relative paths
+    // ========================================================================
+
+    const interfaces_mod = graphModule(b, public, "interfaces", .{
+        .root_source_file = b.path("src/webidl/interfaces/root.zig"),
+        .target = target,
+    });
+    interfaces_mod.addImport("runtime", runtime_mod);
+    interfaces_mod.addImport("webidl", webidl_mod); // For Opt wrapper and other WebIDL types
+
+    // ========================================================================
+    // IMPLEMENTATIONS MODULE (WebIDL interface implementations)
+    // ========================================================================
+
+    const impls_mod = graphModule(b, public, "impls", .{
+        .root_source_file = b.path("src/webidl/impls/root.zig"),
+        .target = target,
+    });
+    impls_mod.addImport("clock", clock_mod);
+    impls_mod.addImport("host", host_mod);
+    impls_mod.addImport("runtime", runtime_mod);
+    impls_mod.addImport("storage", storage_mod); // For IndexedDB and Storage impl connections
+    impls_mod.addImport("cookiestore", cookiestore_mod); // For CookieStore impl
+
+    // Web Cryptography API primitives. Keep the pure algorithms independently
+    // testable; their tests use std.testing.allocator and injected Io.
+    const webcrypto_mod = graphModule(b, public, "webcrypto", .{
+        .root_source_file = b.path("src/webcrypto/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    impls_mod.addImport("webcrypto", webcrypto_mod);
+    webcrypto_mod.addImport("runtime", runtime_mod);
+
+    const eventsource_mod = graphModule(b, public, "eventsource", .{
+        .root_source_file = b.path("src/eventsource/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    eventsource_mod.addImport("infra", infra_mod);
+    impls_mod.addImport("eventsource", eventsource_mod);
+    impls_mod.addOptions("build_options", build_options);
+    impls_mod.addOptions("debug_options", debug_options);
+
+    // ========================================================================
+    // ENGINE PROTOCOL (module `engine`)
+    // ========================================================================
+    //
+    // AGENTS.md "The engine boundary": consumers `@import("engine")` and call
+    // `engine.op(...)`. The facade forwards every operation, inline, to
+    // `engine_impl.protocol` - the adapter `-Dengine=` selects - so dispatch
+    // is static, and a missing or mis-typed adapter function is a compile
+    // error in the facade. In a V8 build `engine_impl` IS the v8 module (its
+    // root re-exports src/runtime/engines/v8/protocol.zig), because the
+    // protocol functions live beside the adapter files they call, and a file
+    // of another module cannot import those by relative path. One module
+    // each, shared by every artifact: binding it adds no root-module
+    // analysis, and runtime already imports v8, so it adds no module cycle.
+    const engine_protocol_root = b.path("src/runtime/engine_protocol.zig");
+    const engine_mod = graphModule(b, public, "engine", .{
+        .root_source_file = engine_protocol_root,
+        .target = target,
+    });
+    engine_mod.addImport("runtime", runtime_mod);
+    const engine_impl_mod = if (std.mem.eql(u8, engine_choice, "v8")) v8_mod else b.createModule(.{
+        .root_source_file = b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{engine_choice})),
+        .target = target,
+    });
+    engine_impl_mod.addImport("engine", engine_mod);
+    engine_mod.addImport("engine_impl", engine_impl_mod);
+    impls_mod.addImport("engine", engine_mod);
+    webcrypto_mod.addImport("engine", engine_mod);
+    // The runtime reaches the engine the way everything else does: an
+    // unwrapped instance asks engine.hasWrapper, [PutForwards] and
+    // [Replaceable] setters use its Set and DefineOwnProperty. The facade
+    // imports runtime, so this is a cycle - the same shape as facade and
+    // adapter.
+    runtime_mod.addImport("engine", engine_mod);
+
+    // Cross-imports for WebIDL modules
+    interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
+    interfaces_mod.addImport("impls", impls_mod);
+    namespaces_mod.addImport("impls", impls_mod); // Namespaces need access to impls
+    interfaces_mod.addImport("typedefs", typedefs_mod);
+    interfaces_mod.addImport("dictionaries", dictionaries_mod);
+    interfaces_mod.addImport("enums", enums_mod);
+    interfaces_mod.addImport("callbacks", callbacks_mod);
+    impls_mod.addImport("interfaces", interfaces_mod);
+    impls_mod.addImport("typedefs", typedefs_mod);
+    impls_mod.addImport("dictionaries", dictionaries_mod);
+    impls_mod.addImport("enums", enums_mod);
+    impls_mod.addImport("callbacks", callbacks_mod);
+    impls_mod.addImport("webidl", webidl_mod); // For error types and WebIDL infrastructure
+
+    // V8 module needs interfaces for automatic constructor inheritance setup
+    v8_mod.addImport("interfaces", interfaces_mod);
+    // V8 module needs dictionaries for async iterator options parsing
+    v8_mod.addImport("dictionaries", dictionaries_mod);
+    // V8 module needs webidl for error types (Exception)
+    v8_mod.addImport("webidl", webidl_mod);
+    // V8 module needs typedefs for HeadersInit conversion
+    v8_mod.addImport("typedefs", typedefs_mod);
+    // V8 module needs impls for ReadableStream start callback invocation
+    v8_mod.addImport("impls", impls_mod);
+
+    // Dictionaries module needs typedefs, enums and callbacks for RequestInit and other dictionaries
+    dictionaries_mod.addImport("typedefs", typedefs_mod);
+    dictionaries_mod.addImport("enums", enums_mod);
+    dictionaries_mod.addImport("callbacks", callbacks_mod);
+
+    // AGENTS.md "The engine boundary": no module outside the V8 adapter (and
+    // its tests and tools) imports "v8" - the module graph, not only
+    // lint-engine, keeps V8 inside the adapter. The engine is reached through
+    // `engine`, which build.zig binds to the adapter.
+    // The adapter registers the namespaces a snapshot lacks when it creates a
+    // Window realm (an Engine function pointer cannot take a comptime module).
+    v8_mod.addImport("namespaces", namespaces_mod);
+
+    // DOM module
+    const dom_mod = graphModule(b, public, "dom", .{
+        .root_source_file = b.path("src/dom/root.zig"),
+        .target = target,
+    });
+    dom_mod.addImport("clock", clock_mod);
+    dom_mod.addImport("host", host_mod);
+    dom_mod.addImport("infra", infra_mod);
+    // The user agent's cookie jar, which a settings object hands out.
+    dom_mod.addImport("cookiestore", cookiestore_mod);
+    dom_mod.addImport("webcrypto", webcrypto_mod);
+    webcrypto_mod.addImport("dom", dom_mod);
+    dom_mod.addImport("webidl", webidl_mod);
+    dom_mod.addImport("runtime", runtime_mod);
+    dom_mod.addImport("storage", storage_mod);
+    dom_mod.addImport("engine", engine_mod);
+    dom_mod.addImport("interfaces", interfaces_mod);
+    dom_mod.addImport("impls", impls_mod); // For document_internals to access Document.InternalState
+    // CSP violation events (csp_violations.zig): a queued task run in the
+    // global's realm (the engine protocol), and the event's init dictionary.
+    dom_mod.addImport("engine", engine_mod);
+    dom_mod.addImport("dictionaries", dictionaries_mod);
+    dom_mod.addImport("enums", enums_mod);
+
+    // Quirks module (WHATWG Quirks Mode Standard)
+    const quirks_mod = graphModule(b, public, "quirks", .{
+        .root_source_file = b.path("src/quirks/root.zig"),
+        .target = target,
+    });
+
+    // CSS module (CSS property value parser)
+    const css_mod = graphModule(b, public, "css", .{
+        .root_source_file = b.path("src/css/root.zig"),
+        .target = target,
+    });
+    css_mod.addImport("quirks", quirks_mod);
+    // The CSSOM's model (src/dom/cssom.zig) holds a sheet's parsed rules.
+    dom_mod.addImport("css", css_mod);
+
+    // Selector module (CSS Selectors Level 4 implementation)
+    const selector_mod = graphModule(b, public, "selector", .{
+        .root_source_file = b.path("src/selector/root.zig"),
+        .target = target,
+    });
+    selector_mod.addImport("infra", infra_mod);
+    selector_mod.addImport("dom", dom_mod);
+    selector_mod.addImport("quirks", quirks_mod);
+
+    // Add selector to dom (after selector_mod is defined to avoid undefined reference)
+    dom_mod.addImport("selector", selector_mod);
+    // Add unified interfaces module
+    dom_mod.addImport("interfaces", interfaces_mod);
+
+    // V8 module needs dom for document initialization
+    v8_mod.addImport("dom", dom_mod);
+
+    // MIXINS MODULE (Shared WebIDL mixin implementations)
+    // ========================================================================
+    const mixins_mod = graphModule(b, public, "mixins", .{
+        .root_source_file = b.path("src/webidl/mixins/root.zig"),
+        .target = target,
+    });
+    mixins_mod.addImport("runtime", runtime_mod);
+    mixins_mod.addImport("interfaces", interfaces_mod);
+    mixins_mod.addImport("impls", impls_mod);
+    mixins_mod.addImport("selector", selector_mod);
+    mixins_mod.addImport("typedefs", typedefs_mod);
+    mixins_mod.addImport("enums", enums_mod);
+    mixins_mod.addImport("dictionaries", dictionaries_mod);
+    mixins_mod.addImport("callbacks", callbacks_mod);
+    mixins_mod.addImport("webidl", webidl_mod);
+    mixins_mod.addImport("mixins", mixins_mod); // Self-import for cross-mixin refs
+
+    // Add mixins to impls (so impls can use shared mixin code)
+    impls_mod.addImport("mixins", mixins_mod);
+    // Add selector to impls (for ParentNode querySelector/querySelectorAll)
+    impls_mod.addImport("selector", selector_mod);
+    // Add css to impls (the CSS namespace: CSS.supports, CSS.escape)
+    impls_mod.addImport("css", css_mod);
+
+    // Add mixins to interfaces (for ParentNode.NodeOrString and other mixin types)
+    interfaces_mod.addImport("mixins", mixins_mod);
+
+    const encoding_mod = graphModule(b, public, "encoding", .{
+        .root_source_file = b.path("src/encoding/root.zig"),
+        .target = target,
+    });
+    encoding_mod.addImport("infra", infra_mod);
+    encoding_mod.addImport("webidl", webidl_mod);
+
+    // URL internal modules that generated interfaces need
+    // URL internal modules need to be created first for cross-dependencies
+    const url_internal_host_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/internal/host.zig"),
+        .target = target,
+    });
+
+    const url_internal_path_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/internal/path.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+        },
+    });
+
+    const url_blob_url_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/blob_url.zig"),
+        .target = target,
+    });
+
+    const url_internal_url_record_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/internal/url_record.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "host", .module = url_internal_host_mod },
+            .{ .name = "path", .module = url_internal_path_mod },
+            .{ .name = "blob_url", .module = url_blob_url_mod },
+        },
+    });
+
+    const url_parser_api_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/parser/api_url_parser.zig"),
+        .target = target,
+    });
+
+    const url_host_serializer_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/serialization/host_serializer.zig"),
+        .target = target,
+    });
+    url_host_serializer_mod.addImport("host", url_internal_host_mod);
+    url_host_serializer_mod.addImport("infra", infra_mod);
+
+    const url_path_serializer_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/serialization/url_path_serializer.zig"),
+        .target = target,
+    });
+    url_path_serializer_mod.addImport("url_record", url_internal_url_record_mod);
+    url_path_serializer_mod.addImport("infra", infra_mod);
+
+    const url_serializer_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/serialization/url_serializer.zig"),
+        .target = target,
+    });
+    url_serializer_mod.addImport("url_record", url_internal_url_record_mod);
+    url_serializer_mod.addImport("path_serializer", url_path_serializer_mod);
+    url_serializer_mod.addImport("host_serializer", url_host_serializer_mod);
+    url_serializer_mod.addImport("infra", infra_mod);
+
+    const url_basic_parser_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/parser/basic_url_parser.zig"),
+        .target = target,
+    });
+    url_basic_parser_mod.addImport("infra", infra_mod);
+    url_basic_parser_mod.addImport("url_record", url_internal_url_record_mod);
+    url_basic_parser_mod.addImport("host", url_internal_host_mod);
+    url_basic_parser_mod.addImport("path", url_internal_path_mod);
+
+    // Add imports to url_parser_api_mod now that dependencies are defined
+    url_parser_api_mod.addImport("infra", infra_mod);
+    url_parser_api_mod.addImport("url_record", url_internal_url_record_mod);
+    url_parser_api_mod.addImport("basic_parser", url_basic_parser_mod);
+    // encodingParseAndSerialize serializes what it parses.
+    url_parser_api_mod.addImport("url_serializer", url_serializer_mod);
+
+    const url_parser_state_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/parser/parser_state.zig"),
+        .target = target,
+    });
+
+    const url_helpers_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/parser/helpers.zig"),
+        .target = target,
+    });
+
+    // Add late imports to url_basic_parser_mod now that helpers and parser_state are defined
+    url_basic_parser_mod.addImport("parser_state", url_parser_state_mod);
+    url_basic_parser_mod.addImport("helpers", url_helpers_mod);
+
+    const url_percent_encoding_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/encoding/percent_encoding.zig"),
+        .target = target,
+        .imports = &[_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+        },
+    });
+
+    const url_encode_sets_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/encoding/encode_sets.zig"),
+        .target = target,
+    });
+
+    const url_search_params_impl_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/internal/url_search_params_impl.zig"),
+        .target = target,
+        .imports = &[_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+        },
+    });
+
+    const url_form_parser_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/form_urlencoded/parser.zig"),
+        .target = target,
+    });
+    url_form_parser_mod.addImport("infra", infra_mod);
+    url_form_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
+
+    const url_form_serializer_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/form_urlencoded/serializer.zig"),
+        .target = target,
+    });
+    url_form_serializer_mod.addImport("form_parser", url_form_parser_mod);
+    url_form_serializer_mod.addImport("infra", infra_mod);
+    url_form_serializer_mod.addImport("percent_encoding", url_percent_encoding_mod);
+    url_form_serializer_mod.addImport("encode_sets", url_encode_sets_mod);
+
+    // Additional URL modules for internal use
+    const url_validation_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/validation.zig"),
+        .target = target,
+    });
+
+    const url_ipv4_serializer_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/serialization/ipv4_serializer.zig"),
+        .target = target,
+        .imports = &[_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+        },
+    });
+
+    const url_ipv6_serializer_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/serialization/ipv6_serializer.zig"),
+        .target = target,
+        .imports = &[_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+        },
+    });
+
+    // Add serializer dependencies to host_serializer (needed after ipv4/ipv6 serializers are defined)
+    url_host_serializer_mod.addImport("ipv4_serializer", url_ipv4_serializer_mod);
+    url_host_serializer_mod.addImport("ipv6_serializer", url_ipv6_serializer_mod);
+
+    const url_ipv4_parser_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/parser/ipv4_parser.zig"),
+        .target = target,
+    });
+
+    const url_ipv6_parser_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/parser/ipv6_parser.zig"),
+        .target = target,
+    });
+
+    const url_idna_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/idna/root.zig"),
+        .target = target,
+    });
+    url_idna_mod.addImport("infra", infra_mod);
+
+    const url_host_parser_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/parser/host_parser.zig"),
+        .target = target,
+    });
+    url_host_parser_mod.addImport("infra", infra_mod);
+    url_host_parser_mod.addImport("idna", url_idna_mod);
+    url_host_parser_mod.addImport("validation", url_validation_mod);
+    url_host_parser_mod.addImport("host", url_internal_host_mod);
+    url_host_parser_mod.addImport("ipv4_parser", url_ipv4_parser_mod);
+    url_host_parser_mod.addImport("ipv6_parser", url_ipv6_parser_mod);
+    url_host_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
+    url_host_parser_mod.addImport("encode_sets", url_encode_sets_mod);
+
+    // Add host_parser import to url_basic_parser_mod now that it's defined
+    url_basic_parser_mod.addImport("host_parser", url_host_parser_mod);
+
+    const url_windows_drive_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/internal/windows_drive.zig"),
+        .target = target,
+        .imports = &[_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+        },
+    });
+
+    // Add remaining imports to url_basic_parser_mod now that all dependencies are defined
+    url_basic_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
+    url_basic_parser_mod.addImport("encode_sets", url_encode_sets_mod);
+    url_basic_parser_mod.addImport("windows_drive", url_windows_drive_mod);
+    // The URL parser's query state percent-encodes after encoding with the
+    // given encoding (HTML "encoding-parse a URL": the document's).
+    url_basic_parser_mod.addImport("encoding", encoding_mod);
+
+    const url_special_schemes_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/internal/special_schemes.zig"),
+        .target = target,
+    });
+
+    const url_origin_mod_internal = b.createModule(.{
+        .root_source_file = b.path("src/url/origin.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "url_record", .module = url_internal_url_record_mod },
+            .{ .name = "host", .module = url_internal_host_mod },
+            .{ .name = "host_serializer", .module = url_host_serializer_mod },
+            .{ .name = "path", .module = url_internal_path_mod },
+            .{ .name = "path_serializer", .module = url_path_serializer_mod },
+            .{ .name = "api_url_parser", .module = url_parser_api_mod },
+        },
+    });
+
+    const url_equivalence_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/equivalence.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "url_record", .module = url_internal_url_record_mod },
+            .{ .name = "host", .module = url_internal_host_mod },
+            .{ .name = "url_serializer", .module = url_serializer_mod },
+            .{ .name = "path", .module = url_internal_path_mod },
+        },
+    });
+
+    // Add dependencies for internal modules
+    url_search_params_impl_mod.addImport("form_parser", url_form_parser_mod);
+    url_search_params_impl_mod.addImport("form_serializer", url_form_serializer_mod);
+
+    url_ipv4_parser_mod.addImport("infra", infra_mod);
+    url_ipv4_parser_mod.addImport("validation", url_validation_mod);
+    url_ipv6_parser_mod.addImport("infra", infra_mod);
+    url_ipv6_parser_mod.addImport("validation", url_validation_mod);
+    url_percent_encoding_mod.addImport("encode_sets", url_encode_sets_mod);
+    url_blob_url_mod.addImport("origin", url_origin_mod_internal);
+
+    // Main url module
+    const url_mod = graphModule(b, public, "url", .{
+        .root_source_file = b.path("src/url/root.zig"),
+        .target = target,
+    });
+    url_mod.addImport("infra", infra_mod);
+    url_mod.addImport("webidl", webidl_mod);
+    url_mod.addImport("encoding", encoding_mod);
+    url_mod.addImport("url_search_params_impl", url_search_params_impl_mod);
+    url_mod.addImport("url_record", url_internal_url_record_mod);
+    url_mod.addImport("host_serializer", url_host_serializer_mod);
+    url_mod.addImport("basic_parser", url_basic_parser_mod);
+    url_mod.addImport("parser_state", url_parser_state_mod);
+    url_mod.addImport("encode_sets", url_encode_sets_mod);
+    url_mod.addImport("percent_encoding", url_percent_encoding_mod);
+    url_mod.addImport("windows_drive", url_windows_drive_mod);
+    url_mod.addImport("special_schemes", url_special_schemes_mod);
+    url_mod.addImport("validation", url_validation_mod);
+    url_mod.addImport("host", url_internal_host_mod);
+    url_mod.addImport("ipv4_parser", url_ipv4_parser_mod);
+    url_mod.addImport("ipv6_parser", url_ipv6_parser_mod);
+    url_mod.addImport("idna", url_idna_mod);
+    url_mod.addImport("host_parser", url_host_parser_mod);
+    url_mod.addImport("ipv4_serializer", url_ipv4_serializer_mod);
+    url_mod.addImport("ipv6_serializer", url_ipv6_serializer_mod);
+    url_mod.addImport("helpers", url_helpers_mod);
+    url_mod.addImport("origin", url_origin_mod_internal);
+    url_mod.addImport("blob_url", url_blob_url_mod);
+    url_mod.addImport("equivalence", url_equivalence_mod);
+    url_mod.addImport("path_serializer", url_path_serializer_mod);
+
+    // URL infrastructure modules for impls (needed by URL.zig and URLSearchParams.zig impl)
+    impls_mod.addImport("url_record", url_internal_url_record_mod);
+    impls_mod.addImport("api_parser", url_parser_api_mod);
+    impls_mod.addImport("basic_parser", url_basic_parser_mod);
+    impls_mod.addImport("url_serializer", url_serializer_mod);
+    impls_mod.addImport("host_serializer", url_host_serializer_mod);
+    impls_mod.addImport("path_serializer", url_path_serializer_mod);
+    impls_mod.addImport("origin", url_origin_mod_internal);
+    impls_mod.addImport("percent_encoding", url_percent_encoding_mod);
+    impls_mod.addImport("encode_sets", url_encode_sets_mod);
+    impls_mod.addImport("parser_state", url_parser_state_mod);
+    impls_mod.addImport("form_parser", url_form_parser_mod);
+    impls_mod.addImport("form_serializer", url_form_serializer_mod);
+
+    // Infra module for URLSearchParams (List type)
+    impls_mod.addImport("infra", infra_mod);
+
+    // Encoding module for TextDecoder/TextEncoder implementations
+    impls_mod.addImport("encoding", encoding_mod);
+    eventsource_mod.addImport("encoding", encoding_mod);
+
+    // ========================================================================
+    // URLPATTERN MODULE (WHATWG URLPattern Standard)
+    // ========================================================================
+
+    const urlpattern_mod = graphModule(b, public, "urlpattern", .{
+        .root_source_file = b.path("src/urlpattern/root.zig"),
+        .target = target,
+    });
+    urlpattern_mod.addImport("url", url_mod);
+
+    const console_mod = graphModule(b, public, "console", .{
+        .root_source_file = b.path("src/console/root.zig"),
+        .target = target,
+    });
+    console_mod.addImport("webidl", webidl_mod);
+    console_mod.addImport("interfaces", interfaces_mod);
+    console_mod.addImport("namespaces", namespaces_mod);
+
+    // Streams internal modules (used by both root.zig and generated interfaces)
+    // All internal files need to import each other via modules to avoid circular file ownership
+
+    const streams_common_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/common.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "webidl", .module = webidl_mod },
+        },
+    });
+
+    const streams_event_loop_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/event_loop.zig"),
+        .target = target,
+    });
+
+    const streams_async_promise_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/async_promise.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "event_loop", .module = streams_event_loop_mod },
+            .{ .name = "common", .module = streams_common_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "infra", .module = infra_mod },
+        },
+    });
+
+    const streams_test_event_loop_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/test_event_loop.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "event_loop", .module = streams_event_loop_mod },
+            .{ .name = "infra", .module = infra_mod },
+        },
+    });
+
+    const streams_queue_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/queue_with_sizes.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "common", .module = streams_common_mod },
+        },
+    });
+
+    const streams_read_request_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/read_request.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "common", .module = streams_common_mod },
+        },
+    });
+
+    const streams_write_request_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/write_request.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "queue_with_sizes", .module = streams_queue_mod },
+            .{ .name = "async_promise", .module = streams_async_promise_mod },
+            .{ .name = "event_loop", .module = streams_event_loop_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+        },
+    });
+
+    const streams_read_into_request_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/read_into_request.zig"),
+        .target = target,
+    });
+
+    const streams_read_into_request_promise_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/read_into_request_promise.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "event_loop", .module = streams_event_loop_mod },
+            .{ .name = "async_promise", .module = streams_async_promise_mod },
+            .{ .name = "read_into_request", .module = streams_read_into_request_mod },
+        },
+    });
+
+    const streams_pull_into_descriptor_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/pull_into_descriptor.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "webidl", .module = webidl_mod },
+        },
+    });
+
+    const streams_async_iterator_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/async_iterator.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "common", .module = streams_common_mod },
+        },
+    });
+
+    const streams_message_port_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/message_port.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "common", .module = streams_common_mod },
+        },
+    });
+
+    const streams_cross_realm_transform_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/cross_realm_transform.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "common", .module = streams_common_mod },
+            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
+            .{ .name = "message_port", .module = streams_message_port_mod },
+        },
+    });
+
+    const streams_view_construction_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/view_construction.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
+        },
+    });
+
+    const streams_structured_clone_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/structured_clone.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "common", .module = streams_common_mod },
+            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
+            .{ .name = "message_port", .module = streams_message_port_mod },
+        },
+    });
+
+    // Main streams module
+    const streams_mod = graphModule(b, public, "streams", .{
+        .root_source_file = b.path("src/streams/root.zig"),
+        .target = target,
+    });
+    streams_mod.addImport("infra", infra_mod);
+    streams_mod.addImport("webidl", webidl_mod);
+    streams_mod.addImport("runtime", runtime_mod);
+    streams_mod.addImport("dom", dom_mod);
+
+    // Add event loop to runtime and v8 for async operations (streams, promises)
+    runtime_mod.addImport("event_loop", streams_event_loop_mod);
+    v8_mod.addImport("event_loop", streams_event_loop_mod);
+    v8_mod.addImport("streams_async_promise", streams_async_promise_mod);
+
+    // Add internal modules so root.zig can access them
+    streams_mod.addImport("common", streams_common_mod);
+    streams_mod.addImport("event_loop", streams_event_loop_mod);
+    streams_mod.addImport("async_promise", streams_async_promise_mod);
+    streams_mod.addImport("test_event_loop", streams_test_event_loop_mod);
+    streams_mod.addImport("queue_with_sizes", streams_queue_mod);
+    streams_mod.addImport("read_request", streams_read_request_mod);
+    streams_mod.addImport("read_into_request", streams_read_into_request_mod);
+    streams_mod.addImport("pull_into_descriptor", streams_pull_into_descriptor_mod);
+    streams_mod.addImport("write_request", streams_write_request_mod);
+    streams_mod.addImport("structured_clone", streams_structured_clone_mod);
+    streams_mod.addImport("view_construction", streams_view_construction_mod);
+    streams_mod.addImport("async_iterator", streams_async_iterator_mod);
+    streams_mod.addImport("message_port", streams_message_port_mod);
+    streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
+    // Add unified interfaces module
+    streams_mod.addImport("interfaces", interfaces_mod);
+
+    // Add streams event loop to interfaces for ReadableStreamBYOBReader init
+    interfaces_mod.addImport("streams_event_loop", streams_event_loop_mod);
+
+    // Add streams modules to impls for ReadableStream, WritableStream, TransformStream implementations
+    impls_mod.addImport("streams_common", streams_common_mod);
+    impls_mod.addImport("streams_event_loop", streams_event_loop_mod);
+    impls_mod.addImport("streams_async_promise", streams_async_promise_mod);
+    impls_mod.addImport("streams_test_event_loop", streams_test_event_loop_mod);
+    impls_mod.addImport("streams_queue", streams_queue_mod);
+    impls_mod.addImport("streams_read_request", streams_read_request_mod);
+    impls_mod.addImport("streams_write_request", streams_write_request_mod);
+    impls_mod.addImport("streams_read_into_request", streams_read_into_request_mod);
+    impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
+    impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
+    impls_mod.addImport("streams_internal", streams_message_port_mod);
+
+    // DOM module for XPath implementations
+    impls_mod.addImport("dom", dom_mod);
+
+    // Quirks module for Document quirks mode support
+    impls_mod.addImport("quirks", quirks_mod);
+
+    // ArrayBufferView is part of runtime module, no separate module needed
+    // (ReadableStreamBYOBReader accesses it via runtime.arraybuffer_view)
+
+    const mimesniff_mod = graphModule(b, public, "mimesniff", .{
+        .root_source_file = b.path("src/mimesniff/root.zig"),
+        .target = target,
+    });
+    mimesniff_mod.addImport("infra", infra_mod);
+    impls_mod.addImport("mimesniff", mimesniff_mod); // FileReader's package data parses a Blob's type
+
+    // File API module (W3C File API - Blob, File, FileReader)
+    const file_mod = graphModule(b, public, "file", .{
+        .root_source_file = b.path("src/file/root.zig"),
+        .target = target,
+    });
+    file_mod.addImport("clock", clock_mod);
+    file_mod.addImport("host", host_mod);
+    // File module dependencies can be added here when needed:
+    // file_mod.addImport("infra", infra_mod);
+    // file_mod.addImport("encoding", encoding_mod);
+    // file_mod.addImport("streams", streams_mod);
+
+    // Add file module to impls (for Blob, File, FileReader implementations)
+    impls_mod.addImport("file", file_mod);
+
+    // File System Access API module (WHATWG File System Standard)
+    const fs_mod = graphModule(b, public, "fs", .{
+        .root_source_file = b.path("src/fs/root.zig"),
+        .target = target,
+    });
+    fs_mod.addImport("clock", clock_mod);
+    fs_mod.addImport("host", host_mod);
+    // fs_mod dependencies will be added as implementation progresses:
+    // fs_mod.addImport("storage", storage_mod);
+    // fs_mod.addImport("streams", streams_mod);
+
+    // Add fs to storage module for StorageManager.getDirectory()
+    // Per WHATWG File System spec, navigator.storage.getDirectory() returns FileSystemDirectoryHandle
+    storage_mod.addImport("fs", fs_mod);
+
+    // Referrer Policy module (W3C Referrer Policy)
+    const referrer_policy_mod = graphModule(b, public, "referrer_policy", .{
+        .root_source_file = b.path("src/referrer_policy/root.zig"),
+        .target = target,
+    });
+
+    // CSP module (W3C Content Security Policy Level 3)
+    const csp_mod = graphModule(b, public, "csp", .{
+        .root_source_file = b.path("src/csp/root.zig"),
+        .target = target,
+    });
+    csp_mod.addImport("clock", clock_mod);
+    csp_mod.addImport("host", host_mod);
+
+    // Fetch API module (WHATWG Fetch Standard)
+    const fetch_mod = graphModule(b, public, "fetch", .{
+        .root_source_file = b.path("src/fetch/root.zig"),
+        .target = target,
+    });
+    fetch_mod.addImport("clock", clock_mod);
+    fetch_mod.addImport("host", host_mod);
+    fetch_mod.addImport("referrer_policy", referrer_policy_mod);
+    // A request's policy container holds its client's CSP list, which main
+    // fetch checks the request against (CSP 4.1).
+    fetch_mod.addImport("csp", csp_mod);
+    // HTTP-redirect fetch parses a `Location` value against the response URL.
+    // The same three URL modules `xhr_mod` takes, for the same reason.
+    fetch_mod.addImport("url_record", url_internal_url_record_mod);
+    fetch_mod.addImport("basic_parser", url_basic_parser_mod);
+    fetch_mod.addImport("url_serializer", url_serializer_mod);
+    // Main fetch step 12 and the CORS check compare origins (URL "origin").
+    fetch_mod.addImport("origin", url_origin_mod_internal);
+    // Main fetch step 19: a JavaScript MIME type essence match (MIME Sniffing).
+    fetch_mod.addImport("mimesniff", mimesniff_mod);
+    // HTTP-network-or-cache fetch sends and stores cookies in the jar.
+    fetch_mod.addImport("cookiestore", cookiestore_mod);
+    // The network layer asks the vendored TLS library what ALPN chose, and
+    // tests that HTTP/2 is live when the build asked for it. Its own options
+    // module: one options file imported as a module by two others in the same
+    // compilation is an error ("file exists in modules"), and build_options
+    // already is, through runtime and impls.
+    const curl_options = b.addOptions();
+    curl_options.addOption(bool, "http2", enable_http2 and !use_system_curl);
+    curl_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
+    fetch_mod.addOptions("curl_options", curl_options);
+    // A base64 data: URL body is Infra's forgiving-base64 decode.
+    fetch_mod.addImport("infra", infra_mod);
+
+    // Configure libcurl for network requests
+    if (use_system_curl) {
+        // Development: Use system libcurl for faster builds
+        fetch_mod.linkSystemLibrary("curl", .{});
+    } else if (config.static_libcurl) |static| {
+        // Production: the statically compiled libcurl with mbedTLS
+        linkStaticLibcurl(b, fetch_mod, target, static.libcurl);
+    }
+    const linked_mbedtls: ?*std.Build.Step.Compile = if (config.static_libcurl) |static| static.mbedtls else null;
+
+    // WebCrypto shares curl's exact mbedTLS artifact - build.zig.zon's
+    // `.mbedtls`, which buildStaticLibcurl links into libcurl - including its
+    // installed headers.
+    if (linked_mbedtls) |library| webcrypto_mod.linkLibrary(library);
+    const webcrypto_options = b.addOptions();
+    webcrypto_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
+    webcrypto_mod.addOptions("options", webcrypto_options);
+    webcrypto_mod.addCMacro("MBEDTLS_THREADING_C", "");
+    webcrypto_mod.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
+    if (target.result.os.tag == .ios) addIosSdkPaths(webcrypto_mod, iosSdkPath(b));
+
+    // fetch_mod dependencies will be added as implementation progresses:
+    // fetch_mod.addImport("url", url_mod);
+    // fetch_mod.addImport("streams", streams_mod);
+    // fetch_mod.addImport("encoding", encoding_mod);
+
+    // XMLHttpRequest module (WHATWG XHR Standard)
+    const xhr_mod = graphModule(b, public, "xhr", .{
+        .root_source_file = b.path("src/xhr/root.zig"),
+        .target = target,
+    });
+    xhr_mod.addImport("clock", clock_mod);
+    xhr_mod.addImport("host", host_mod);
+    xhr_mod.addImport("fetch", fetch_mod); // XHR uses Fetch infrastructure
+    xhr_mod.addImport("mimesniff", mimesniff_mod); // XHR uses MIME type parsing for overrideMimeType
+    // open() resolves a relative URL against the document base URL, which needs
+    // the URL parser. Without this, `parseURL` accepted only absolute http(s),
+    // data and file URLs and threw SyntaxError on everything else - and every
+    // WPT XHR test asks for `resources/*.py`, so `send()` was never reached.
+    // `url_mod`'s root does not re-export the serializer, and the parser is
+    // reachable only as `url.parser.basic_url_parser`, so take the same three
+    // modules `impls_mod` does (build.zig:1332-1335).
+    xhr_mod.addImport("url_record", url_internal_url_record_mod);
+    xhr_mod.addImport("basic_parser", url_basic_parser_mod);
+    xhr_mod.addImport("url_serializer", url_serializer_mod);
+    //
+    // `runtime` is deliberately NOT an import here. `src/xhr/internal/context.zig`
+    // was the only file that wanted it, for a `runtime.event_loop.Scheduler`
+    // that does not exist; that file is gone. Keeping xhr free of `runtime`
+    // also breaks the cycle `impls -> xhr -> runtime -> v8 -> impls`, which is
+    // what stopped `xhr_mod` from being cloned into a test root, and lets the
+    // test block below run without linking V8.
+
+    // Allow impls to access fetch for Headers, Request, Response implementations
+    impls_mod.addImport("fetch", fetch_mod);
+    impls_mod.addImport("url", url_mod); // For Request constructor URL parsing
+    impls_mod.addImport("urlpattern", urlpattern_mod); // For URLPattern implementation
+    impls_mod.addImport("xhr", xhr_mod); // For FormData implementation
+
+    // Trusted Types module (W3C Trusted Types)
+    const trusted_types_mod = graphModule(b, public, "trusted_types", .{
+        .root_source_file = b.path("src/trusted_types/root.zig"),
+        .target = target,
+    });
+    // trusted_types_mod dependencies will be added as implementation progresses:
+    // trusted_types_mod.addImport("infra", infra_mod);
+    // trusted_types_mod.addImport("webidl", webidl_mod);
+
+    // Add trusted_types to impls for TrustedHTML, TrustedScript, etc. implementations
+    impls_mod.addImport("trusted_types", trusted_types_mod);
+
+    // Add csp to impls for Document CSP checks
+    impls_mod.addImport("csp", csp_mod);
+
+    // HR-Time module (W3C High Resolution Time)
+    const hr_time_mod = graphModule(b, public, "hr_time", .{
+        .root_source_file = b.path("src/hr_time/root.zig"),
+        .target = target,
+    });
+    hr_time_mod.addImport("clock", clock_mod);
+    hr_time_mod.addImport("host", host_mod);
+
+    // Add hr_time to impls for Performance implementation
+    impls_mod.addImport("hr_time", hr_time_mod);
+
+    // WebSocket module (WHATWG WebSockets API)
+    const websocket_mod = graphModule(b, public, "websocket", .{
+        .root_source_file = b.path("src/websocket/root.zig"),
+        .target = target,
+    });
+    // WebSocket needs fetch for curl backend
+    websocket_mod.addImport("fetch", fetch_mod);
+    // The opening handshake's cookies come from and go to the jar.
+    websocket_mod.addImport("cookiestore", cookiestore_mod);
+
+    // Add websocket to impls for WebSocket interface implementation
+    impls_mod.addImport("websocket", websocket_mod);
+
+    // Platform module (Platform abstraction layer)
+    const platform_mod = graphModule(b, public, "platform", .{
+        .root_source_file = b.path("src/platform/root.zig"),
+        .target = target,
+    });
+    platform_mod.addImport("clock", clock_mod);
+    platform_mod.addImport("host", host_mod);
+    // Platform module needs fetch for NetworkBackend adapter (bridges old/new interfaces)
+    platform_mod.addImport("fetch", fetch_mod);
+
+    // HTML Core module (WHATWG HTML Standard) - Interface-free subset
+    // Contains parser (§13), window (§7), event loop (§8.1.7), structured clone (§2.7)
+    // This module can be safely imported by impls without creating a cycle.
+    // NO imports of: interfaces, impls, runtime
+    //
+    // ARCHITECTURAL NOTE: fetch_mod is safe to import here because:
+    // - fetch_mod only imports: referrer_policy_mod (no cycles possible)
+    // - This enables real HTTP(S) fetching for navigation and workers
+    // - See whatwg-aujed for the analysis that led to this decision
+    const html_core_mod = graphModule(b, public, "html_core", .{
+        .root_source_file = b.path("src/html/root.zig"),
+        .target = target,
+    });
+    html_core_mod.addImport("clock", clock_mod);
+    html_core_mod.addImport("host", host_mod);
+    html_core_mod.addImport("infra", infra_mod);
+    html_core_mod.addImport("dom", dom_mod);
+    html_core_mod.addImport("eventsource", eventsource_mod);
+    html_core_mod.addImport("platform", platform_mod);
+    html_core_mod.addImport("fetch", fetch_mod);
+    html_core_mod.addImport("storage", storage_mod); // For web_storage.zig Storage backend
+    html_core_mod.addImport("encoding", encoding_mod); // For iframe document loading encoding detection
+    // HTML "determining the character encoding": the transport layer's charset
+    // is the charset parameter of the Content-Type, parsed as a MIME type.
+    html_core_mod.addImport("mimesniff", mimesniff_mod);
+    // WorkerLocation's origin is the URL Standard's origin of the worker's URL.
+    html_core_mod.addImport("origin", url_origin_mod_internal);
+    html_core_mod.addImport("basic_parser", url_basic_parser_mod);
+    // A browsing context reaches the user agent's cookie jar.
+    html_core_mod.addImport("cookiestore", cookiestore_mod);
+
+    // HTML module (full WHATWG HTML Standard) - Includes interface-dependent code
+    // Uses full.zig as root which re-exports html_core plus adds interface access.
+    // Contains everything in html_core PLUS access to:
+    // - interfaces module (for script execution files)
+    // - impls module (for script execution coordination)
+    // - runtime module (for JS execution context)
+    //
+    // Dependency graph (no cycle):
+    //   html_core_mod ← infra, dom, platform (NO interfaces)
+    //        ↓
+    //   impls_mod ← html_core_mod, interfaces_mod, ...
+    //        ↓
+    //   html_mod ← interfaces_mod, impls_mod, runtime_mod (CAN use interfaces)
+    //
+    // html_mod does NOT feed back into impls_mod, so no cycle is created.
+    const html_mod = graphModule(b, public, "html", .{
+        .root_source_file = b.path("src/html/full.zig"),
+        .target = target,
+    });
+    // Import html_core as a module (not file import) to avoid file ownership conflicts
+    html_mod.addImport("html_core", html_core_mod);
+    // Interface access for script execution files (now in src/html/)
+    html_mod.addImport("interfaces", interfaces_mod);
+    html_mod.addImport("impls", impls_mod);
+    html_mod.addImport("runtime", runtime_mod);
+    html_mod.addImport("platform", platform_mod);
+    // WebIDL types needed by custom_elements.zig and upgrade.zig
+    html_mod.addImport("webidl", webidl_mod);
+    // Dependencies for script_execution.zig, script_runner.zig, event_utils.zig
+    html_mod.addImport("infra", infra_mod);
+    html_mod.addImport("fetch", fetch_mod);
+    html_mod.addImport("csp", csp_mod);
+    // The engine protocol (AGENTS.md "The engine boundary"): html's
+    // engine-neutral code calls `engine.op`.
+    html_mod.addImport("engine", engine_mod);
+    html_mod.addImport("dictionaries", dictionaries_mod);
+    // The Unicode bidi classes, for HTML's directionality (form_associated.zig).
+    html_mod.addImport("url", url_mod);
+    // DOM module for document_internals access in parser_script_execution.zig
+    html_mod.addImport("dom", dom_mod);
+    // HTML "encoding-parse a URL" (html.encoding_parse) runs the URL parser
+    // with a document's encoding.
+    html_mod.addImport("api_parser", url_parser_api_mod);
+    // A style sheet's @import rules, for style_sheet_loading.zig.
+    html_mod.addImport("css", css_mod);
+
+    // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
+    // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
+    impls_mod.addImport("html_core", html_core_mod);
+
+    // Add platform to impls for Worker to access TimerBackend
+    impls_mod.addImport("platform", platform_mod);
+
+    // Add html_core and csp to dom for document_internals
+    dom_mod.addImport("html_core", html_core_mod);
+    dom_mod.addImport("csp", csp_mod);
+    dom_mod.addImport("trusted_types", trusted_types_mod);
+    // A settings object is a request's client: global_settings.requestClient
+    // hands fetch what "populate request from client" reads.
+    dom_mod.addImport("fetch", fetch_mod);
+
+    // Add html to impls for script execution algorithms
+    // Note: This creates html ↔ impls mutual dependency. Zig handles this because
+    // the dependency is only at the module level, not at function call time during
+    // module initialization. The imports are lazy (evaluated when used).
+    impls_mod.addImport("html", html_mod);
+
+    // Permissions module (W3C Permissions API)
+    const permissions_mod = graphModule(b, public, "permissions", .{
+        .root_source_file = b.path("src/permissions/root.zig"),
+        .target = target,
+    });
+
+    // Add permissions to impls for navigator.permissions implementation
+    impls_mod.addImport("permissions", permissions_mod);
+
+    // Browser module - Single V8 isolate browser implementation for WPT
+    const browser_mod = graphModule(b, public, "browser", .{
+        .root_source_file = b.path("src/browser/root.zig"),
+        .target = target,
+    });
+    browser_mod.addImport("clock", clock_mod);
+    browser_mod.addImport("host", host_mod);
+    browser_mod.addImport("engine", engine_mod);
+    browser_mod.addImport("runtime", runtime_mod);
+    browser_mod.addImport("interfaces", interfaces_mod);
+    // crane.Process installs the mixins' hooks (mixins.installHooks).
+    browser_mod.addImport("mixins", mixins_mod);
+    browser_mod.addImport("namespaces", namespaces_mod);
+    browser_mod.addImport("fetch", fetch_mod);
+    // The Browser owns the user agent's cookie jar.
+    browser_mod.addImport("cookiestore", cookiestore_mod);
+    browser_mod.addImport("impls", impls_mod);
+    browser_mod.addImport("webidl", webidl_mod);
+    browser_mod.addImport("dom", dom_mod);
+    browser_mod.addImport("html", html_mod);
+    // BrowserConfig.media_backend: the host's media decoding.
+    browser_mod.addImport("platform", platform_mod);
+    // A navigation's URL string is parsed and serialized before it is fetched.
+    browser_mod.addImport("basic_parser", url_basic_parser_mod);
+    browser_mod.addImport("url_serializer", url_serializer_mod);
+
+    // WebDriver module - W3C WebDriver protocol implementation for wptrunner
+    const webdriver_mod = graphModule(b, public, "webdriver", .{
+        .root_source_file = b.path("src/webdriver/root.zig"),
+        .target = target,
+    });
+    webdriver_mod.addImport("clock", clock_mod);
+    webdriver_mod.addImport("host", host_mod);
+    webdriver_mod.addImport("browser", browser_mod);
+
+    // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
+    const intl_mod = graphModule(b, public, "intl", .{
+        .root_source_file = b.path("src/intl/root.zig"),
+        .target = target,
+    });
+    intl_mod.addImport("infra", infra_mod);
+    intl_mod.addImport("host", host_mod);
+
+    // V8 module needs intl for pure Zig Intl.DateTimeFormat implementation
+    v8_mod.addImport("intl", intl_mod);
+
+    // V8 module needs fetch for ES module loading from HTTP URLs
+    v8_mod.addImport("fetch", fetch_mod);
+
+    // Wire spec modules into whatwg module
+    whatwg_mod.addImport("infra", infra_mod);
+    whatwg_mod.addImport("webidl", webidl_mod);
+    whatwg_mod.addImport("runtime", runtime_mod);
+    whatwg_mod.addImport("dom", dom_mod);
+    whatwg_mod.addImport("encoding", encoding_mod);
+    whatwg_mod.addImport("url", url_mod);
+    whatwg_mod.addImport("console", console_mod);
+    whatwg_mod.addImport("streams", streams_mod);
+    whatwg_mod.addImport("mimesniff", mimesniff_mod);
+    whatwg_mod.addImport("interfaces", interfaces_mod);
+    whatwg_mod.addImport("impls", impls_mod);
+    whatwg_mod.addImport("quirks", quirks_mod);
+    whatwg_mod.addImport("css", css_mod);
+    whatwg_mod.addImport("file", file_mod);
+    whatwg_mod.addImport("fs", fs_mod);
+    whatwg_mod.addImport("fetch", fetch_mod);
+    whatwg_mod.addImport("trusted_types", trusted_types_mod);
+    whatwg_mod.addImport("csp", csp_mod);
+    whatwg_mod.addImport("hr_time", hr_time_mod);
+    whatwg_mod.addImport("websocket", websocket_mod);
+    whatwg_mod.addImport("permissions", permissions_mod);
+    whatwg_mod.addImport("html", html_mod);
+    whatwg_mod.addImport("browser", browser_mod);
+    whatwg_mod.addImport("intl", intl_mod);
+
+    return .{
+        .whatwg = whatwg_mod,
+        .clock = clock_mod,
+        .host = host_mod,
+        .memory = memory_mod,
+        .infra = infra_mod,
+        .webidl = webidl_mod,
+        .storage = storage_mod,
+        .cookiestore = cookiestore_mod,
+        .runtime = runtime_mod,
+        .v8 = v8_mod,
+        .codegen = codegen_mod,
+        .callbacks = callbacks_mod,
+        .dictionaries = dictionaries_mod,
+        .enums = enums_mod,
+        .namespaces = namespaces_mod,
+        .typedefs = typedefs_mod,
+        .interfaces = interfaces_mod,
+        .impls = impls_mod,
+        .webcrypto = webcrypto_mod,
+        .eventsource = eventsource_mod,
+        .engine = engine_mod,
+        .dom = dom_mod,
+        .quirks = quirks_mod,
+        .css = css_mod,
+        .selector = selector_mod,
+        .mixins = mixins_mod,
+        .encoding = encoding_mod,
+        .url = url_mod,
+        .urlpattern = urlpattern_mod,
+        .console = console_mod,
+        .streams_common = streams_common_mod,
+        .streams_event_loop = streams_event_loop_mod,
+        .streams_async_promise = streams_async_promise_mod,
+        .streams_test_event_loop = streams_test_event_loop_mod,
+        .streams_queue = streams_queue_mod,
+        .streams_read_request = streams_read_request_mod,
+        .streams_write_request = streams_write_request_mod,
+        .streams_read_into_request = streams_read_into_request_mod,
+        .streams_pull_into_descriptor = streams_pull_into_descriptor_mod,
+        .streams = streams_mod,
+        .mimesniff = mimesniff_mod,
+        .file = file_mod,
+        .fs = fs_mod,
+        .referrer_policy = referrer_policy_mod,
+        .csp = csp_mod,
+        .fetch = fetch_mod,
+        .xhr = xhr_mod,
+        .trusted_types = trusted_types_mod,
+        .hr_time = hr_time_mod,
+        .websocket = websocket_mod,
+        .platform = platform_mod,
+        .html_core = html_core_mod,
+        .html = html_mod,
+        .permissions = permissions_mod,
+        .browser = browser_mod,
+        .webdriver = webdriver_mod,
+        .intl = intl_mod,
+    };
 }
