@@ -68,10 +68,8 @@ pub const KeptInstance = struct {
 /// engine-traced edge - never a persistent root. A document/element can
 /// outlive its browsing context; defaultView is not its registry. Blink's
 /// Document/ElementRareData/ShadowRoot trace the same edge. Read it with
-/// `get`: a registry whose keeper went reads null (CE2-M2). `value` is the
-/// raw pointer, for readers not converted yet (Document, ShadowRoot).
+/// `get`: a registry whose keeper went reads null (CE2-M2).
 pub const RegistryAssociation = struct {
-    value: ?*runtime.Instance = null,
     kept: ?KeptInstance = null,
     traced: bool = false,
 
@@ -96,7 +94,6 @@ pub const RegistryAssociation = struct {
         if (value) |registry| {
             if (registry == document_registry and !isScoped(registry)) {
                 self.release(owner);
-                self.value = registry;
                 self.kept = KeptInstance.of(registry);
                 return;
             }
@@ -113,7 +110,6 @@ pub const RegistryAssociation = struct {
                 self.traced = true;
             }
         } else self.release(owner);
-        self.value = value;
         self.kept = if (value) |registry| KeptInstance.of(registry) else null;
     }
     /// The registry, or null: none was set, or the one set is gone.

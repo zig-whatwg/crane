@@ -50,13 +50,29 @@ const Blob = struct {
     data: []const u8,
 };
 
+/// A File platform object - a `*runtime.Instance`, opaque to this module -
+/// that the FormData's owner keeps alive (its traced "entryFiles" array).
+/// The owner stores it with the slab generation and realm it had, and the
+/// check that reads them (CE2-M2): an entry whose File is gone - its edge
+/// lost, its slot freed or reissued, its realm ended - is dropped before any
+/// read, never handed out as whatever took its slot.
+pub const BlobInstance = struct {
+    object: *anyopaque,
+    generation: u64,
+    realm: *anyopaque,
+    is_live: *const fn (BlobInstance) bool,
+
+    pub fn live(self: BlobInstance) bool {
+        return self.is_live(self);
+    }
+};
+
 /// FormData entry value (string, file, or blob instance)
 pub const FormDataEntryValue = union(enum) {
     string: []const u8,
     file: *File,
-    /// Blob/File instance from V8 (stored as opaque pointer)
-    /// This is a *runtime.Instance that wraps a Blob or File
-    blob_instance: *anyopaque,
+    /// A Blob/File platform object the owner keeps (BlobInstance).
+    blob_instance: BlobInstance,
 
     pub fn deinit(self: *FormDataEntryValue, allocator: Allocator) void {
         switch (self.*) {
@@ -71,8 +87,8 @@ pub const FormDataEntryValue = union(enum) {
         return switch (self) {
             .string => |s| .{ .string = try allocator.dupe(u8, s) },
             .file => |f| .{ .file = try f.clone(allocator) },
-            // blob_instance is a reference, just copy the pointer
-            .blob_instance => |ptr| .{ .blob_instance = ptr },
+            // blob_instance is a reference, just copy it
+            .blob_instance => |blob| .{ .blob_instance = blob },
         };
     }
 };
@@ -194,7 +210,7 @@ pub const FormData = struct {
     pub fn appendBlobInstance(
         self: *FormData,
         name: []const u8,
-        blob_instance: *anyopaque,
+        blob_instance: BlobInstance,
         filename: ?[]const u8,
     ) !void {
         const owned_name = try self.allocator.dupe(u8, name);
@@ -213,7 +229,7 @@ pub const FormData = struct {
     pub fn setBlobInstance(
         self: *FormData,
         name: []const u8,
-        blob_instance: *anyopaque,
+        blob_instance: BlobInstance,
         filename: ?[]const u8,
     ) !void {
         var found_first = false;
@@ -263,10 +279,24 @@ pub const FormData = struct {
         }
     }
 
+    /// Drop every entry whose File is gone (BlobInstance): what is left is
+    /// what the entry list holds. Every read below runs it first.
+    pub fn pruneGone(self: *FormData) void {
+        var i: usize = 0;
+        while (i < self.entries.items.len) {
+            const value = self.entries.items[i].value;
+            if (value == .blob_instance and !value.blob_instance.live()) {
+                var entry = self.entries.orderedRemove(i);
+                entry.deinit(self.allocator);
+            } else i += 1;
+        }
+    }
+
     /// Get first entry value with given name
     ///
     /// Spec: Return first entry's value or null
     pub fn get(self: *FormData, name: []const u8) ?FormDataEntryValue {
+        self.pruneGone();
         for (self.entries.items) |entry| {
             if (std.mem.eql(u8, entry.name, name)) {
                 return entry.value;
@@ -279,6 +309,7 @@ pub const FormData = struct {
     ///
     /// Spec: Return list of all matching entry values
     pub fn getAll(self: *FormData, allocator: Allocator, name: []const u8) ![]FormDataEntryValue {
+        self.pruneGone();
         var results: std.ArrayListUnmanaged(FormDataEntryValue) = .empty;
         errdefer results.deinit(allocator);
 
@@ -295,6 +326,7 @@ pub const FormData = struct {
     ///
     /// Spec: Return true if any entry has name `name`
     pub fn has(self: *FormData, name: []const u8) bool {
+        self.pruneGone();
         for (self.entries.items) |entry| {
             if (std.mem.eql(u8, entry.name, name)) {
                 return true;
@@ -385,14 +417,14 @@ pub const FormData = struct {
         index: usize,
 
         pub fn next(self: *Iterator) ?struct { []const u8, FormDataEntryValue } {
-            if (self.index >= self.form_data.entries.items.len) {
-                return null;
+            while (self.index < self.form_data.entries.items.len) {
+                const entry = &self.form_data.entries.items[self.index];
+                self.index += 1;
+                // A File that is gone is no entry (BlobInstance).
+                if (entry.value == .blob_instance and !entry.value.blob_instance.live()) continue;
+                return .{ entry.name, entry.value };
             }
-
-            const entry = &self.form_data.entries.items[self.index];
-            self.index += 1;
-
-            return .{ entry.name, entry.value };
+            return null;
         }
     };
 

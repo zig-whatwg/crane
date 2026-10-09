@@ -2071,19 +2071,20 @@ pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for customElementRegistry
 /// Returns the custom element registry associated with this document, or null.
+/// A registry whose keeper went reads null, never a freed one (CE2-M2).
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.value;
+    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.get();
 }
 
 fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.custom_element_registry.value != registry) releaseNativeGlobalRegistry(internal);
+    if (internal.custom_element_registry.get() != registry) releaseNativeGlobalRegistry(internal);
     internal.custom_element_registry.set(instance, registry);
 }
 
 fn releaseNativeGlobalRegistry(internal: *InternalState) void {
     if (internal.owns_native_global_registry and !internal.custom_element_registry.traced) {
-        if (internal.custom_element_registry.value) |registry| runtime.Instance.deinit(registry);
+        if (internal.custom_element_registry.get()) |registry| runtime.Instance.deinit(registry);
     }
     internal.owns_native_global_registry = false;
 }
@@ -2092,7 +2093,7 @@ fn releaseNativeGlobalRegistry(internal: *InternalState) void {
 /// document. Window replacement must not change the previous document's edge.
 fn ensureGlobalRegistry(instance: *runtime.Instance) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.custom_element_registry.value) |registry| {
+    if (internal.custom_element_registry.get()) |registry| {
         if (!internal.custom_element_registry.traced) internal.custom_element_registry.set(instance, registry);
         return registry;
     }
