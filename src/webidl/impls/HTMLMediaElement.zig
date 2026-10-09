@@ -770,8 +770,22 @@ fn naturalSize(instance: *runtime.Instance) dom.media_elements.VideoSize {
 /// directive": the sandboxed automatic features browsing context flag,
 /// "unless tokens contains the allow-scripts keyword"). Document.zig's
 /// automaticFeaturesSandboxed reads it the same way for meta refresh.
+/// Also the CSP-derived sandboxing flags (HTML 7.1.5, "the CSP-derived
+/// sandboxing flags" of a response; CSP 3 6.3.2 sandbox): an enforced
+/// sandbox directive without allow-scripts sets the flag - the document's
+/// active sandboxing flag set is not recorded, so its policy container is
+/// read (content-security-policy/sandbox/autoplay-disabled-by-csp.html;
+/// Chrome, Firefox and Safari block that autoplay).
 fn automaticFeaturesSandboxed(instance: *runtime.Instance) bool {
     const document = common.documentOf(instance) orelse return false;
+    if (dom.policy_containers.of(document)) |container| for (container.csp_list.policies.items) |*policy| {
+        if (policy.disposition != .enforce) continue;
+        const directive = policy.getDirective("sandbox") orelse continue;
+        const allows_scripts = for (directive.value.expressions.items) |token| {
+            if (std.ascii.eqlIgnoreCase(token.raw_value, "allow-scripts")) break true;
+        } else false;
+        if (!allows_scripts) return true;
+    };
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
     const browsing_context = @import("html_core").window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
     return !browsing_context.allowsScripts();
