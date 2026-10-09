@@ -19,7 +19,13 @@ pub fn Definition(comptime runtime: type, comptime engine: type) type {
         construction_stack: std.ArrayListUnmanaged(ConstructionStackEntry) = .empty,
         allocator: Allocator,
         references: usize = 1,
+        /// The registry this definition is in; set with `setRegistry`, read
+        /// with `liveRegistry`.
         registry: ?*runtime.Instance = null,
+        registry_generation: u64 = 0,
+        /// The registry's realm (a runtime.Context; opaque so this type stays
+        /// usable with a runtime that has none, as engine-free tests do).
+        registry_realm: ?*anyopaque = null,
         agent_definition_count: ?*usize = null,
         agent_form_definition_count: ?*usize = null,
 
@@ -66,6 +72,41 @@ pub fn Definition(comptime runtime: type, comptime engine: type) type {
                 .allocator = allocator,
             };
             return definition;
+        }
+
+        /// Record the registry this definition was added to (HTML define()
+        /// step 16), with its slab generation and realm (PR-N1).
+        ///
+        /// What keeps the registry alive is tracing, never this pointer: the
+        /// Window holds its global registry, and a scoped registry is held by
+        /// the traced edges of the nodes associated with it (and of a
+        /// document it was initialized on - dom.custom_elements
+        /// RegistryAssociation). The generation is a safety net for teardown
+        /// order only: a definition that outlives its registry - an element
+        /// or a queued upgrade retains it - reads none (`liveRegistry`), and
+        /// the constructor that needs it fails with InvalidStateError rather
+        /// than touching the slot. A check failing here must never be how a
+        /// live page loses an upgrade; if one does, the registry's keeper
+        /// went missing, and that is the bug.
+        pub fn setRegistry(self: *Self, registry: *runtime.Instance) void {
+            self.registry = registry;
+            self.registry_generation = runtime.SlabAllocator.generationOf(registry);
+            self.registry_realm = registry.ctx;
+        }
+
+        /// The registry while it is still the one recorded: its slot not
+        /// freed or reissued, not torn down, its realm not ended (a context
+        /// that never had an engine has no realm to end). Never dereferences
+        /// a registry that is gone.
+        pub fn liveRegistry(self: *const Self) ?*runtime.Instance {
+            const registry = self.registry orelse return null;
+            if (runtime.SlabAllocator.generationOf(registry) != self.registry_generation) return null;
+            if (runtime.instance_lifecycle.isCleanedUp(registry)) return null;
+            if (self.registry_realm) |opaque_realm| {
+                const realm: runtime.Context = @ptrCast(@alignCast(opaque_realm));
+                if (!realm.hasEngine() and realm.agent != null) return null;
+            }
+            return registry;
         }
 
         pub fn retain(self: *Self) *Self {

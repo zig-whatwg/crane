@@ -23,7 +23,9 @@ pub fn hasDefinitions(realm: runtime.Context) bool {
 
 pub fn pushConstructor(realm: runtime.Context, definition: *Definition) !*AgentState {
     const state = stateForRealm(realm) orelse return error.InvalidStateError;
-    const registry = definition.registry orelse return error.InvalidStateError;
+    // A definition that outlived its registry has none to construct with
+    // (Definition.setRegistry: teardown order only).
+    const registry = definition.liveRegistry() orelse return error.InvalidStateError;
     const constructor = try engine.retainValue(realm, definition.constructor.function.value);
     errdefer constructor.release();
     const registry_root = try engine.retainValue(realm, .{ .instance = registry });
