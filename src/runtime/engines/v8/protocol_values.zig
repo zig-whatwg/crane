@@ -16,6 +16,7 @@ const ffi = @import("ffi.zig");
 const support = @import("protocol_support.zig");
 const realm_entry = @import("realm_entry.zig");
 const value_operations = @import("value_operations.zig");
+const protocol_agents = @import("protocol_agents.zig");
 
 const Context = engine.Context;
 const JSValue = engine.JSValue;
@@ -397,14 +398,17 @@ pub fn serializeJsonToBytes(realm: Context, value: JSValue, allocator: std.mem.A
 }
 
 /// HTML 4.10.5.3.6: the compiled pattern regular expression of `pattern`
-/// and "check if an input value matches" for `value`. Both regexps are made,
-/// and the value matched, in a new context of `realm`'s agent with its
-/// built-in RegExp (v8_wrapper.cpp, v8_MatchesPatternAttribute, says why
-/// V8's RegExp::Exec in the page's realm would not do): nothing the page did
-/// to RegExp or RegExp.prototype is reached, no script runs, nothing is
-/// kept, and it is a native step - no kAuto microtask checkpoint. A realm
-/// with no engine left cannot match: NotSupported, which the caller treats
-/// as it does an invalid pattern (no constraint).
+/// and "check if an input value matches" for `value`. Both regexps are
+/// compiled, and the value matched, in the agent's own utility context with
+/// its built-in RegExp (v8_wrapper.cpp, v8_MatchesPatternAttribute, says why
+/// V8's RegExp::Exec in the page's realm would not do), and a pattern is
+/// compiled once per agent and cached (protocol_agents.patternMatcherOf;
+/// Blink's ScriptRegexp context and HTMLInputElement's cached ScriptRegexp):
+/// nothing the page did to RegExp or RegExp.prototype is reached, no script
+/// runs, nothing outlives the agent, and it is a native step - no kAuto
+/// microtask checkpoint. A realm with no engine left cannot match:
+/// NotSupported, which the caller treats as it does an invalid pattern (no
+/// constraint).
 pub fn matchesPatternAttribute(realm: Context, pattern: []const u8, value: []const u8) error{ InvalidPattern, NotSupported, OutOfMemory }!bool {
     const entered = support.enter(realm) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
@@ -419,7 +423,8 @@ pub fn matchesPatternAttribute(realm: Context, pattern: []const u8, value: []con
     const pattern_units = units[0..value_operations.wtf8ToUtf16(pattern, units[0..pattern.len])];
     const value_units = units[pattern.len..][0..value_operations.wtf8ToUtf16(value, units[pattern.len..])];
     if (pattern_units.len > std.math.maxInt(c_int) or value_units.len > std.math.maxInt(c_int)) return error.OutOfMemory;
-    return switch (ffi.v8_MatchesPatternAttribute(entered.isolate, pattern_units.ptr, @intCast(pattern_units.len), value_units.ptr, @intCast(value_units.len))) {
+    const matcher = protocol_agents.patternMatcherOf(entered.isolate);
+    return switch (ffi.v8_MatchesPatternAttribute(entered.isolate, matcher, pattern_units.ptr, @intCast(pattern_units.len), value_units.ptr, @intCast(value_units.len))) {
         1 => true,
         0 => false,
         -1 => error.InvalidPattern,

@@ -1359,9 +1359,12 @@ pub inline fn serializeJsonToBytes(realm: Context, value: JSValue, allocator: st
 /// RegExpCreate("^(?:" + pattern + ")$", "v") and RegExpBuiltinExec(regexp,
 /// value) != null. `pattern` and `value` are WTF-8: a lone surrogate is kept.
 /// Built-in intrinsics only: no page-overridable RegExp or RegExp.prototype
-/// member is called, nothing is retained, and no script runs. Callable from
-/// native code with no script on the stack, and no microtask checkpoint.
-/// JSC/QuickJS/test adapters: error.NotSupported until implemented.
+/// member is called, nothing the page can reach is retained, and no script
+/// runs. Callable from native code with no script on the stack, and no
+/// microtask checkpoint. An adapter may keep compiled patterns per agent
+/// (V8: one utility context and a bounded cache, as Blink's ScriptRegexp
+/// context), released when the agent ends. JSC/QuickJS/test adapters:
+/// error.NotSupported until implemented.
 pub inline fn matchesPatternAttribute(realm: Context, pattern: []const u8, value: []const u8) error{ InvalidPattern, NotSupported, OutOfMemory }!bool {
     return impl.matchesPatternAttribute(realm, pattern, value);
 }

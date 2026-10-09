@@ -13657,7 +13657,73 @@ bool v8_Isolate_RunningScriptLocation(Isolate* isolate, char** url, size_t* url_
 // ---- end lane: csp2 ----
 
 // ---- lane: cxsupport ----
+
+/// What engine.matchesPatternAttribute keeps per agent (per isolate): one
+/// utility context, made on first use, and the anchored regexps compiled in
+/// it, by pattern. Blink's design: V8PerIsolateData::EnsureScriptRegexpContext
+/// keeps one ScriptRegexp context per isolate, and HTMLInputElement keeps its
+/// compiled ScriptRegexp. The adapter's AgentRecord owns it; the agent's end
+/// deletes it (v8_PatternMatcher_Delete), before the isolate is disposed.
+/// Used only on the agent's own thread.
+struct PatternMatcher {
+    /// At most this many compiled patterns, most recently used first.
+    static constexpr size_t kCapacity = 16;
+    struct Entry {
+        std::u16string pattern;
+        /// The anchored regexp; empty for a pattern that is invalid
+        /// standalone (cached too: a page re-validating one bad pattern does
+        /// not recompile it every time).
+        Global<RegExp> regexp;
+    };
+    Global<Context> context;
+    std::vector<Entry> entries;
+};
+
+/// Compile `source` as HTML 4.10.5.3.6's steps 3-6 do, in `context` (entered,
+/// under `try_catch`): 1 with the anchored regexp in `*regexp`; -1 when
+/// RegExpCreate(pattern, "v") threw (no compiled pattern regular expression);
+/// 0 when the isolate is terminating (rethrown).
+static int CompilePatternAttribute(Isolate* isolate, Local<Context> context, TryCatch& try_catch, Local<String> source, Local<RegExp>* regexp) {
+    const RegExp::Flags v = RegExp::kUnicodeSets;
+    // 3. Let regexpCompletion be RegExpCreate(pattern, "v").
+    Local<RegExp> standalone;
+    if (!RegExp::New(context, source, v).ToLocal(&standalone)) {
+        if (try_catch.HasTerminated()) {
+            try_catch.ReThrow();
+            return 0;
+        }
+        // 4. If regexpCompletion is an abrupt completion, then return
+        //    nothing: no compiled pattern regular expression.
+        try_catch.Reset();
+        return -1;
+    }
+    // 5. Let anchoredPattern be "^(?:", followed by pattern, followed by ")$".
+    Local<String> anchored = String::Concat(isolate, String::Concat(isolate, String::NewFromUtf8Literal(isolate, "^(?:"), source), String::NewFromUtf8Literal(isolate, ")$"));
+    // 6. Return ! RegExpCreate(anchoredPattern, "v"). The "!" is the spec's
+    //    claim; a failure anyway (an engine limit) is treated as step 4's.
+    if (!RegExp::New(context, anchored, v).ToLocal(regexp)) {
+        if (try_catch.HasTerminated()) {
+            try_catch.ReThrow();
+            return 0;
+        }
+        try_catch.Reset();
+        return -1;
+    }
+    return 1;
+}
+
 extern "C" {
+
+PatternMatcher* v8_PatternMatcher_New() {
+    return new PatternMatcher();
+}
+
+void v8_PatternMatcher_Delete(PatternMatcher* matcher) {
+    if (!matcher) return;
+    for (auto& entry : matcher->entries) entry.regexp.Reset();
+    matcher->context.Reset();
+    delete matcher;
+}
 
 /// HTML 4.10.5.3.6 (engine.matchesPatternAttribute): the compiled pattern
 /// regular expression of `pattern` and whether it "matches" `value`, both as
@@ -13670,56 +13736,79 @@ extern "C" {
 /// what it finds through Execution::Call (regexp-utils.cc), so in the page's
 /// realm a replaced RegExp.prototype.exec would run - script - and decide the
 /// answer, and the built-in exec would write the page's legacy RegExp statics
-/// (RegExp.$1, lastMatch, input). So both regexps are made in a NEW context,
-/// whose intrinsics no script has touched or can reach: Get(R, "exec") finds
-/// that context's %RegExp.prototype.exec%, the built-in, whose steps are
-/// RegExpBuiltinExec; RegExp::New is RegExpCreate with the intrinsic
-/// %RegExp%, never the page's global `RegExp`. That is the browsers' design:
-/// Blink's ScriptRegexp compiles and matches in V8PerIsolateData's own
-/// ScriptRegexpContext, Gecko in a junk scope, WebKit with Yarr and no JS
-/// object at all - and in none of them does the page see the value in its
-/// statics. The context is not kept: nothing outlives this call's handle
-/// scope, and the collector takes the context (no retention).
+/// (RegExp.$1, lastMatch, input). So the regexps are made, and matched, in a
+/// context of the adapter's own, whose intrinsics no script has touched or
+/// can reach: Get(R, "exec") finds that context's %RegExp.prototype.exec%,
+/// the built-in, whose steps are RegExpBuiltinExec; RegExp::New is
+/// RegExpCreate with the intrinsic %RegExp%, never the page's global
+/// `RegExp`. That is the browsers' design: Blink's ScriptRegexp compiles and
+/// matches in V8PerIsolateData's own ScriptRegexpContext, Gecko in a junk
+/// scope, WebKit with Yarr and no JS object at all - and in none of them does
+/// the page see the value in its statics.
+///
+/// `matcher` is the agent's (one utility context, compiled patterns cached:
+/// only a pattern's first use compiles). Null - an isolate the adapter's
+/// createAgent did not make - matches in a new context made for the call.
+/// A cached regexp is reused safely: it has neither "g" nor "y", so exec
+/// neither reads a lastIndex it wrote nor writes one.
 ///
 /// A native step (NativeStepScope): the API calls here return to call depth
 /// >= 1, so none of them is a kAuto microtask checkpoint.
-int v8_MatchesPatternAttribute(Isolate* isolate, const uint16_t* pattern, int pattern_len, const uint16_t* value, int value_len) {
+int v8_MatchesPatternAttribute(Isolate* isolate, PatternMatcher* matcher, const uint16_t* pattern, int pattern_len, const uint16_t* value, int value_len) {
     NativeStepScope native_step(isolate);
     HandleScope handle_scope(isolate);
-    Local<Context> context = Context::New(isolate);
-    if (context.IsEmpty()) return -2;
+    Local<Context> context;
+    if (matcher) {
+        if (matcher->context.IsEmpty()) {
+            Local<Context> made = Context::New(isolate);
+            if (made.IsEmpty()) return -2;
+            matcher->context.Reset(isolate, made);
+        }
+        context = matcher->context.Get(isolate);
+    } else {
+        context = Context::New(isolate);
+        if (context.IsEmpty()) return -2;
+    }
     Context::Scope context_scope(context);
     TryCatch try_catch(isolate);
 
-    Local<String> source = String::Empty(isolate);
-    if (pattern_len > 0 && !String::NewFromTwoByte(isolate, pattern, NewStringType::kNormal, pattern_len).ToLocal(&source)) return -2;
+    Local<RegExp> regexp;
+    bool cached = false;
+    if (matcher) {
+        const char16_t* units = reinterpret_cast<const char16_t*>(pattern);
+        auto& entries = matcher->entries;
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (entries[i].pattern.size() != static_cast<size_t>(pattern_len)) continue;
+            if (pattern_len > 0 && entries[i].pattern.compare(0, std::u16string::npos, units, static_cast<size_t>(pattern_len)) != 0) continue;
+            // Most recently used first.
+            if (i > 0) std::rotate(entries.begin(), entries.begin() + static_cast<std::ptrdiff_t>(i), entries.begin() + static_cast<std::ptrdiff_t>(i) + 1);
+            if (entries[0].regexp.IsEmpty()) return -1;
+            regexp = entries[0].regexp.Get(isolate);
+            cached = true;
+            break;
+        }
+    }
+    if (!cached) {
+        Local<String> source = String::Empty(isolate);
+        if (pattern_len > 0 && !String::NewFromTwoByte(isolate, pattern, NewStringType::kNormal, pattern_len).ToLocal(&source)) return -2;
+        const int compiled = CompilePatternAttribute(isolate, context, try_catch, source, &regexp);
+        if (compiled == 0) return 0;
+        if (matcher) {
+            auto& entries = matcher->entries;
+            if (entries.size() >= PatternMatcher::kCapacity) {
+                entries.back().regexp.Reset();
+                entries.pop_back();
+            }
+            PatternMatcher::Entry entry;
+            if (pattern_len > 0) entry.pattern.assign(reinterpret_cast<const char16_t*>(pattern), static_cast<size_t>(pattern_len));
+            if (compiled == 1) entry.regexp.Reset(isolate, regexp);
+            entries.insert(entries.begin(), std::move(entry));
+        }
+        if (compiled == -1) return -1;
+    }
+
     Local<String> subject = String::Empty(isolate);
     if (value_len > 0 && !String::NewFromTwoByte(isolate, value, NewStringType::kNormal, value_len).ToLocal(&subject)) return -2;
-    const RegExp::Flags v = RegExp::kUnicodeSets;
-
-    // 3. Let regexpCompletion be RegExpCreate(pattern, "v").
-    Local<RegExp> standalone;
-    if (!RegExp::New(context, source, v).ToLocal(&standalone)) {
-        if (try_catch.HasTerminated()) {
-            try_catch.ReThrow();
-            return 0;
-        }
-        // 4. If regexpCompletion is an abrupt completion, then return
-        //    nothing: no compiled pattern regular expression.
-        return -1;
-    }
-    // 5. Let anchoredPattern be "^(?:", followed by pattern, followed by ")$".
-    Local<String> anchored = String::Concat(isolate, String::Concat(isolate, String::NewFromUtf8Literal(isolate, "^(?:"), source), String::NewFromUtf8Literal(isolate, ")$"));
-    // 6. Return ! RegExpCreate(anchoredPattern, "v"). The "!" is the spec's
-    //    claim; a failure anyway (an engine limit) is treated as step 4's.
-    Local<RegExp> regexp;
-    if (!RegExp::New(context, anchored, v).ToLocal(&regexp)) {
-        if (try_catch.HasTerminated()) {
-            try_catch.ReThrow();
-            return 0;
-        }
-        return -1;
-    }
     // "matches": ! RegExpBuiltinExec(regexp, input) is not null. Exec answers
     // null as a Local<Object> holding Null (api.cc's own TODO). A throw the
     // "!" rules out - an engine limit hit while matching - is no match, as in

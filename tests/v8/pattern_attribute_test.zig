@@ -243,23 +243,100 @@ test "a match from native code with no script on the stack is no microtask check
     try std.testing.expect(marker.ran);
 }
 
-test "matching keeps nothing: the throwaway contexts are collected" {
+test "a pattern compiles once per agent: first and repeat call cost" {
     const page = try Page.open();
     defer page.close();
-    // One first, for what the first match makes and later ones reuse.
-    _ = try page.matches("a", "a");
-    protocol.requestGarbageCollection(page.agent);
-    const before = protocol.heapStatistics(page.agent);
+    // The first match of the agent makes its utility context and compiles.
     var timer = clock.Timer.start();
-    const rounds = 200;
+    try std.testing.expect(try page.matches("[0-9]*[02468]", "1234"));
+    const first_ns = timer.read();
+    // A second pattern: a compile, no new context.
+    timer.reset();
+    try std.testing.expect(try page.matches("[a-f0-9]{8}", "deadbeef"));
+    const compile_ns = timer.read();
+    // Repeats: cached.
+    const rounds = 2000;
+    timer.reset();
     for (0..rounds) |i| {
         try std.testing.expectEqual(i % 2 == 0, try page.matches("[0-9]*[02468]", if (i % 2 == 0) "1234" else "1235"));
     }
-    const elapsed_ns = timer.read();
+    const repeat_ns = timer.read() / rounds;
+    std.debug.print("matchesPatternAttribute: first call {d} us (utility context + compile), new pattern {d} us, repeat {d} ns\n", .{
+        first_ns / std.time.ns_per_us, compile_ns / std.time.ns_per_us, repeat_ns,
+    });
+    // A context per call was ~200 us; the cached path is a few us. Loose, so
+    // a loaded machine does not fail it.
+    try std.testing.expect(repeat_ns < 50 * std.time.ns_per_us);
+}
+
+test "more patterns than the cache holds still match, and an invalid one stays invalid" {
+    const page = try Page.open();
+    defer page.close();
+    var buffer: [32]u8 = undefined;
+    for (0..3) |_| {
+        for (0..40) |i| {
+            const pattern = try std.fmt.bufPrint(&buffer, "x{d}y*", .{i});
+            var value_buffer: [32]u8 = undefined;
+            const value = try std.fmt.bufPrint(&value_buffer, "x{d}yy", .{i});
+            try std.testing.expect(try page.matches(pattern, value));
+            try std.testing.expect(!try page.matches(pattern, "x"));
+            try std.testing.expectError(error.InvalidPattern, page.matches("(", "("));
+        }
+    }
+}
+
+test "matching keeps no context per call" {
+    const page = try Page.open();
+    defer page.close();
+    _ = try page.matches("a", "a");
+    protocol.requestGarbageCollection(page.agent);
+    const before = protocol.heapStatistics(page.agent);
+    for (0..200) |i| {
+        var buffer: [32]u8 = undefined;
+        _ = try page.matches(try std.fmt.bufPrint(&buffer, "p{d}", .{i}), "p1");
+    }
     protocol.requestGarbageCollection(page.agent);
     const after = protocol.heapStatistics(page.agent);
-    std.debug.print("matchesPatternAttribute: {d} us per call; native contexts {d} -> {d}\n", .{
-        elapsed_ns / rounds / std.time.ns_per_us, before.realm_count, after.realm_count,
-    });
-    try std.testing.expect(after.realm_count <= before.realm_count);
+    try std.testing.expectEqual(before.realm_count, after.realm_count);
+}
+
+// An isolate the adapter's createAgent did not make has no agent record: it
+// matches in a context made for the call, with the same answers. On a thread
+// of its own, entered and torn down there: tests/v8 is one process.
+const ffi = @import("v8").ffi;
+
+fn bareIsolateMatches() !void {
+    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+    defer ffi.v8_Isolate_Dispose(isolate);
+    ffi.v8_Isolate_Enter(isolate);
+    defer ffi.v8_Isolate_Exit(isolate);
+    const scope = ffi.v8_HandleScope_New(isolate);
+    defer ffi.v8_HandleScope_Dispose(scope);
+    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+    defer ffi.v8_Context_Dispose(context);
+    ffi.v8_Context_Enter(context);
+    defer ffi.v8_Context_Exit(context);
+    var data = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
+    defer data.deinit();
+    data.agent = @ptrCast(isolate);
+    const realm: runtime.Context = &data;
+    try std.testing.expect(try protocol.matchesPatternAttribute(realm, "a|b", "a"));
+    try std.testing.expect(!try protocol.matchesPatternAttribute(realm, "a|b", "ab"));
+    try std.testing.expectError(error.InvalidPattern, protocol.matchesPatternAttribute(realm, ")(", ""));
+    try std.testing.expect(try protocol.matchesPatternAttribute(realm, "[[a-z]--[aeiou]]", "b"));
+}
+
+test "an isolate with no agent record matches in a context made for the call" {
+    try setup();
+    const Run = struct {
+        fn run(result: *?anyerror) void {
+            bareIsolateMatches() catch |err| {
+                result.* = err;
+            };
+        }
+    };
+    var result: ?anyerror = null;
+    const thread = try std.Thread.spawn(.{}, Run.run, .{&result});
+    thread.join();
+    if (result) |err| return err;
 }
