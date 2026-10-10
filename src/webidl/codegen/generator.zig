@@ -1817,10 +1817,7 @@ fn generateInterfaceFile(
         .reflect_on_element = if (ir) |ir_ptr| reflectsOnElement(ir_ptr, interface.name) else false,
         .model = ir,
     });
-    // HTMLOptionsCollection's existing generated indexed setter has no
-    // implementation yet. Its owner must land that operation before the
-    // inherited getter makes the adapter install indexed access (row 9).
-    if (base_info.is_interface and !std.mem.eql(u8, interface.name, "HTMLOptionsCollection")) {
+    if (base_info.is_interface) {
         try writeInheritedIndexedMembers(w, base_info.inheritance.?, all_ops.items, own_ops.items, all_attrs.items, own_attrs.items);
     }
 
