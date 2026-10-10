@@ -54,6 +54,16 @@ pub fn installHooks() void {
     // DOM 4.2.2.1: "Use these attribute change steps to update a slot's
     // name" - for an HTML slot element, the steps Element runs for its type.
     dom.attribute_change_steps.install("slot", &attributeChangeSteps);
+    // A slot removed from its tree while script held no wrapper of it is an
+    // orphan nothing deinits before the browser ends, and its SlotState owns
+    // memory of its own (the name and both node lists).
+    dom.teardown_sweeps.install(&sweepRemaining);
+}
+
+/// `dom.teardown_sweeps`: free the state of every slot no exit reached -
+/// e.g. the slot attachShadow step 4.3 removes from a declarative shadow root.
+fn sweepRemaining() void {
+    Registry.deinitAllAndClear();
 }
 
 /// `dom.slot_helpers`: the slot's state.
