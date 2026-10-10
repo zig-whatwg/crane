@@ -508,7 +508,7 @@ pub fn parseFragmentWith(
         _ = interfaces.Node.call_appendChild(fragment, dom_node) catch return error.InvalidStateError;
 
         // Recursively convert children
-        try convertChildrenToDom(allocator, ctx, tc, dom_node, owner_doc, conversion);
+        try convertChildrenToDom(allocator, ctx, tc, dom_node, owner_doc, childConversion(tc, conversion));
 
         tree_child = tc.next_sibling;
     }
@@ -562,7 +562,7 @@ fn convertTreeNodeToDom(
         }
 
         // Recursively convert children
-        try convertChildrenToDom(allocator, ctx, tree_child, dom_node, owner_document, conversion);
+        try convertChildrenToDom(allocator, ctx, tree_child, dom_node, owner_document, childConversion(tree_child, conversion));
 
         child = tree_child.next_sibling;
     }
@@ -630,7 +630,17 @@ fn convertChild(
         dom.node_creation.destroyUninserted(dom_node);
         return error.InvalidStateError;
     };
-    try convertChildrenToDom(allocator, ctx, tree_child, dom_node, document, conversion);
+    try convertChildrenToDom(allocator, ctx, tree_child, dom_node, document, childConversion(tree_child, conversion));
+}
+
+/// Step 6 for the children of `tree_node`: their intended parent is it, so
+/// an element made with a null registry for its customelementregistry
+/// attribute passes null down.
+fn childConversion(tree_node: *TreeNode, conversion: Conversion) Conversion {
+    if (tree_node.node_type != .element or !@import("custom_elements/parser.zig").hasRegistryAttribute(tree_node)) return conversion;
+    var child = conversion;
+    child.registry = .{ .explicit = null };
+    return child;
 }
 
 /// "In head", template start tag, steps 7.11.1-7.11.7 for a host the
@@ -694,8 +704,12 @@ fn createElementNode(
     const namespace = Namespace.fromParserNamespace(tree_node.namespace).toUri();
     const parser_ce = @import("custom_elements/parser.zig");
     const is_value = parser_ce.isValue(tree_node);
+    // Create-for-token step 6: the registry the conversion looked up from the
+    // intended parent - or null for a token with a customelementregistry
+    // attribute (Chrome and Safari; browsers-first audit R3).
+    const registry: dom.custom_elements.RegistrySelection = if (parser_ce.hasRegistryAttribute(tree_node)) .{ .explicit = null } else conversion.registry;
     const scope = if (owner_document) |document|
-        parser_ce.Scope.begin(document, local_name, namespace, is_value, conversion.fragment) catch return error.InvalidStateError
+        parser_ce.Scope.beginWithRegistry(document, local_name, namespace, is_value, conversion.fragment, registry) catch return error.InvalidStateError
     else
         null;
     defer if (scope) |current| current.end();
@@ -707,7 +721,7 @@ fn createElementNode(
             .namespace = namespace,
             .is_value = is_value,
             .synchronous = scope.?.synchronous,
-            .registry = conversion.registry,
+            .registry = registry,
         }) catch return error.InvalidStateError
     else if (tree_node.namespace == .html)
         parser_script_execution.createHTMLElement(allocator, ctx, local_name) catch return error.OutOfMemory

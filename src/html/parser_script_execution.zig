@@ -746,9 +746,22 @@ pub const DomTreeAdapter = struct {
         };
         const parser_ce = @import("custom_elements/parser.zig");
         const is_value = parser_ce.isValue(tree_node);
+        // Step 6: "Let registry be the result of looking up a custom element
+        // registry given intendedParent" - an element's own, so a descendant
+        // of a null-registry element is null too (Chrome does so; Safari does
+        // not: a tie between the browsers that ship scoped registries, which
+        // goes to the spec text). A token with a customelementregistry
+        // attribute gets null instead (Chrome and Safari; browsers-first
+        // audit R3 - the spec text has no such attribute).
+        const registry: dom.custom_elements.RegistrySelection = if (parser_ce.hasRegistryAttribute(tree_node))
+            .{ .explicit = null }
+        else if (intended) |parent|
+            .{ .explicit = try parser_ce.lookUpRegistry(parent) }
+        else
+            .default;
         // This adapter is the incremental full-document parser, including
         // document.write. Fragment conversion uses HTMLParser's explicit bit.
-        const scope = try parser_ce.Scope.begin(owner, local_name, ns_uri, is_value, false);
+        const scope = try parser_ce.Scope.beginWithRegistry(owner, local_name, ns_uri, is_value, false, registry);
         // Scope.begin found a definition exactly when this creation will
         // execute script.
         const creation: Creation = if (scope.synchronous) .may_have_run_script else .ran_no_script;
@@ -759,6 +772,7 @@ pub const DomTreeAdapter = struct {
             .namespace = ns_uri,
             .is_value = is_value,
             .synchronous = scope.synchronous,
+            .registry = registry,
         });
 
         errdefer if (!engine.hasWrapper(element)) dom.node_creation.destroyUninserted(element);
