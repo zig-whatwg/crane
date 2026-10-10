@@ -840,6 +840,7 @@ fn isKeyboardActivatable(element: *Instance) bool {
 // ============================================================================
 
 fn getValue(element: *Instance) ?runtime.DOMString {
+    if (dom.form_controls.editorText(element) catch return null) |text| return text;
     if (form_associated.isTextArea(element)) return interfaces.HTMLTextAreaElement.get_value(element) catch null;
     return interfaces.HTMLInputElement.get_value(element) catch null;
 }
@@ -932,14 +933,18 @@ fn insertText(target: *Instance, kind: TextControl, text_in: []const u8, input_t
         if (text.len == 0) return;
     }
     focus.willEditByUser(target);
-    switch (kind) {
-        .selection => setRangeText(target, text, selection[0], selection[1]),
-        .value_only => {
-            const joined = std.mem.concat(target.ctx.allocator, u8, &.{ current, text }) catch return;
-            defer target.ctx.allocator.free(joined);
-            setValue(target, joined);
-        },
-        .none => return,
+    if (kind == .none) return;
+    const cut_start = form_associated.byteOffsetOfUtf16(current, selection[0]);
+    const cut_end = form_associated.byteOffsetOfUtf16(current, selection[1]);
+    const joined = std.mem.concat(target.ctx.allocator, u8, &.{ current[0..cut_start], text, current[cut_end..] }) catch return;
+    defer target.ctx.allocator.free(joined);
+    const caret = selection[0] + form_associated.utf16Length(text);
+    if (!(dom.form_controls.userEdit(target, .{ .text = joined, .selection_start = caret, .selection_end = caret }) catch return)) {
+        switch (kind) {
+            .selection => setRangeText(target, text, selection[0], selection[1]),
+            .value_only => setValue(target, joined),
+            .none => unreachable,
+        }
     }
     _ = fireInputEvent(target, "input", input_type, if (std.mem.eql(u8, input_type, "insertText")) text else null);
 }
@@ -981,17 +986,29 @@ fn deleteContent(target: *Instance, kind: TextControl, direction: DeleteDirectio
     }
     if (!fireInputEvent(target, "beforeinput", input_type, null)) return;
     if (!isConnected(target)) return;
+    // A beforeinput listener may replace the value. Keep the pending
+    // deletion range, as the previous setRangeText path did, but apply it
+    // to the live editor text with both endpoints clamped (HTML 4.10.20,
+    // setRangeText steps 5–6). Preserve the pre-batch pending-range policy;
+    // browser behavior when the listener moves the caret is unverified.
+    var live_value = getValue(target) orelse return;
+    defer live_value.deinit(target.ctx.allocator);
+    const live_text = live_value.asSlice();
+    const live_length = form_associated.utf16Length(live_text);
+    range[0] = @min(range[0], live_length);
+    range[1] = @min(range[1], live_length);
     focus.willEditByUser(target);
-    switch (kind) {
-        .selection => setRangeText(target, "", range[0], range[1]),
-        .value_only => {
-            const cut_start = form_associated.byteOffsetOfUtf16(current, range[0]);
-            const cut_end = form_associated.byteOffsetOfUtf16(current, range[1]);
-            const joined = std.mem.concat(target.ctx.allocator, u8, &.{ current[0..cut_start], current[cut_end..] }) catch return;
-            defer target.ctx.allocator.free(joined);
-            setValue(target, joined);
-        },
-        .none => return,
+    if (kind == .none) return;
+    const cut_start = form_associated.byteOffsetOfUtf16(live_text, range[0]);
+    const cut_end = form_associated.byteOffsetOfUtf16(live_text, range[1]);
+    const joined = std.mem.concat(target.ctx.allocator, u8, &.{ live_text[0..cut_start], live_text[cut_end..] }) catch return;
+    defer target.ctx.allocator.free(joined);
+    if (!(dom.form_controls.userEdit(target, .{ .text = joined, .selection_start = range[0], .selection_end = range[0] }) catch return)) {
+        switch (kind) {
+            .selection => setRangeText(target, "", range[0], range[1]),
+            .value_only => setValue(target, joined),
+            .none => unreachable,
+        }
     }
     _ = fireInputEvent(target, "input", input_type, null);
 }

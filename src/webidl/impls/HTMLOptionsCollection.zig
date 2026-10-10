@@ -9,6 +9,8 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLOptionsCollection = interfaces.HTMLOptionsCollection;
+const forms = @import("html").forms;
+const collections = @import("dom").live_collections;
 
 pub const State = HTMLOptionsCollection.State;
 
@@ -29,54 +31,57 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    return interfaces.HTMLCollection.initWithState(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    interfaces.HTMLCollection.deinit(instance);
 }
 
 /// Getter for length
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    if (collections.rootOf(instance) == null) return 0;
+    return interfaces.HTMLCollection.get_length(instance);
 }
 
 /// Getter for selectedIndex
 pub fn get_selectedIndex(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    const select = collections.rootOf(instance) orelse return -1;
+    return interfaces.HTMLSelectElement.get_selectedIndex(select);
 }
 
 /// Setter for length
 pub fn set_length(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const select = collections.rootOf(instance) orelse return;
+    // HTML 2.6.4.3 length setter, steps 1–3. The select exposes these same
+    // steps through its length IDL member.
+    try forms.options.setLength(select, value);
 }
 
 /// Setter for selectedIndex
 pub fn set_selectedIndex(instance: *runtime.Instance, value: i32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const select = collections.rootOf(instance) orelse return;
+    try interfaces.HTMLSelectElement.set_selectedIndex(select, value);
 }
 
 /// Operation: add
 pub fn call_add(instance: *runtime.Instance, element: typedefs.HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
-    _ = instance;
-    _ = element;
-    _ = before;
-    return error.NotImplemented;
+    const select = collections.rootOf(instance) orelse return;
+    const option = switch (element) {
+        inline else => |object| object,
+    };
+    try forms.options.add(select, option, before);
 }
 
 /// Operation: remove
 pub fn call_remove(instance: *runtime.Instance, index: i32) anyerror!void {
-    _ = instance;
-    _ = index;
-    return error.NotImplemented;
+    const select = collections.rootOf(instance) orelse return;
+    try forms.options.remove(select, index);
+}
+
+/// HTML 2.6.4.3 indexed setter, steps 1–5: the select's identical operation.
+pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
+    const select = collections.rootOf(instance) orelse return;
+    try forms.options.setIndex(select, index, option);
 }

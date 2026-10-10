@@ -148,6 +148,7 @@ pub const InternalsSteps = struct {
 };
 pub const ValiditySteps = struct {
     set_internals: *const fn (*runtime.Instance, *runtime.Instance) anyerror!void,
+    set_control: *const fn (*runtime.Instance, *runtime.Instance) anyerror!void,
 };
 pub const CustomStateSteps = struct {
     set_target: *const fn (*runtime.Instance, *runtime.Instance) anyerror!void,
@@ -222,6 +223,9 @@ pub fn installValidity(steps: ValiditySteps) void {
 }
 pub fn setValidityInternals(validity: *runtime.Instance, internals: *runtime.Instance) !void {
     return (implementation.validity orelse return error.InvalidStateError).set_internals(validity, internals);
+}
+pub fn setValidityControl(validity: *runtime.Instance, control: *runtime.Instance) !void {
+    return (implementation.validity orelse return error.InvalidStateError).set_control(validity, control);
 }
 pub fn validityFlags(internals: *runtime.Instance) ValidityFlags {
     return (implementation.internals orelse return .{}).validity_flags(internals);

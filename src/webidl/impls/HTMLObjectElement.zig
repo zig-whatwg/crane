@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const forms = @import("html").forms;
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const dom = @import("dom");
@@ -29,6 +30,7 @@ pub const ImplError = error{
 /// with the element and handed back when it goes.
 pub const InternalState = struct {
     content: *embedded_content.Content,
+    validation: forms.Validation = .{},
 };
 
 /// `instance`'s state, or null when it is no HTMLObjectElement - the DOM's
@@ -38,9 +40,23 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
+fn validationState(instance: *runtime.Instance) !*forms.Validation {
+    return &(getInternal(instance) orelse return error.InvalidStateError).validation;
+}
+
+fn isValidationControl(instance: *runtime.Instance) bool {
+    return instance.stateAs(State) != null;
+}
+
+fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
+    const internal = getInternal(instance) orelse return .{};
+    return .{ .customError = !internal.validation.custom_error.isEmpty() };
+}
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    dom.form_controls.install(.{ .is = &isValidationControl, .validity_flags = &constraintFlags });
     embedded_content.installDocumentAbort();
     // "The element is popped off the stack of open elements of an HTML
     // parser": its children - the fallback content - are parsed.
@@ -85,6 +101,8 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     if (instance.stateAs(State)) |state| {
         if (state.own._internal) |internal| {
+            if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
+            internal.validation.deinit(instance.ctx.allocator);
             // A second deinit must find nothing to free.
             state.own._internal = null;
             embedded_content.elementGone(internal.content);
@@ -174,32 +192,41 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
 /// Getter for willValidate
 pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
+    // HTML 4.10.18 and 4.10.21.1: this is not a submittable element.
+    return false;
 }
 
 /// Getter for validity
 pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML 4.10.21.3: the same live ValidityState on every access.
+    const internal = try validationState(instance);
+    if (forms.liveChild(internal.validity, internal.validity_generation)) |validity| return validity;
+    const validity = try interfaces.ValidityState.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(validity);
+    try @import("dom").custom_elements.setValidityControl(validity, instance);
+    if (instance.ctx.hasEngine()) {
+        @import("engine").traceChild(instance, validity, .{ .name = "validity" });
+        internal.validity_traced = true;
+    }
+    internal.validity = validity;
+    internal.validity_generation = runtime.SlabAllocator.generationOf(validity);
+    return validity;
 }
 
 /// Getter for validationMessage
 pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return forms.validationMessage(instance.ctx.allocator, try get_willValidate(instance), constraintFlags(instance), (try validationState(instance)).custom_error);
 }
 
 /// Operation: setCustomValidity
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = @"error";
-    return error.NotImplemented;
+    // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
+    try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
 }
 
 /// Operation: checkValidity
 pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));
 }
 
 /// Operation: getSVGDocument - this's content document, if it was made for
@@ -211,6 +238,6 @@ pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
 
 /// Operation: reportValidity
 pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML reportValidity steps 1–2; a headless host has no validation UI.
+    return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));
 }

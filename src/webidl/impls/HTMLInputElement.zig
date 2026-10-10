@@ -17,13 +17,12 @@
 //!     number conversions (§ 4.10.5.1.x) and the date and time microsyntaxes
 //!     (§ 2.3.5)
 //!
-//! Stated deviations: no constraint validation (validity, checkValidity,
-//! willValidate report a control is never barred only by its own state), no
-//! files are ever selected, and there is no rendering, so an Image Button's
+//! Stated deviations: FileList population awaits its owner, and there is no rendering, so an Image Button's
 //! selected coordinate is (0, 0) and width and height read 0.
 
 const std = @import("std");
 const runtime = @import("runtime");
+const forms = @import("html").forms;
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -186,8 +185,18 @@ const Registry = utils.InstanceRegistry(InternalState);
 /// and run the value sanitization algorithm" leaves on every attribute change.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
+    validation: forms.Validation = .{},
     /// Owned. Non-null means the dirty value flag is set; always sanitized.
     value: ?[]u8 = null,
+    /// The last user edit's owned raw text. Null after every script value
+    /// write/reset/type change; also records last-user-edit provenance.
+    editor_text: ?[]u8 = null,
+    bad_input: bool = false,
+    selected_files: ?*runtime.Instance = null,
+    selected_files_generation: u64 = 0,
+    selected_files_realm: ?runtime.Context = null,
+    files_traced: bool = false,
+    files_made_here: bool = false,
     /// The element's checkedness, and its dirty checkedness flag. Set from
     /// the checked content attribute while not dirty.
     checkedness: bool = false,
@@ -205,19 +214,29 @@ pub const InternalState = struct {
     saved_checked_radio: ?SavedRadio = null,
 
     pub fn deinit(self: *InternalState) void {
+        self.validation.deinit(self.allocator);
+        self.clearEditor();
         if (self.value) |v| self.allocator.free(v);
         self.value = null;
     }
 
     fn setValue(self: *InternalState, value: []const u8) !void {
         const copy = try self.allocator.dupe(u8, value);
+        self.clearEditor();
         if (self.value) |old| self.allocator.free(old);
         self.value = copy;
     }
 
     fn clearValue(self: *InternalState) void {
+        self.clearEditor();
         if (self.value) |old| self.allocator.free(old);
         self.value = null;
+    }
+
+    fn clearEditor(self: *InternalState) void {
+        if (self.editor_text) |raw| self.allocator.free(raw);
+        self.editor_text = null;
+        self.bad_input = false;
     }
 };
 
@@ -235,6 +254,149 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
+fn validationState(instance: *runtime.Instance) !*forms.Validation {
+    return &(getInternal(instance) orelse return error.InvalidStateError).validation;
+}
+
+fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
+    const internal = getInternal(instance) orelse return .{};
+    var flags = forms.ValidityFlags{ .customError = !internal.validation.custom_error.isEmpty() };
+    const input_type = typeOf(instance);
+    const value = valueIn(instance, input_type) catch return flags;
+    defer internal.allocator.free(value);
+    // HTML 4.10.5.3.4 and each state's constraint definition. Text-entry
+    // requiredness depends on mutability; checkbox/file requiredness does not.
+    flags.valueMissing = switch (input_type) {
+        .radio => radioValueMissing(instance),
+        .checkbox => hasAttribute(instance, "required") and !internal.checkedness,
+        .file => blk: {
+            if (!hasAttribute(instance, "required")) break :blk false;
+            const files = liveFiles(internal) orelse break :blk true;
+            break :blk (interfaces.FileList.get_length(files) catch 0) == 0;
+        },
+        .text, .search, .url, .tel, .email, .password, .date, .month, .week, .time, .@"datetime-local", .number => hasAttribute(instance, "required") and isMutable(instance, input_type) and value.len == 0,
+        else => false,
+    };
+    flags.typeMismatch = switch (input_type) {
+        .email => forms.emailTypeMismatch(value, hasAttribute(instance, "multiple")),
+        .url => forms.urlTypeMismatch(internal.allocator, value) catch false,
+        else => false,
+    };
+    const text_constraints = switch (input_type) {
+        .text, .search, .tel, .url, .email, .password => true,
+        else => false,
+    };
+    if (text_constraints) {
+        // HTML 4.10.5.3.6: only these states support the pattern attribute.
+        // TODO(engine.matchesPatternAttribute): supplied by the engine lane.
+        flags.patternMismatch = false;
+        // HTML 4.10.19.3–4: a dirty value last changed by a user edit,
+        // measured in UTF-16 code units. Empty never suffers tooShort.
+        if (internal.editor_text != null) {
+            const length = form_associated.utf16Length(value);
+            const maximum = interfaces.HTMLInputElement.get_maxLength(instance) catch -1;
+            const minimum = interfaces.HTMLInputElement.get_minLength(instance) catch -1;
+            flags.tooLong = maximum >= 0 and length > @as(u32, @intCast(maximum));
+            flags.tooShort = value.len != 0 and minimum >= 0 and length < @as(u32, @intCast(minimum));
+        }
+    }
+    if (input_type.numeric()) if (stringToNumber(input_type, value)) |number| {
+        // HTML 4.10.5.3.7: only Time has a periodic domain. A reversed
+        // range makes the open interval between max and min invalid.
+        const minimum = minimumOf(instance, input_type);
+        const maximum = maximumOf(instance, input_type);
+        if (input_type == .time and minimum != null and maximum != null and minimum.? > maximum.?) {
+            const in_gap = number < minimum.? and number > maximum.?;
+            flags.rangeUnderflow = in_gap;
+            flags.rangeOverflow = in_gap;
+        } else {
+            flags.rangeUnderflow = if (minimum) |min| number < min else false;
+            flags.rangeOverflow = if (maximum) |max| number > max else false;
+        }
+        // HTML 4.10.5.3.8: an integral number of allowed steps from base.
+        if (allowedValueStep(instance, input_type)) |step| {
+            flags.stepMismatch = if (input_type == .number or input_type == .range)
+                numericStepMismatch(instance, value, step)
+            else
+                !isIntegral((number - stepBase(instance, input_type)) / step);
+        }
+    };
+    flags.badInput = input_type == .number and internal.bad_input;
+    return flags;
+}
+
+fn radioValueMissing(instance: *runtime.Instance) bool {
+    // HTML 4.10.5.1.16: some group member is required, none is checked.
+    // An empty name has no group (Blink RadioInputType::ValueMissing).
+    const name = groupName(instance) orelse return false;
+    defer instance.ctx.allocator.free(name);
+    const owner = form_associated.formOwner(instance);
+    const root = form_associated.rootOf(instance);
+    var required = false;
+    var node: ?*runtime.Instance = root;
+    while (node) |member| : (node = form_associated.nextInTree(member, root, false)) {
+        if (member != instance and !inSameGroup(instance, name, owner, member)) continue;
+        if (getInternal(member)) |state| if (state.checkedness) return false;
+        required = required or hasAttribute(member, "required");
+    }
+    return required;
+}
+
+fn editorText(instance: *runtime.Instance) !runtime.DOMString {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.editor_text) |raw| return runtime.DOMString.initDupe(instance.ctx.allocator, raw);
+    return get_value(instance);
+}
+
+fn liveFiles(internal: *InternalState) ?*runtime.Instance {
+    const files = internal.selected_files orelse return null;
+    // Check the saved realm, not a possibly retired Instance's ctx. Keeping
+    // cross-realm Instances beyond their realm's teardown is a protocol gap;
+    // the traced edge is the normal lifetime, this is only the teardown net.
+    if (internal.files_traced and !(internal.selected_files_realm orelse return null).hasEngine()) return null;
+    return forms.liveChild(files, internal.selected_files_generation);
+}
+
+fn dropFiles(instance: *runtime.Instance, internal: *InternalState) void {
+    const native_child = if (internal.files_made_here and !internal.files_traced) liveFiles(internal) else null;
+    if (internal.files_traced) @import("engine").forgetTracedChild(instance, .{ .name = "files" });
+    internal.selected_files = null;
+    internal.selected_files_realm = null;
+    internal.files_traced = false;
+    internal.files_made_here = false;
+    if (native_child) |child| runtime.Instance.deinit(child);
+}
+
+fn emptySelectedFiles(_: *runtime.Instance) void {
+    // HTML filename value setter and reset: Chrome/Safari KEEP the FileList
+    // and clear it in place (Blink FileInputType::SetValue; WebKit
+    // FileInputType::setValue). Gecko HTMLInputElement::AfterSetFilesOrDirectories
+    // drops its list instead; follow the browser majority, including when
+    // inputs share a list. Every list is currently empty.
+    // TODO(FileList/DataTransfer lane): clear the list's contents in place through FileList's hook.
+}
+
+fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const input_type = typeOf(instance);
+    const raw = try internal.allocator.dupe(u8, edit.text);
+    errdefer internal.allocator.free(raw);
+    // HTML Number state: the UI's text and the sanitized value are separate.
+    // Blink NumberInputType::ConvertFromVisibleValue/HasBadInput retain the
+    // inner editor and accept a trailing decimal separator while editing.
+    const visible = if (input_type == .number and raw.len > 1 and raw[raw.len - 1] == '.' and parseValidFloat(raw[0 .. raw.len - 1]) != null)
+        raw[0 .. raw.len - 1]
+    else
+        raw;
+    const sanitized = try sanitize(internal.allocator, instance, input_type, visible);
+    defer internal.allocator.free(sanitized);
+    try internal.setValue(sanitized);
+    internal.editor_text = raw;
+    internal.bad_input = input_type == .number and raw.len != 0 and sanitized.len == 0;
+    // HTML 4.10.19.3–4: only this non-IDL path records a user edit.
+    internal.selection = .{ .start = edit.selection_start, .end = edit.selection_end, .direction = .none };
+}
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
@@ -246,7 +408,7 @@ pub fn installHooks() void {
         .legacy_pre_activation = &legacyPreActivation,
         .legacy_canceled_activation = &legacyCanceledActivation,
     });
-    dom.form_controls.install(.{ .is = &isInput, .reset = &resetAlgorithm });
+    dom.form_controls.install(.{ .is = &isInput, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_edit = &userEdit, .editor_text = &editorText });
     dom.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
         log.warn("input insertion steps not registered: {}", .{err});
     };
@@ -276,7 +438,11 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    if (Registry.get(instance)) |internal| internal.deinit();
+    if (Registry.get(instance)) |internal| {
+        dropFiles(instance, internal);
+        if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
+        internal.deinit();
+    }
     Registry.remove(instance);
 
     interfaces.HTMLElement.deinit(instance);
@@ -330,6 +496,10 @@ fn attributeChangeSteps(
 /// § 4.10.5 "When an input element's type attribute changes state".
 fn typeChangeSteps(instance: *runtime.Instance, previous: InputType, now: InputType) void {
     const internal = getInternal(instance) orelse return;
+    internal.clearEditor();
+    // Blink/WebKit replace their FileInputType on a type change, so a later
+    // return to File Upload starts a different empty selection/list.
+    if (previous == .file or now == .file) dropFiles(instance, internal);
     const previous_mode = previous.valueMode();
     const new_mode = now.valueMode();
     if (previous_mode == .value and (new_mode == .default or new_mode == .default_on)) {
@@ -603,6 +773,7 @@ fn isMutable(instance: *runtime.Instance, input_type: InputType) bool {
 fn resetAlgorithm(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.clearValue();
+    emptySelectedFiles(instance);
     internal.dirty_checkedness = false;
     setCheckedness(instance, hasAttribute(instance, "checked"));
 }
@@ -628,8 +799,13 @@ fn valueIn(instance: *runtime.Instance, input_type: InputType) ![]u8 {
         .default => attribute(instance, "value") orelse allocator.dupe(u8, ""),
         // "default/on": the value attribute, or "on".
         .default_on => attribute(instance, "value") orelse allocator.dupe(u8, "on"),
-        // "filename": no files are ever selected, so the empty string.
-        .filename => allocator.dupe(u8, ""),
+        .filename => blk: {
+            const files = liveFiles(internal) orelse break :blk allocator.dupe(u8, "");
+            const first = (try interfaces.FileList.call_item(files, 0)) orelse break :blk allocator.dupe(u8, "");
+            var name = try interfaces.File.get_name(first);
+            defer name.deinit(first.ctx.allocator);
+            break :blk std.fmt.allocPrint(allocator, "C:\\fakepath\\{s}", .{name.asSlice()});
+        },
     };
 }
 
@@ -685,7 +861,10 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
         .default, .default_on => try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("value"), .{ .domstring = value }),
         // "filename": the empty string empties the list of selected files;
         // anything else throws.
-        .filename => if (value.asSlice().len != 0) return error.InvalidStateError,
+        .filename => {
+            if (value.asSlice().len != 0) return error.InvalidStateError;
+            emptySelectedFiles(instance);
+        },
     }
 }
 
@@ -766,15 +945,10 @@ fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_typ
         // then set it to the empty string instead."
         .number => return allocator.dupe(u8, if (parseValidFloat(value) != null) value else ""),
         .range => return sanitizeRange(allocator, instance, value),
-        // "If the value of the element is a valid simple color, then set it
-        // to the value of the element converted to ASCII lowercase;
-        // otherwise, set it to the string "#000000"."
-        .color => {
-            if (!isValidSimpleColor(value)) return allocator.dupe(u8, "#000000");
-            const lowered = try allocator.dupe(u8, value);
-            for (lowered) |*c| c.* = std.ascii.toLower(c.*);
-            return lowered;
-        },
+        // HTML 4.10.5.1.14: update a color well control color.
+        // TODO: display-p3 output and alpha serialization need the style
+        // system's non-sRGB value representation (Q20's deferred scope).
+        .color => return forms.sanitizeColor(allocator, value),
         else => return allocator.dupe(u8, value),
     }
 }
@@ -808,14 +982,6 @@ fn sanitizeRange(allocator: std.mem.Allocator, instance: *runtime.Instance, valu
         }
     }
     return formatFloat(allocator, number);
-}
-
-fn isValidSimpleColor(value: []const u8) bool {
-    if (value.len != 7 or value[0] != '#') return false;
-    for (value[1..]) |c| {
-        if (!std.ascii.isHex(c)) return false;
-    }
-    return true;
 }
 
 // ============================================================================
@@ -1288,6 +1454,29 @@ fn isIntegral(value: f64) bool {
     return @abs(value - @round(value)) < 1e-9;
 }
 
+fn numericStepMismatch(instance: *runtime.Instance, value: []const u8, fallback_step: f64) bool {
+    // Keep decimal input precision through the remainder calculation, as
+    // Blink and WebKit do with Decimal. f128 has enough spare mantissa bits
+    // for their 2^53 quotient cutoff and 2^-24 relative-step tolerance.
+    const number = std.fmt.parseFloat(f128, value) catch return false;
+    const base = numberAttributeForStep(instance, "min") orelse numberAttributeForStep(instance, "value") orelse 0;
+    var step: f128 = fallback_step;
+    if (attribute(instance, "step")) |text| {
+        defer instance.ctx.allocator.free(text);
+        if (parseValidFloat(text)) |parsed| {
+            if (parsed > 0) step = std.fmt.parseFloat(f128, text) catch step;
+        }
+    }
+    return forms.numericStepMismatch(number, base, step);
+}
+
+fn numberAttributeForStep(instance: *runtime.Instance, comptime name: []const u8) ?f128 {
+    const text = attribute(instance, name) orelse return null;
+    defer instance.ctx.allocator.free(text);
+    if (parseValidFloat(text) == null) return null;
+    return std.fmt.parseFloat(f128, text) catch null;
+}
+
 /// § 4.10.5.4 stepUp(n) / stepDown(n).
 fn stepValue(instance: *runtime.Instance, n: i32, comptime up: bool) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
@@ -1433,8 +1622,10 @@ pub fn set_indeterminate(instance: *runtime.Instance, value: bool) anyerror!void
 
 /// Getter for colorSpace
 pub fn get_colorSpace(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML 4.10.5.1.14: limited to known values; both defaults are sRGB.
+    const value = attribute(instance, "colorspace") orelse return runtime.DOMString.initInterned("limited-srgb");
+    defer instance.ctx.allocator.free(value);
+    return runtime.DOMString.initInterned(if (std.ascii.eqlIgnoreCase(value, "display-p3")) "display-p3" else "limited-srgb");
 }
 
 /// Getter for form: the element's form owner.
@@ -1444,8 +1635,21 @@ pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 
 /// Getter for files
 pub fn get_files(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    // HTML 4.10.5.4: a stable FileList while the selected files do not change.
+    if (typeOf(instance) != .file) return null;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (liveFiles(internal)) |files| return files;
+    const files = try interfaces.FileList.init(instance.ctx.allocator, instance.ctx);
+    dropFiles(instance, internal);
+    internal.selected_files = files;
+    internal.selected_files_generation = runtime.SlabAllocator.generationOf(files);
+    internal.selected_files_realm = files.ctx;
+    internal.files_made_here = true;
+    if (instance.ctx.hasEngine()) {
+        @import("engine").traceChild(instance, files, .{ .name = "files" });
+        internal.files_traced = true;
+    }
+    return files;
 }
 
 /// A URL attribute with the document URL as its fallback: "on getting, when
@@ -1546,20 +1750,51 @@ pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 
 /// Getter for valueAsDate
 pub fn get_valueAsDate(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    return null;
+    // HTML 4.10.5.4: only Date, Month, Week and Time supply this conversion.
+    const input_type = typeOf(instance);
+    switch (input_type) {
+        .date, .month, .week, .time => {},
+        else => return null,
+    }
+    const value = try currentValue(instance);
+    defer instance.ctx.allocator.free(value);
+    const milliseconds = if (input_type == .month) blk: {
+        // Month's number conversion counts months, but its Date conversion
+        // is midnight UTC on the first day of the month (4.10.5.1.8).
+        const month = parseMonth(value) orelse return null;
+        break :blk @as(f64, @floatFromInt(daysFromCivil(month.year, month.month, 1))) * ms_per_day;
+    } else stringToNumber(input_type, value) orelse return null;
+    const engine = @import("engine");
+    return (try engine.createDate(engine.currentRealm() orelse instance.ctx, milliseconds)).take();
 }
 
 /// Setter for valueAsDate
 pub fn set_valueAsDate(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // HTML 4.10.5.4: applicability precedes the Date brand check; null and
+    // an invalid Date clear the value. Read [[DateValue]], never user methods.
+    const input_type = typeOf(instance);
+    switch (input_type) {
+        .date, .month, .week, .time => {},
+        else => return error.InvalidStateError,
+    }
+    const engine = @import("engine");
+    const milliseconds = if (value) |given|
+        engine.thisTimeValue(engine.currentRealm() orelse instance.ctx, given) orelse return error.TypeError
+    else
+        std.math.nan(f64);
+    if (std.math.isNan(milliseconds)) return set_value(instance, .empty);
+    const allocator = instance.ctx.allocator;
+    const text = if (input_type == .month) blk: {
+        const at = dateOfTimeValue(milliseconds) orelse return set_value(instance, .empty);
+        break :blk try std.fmt.allocPrint(allocator, "{d:0>4}-{d:0>2}", .{ at.date.year, at.date.month });
+    } else try numberToString(allocator, input_type, milliseconds);
+    defer allocator.free(text);
+    try set_value(instance, runtime.DOMString.initInterned(text));
 }
 
 /// Getter for willValidate: a candidate for constraint validation - not
 /// barred: not hidden, reset or button; not disabled; not readonly where
-/// readonly applies; no datalist ancestor.
+/// readonly is specified; no datalist ancestor.
 pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
     const input_type = typeOf(instance);
     switch (input_type) {
@@ -1567,7 +1802,11 @@ pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
         else => {},
     }
     if (form_associated.isDisabled(instance)) return false;
-    if (!isMutable(instance, input_type)) return false;
+    // HTML 4.10.5.3.3 bars validation when readonly is specified, even for
+    // color/file/submit where readonly does not change mutability. Blink
+    // ListedElement::RecalcWillValidate agrees; aligned stable cc74d2669f
+    // form-validation-willValidate.html is C/F/S 73/73, 73/73, 73/73.
+    if (hasAttribute(instance, "readonly")) return false;
     var ancestor = form_associated.parentOf(instance);
     while (ancestor) |a| : (ancestor = form_associated.parentOf(a)) {
         if (form_associated.isElementNamed(a, "datalist")) return false;
@@ -1577,14 +1816,24 @@ pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
 
 /// Getter for validity
 pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML 4.10.21.3: the same live ValidityState on every access.
+    const internal = try validationState(instance);
+    if (forms.liveChild(internal.validity, internal.validity_generation)) |validity| return validity;
+    const validity = try interfaces.ValidityState.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(validity);
+    try @import("dom").custom_elements.setValidityControl(validity, instance);
+    if (instance.ctx.hasEngine()) {
+        @import("engine").traceChild(instance, validity, .{ .name = "validity" });
+        internal.validity_traced = true;
+    }
+    internal.validity = validity;
+    internal.validity_generation = runtime.SlabAllocator.generationOf(validity);
+    return validity;
 }
 
 /// Getter for validationMessage
 pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return forms.validationMessage(instance.ctx.allocator, try get_willValidate(instance), constraintFlags(instance), (try validationState(instance)).custom_error);
 }
 
 /// Getter for labels: null in the Hidden state, else the element's labels.
@@ -1625,16 +1874,26 @@ pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOM
 
 /// Setter for colorSpace
 pub fn set_colorSpace(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("colorspace"), .{ .domstring = value });
 }
 
 /// Setter for files
 pub fn set_files(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // HTML 4.10.5.4 steps 1–2: ignore null/non-file; otherwise use this
+    // exact FileList. Each input holding it supplies its own traced edge.
+    if (typeOf(instance) != .file) return;
+    const files = value orelse return;
+    if (files.stateAs(interfaces.FileList.State) == null) return error.TypeError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (liveFiles(internal) == files) return;
+    dropFiles(instance, internal);
+    internal.selected_files = files;
+    internal.selected_files_generation = runtime.SlabAllocator.generationOf(files);
+    internal.selected_files_realm = files.ctx;
+    if (instance.ctx.hasEngine()) {
+        @import("engine").traceChild(instance, files, .{ .name = "files" });
+        internal.files_traced = true;
+    }
 }
 
 /// Setter for capture
@@ -1673,21 +1932,19 @@ pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: setCustomValidity
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = @"error";
-    return error.NotImplemented;
+    // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
+    try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
 }
 
 /// Operation: checkValidity
 pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));
 }
 
 /// Operation: reportValidity
 pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML reportValidity steps 1–2; a headless host has no validation UI.
+    return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));
 }
 
 // ============================================================================
