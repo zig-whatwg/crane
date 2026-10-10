@@ -144,11 +144,7 @@ pub fn extract(allocator: std.mem.Allocator, object: typedefs.BodyInit, keepaliv
             // FormData: its multipart/form-data encoding, and that type with
             // the boundary the encoding used.
             .form_data => |form| {
-                const boundary = multipartBoundary();
-                const encoded = try encodeMultipart(allocator, form, &boundary);
-                defer allocator.free(encoded);
-                result.body = try fetch.internal.Body.fromBytes(allocator, encoded);
-                result.content_type = try std.fmt.allocPrint(allocator, "multipart/form-data; boundary={s}", .{&boundary});
+                result = try extractFormData(allocator, form, encoding.UTF_8);
             },
             // URLSearchParams: the application/x-www-form-urlencoded
             // serializer over its list.
@@ -165,6 +161,19 @@ pub fn extract(allocator: std.mem.Allocator, object: typedefs.BodyInit, keepaliv
             },
         },
     }
+    return result;
+}
+
+/// HTML multipart form submission carries its selected encoding. Fetch's
+/// BodyInit extraction calls this with UTF-8; file bytes are never transcoded.
+pub fn extractFormData(allocator: std.mem.Allocator, form: *runtime.Instance, enc: *const encoding.Encoding) Error!Extracted {
+    var result: Extracted = .{ .allocator = allocator };
+    errdefer result.deinit();
+    const boundary = multipartBoundary();
+    const encoded = try encodeMultipart(allocator, form, &boundary, enc);
+    defer allocator.free(encoded);
+    result.body = try fetch.internal.Body.fromBytes(allocator, encoded);
+    result.content_type = try std.fmt.allocPrint(allocator, "multipart/form-data; boundary={s}", .{&boundary});
     return result;
 }
 
@@ -998,8 +1007,8 @@ fn multipartBoundary() [boundary_len]u8 {
 }
 
 /// The multipart/form-data encoding algorithm over `form`'s entry list, with
-/// UTF-8. Owned.
-fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, boundary: []const u8) Error![]u8 {
+/// the selected encoding. Owned (HTML 4.10.22.8).
+fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, boundary: []const u8, enc: *const encoding.Encoding) Error![]u8 {
     var out: std.ArrayListUnmanaged(u8) = .empty;
     errdefer out.deinit(allocator);
     const entries = interfaces.FormData.getEntriesForIterable(form) orelse &.{};
@@ -1011,12 +1020,12 @@ fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, bounda
         try out.appendSlice(allocator, "--");
         try out.appendSlice(allocator, boundary);
         try out.appendSlice(allocator, "\r\nContent-Disposition: form-data; name=\"");
-        try appendEscapedName(allocator, &out, entry.name);
+        try appendMultipartText(allocator, &out, entry.name, enc, true, true);
         try out.append(allocator, '"');
         switch (entry.value) {
             .usvstring => |value| {
                 try out.appendSlice(allocator, "\r\n\r\n");
-                try appendNormalizedNewlines(allocator, &out, value);
+                try appendMultipartText(allocator, &out, value, enc, true, false);
             },
             .file => |blob| {
                 // A Blob in an entry list is a File named "blob" (XHR
@@ -1025,7 +1034,13 @@ fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, bounda
                 if (blob.stateAs(interfaces.File.State) != null) {
                     var name = interfaces.File.get_name(blob) catch return error.OutOfMemory;
                     defer name.deinit(blob.ctx.allocator);
-                    try appendEscapedName(allocator, &out, name.asSlice());
+                    // Filenames do not normalize CR/LF before escaping. All
+                    // three engines pass 64/64 form-upload subtests at WPT
+                    // 521d168d63 (2026-10-10); Blink FormDataEncoder's
+                    // AddFilenameToMultiPartHeader uses kDoNotNormalizeCRLF.
+                    // https://wpt.fyi/results/FileAPI/file?run_id=5071749074124800&run_id=5195569390944256&run_id=5823052670828544
+                    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/platform/network/form_data_encoder.cc
+                    try appendMultipartText(allocator, &out, name.asSlice(), enc, false, true);
                 } else {
                     try out.appendSlice(allocator, "blob");
                 }
@@ -1046,14 +1061,23 @@ fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, bounda
     return out.toOwnedSlice(allocator);
 }
 
-/// A field name or filename, escaped: LF as %0A, CR as %0D, " as %22. A
-/// name's newlines are normalized to CRLF first ("convert to a list of
-/// name-value pairs"), so a lone CR or LF is escaped as the pair.
-fn appendEscapedName(allocator: std.mem.Allocator, out: *std.ArrayListUnmanaged(u8), name: []const u8) Error!void {
+/// HTML 4.10.22.8: normalize names/string values, encode (including numeric
+/// character references for unencodable scalars), then escape header bytes.
+/// A File's name is encoded and escaped without newline normalization.
+fn appendMultipartText(allocator: std.mem.Allocator, out: *std.ArrayListUnmanaged(u8), text: []const u8, enc: *const encoding.Encoding, normalize: bool, escape: bool) Error!void {
     var normalized: std.ArrayListUnmanaged(u8) = .empty;
     defer normalized.deinit(allocator);
-    try appendNormalizedNewlines(allocator, &normalized, name);
-    for (normalized.items) |c| switch (c) {
+    if (normalize) try appendNormalizedNewlines(allocator, &normalized, text);
+    const source = if (normalize) normalized.items else text;
+    const encoded = if (enc == encoding.UTF_8) null else blk: {
+        const units = std.unicode.utf8ToUtf16LeAlloc(allocator, source) catch return error.OutOfMemory;
+        defer allocator.free(units);
+        break :blk encoding.hooks.encode(allocator, units, enc) catch return error.OutOfMemory;
+    };
+    defer if (encoded) |bytes| allocator.free(bytes);
+    const bytes = encoded orelse source;
+    if (!escape) return out.appendSlice(allocator, bytes);
+    for (bytes) |c| switch (c) {
         '\n' => try out.appendSlice(allocator, "%0A"),
         '\r' => try out.appendSlice(allocator, "%0D"),
         '"' => try out.appendSlice(allocator, "%22"),
