@@ -4845,22 +4845,28 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             };
 
-            // Get 'this' object (the newly created instance)
-            //
-            // NOT disposed, unlike every other getThis() in this file. `cache.set`
+            // Get 'this' object (the newly created instance). Owned, like
+            // every getThis(), until the wrapper cache takes it: `cache.set`
             // below stores this exact pointer as `entry.wrapper` and arms
-            // `v8_Global_SetWeak` on it, so the wrapper cache owns it from that
-            // point and frees it via `disposeEntryWrapper`. Disposing here is a
-            // double free plus a weak callback pointing at freed memory. The store
-            // is conditional on the cache existing, so a conditional dispose is not
-            // a fix either.
+            // `v8_Global_SetWeak` on it, so from a successful set the cache
+            // owns it and frees it via `disposeEntryWrapper` - disposing it
+            // then is a double free plus a weak callback pointing at freed
+            // memory. Every other exit releases it here: a conversion that
+            // threw, an impl that failed, an instance that already had a
+            // wrapper, no cache, a failed set. Those exits used to keep it,
+            // one Global<Object> per failed `new X()` of any interface (Codex
+            // row 14 Q16; tests/v8/constructor_error_receiver_test.zig).
             const this_obj = info.getThis();
+            var receiver_taken = false;
+            defer if (!receiver_taken) v8.v8_Object_Dispose(this_obj);
 
             // HTML 3.2.3 "HTML element constructors" [html_constructor]: with
             // the agent's host hook, the construction is HTML's - the element
             // a custom element class's super() gets, new or upgrading.
             if (comptime is_html_constructor) {
                 if (@import("protocol_agents.zig").htmlConstructorHookOf(isolate)) |hook| {
+                    // It binds or releases the receiver itself.
+                    receiver_taken = true;
                     constructHTMLElement(info, hook, this_obj, isolate, current_context, constructor_context, ctx, constructor_v8_fn);
                     return;
                 }
@@ -4911,11 +4917,8 @@ pub fn V8Interface(comptime Interface: type) type {
             // made its wrapper): that wrapper, given NewTarget's prototype, is
             // the result - binding `this_obj` instead would replace it, and
             // every edge drawn on it with it (WrapperCache.set refuses). The
-            // receiver is then bound to nothing.
-            if (adoptExistingWrapper(info, this_obj, instance, constructor_context)) {
-                v8.v8_Object_Dispose(this_obj);
-                return;
-            }
+            // receiver is then bound to nothing, and released.
+            if (adoptExistingWrapper(info, this_obj, instance, constructor_context)) return;
 
             // Store the Zig instance in the V8 object's internal field (slot 0)
             // Also store WrapperTypeInfo in slot 1 for type-safe unwrapping
@@ -4934,10 +4937,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
                 const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
 
-                // Cache the wrapper (log but don't fail if caching fails)
-                cache.set(instance, this_obj, isolate) catch |err| {
+                // Cache the wrapper (log but don't fail if caching fails). A
+                // set that fails stored nothing: the receiver stays ours.
+                if (cache.set(instance, this_obj, isolate)) |_| {
+                    receiver_taken = true;
+                } else |err| {
                     debug.print("Failed to cache constructor wrapper: {s}\n", .{@errorName(err)});
-                };
+                }
             }
 
             // ========================================
