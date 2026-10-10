@@ -213,7 +213,8 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     unregister(instance);
-    engine.releasePlatformObject(instance);
+    // An open channel's keep goes with it; a closed one's went at close().
+    if (getInternal(instance)) |internal| if (!internal.closed) engine.releasePlatformObject(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.allocator.free(internal.name);
@@ -266,6 +267,9 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 /// closed channel is never a destination again, and nothing holds it.
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return;
+    // The constructor's keep is released once: the keep is counted, and a
+    // second close() would end another owner's.
+    if (internal.closed) return;
     internal.closed = true;
     unregister(instance);
     engine.releasePlatformObject(instance);
