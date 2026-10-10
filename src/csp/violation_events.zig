@@ -126,6 +126,51 @@ pub fn blockedUri(allocator: std.mem.Allocator, resource: Resource) error{OutOfM
     };
 }
 
+/// CSP §5.2, with the browsers' additional navigation privacy restriction.
+/// The origin and resource URL are serialized by their owners. A cross-origin
+/// frame-src/object-src resource exposes only its origin, even though §5.4
+/// specifies stripping credentials and fragments alone. Blink implements this
+/// in ContentSecurityPolicy::StripURLForUseInReport (crbug.com/633306):
+/// https://raw.githubusercontent.com/chromium/chromium/main/third_party/blink/renderer/core/frame/csp/content_security_policy.cc
+/// wpt.fyi aligned stable cc74d2669f: frame-src-blocked-path-matching.sub.html
+/// Chrome/Firefox/Safari each 3/3 (runs 6218298311311360, 4877098740350976,
+/// 5164107446878208). Same-origin paths and other directives are unchanged.
+/// The returned string is owned by the caller.
+pub fn blockedUriForPolicy(
+    allocator: std.mem.Allocator,
+    resource: Resource,
+    effective_directive: []const u8,
+    reporting_origin: []const u8,
+) error{OutOfMemory}![]u8 {
+    if (resource != .url or
+        (!std.mem.eql(u8, effective_directive, "frame-src") and
+            !std.mem.eql(u8, effective_directive, "object-src")))
+        return blockedUri(allocator, resource);
+
+    const Url = @import("request_check.zig").Url;
+    const target = Url.ofSerialized(resource.url);
+    // §5.4 step 1 still reduces non-HTTP(S) URLs to the scheme.
+    if (!std.ascii.eqlIgnoreCase(target.scheme, "http") and
+        !std.ascii.eqlIgnoreCase(target.scheme, "https"))
+        return blockedUri(allocator, resource);
+    const host = target.host orelse return blockedUri(allocator, resource);
+    const origin = Url.ofSerialized(reporting_origin);
+    const defaultPort = @import("matching.zig").getDefaultPort;
+    const target_port = target.port orelse defaultPort(target.scheme);
+    const origin_port = origin.port orelse defaultPort(origin.scheme);
+    if (origin.host) |origin_host| {
+        if (std.ascii.eqlIgnoreCase(target.scheme, origin.scheme) and
+            std.ascii.eqlIgnoreCase(host, origin_host) and target_port == origin_port)
+            return blockedUri(allocator, resource);
+    }
+    // Browser deviation from §5.4 step 5: serialize just the tuple origin.
+    if (target.port) |port| {
+        if (port != defaultPort(target.scheme))
+            return std.fmt.allocPrint(allocator, "{s}://{s}:{d}", .{ target.scheme, host, port });
+    }
+    return std.fmt.allocPrint(allocator, "{s}://{s}", .{ target.scheme, host });
+}
+
 /// A violation's sample for `source` under `directive`: "the substring of
 /// source containing its first 40 characters" when the directive's value
 /// contains 'report-sample', else the empty string (§4.2.3 step 3.2.2 and

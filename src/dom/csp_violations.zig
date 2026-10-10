@@ -435,7 +435,19 @@ fn queueViolationTask(global: *runtime.Instance, violation: *const Violation) !v
         defer if (referrer.len > 0) allocator.free(referrer);
         if (referrer.len > 0) task.referrer = try csp.violation_events.stripUrlForReports(allocator, referrer);
     }
-    task.blocked_uri = try csp.violation_events.blockedUri(allocator, violation.resource);
+    // Use the settings origin, not the document URL: about:blank and srcdoc
+    // can inherit a tuple origin, and sandboxed documents can have an opaque
+    // one. Only frame/object reports need this additional privacy check.
+    if (std.mem.eql(u8, violation.effective_directive, "frame-src") or
+        std.mem.eql(u8, violation.effective_directive, "object-src"))
+    {
+        const settings = @import("global_settings.zig").of(global);
+        const origin = if (settings) |s| try s.origin(global) else try allocator.dupe(u8, "null");
+        defer allocator.free(origin);
+        task.blocked_uri = try csp.violation_events.blockedUriForPolicy(allocator, violation.resource, violation.effective_directive, origin);
+    } else {
+        task.blocked_uri = try csp.violation_events.blockedUri(allocator, violation.resource);
+    }
     task.effective_directive = try allocator.dupe(u8, violation.effective_directive);
     task.original_policy = try csp.parsing.serializePolicy(allocator, violation.policy);
     task.sample = try allocator.dupe(u8, violation.sample);
