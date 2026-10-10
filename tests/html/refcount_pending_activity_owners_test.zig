@@ -45,3 +45,25 @@ fn observerObservingManyTargetsGoesOnceItObservesNone() !void {
 test "an IntersectionObserver that observed several targets keeps itself once, and goes when it observes none" {
     try onFreshThread(observerObservingManyTargetsGoesOnceItObservesNone);
 }
+
+fn mediaElementWithManyTasksGoesOnceIdle() !void {
+    const page = try Page.open();
+    defer page.close();
+    try page.run(
+        \\globalThis.weak = (() => {
+        \\  const audio = document.createElement('audio');
+        \\  // Several queued media tasks at once: each queue syncs the
+        \\  // element's activity while the last is still pending.
+        \\  audio.src = 'data:,not-media';
+        \\  audio.load();
+        \\  audio.load();
+        \\  audio.pause();
+        \\  return new WeakRef(audio);
+        \\})();
+    );
+    try std.testing.expect(try collected(page));
+}
+
+test "a media element whose tasks were queued several times keeps itself once, and goes when idle" {
+    try onFreshThread(mediaElementWithManyTasksGoesOnceIdle);
+}
