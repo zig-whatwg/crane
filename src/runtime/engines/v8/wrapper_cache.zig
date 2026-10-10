@@ -386,57 +386,40 @@ pub fn isStreamsGraphObject(name: []const u8) bool {
 /// parent's, and every parent's wrapper holds its wrapped children's - edges,
 /// never roots - so the wrapped part of a tree is one cycle the collector
 /// keeps or takes whole. A wrapped node's parent is always wrapped (made if
-/// script has not seen it), so the edges reach the tree's root. These hooks
-/// keep the edges current: the mutation algorithms run the insertion and
-/// removing steps for every node of a moved subtree, but only the subtree's
-/// root gains or loses a parent, so each is read per node. Installed once,
-/// at process start (initializeEngine).
+/// script has not seen it), so the edges reach the tree's root.
+///
+/// The HOST keeps the edges current (refcount design 2.2, step 4): dom.mutation
+/// calls engine.joinOpaqueRoot / leaveOpaqueRoot for a wrapped subtree root
+/// that gains or loses a parent - the only node whose edges change - and
+/// nothing for an unwrapped one. The adapter used to register its own
+/// insertion, removing and moving steps (installTreeHooks), read every node of
+/// every moved subtree and looked each one up in its cache.
 ///
 /// Before node tracing, a node's wrapper was strong while it had a parent and
 /// weak as a root: a root whose last use was done was collected while script
 /// still held a node inside its tree, and the root's teardown freed that
 /// node under its caller (gc_bench's host-in-dropped-parent; crane/r3-
 /// detached-tree-child-keeps-root.html).
-var tree_hooks_installed = false;
-
-pub fn installTreeHooks() void {
-    if (tree_hooks_installed) return;
-    tree_hooks_installed = true;
-    const mutation = @import("dom").mutation;
-    mutation.registerInsertionStepsCallback(onNodeInserted) catch {};
-    mutation.registerRemovingStepsCallback(onNodeRemoved) catch {};
-    mutation.registerMovingStepsCallback(onNodeMoved) catch {};
-}
-
-fn onNodeInserted(node: *@import("dom").NodeBase) void {
-    syncStrength(node);
-    // A wrapped node that gained a parent: the edges between them (the
-    // parent made for it if script has not seen it).
+/// engine.joinOpaqueRoot: `member`, wrapped, was inserted under `parent`: the
+/// edges between their wrappers (`parent`'s, and its unwrapped ancestors',
+/// made first). Nothing for a member with no wrapper or no parent now.
+pub fn joinOpaqueRoot(member: *runtime.Instance, parent: *runtime.Instance) void {
+    _ = parent; // The member's own parent pointer is the truth; the host passes it for engines that need it.
+    const node = @import("dom").instance_bridge.getNodeBase(@ptrCast(member)) orelse return;
     const wrapper = nodeWrapper(node) orelse return;
     if (node.parent_node == null) return;
     drawTreeEdges(node, wrapper);
 }
 
-fn onNodeRemoved(node: *@import("dom").NodeBase, old_parent: ?*@import("dom").NodeBase) void {
-    syncStrength(node);
-    // Only the removed subtree's root lost a parent: the edges between them
-    // go. The subtree keeps its own. (A descendant is visited with null - or,
-    // on the fallback walk, with its own parent, which it still has.)
-    const parent = old_parent orelse return;
-    if (node.parent_node != null) return;
+/// engine.leaveOpaqueRoot: `member`, wrapped, left `old_parent`: its upward
+/// slot holds its node document now (`eraseTreeEdges`), and `old_parent`'s
+/// wrapper lets it go. Nothing for a member with no wrapper.
+pub fn leaveOpaqueRoot(member: *runtime.Instance, old_parent: *runtime.Instance) void {
+    const dom = @import("dom");
+    const node = dom.instance_bridge.getNodeBase(@ptrCast(member)) orelse return;
     const wrapper = nodeWrapper(node) orelse return;
+    const parent = dom.instance_bridge.getNodeBase(@ptrCast(old_parent)) orelse return;
     eraseTreeEdges(node, wrapper, parent);
-}
-
-/// The move algorithm (moveBefore) changes a node's parent without the
-/// removing and insertion steps: its edges follow it - to the new parent,
-/// away from `old_parent` (given for the moved node only).
-fn onNodeMoved(node: *@import("dom").NodeBase, old_parent: ?*@import("dom").NodeBase) void {
-    const parent = old_parent orelse return;
-    const wrapper = nodeWrapper(node) orelse return;
-    if (node.parent_node == parent) return;
-    eraseTreeEdges(node, wrapper, parent);
-    if (node.parent_node != null) drawTreeEdges(node, wrapper);
 }
 
 // ============================================================================
@@ -560,11 +543,6 @@ fn eraseTreeEdges(child: *@import("dom").NodeBase, child_wrapper: *v8.Value, old
         v8.v8_Object_PrivateRefUpdate(child_wrapper, tree_parent_key.ptr, tree_parent_key.len, null);
     const parent_wrapper = nodeWrapper(old_parent) orelse return;
     v8.v8_Object_PrivateSetUpdate(parent_wrapper, tree_children_key.ptr, tree_children_key.len, child_wrapper, false);
-}
-
-fn syncStrength(node: *@import("dom").NodeBase) void {
-    const entry = entryOf(instanceOfNode(node) orelse return) orelse return;
-    syncEntry(entry);
 }
 
 fn instanceOfNode(node: *@import("dom").NodeBase) ?*runtime.Instance {
@@ -1755,13 +1733,7 @@ pub const WrapperCache = struct {
         // realm's sweep runs, which no longer lets references go.
         if (!self.is_tearing_down) entry.counted = runtime.lifetime.wrapperAcquired(instance);
 
-        // Set weak callback for GC cleanup
-        // The wrapper of a node in a tree - or of a window's document - is
-        // held strongly, so its identity and its expandos survive a collection
-        // the way they do in WebKit and Blink. It goes weak when the node
-        // becomes a root (installTreeHooks), and the teardown sweep frees it
-        // otherwise.
-        // A pending-activity hold placed before the wrapper existed.
+        // Pending-activity keeps placed before the wrapper existed.
         if (self.pending_before_wrap.fetchRemove(instance)) |held| {
             if (held.value.generation == entry.original_generation) entry.pending_activity = held.value.count;
         }

@@ -1870,6 +1870,45 @@ pub inline fn tracedValue(owner: *Instance, slot: TracedSlot) ?Owned {
     return impl.tracedValue(owner, slot);
 }
 
+// Node tracing's opaque root (refcount design 2.2, section 7 step 4). WebKit
+// keeps a node's wrapper alive while the node's opaque root - its
+// shadow-including root - is reachable (JSNodeOwner::isReachableFromOpaqueRoots,
+// JSNodeCustom.cpp): any reachable wrapper of a tree keeps every wrapper of
+// it. The host says when a subtree's root changes; the engine keeps the rule.
+// The host calls these only for a member that has a wrapper - one field test,
+// so a parse or an innerHTML of unwrapped nodes calls nothing.
+
+/// `member` - a node with a wrapper, the root of a subtree just inserted
+/// under `parent` (DOM insert, append, move's new parent) - now shares its
+/// opaque root with `parent`'s tree: from here on, any reachable wrapper of
+/// either keeps the wrappers of both, and `member`'s wrapper keeps its
+/// tree's root wrapper - and through it, the tree's node document. An edge,
+/// never a root: a tree script holds nothing of still goes whole.
+///
+/// V8: node tracing's edges (wrapper_cache.zig) - `member`'s wrapper holds
+/// `parent`'s in its one upward slot (`dom.node_document.traced_slot`), and
+/// `parent`'s holds a Set of its wrapped children's. A `parent` script has not
+/// seen is wrapped first, with its unwrapped ancestors, top-down, in their
+/// relevant realm: the wrapped part of a tree is upward-closed. JavaScriptCore
+/// would keep the same edges in a per-realm WeakMap (design 2.5, decision D5);
+/// it and QuickJS wrap no node today and do nothing. Never call it while the
+/// collector runs; does nothing when `member` has no wrapper.
+pub inline fn joinOpaqueRoot(member: *Instance, parent: *Instance) void {
+    impl.joinOpaqueRoot(member, parent);
+}
+
+/// `member` - a node with a wrapper - left `old_parent`'s tree (DOM remove,
+/// move's old parent) and is the root of its own opaque root: `old_parent`'s
+/// wrappers no longer keep `member`'s, nor `member`'s theirs. A root keeps
+/// its node document: V8 points `member`'s upward slot at the document's
+/// wrapper (made in its relevant realm if script has not seen it), updated in
+/// place. A move is a leave followed by a join. Nothing on JavaScriptCore,
+/// QuickJS or the test adapter (no node is wrapped there). Never call it
+/// while the collector runs; does nothing when `member` has no wrapper.
+pub inline fn leaveOpaqueRoot(member: *Instance, old_parent: *Instance) void {
+    impl.leaveOpaqueRoot(member, old_parent);
+}
+
 // ============================================================================
 // 4.13 Diagnostics tier (tools only; never spec code)
 // ============================================================================

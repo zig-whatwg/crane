@@ -38,6 +38,7 @@ const element_with_base = @import("element_with_base.zig");
 const attr_with_base = @import("attr_with_base.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const refcount = @import("refcount.zig");
+const engine = @import("engine");
 const node_document = @import("node_document.zig");
 const element_attributes = @import("element_attributes.zig");
 const range_boundaries = @import("range_boundaries.zig");
@@ -896,8 +897,10 @@ pub fn insert(
             parent.last_child = n;
         }
 
-        // The parent write, and the holds it moves (refcount, step 3).
+        // The parent write, and the holds it moves (refcount, step 3); a
+        // wrapped root joins its new tree's opaque root (step 4).
         refcount.linkChild(n, @ptrCast(parent));
+        joinedTree(n, @ptrCast(parent));
 
         // Update is_connected for the inserted node and all its descendants
         // A node is connected if its shadow-including root is a Document.
@@ -1070,6 +1073,7 @@ pub fn appendChildren(
     var prev_child: ?*NodeBase = previousSibling; // Last child before insertion (or null)
     for (children) |child| {
         refcount.linkChild(child, @ptrCast(parent));
+        joinedTree(child, @ptrCast(parent));
 
         // Update sibling pointers
         child.previous_sibling = prev_child;
@@ -1218,6 +1222,7 @@ pub fn insertChildrenBefore(
         i -= 1;
         try parent.child_nodes.insert(insert_idx, children[i]);
         refcount.linkChild(children[i], @ptrCast(parent));
+        joinedTree(children[i], @ptrCast(parent));
     }
 
     // Phase 2: Update sibling pointers for inserted children
@@ -1600,8 +1605,10 @@ pub fn remove(
     if (node_idx) |idx| {
         _ = parent.child_nodes.remove(idx) catch unreachable; // idx is guaranteed valid by getChildIndex
     }
-    // The parent write, and the holds it moves (refcount, step 3).
+    // The parent write, and the holds it moves (refcount, step 3); a
+    // wrapped root leaves its old tree's opaque root (step 4).
     refcount.unlinkChild(@ptrCast(node));
+    leftTree(@ptrCast(node), @ptrCast(parent));
 
     // Update is_connected for the removed node and all its descendants
     // A removed node is no longer connected to the document tree
@@ -2303,6 +2310,41 @@ fn removeFromChildrenList(node: anytype, parent: anytype) void {
     node.next_sibling = null;
 }
 
+/// Move 19-20's parent write (refcount.moveChild), and a wrapped node's
+/// opaque root following it: it leaves its old parent's and joins its new
+/// one's (step 4) - the moving steps, in place of the adapter's old hook.
+fn moveChildFollowed(node: anytype, parent: anytype) void {
+    const old_parent = node.parent_node;
+    refcount.moveChild(node, parent);
+    if (old_parent) |old| if (old != @as(*NodeBase, @ptrCast(parent))) {
+        leftTree(@ptrCast(node), old);
+        joinedTree(@ptrCast(node), @ptrCast(parent));
+    };
+}
+
+/// Node tracing's opaque root follows the tree (refcount design 2.2, section 7
+/// step 4): `node` - the root of a subtree just linked under `parent` - joins
+/// `parent`'s opaque root, if it has a wrapper. One field test (the engine's
+/// wrapper alias on NodeBase), so a parse or an innerHTML of unwrapped nodes
+/// never calls the engine; only the subtree's root changes trees, so its
+/// descendants are not visited (the adapter's insertion-steps hook visited
+/// and looked up each one).
+fn joinedTree(node: *NodeBase, parent: *NodeBase) void {
+    if (node.bound_v8_wrapper == null) return;
+    const member = instance_bridge.getInstance(node) orelse return;
+    const owner = instance_bridge.getInstance(parent) orelse return;
+    engine.joinOpaqueRoot(@ptrCast(@alignCast(member)), @ptrCast(@alignCast(owner)));
+}
+
+/// `node` - the root of a subtree just unlinked from `old_parent` - leaves
+/// its old tree's opaque root and is a root of its own, if it has a wrapper.
+fn leftTree(node: *NodeBase, old_parent: *NodeBase) void {
+    if (node.bound_v8_wrapper == null) return;
+    const member = instance_bridge.getInstance(node) orelse return;
+    const owner = instance_bridge.getInstance(old_parent) orelse return;
+    engine.leaveOpaqueRoot(@ptrCast(@alignCast(member)), @ptrCast(@alignCast(owner)));
+}
+
 /// Helper: Insert node into parent's children list (updates parent pointer)
 fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
     if (child) |c| {
@@ -2310,7 +2352,7 @@ fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
         const child_idx = getChildIndex(c) orelse {
             // Child not found, append to end
             parent.child_nodes.append(node) catch return;
-            refcount.moveChild(node, parent);
+            moveChildFollowed(node, parent);
             node.previous_sibling = tree_helpers.getLastChild(parent);
             node.next_sibling = null;
             if (node.previous_sibling) |prev| {
@@ -2323,7 +2365,7 @@ fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
         parent.child_nodes.insert(child_idx, node) catch return;
 
         // Update pointers
-        refcount.moveChild(node, parent);
+        moveChildFollowed(node, parent);
         node.next_sibling = c;
         node.previous_sibling = tree_helpers.getPreviousSibling(c);
 
@@ -2335,7 +2377,7 @@ fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
         // Append to end
         parent.child_nodes.append(node) catch return;
 
-        refcount.moveChild(node, parent);
+        moveChildFollowed(node, parent);
         const last = tree_helpers.getLastChild(parent);
         node.previous_sibling = if (last == node) null else last;
         node.next_sibling = null;

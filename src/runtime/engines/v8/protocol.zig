@@ -804,6 +804,8 @@ pub const traceChild = protocol_tracing.traceChild;
 pub const forgetTracedChild = protocol_tracing.forgetTracedChild;
 pub const traceValue = protocol_tracing.traceValue;
 pub const tracedValue = protocol_tracing.tracedValue;
+pub const joinOpaqueRoot = @import("wrapper_cache.zig").joinOpaqueRoot;
+pub const leaveOpaqueRoot = @import("wrapper_cache.zig").leaveOpaqueRoot;
 
 // ============================================================================
 // 4.13 Diagnostics tier

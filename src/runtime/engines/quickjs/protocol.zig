@@ -475,6 +475,10 @@ pub fn traceValue(_: *Instance, _: JSValue, _: engine.TracedSlot) void {}
 pub fn tracedValue(_: *Instance, _: engine.TracedSlot) ?Owned {
     return null;
 }
+/// No node is wrapped yet, so there is no opaque root to keep. With QuickJS
+/// linked, a node class's `gc_mark` reports these edges natively.
+pub fn joinOpaqueRoot(_: *Instance, _: *Instance) void {}
+pub fn leaveOpaqueRoot(_: *Instance, _: *Instance) void {}
 
 // 4.13 Diagnostics tier
 pub fn heapStatistics(_: *Agent) engine.HeapStatistics {

@@ -479,6 +479,9 @@ pub fn traceValue(_: *Instance, _: JSValue, _: engine.TracedSlot) void {}
 pub fn tracedValue(_: *Instance, _: engine.TracedSlot) ?Owned {
     return null;
 }
+/// No engine, no wrappers: no opaque root to keep.
+pub fn joinOpaqueRoot(_: *Instance, _: *Instance) void {}
+pub fn leaveOpaqueRoot(_: *Instance, _: *Instance) void {}
 
 // 4.13 Diagnostics tier
 pub fn heapStatistics(_: *Agent) engine.HeapStatistics {
