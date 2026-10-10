@@ -43,6 +43,7 @@ pub const InternalState = struct {
     /// collection script keeps can outlive its root; a mismatch means the
     /// root is gone and the collection is empty, never a read of freed memory.
     root_generation: u64 = 0,
+    document_filter: live_collections.DocumentFilter = .images,
     form_root_traced: bool = false,
     fieldset_controls: bool = false,
     options_root_traced: bool = false,
@@ -99,6 +100,53 @@ fn makeLive(collection: *runtime.Instance, root: *runtime.Instance, refill: Refi
 /// element children".
 fn makeElementChildren(collection: *runtime.Instance, root: *runtime.Instance) void {
     makeLive(collection, root, &refillElementChildren);
+}
+
+/// HTML 3.1.7 document tree accessors: the generated SameObject cache owns
+/// the document-to-list edge. Root retention is the refcount follow-up.
+fn makeDocumentElements(collection: *runtime.Instance, document: *runtime.Instance, filter: live_collections.DocumentFilter) void {
+    const internal = getInternal(collection) orelse return;
+    internal.document_filter = filter;
+    makeLive(collection, document, &refillDocumentElements);
+}
+
+fn refillDocumentElements(collection: *runtime.Instance, document: *runtime.Instance) bool {
+    const internal = getInternal(collection) orelse return false;
+    var node = interfaces.Node.get_firstChild(document) catch return false;
+    while (node) |element| : (node = nextInTreeOrder(element, document)) {
+        if (matchesDocumentFilter(element, internal.document_filter) catch return false)
+            addElement(collection, element) catch return false;
+    }
+    return true;
+}
+
+fn matchesDocumentFilter(element: *runtime.Instance, filter: live_collections.DocumentFilter) !bool {
+    if ((try interfaces.Node.get_nodeType(element)) != interfaces.Node.get_ELEMENT_NODE()) return false;
+    var namespace = (try interfaces.Element.get_namespaceURI(element)) orelse return false;
+    defer namespace.deinit(element.ctx.allocator);
+    if (!std.mem.eql(u8, namespace.asSlice(), "http://www.w3.org/1999/xhtml")) return false;
+    var name = try interfaces.Element.get_localName(element);
+    defer name.deinit(element.ctx.allocator);
+    const local = name.asSlice();
+    const matched = switch (filter) {
+        .images => std.mem.eql(u8, local, "img"),
+        .embeds => std.mem.eql(u8, local, "embed"),
+        .forms => std.mem.eql(u8, local, "form"),
+        .scripts => std.mem.eql(u8, local, "script"),
+        .links => std.mem.eql(u8, local, "a") or std.mem.eql(u8, local, "area"),
+        .anchors => std.mem.eql(u8, local, "a"),
+    };
+    if (!matched) return false;
+    // HTML's link and anchor filters ask for PRESENCE, including an empty
+    // value, and only a null-namespace href/name attribute counts.
+    const attribute: []const u8 = switch (filter) {
+        .links => "href",
+        .anchors => "name",
+        else => return true,
+    };
+    var value = try interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned(attribute));
+    defer if (value) |*present| present.deinit(element.ctx.allocator);
+    return value != null;
 }
 
 fn makeFormControls(collection: *runtime.Instance, root: *runtime.Instance, fieldset: bool) void {
@@ -324,7 +372,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls make a collection live through dom.live_collections.
-    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .root = &liveRoot });
+    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .document_elements = &makeDocumentElements, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .root = &liveRoot });
 }
 
 /// Initialize instance (creates the instance)

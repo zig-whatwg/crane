@@ -1686,122 +1686,55 @@ pub fn get_head(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return headElementOf(instance);
 }
 
-/// Helper: Create an HTMLCollection containing elements matching a single tag name
-fn createCollectionByTagName(instance: *runtime.Instance, tag_name: []const u8) ImplError!*runtime.Instance {
+/// HTML's document collections are live views with namespace-aware filters.
+fn documentCollection(instance: *runtime.Instance, filter: live_collections.DocumentFilter) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Use interface instead of impl (per Golden Rule #13)
     const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
     errdefer interfaces.HTMLCollection.deinit(collection);
-
-    // Traverse tree and collect matching elements
-    try collectElementsByTagName(instance, tag_name, internal.doc_type == .html, collection);
-
+    try live_collections.documentElements(collection, instance, filter);
     return collection;
-}
-
-/// Helper: Create an HTMLCollection containing elements matching multiple tag names
-fn createCollectionByTagNames(instance: *runtime.Instance, tag_names: []const []const u8) ImplError!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Use interface instead of impl (per Golden Rule #13)
-    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-
-    // Traverse tree and collect matching elements
-    try collectElementsByTagNames(instance, tag_names, internal.doc_type == .html, collection);
-
-    return collection;
-}
-
-/// Helper: Recursively collect elements by multiple tag names
-fn collectElementsByTagNames(
-    node: *runtime.Instance,
-    target_names: []const []const u8,
-    is_html: bool,
-    collection: *runtime.Instance,
-) ImplError!void {
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const ElementImpl = @import("Element.zig");
-
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // Get element's tag name and compare with each target
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const elem_name = elem_internal.local_name.asSlice();
-                var matches = false;
-
-                for (target_names) |target_name| {
-                    if (is_html) {
-                        if (std.ascii.eqlIgnoreCase(elem_name, target_name)) {
-                            matches = true;
-                            break;
-                        }
-                    } else {
-                        if (std.mem.eql(u8, elem_name, target_name)) {
-                            matches = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (matches) {
-                    HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
-                }
-            }
-        }
-
-        // Recursively search descendants
-        try collectElementsByTagNames(c, target_names, is_html, collection);
-
-        child = NodeImpl.getNextSibling(c);
-    }
 }
 
 /// Getter for images
 /// HTML §4.8.4 - Returns an HTMLCollection of all img elements
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-images
 pub fn get_images(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return createCollectionByTagName(instance, "img");
+    return documentCollection(instance, .images);
 }
 
 /// Getter for embeds
 /// HTML §4.8.6 - Returns an HTMLCollection of all embed elements
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-embeds
 pub fn get_embeds(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return createCollectionByTagName(instance, "embed");
+    return documentCollection(instance, .embeds);
 }
 
 /// Getter for plugins
 /// HTML §4.8.6 - Returns the same as embeds (alias)
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-plugins
 pub fn get_plugins(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return get_embeds(instance);
+    return interfaces.Document.get_embeds(instance);
 }
 
 /// Getter for links
 /// HTML §4.8.2 - Returns an HTMLCollection of all a and area elements with href attribute
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-links
-/// Note: This is a simplified implementation - full spec requires filtering by href presence
 pub fn get_links(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const tag_names = &[_][]const u8{ "a", "area" };
-    return createCollectionByTagNames(instance, tag_names);
+    return documentCollection(instance, .links);
 }
 
 /// Getter for forms
 /// HTML §4.10.3 - Returns an HTMLCollection of all form elements
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-forms
 pub fn get_forms(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return createCollectionByTagName(instance, "form");
+    return documentCollection(instance, .forms);
 }
 
 /// Getter for scripts
 /// HTML §4.12.1 - Returns an HTMLCollection of all script elements
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-scripts
 pub fn get_scripts(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return createCollectionByTagName(instance, "script");
+    return documentCollection(instance, .scripts);
 }
 
 /// Getter for currentScript
@@ -1949,9 +1882,8 @@ pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for anchors
 /// HTML (obsolete) - Returns an HTMLCollection of all a elements with name attribute
 /// Spec: https://html.spec.whatwg.org/multipage/obsolete.html#dom-document-anchors
-/// Note: Simplified - returns all 'a' elements (full spec requires name attribute)
 pub fn get_anchors(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return createCollectionByTagName(instance, "a");
+    return documentCollection(instance, .anchors);
 }
 
 /// Getter for applets

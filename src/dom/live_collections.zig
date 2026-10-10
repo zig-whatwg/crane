@@ -117,6 +117,9 @@ pub const IndexCache = struct {
     }
 };
 
+/// HTML document collections, restricted to HTML-namespace descendants.
+pub const DocumentFilter = enum { images, embeds, links, forms, scripts, anchors };
+
 /// What the HTMLCollection impl supplies.
 pub const Implementation = struct {
     /// Make `collection` live over `root`'s element children, in tree order.
@@ -124,6 +127,7 @@ pub const Implementation = struct {
     /// Make `collection` DOM's "list of elements with class names
     /// `class_names`" for `root` (a non-empty set of classes).
     class_names: *const fn (collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) error{OutOfMemory}!void,
+    document_elements: *const fn (collection: *runtime.Instance, document: *runtime.Instance, filter: DocumentFilter) void,
     form_controls: *const fn (*runtime.Instance, *runtime.Instance, bool) void,
     select_options: *const fn (*runtime.Instance, *runtime.Instance, bool) void,
     root: *const fn (*runtime.Instance) ?*runtime.Instance,
@@ -155,6 +159,11 @@ pub fn elementsWithClassNames(collection: *runtime.Instance, root: *runtime.Inst
     try impl.class_names(collection, root, class_names);
 }
 
+/// The live document collection for HTML's corresponding tree accessor.
+pub fn documentElements(collection: *runtime.Instance, document: *runtime.Instance, filter: DocumentFilter) !void {
+    (implementation orelse return error.NotSupported).document_elements(collection, document, filter);
+}
+
 pub fn formControls(collection: *runtime.Instance, root: *runtime.Instance, fieldset: bool) !void {
     (implementation orelse return error.NotSupported).form_controls(collection, root, fieldset);
 }
@@ -178,6 +187,7 @@ test "elementChildren without an installed implementation reports NotSupported" 
     var object: runtime.Instance = undefined;
     try std.testing.expectError(error.NotSupported, elementChildren(&object, &object));
     try std.testing.expectError(error.NotSupported, elementsWithClassNames(&object, &object, "a"));
+    try std.testing.expectError(error.NotSupported, documentElements(&object, &object, .images));
     try std.testing.expectError(error.NotSupported, selectOptions(&object, &object, false));
     try std.testing.expectEqual(null, rootOf(&object));
 }
