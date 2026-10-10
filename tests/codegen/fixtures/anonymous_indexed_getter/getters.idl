@@ -1,0 +1,17 @@
+interface Thing {};
+interface ThingList {
+  readonly attribute unsigned long length;
+  getter Thing (unsigned long index);
+};
+interface ThingForm {
+  readonly attribute unsigned long length;
+  getter Thing (unsigned long index);
+  getter Thing (DOMString name);
+};
+interface ThingItems {
+  readonly attribute unsigned long length;
+  getter Thing? item(unsigned long index);
+};
+interface ThingMap {
+  getter DOMString (DOMString name);
+};

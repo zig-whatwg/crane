@@ -388,6 +388,7 @@ pub fn withPendingExceptionSetAside(agent: *Agent, steps: *const fn (data: ?*any
 pub const parseJsonToValue = protocol_values.parseJsonToValue;
 pub const parseJsonInNewGlobal = protocol_values.parseJsonInNewGlobal;
 pub const serializeJsonToBytes = protocol_values.serializeJsonToBytes;
+pub const matchesPatternAttribute = protocol_values.matchesPatternAttribute;
 
 // ============================================================================
 // 4.6 WebIDL: ECMAScript to IDL

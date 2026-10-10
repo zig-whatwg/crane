@@ -21,8 +21,9 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const event_construction = @import("dom").event_construction;
-const same_object = @import("same_object.zig");
+const KeptInstance = @import("dom").custom_elements.KeptInstance;
 const FocusEvent = interfaces.FocusEvent;
 
 pub const State = FocusEvent.State;
@@ -31,13 +32,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// The related target, as a generation-checked link: an element that loses
-/// focus to another can be removed and collected while script keeps the
-/// event, and the link then reads null rather than a recycled slot.
+/// The event keeps its related target alive: an edge from the event's
+/// wrapper (engine.traceChild, `related_target_slot`), drawn when the target
+/// is set and ended in deinit - so a target that keeps its event (`el.e = e`)
+/// is collected with it once script holds neither. Blink: Event::Trace visits
+/// the related target (FocusEvent is a UIEvent); WebKit: FocusEvent's
+/// RefPtr<EventTarget> m_relatedTarget.
+///
+/// `related_target` is the native pointer beside the edge, with its slab
+/// generation and its realm (KeptInstance): only the teardown net. The edge
+/// keeps the target while the event lives, so it reads as the target; once a
+/// realm's teardown has freed it - Crane frees a realm's Instances when the
+/// realm ends, whatever still points at them (engine_protocol.zig, Instance)
+/// - it reads null, never a freed or reissued object.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    related_target: ?same_object.Link = null,
+    related_target: ?KeptInstance = null,
 };
+
+const related_target_slot: engine.TracedSlot = .{ .name = "relatedTarget" };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     const state = instance.stateAs(State) orelse return null;
@@ -63,6 +76,10 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // An event freed without ever being wrapped (dispatched to no
+        // listener, then releaseIfUnwrapped) lets the hold waiting for its
+        // wrapper go; a collected one's edge went with the wrapper.
+        if (internal.related_target != null) engine.forgetTracedChild(instance, related_target_slot);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -81,17 +98,23 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     return instance;
 }
 
-/// Set the related target an engine-fired focus event reports.
-pub fn setRelatedTarget(instance: *runtime.Instance, target: ?*runtime.Instance) void {
+/// Set the related target the event reports, and keep it: the edge from the
+/// event to it replaces the one to the target it had.
+fn setRelatedTarget(instance: *runtime.Instance, target: ?*runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
-    internal.related_target = if (target) |t| same_object.Link.to(t) else null;
+    if (target) |t| {
+        internal.related_target = KeptInstance.of(t);
+        engine.traceChild(instance, t, related_target_slot);
+    } else if (internal.related_target != null) {
+        internal.related_target = null;
+        engine.forgetTracedChild(instance, related_target_slot);
+    }
 }
 
-/// Getter for relatedTarget: the value it was initialized to, while that
-/// object lives.
+/// Getter for relatedTarget: the value it was initialized to. The event's
+/// edge keeps it; null only past its realm's teardown (the net above).
 pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    const link = internal.related_target orelse return null;
-    if (!link.isLive()) return null;
-    return link.instance;
+    const kept = internal.related_target orelse return null;
+    return kept.get();
 }

@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [V8's RegExp::Exec is RegExpExec, not the built-in exec](architecture-v8-regexp-exec-is-regexpexec-not-the-builtin.md) - A V8 API named after a built-in may still do the spec's observable lookups; read api.cc for what it calls, and run built-in-only steps in a context no script can reach - one per agent, not one per call.
 - [Under kAuto, every do_callback=true API at call depth 0 is a microtask checkpoint](architecture-under-kauto-every-do-callback-api-at-depth-zero-is-a-checkpoint.md) - Under kAuto, a native step is a microtask checkpoint unless it proves otherwise: read the API's ENTER_V8 macro in api.cc for the version you link, and measure the call-completed callback rather than guessing which calls fire.
 - [A parent completes loading in its last child's task](architecture-a-parent-completes-loading-in-its-last-child-s-task.md) - When the spec spins the event loop before a load task, check how many tasks the browsers put there - Blink and Gecko put none between a last child and its parent - and make a Crane test read the state where the WPT test under study reads it.
 - [Parser association is not document activity](architecture-parser-association-is-not-document-activity.md) - A new parser follows its native document association even after the browsing context is destroyed.
@@ -326,6 +327,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Codegen
 
+- [An anonymous indexed getter is gated like an overload](codegen-an-anonymous-indexed-getter-is-gated-like-an-overload.md) - When the binding needs to know whether an impl implements a member, codegen states it next to the gated delegate; never have the adapter reach into impls, and never wire a delegate the impl may not have.
 - [An iterable declaration's members are not operations](codegen-an-iterable-declaration-s-members-are-not-operations.md) - When the spec says "define" members, the binding defines them; codegen must not turn them into operations for an impl to implement.
 - [Nullable dictionary members can need a presence bit](codegen-nullable-dictionary-members-can-need-a-presence-bit.md) - Preserve absence separately from null when the consuming algorithm distinguishes them.
 - [Inherited indexed access needs the parent facade](codegen-inherited-indexed-access-needs-the-parent-facade.md) - Generate exotic-access metadata even when methods come from a prototype.

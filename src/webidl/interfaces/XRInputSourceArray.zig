@@ -52,6 +52,10 @@ pub const XRInputSourceArray = struct {
 
         pub const has_constructor = false;
 
+        /// The anonymous indexed getter (`getter T (unsigned long index)`,
+        /// `call_getter`) is implemented: the binding installs indexed access.
+        pub const indexed_getter_implemented = @hasDecl(XRInputSourceArrayImpl, "call_getter");
+
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "XRInputSource",
@@ -110,6 +114,10 @@ pub const XRInputSourceArray = struct {
     }
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        return try XRInputSourceArrayImpl.call_getter(instance, index);
+        if (comptime @hasDecl(XRInputSourceArrayImpl, "call_getter")) {
+            return try XRInputSourceArrayImpl.call_getter(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
     }
 };

@@ -77,6 +77,10 @@ pub const VideoTrackList = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// The anonymous indexed getter (`getter T (unsigned long index)`,
+        /// `call_getter`) is implemented: the binding installs indexed access.
+        pub const indexed_getter_implemented = @hasDecl(VideoTrackListImpl, "call_getter");
     };
 
     pub const State = runtime.FlattenedState(
@@ -172,7 +176,11 @@ pub const VideoTrackList = struct {
     }
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        return try VideoTrackListImpl.call_getter(instance, index);
+        if (comptime @hasDecl(VideoTrackListImpl, "call_getter")) {
+            return try VideoTrackListImpl.call_getter(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
     }
 
     pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!?*runtime.Instance {

@@ -121,7 +121,20 @@ const AgentRecord = struct {
     /// The agent's ShadowRealms (shadow_realm.zig): made with the agent,
     /// freed by its end. Null when ShadowRealm support was not installed.
     shadow_realms: ?*shadow_realm.ShadowRealmCallbackData = null,
+    /// engine.matchesPatternAttribute's utility context and compiled
+    /// patterns (v8_wrapper.cpp, PatternMatcher): made on first use, on the
+    /// agent's thread; deleted by its end.
+    pattern_matcher: ?*ffi.PatternMatcher = null,
 };
+
+/// The agent's PatternMatcher, made on its first use; null for an isolate
+/// createAgent did not make (a test's own), which then matches in a context
+/// made for the call. Called on the agent's own thread only.
+pub fn patternMatcherOf(isolate: *ffi.Isolate) ?*ffi.PatternMatcher {
+    const record = recordOf(isolate) orelse return null;
+    if (record.pattern_matcher == null) record.pattern_matcher = ffi.v8_PatternMatcher_New();
+    return record.pattern_matcher;
+}
 
 var agents_lock: std.Io.Mutex = .init;
 /// Every agent made by createAgent and not yet destroyed, by isolate.
@@ -265,9 +278,13 @@ pub fn endAgent(agent: *Agent) void {
     const allocator = if (record) |r| r.allocator else std.heap.c_allocator;
     const host_agent = if (record) |r| r.host_agent else false;
     const shadow_realms = if (record) |r| r.shadow_realms else null;
+    const pattern_matcher = if (record) |r| r.pattern_matcher else null;
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
+    // Its utility context and compiled patterns: handles of this isolate,
+    // released before it is disposed.
+    ffi.v8_PatternMatcher_Delete(pattern_matcher);
     // This agent's ShadowRealms, whichever kind of agent it is: they were
     // every agent's once, cleared by whichever host agent ended first.
     if (shadow_realms) |data| shadow_realm.deinitializeShadowRealmSupport(data);

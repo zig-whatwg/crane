@@ -377,6 +377,35 @@ fn isRegularOperation(op: types.Operation) bool {
     return op.name != null;
 }
 
+/// Whether `op` is an anonymous indexed property getter, `getter T (unsigned
+/// long index)` (WebIDL 2.5.6.1): its delegate is `call_getter(instance,
+/// u32)`, and the binding installs indexed access through it. Most impls of
+/// such interfaces do not implement it yet, so its delegate is gated (it
+/// answers error.NotImplemented until the impl declares `call_getter`), and
+/// Meta.indexed_getter_implemented tells the binding whether to install it.
+pub fn isAnonymousIndexedGetter(op: types.Operation) bool {
+    const special = op.special orelse return false;
+    if (special != .getter or op.name != null or op.static) return false;
+    return op.arguments.len == 1 and std.mem.eql(u8, op.arguments[0].idlType.type, "unsigned long");
+}
+
+/// The interface's one anonymous getter when it is an indexed getter - not
+/// one merged with an anonymous named getter into an overload set
+/// (HTMLFormElement's `getter Element (unsigned long index)` and
+/// `getter (RadioNodeList or Element) (DOMString name)`), whose delegate
+/// takes a union instead.
+pub fn soleAnonymousIndexedGetter(overload_ops: []const types.Operation) bool {
+    var anonymous_getters: usize = 0;
+    var indexed = false;
+    for (overload_ops) |op| {
+        const special = op.special orelse continue;
+        if (special != .getter or op.name != null or op.static) continue;
+        anonymous_getters += 1;
+        if (isAnonymousIndexedGetter(op)) indexed = true;
+    }
+    return anonymous_getters == 1 and indexed;
+}
+
 pub fn writeMetadata(
     writer: anytype,
     interface_name: []const u8,
@@ -876,6 +905,16 @@ pub fn writeMetadata(
     // Generate constructor hint
     try writer.writeAll("        \n");
     try writer.print("        pub const has_constructor = {};\n", .{has_constructor});
+
+    // WebIDL 2.5.6.1: an anonymous indexed getter's delegate is gated (the
+    // impl may not implement it yet); the binding installs indexed access
+    // through it only when the impl does.
+    if (!is_mixin and !is_callback and soleAnonymousIndexedGetter(overload_ops)) {
+        try writer.writeAll("        \n");
+        try writer.writeAll("        /// The anonymous indexed getter (`getter T (unsigned long index)`,\n");
+        try writer.writeAll("        /// `call_getter`) is implemented: the binding installs indexed access.\n");
+        try writer.print("        pub const indexed_getter_implemented = @hasDecl({s}Impl, \"call_getter\");\n", .{interface_name});
+    }
 
     // Generate iterable metadata if present
     if (iterable) |iter| {
@@ -2707,7 +2746,9 @@ fn writeSingleOperation(
     type_registry: ?*const @import("ir.zig").TypeRegistry,
     ce_functions: *CEReactionsFunctions,
 ) !void {
-    return writeOperationDelegate(writer, impl_name, op, type_registry, "", false, ce_functions);
+    // An anonymous indexed getter is gated: Meta.indexed_getter_implemented
+    // says whether the impl has it.
+    return writeOperationDelegate(writer, impl_name, op, type_registry, "", isAnonymousIndexedGetter(op), ce_functions);
 }
 
 /// HTML 3.2.3 "HTML element constructors": an interface whose constructor

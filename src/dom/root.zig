@@ -152,6 +152,12 @@ pub const user_activation_state = @import("user_activation_state.zig");
 pub const focused_area = @import("focused_area.zig");
 pub const visibility_state = @import("visibility_state.zig");
 pub const focus_matching = @import("focus_matching.zig");
+/// A FileList's contents, set natively by its owners (an input's selected
+/// files, a DataTransfer's files): the hook FileList installs.
+pub const file_lists = @import("file_lists.zig");
+/// HTML 6.11.2 the drag data store a DataTransfer owns, and the hooks its
+/// item list and items are made through.
+pub const drag_data_store = @import("drag_data_store.zig");
 
 // Re-export CookieChangeEvent
 pub const CookieChangeEvent = cookie_change_event.CookieChangeEvent;
