@@ -90,8 +90,10 @@ pub fn installHooks() void {
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Whatever pending-activity hold is left on it goes with it.
-    engine.releasePlatformObject(instance);
+    // No pending-activity keep is left to release: its start's outcome
+    // (started, start_failed) or the connect steps' end released it, and a
+    // kept wrapper is not collected (the keep is counted - a release here
+    // ended nothing of its own).
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.port_edge.release(instance);
