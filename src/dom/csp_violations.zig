@@ -13,8 +13,8 @@
 //! (the realm's document URL - a worker's creation URL), its referrer a
 //! Window's document's referrer. Not modelled, stated: its status - the
 //! HTTP status of the resource the global was made from is not kept, so a
-//! global whose URL is HTTP(S) reports 200 and any other 0; report-uri and
-//! report-to (§5.5 steps 4-5). Its source file, line and column (§2.4.1
+//! global whose URL is HTTP(S) reports 200 and any other 0. Its source file,
+//! line and column (§2.4.1
 //! step 2) are the running script's, when the engine can say
 //! (engine.runningScriptLocation: V8 can; JavaScriptCore and QuickJS
 //! cannot, and report none).
@@ -32,6 +32,7 @@ const csp = @import("csp");
 const fire_event = @import("fire_event.zig");
 const policy_containers = @import("policy_containers.zig");
 const trusted_types = @import("trusted_types.zig");
+const reporting = @import("reporting.zig");
 
 const log = std.log.scoped(.csp_violations);
 
@@ -270,11 +271,12 @@ const ViolationTask = struct {
     allocator: std.mem.Allocator,
     global: *runtime.Instance,
     global_generation: u64,
-    /// The violation's element and its slab generation: the element is not
-    /// kept alive by the task, so one collected meanwhile (its generation
-    /// moved on) is no target.
+    /// CSP §5.5 step 3 keeps its element until the queued task runs. Blink's
+    /// ExecutionContextCSPDelegate::DispatchViolationEvent uses WrapPersistent
+    /// for this same edge. The generation remains a realm-teardown guard.
     element: ?*runtime.Instance,
     element_generation: u64,
+    element_hold: ?engine.Owned = null,
     document_uri: []const u8,
     referrer: []const u8,
     blocked_uri: []const u8,
@@ -288,12 +290,22 @@ const ViolationTask = struct {
     source_file: []const u8 = "",
     line_number: u32 = 0,
     column_number: u32 = 0,
+    /// §5.5 step 3.4: snapshot the reporting directive with the violation,
+    /// before the request's policy clone or the document can disappear.
+    report_uris: []const []const u8 = &.{},
+    report_base_url: []const u8 = "",
+    report_to: ?[]const u8 = null,
 
     fn deinit(self: *ViolationTask) void {
         const allocator = self.allocator;
+        if (self.element_hold) |held| held.release();
         for ([_][]const u8{ self.document_uri, self.referrer, self.blocked_uri, self.effective_directive, self.original_policy, self.sample, self.source_file }) |owned| {
             allocator.free(owned);
         }
+        for (self.report_uris) |endpoint| allocator.free(endpoint);
+        allocator.free(self.report_uris);
+        allocator.free(self.report_base_url);
+        if (self.report_to) |destination| allocator.free(destination);
         allocator.destroy(self);
     }
 
@@ -315,8 +327,53 @@ const ViolationTask = struct {
     /// §5.5 step 3's steps, in the global's realm.
     fn steps(data: ?*anyopaque) void {
         const self: *ViolationTask = @ptrCast(@alignCast(data.?));
-        const at = self.eventTarget() orelse return;
-        self.fire(at) catch |err| log.debug("securitypolicyviolation not fired: {s}", .{@errorName(err)});
+        if (self.eventTarget()) |at| {
+            self.fire(at) catch |err| log.debug("securitypolicyviolation not fired: {s}", .{@errorName(err)});
+        }
+        if (runtime.SlabAllocator.generationOf(self.global) != self.global_generation or !self.global.ctx.hasEngine()) return;
+        // §5.5 steps 3.4-3.5 follow the event within this task. Missing an
+        // event target must not suppress reporting, and starting a fetch
+        // synchronously in reportViolation could re-enter the network pump.
+        self.sendReports() catch |err| log.debug("CSP report not sent: {s}", .{@errorName(err)});
+    }
+
+    fn body(self: *const ViolationTask) csp.violation_events.ReportBody {
+        return .{
+            .document_url = self.document_uri,
+            .referrer = self.referrer,
+            .blocked_url = self.blocked_uri,
+            .effective_directive = self.effective_directive,
+            .original_policy = self.original_policy,
+            .sample = self.sample,
+            .disposition = if (self.disposition == ._enforce_) .enforce else .report,
+            .status_code = self.status_code,
+            .source_file = if (self.source_file.len > 0) self.source_file else null,
+            .line_number = self.line_number,
+            .column_number = self.column_number,
+        };
+    }
+
+    fn sendReports(self: *ViolationTask) !void {
+        if (self.report_to) |destination| {
+            // §5.5 step 3.5. Gecko nsCSPContext::SendReports and WebKit
+            // ContentSecurityPolicy::reportViolation likewise require
+            // report-to for observers; Blink also observes legacy reports
+            // (ExecutionContextCSPDelegate::PostViolationReport), a 2-1 split.
+            const bytes = try self.body().serializeModern(self.allocator);
+            defer self.allocator.free(bytes);
+            try reporting.generate(self.global, "csp-violation", destination, self.document_uri, bytes);
+            return;
+        }
+        if (self.report_uris.len == 0) return;
+        const bytes = try self.body().serializeLegacy(self.allocator);
+        defer self.allocator.free(bytes);
+        for (self.report_uris) |token| {
+            // §5.5 step 3.4.2.1-2: a URL that cannot be parsed is skipped,
+            // without preventing delivery to the other endpoints.
+            const endpoint = (reporting.parseEndpoint(self.global, token, self.report_base_url) catch continue) orelse continue;
+            defer self.allocator.free(endpoint);
+            reporting.sendLegacy(self.global, endpoint, bytes) catch continue;
+        }
     }
 
     /// Steps 3.1-3.2: the target.
@@ -422,7 +479,31 @@ fn queueViolationTask(global: *runtime.Instance, violation: *const Violation) !v
         .status_code = 0,
     };
     errdefer task.deinit();
-    if (task.element) |e| task.element_generation = runtime.SlabAllocator.generationOf(e);
+    if (task.element) |e| {
+        task.element_generation = runtime.SlabAllocator.generationOf(e);
+        if (e.ctx.hasEngine()) task.element_hold = try engine.retainValue(e.ctx, .{ .instance = e });
+    }
+
+    // §5.5 step 3.4.1: report-to suppresses report-uri by its presence,
+    // including an empty report-to value or a group with no endpoint.
+    if (violation.policy.getDirective("report-to")) |directive| {
+        task.report_to = try allocator.dupe(u8, reporting.reportDestination(directive));
+    } else {
+        if (violation.policy.getDirective("report-uri")) |directive| {
+            var endpoints: std.ArrayListUnmanaged([]const u8) = .empty;
+            errdefer {
+                for (endpoints.items) |endpoint| allocator.free(endpoint);
+                endpoints.deinit(allocator);
+            }
+            for (directive.value.expressions.items) |expression| {
+                const endpoint = try allocator.dupe(u8, expression.raw_value);
+                errdefer allocator.free(endpoint);
+                try endpoints.append(allocator, endpoint);
+            }
+            task.report_uris = try endpoints.toOwnedSlice(allocator);
+            task.report_base_url = try allocator.dupe(u8, global.ctx.documentUrl() orelse "");
+        }
+    }
 
     // documentURI: §5.4 on the violation's url, the global's URL.
     const url = global.ctx.documentUrl() orelse "";

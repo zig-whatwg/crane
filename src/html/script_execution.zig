@@ -3217,6 +3217,7 @@ fn fetchGone(context: *anyopaque) void {
 /// task that delivers it.
 fn fetchDone(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
     const self: *ClassicScriptFetch = @ptrCast(@alignCast(context));
+    dom.reporting.reportScriptFetch(self.realm, self.fetch, outcome);
     self.fetch = null;
     if (outcome) |result_value| {
         var result = result_value;

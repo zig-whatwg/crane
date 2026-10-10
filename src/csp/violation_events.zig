@@ -9,9 +9,7 @@
 //! global object, url, referrer and status) and queues the task that fires
 //! the event.
 //!
-//! Not modelled, stated: report-uri and report-to (§5.5 steps 4-5, the
-//! network reports), and a violation's source file, line and column number
-//! (§2.4.1 step 2).
+//! Serialization is native; the global's side owns queued delivery.
 //!
 //! Spec: https://w3c.github.io/webappsec-csp/#report-violation
 
@@ -66,6 +64,59 @@ pub const Reporter = struct {
 
     pub fn reportViolation(self: Reporter, violation: *const Violation) void {
         self.report(self.context, violation);
+    }
+};
+
+/// Borrowed, already stripped report values. Both report mechanisms use the
+/// same snapshot; only their wire keys and treatment of absent locations differ.
+pub const ReportBody = struct {
+    document_url: []const u8,
+    referrer: []const u8 = "",
+    blocked_url: []const u8,
+    effective_directive: []const u8,
+    original_policy: []const u8,
+    sample: []const u8 = "",
+    disposition: types.PolicyDisposition = .enforce,
+    status_code: u16 = 0,
+    source_file: ?[]const u8 = null,
+    line_number: u32 = 0,
+    column_number: u32 = 0,
+
+    /// CSP §5.3 steps 1-4: the deprecated report-uri JSON object. An absent
+    /// source file omits all three location members, rather than emitting null.
+    pub fn serializeLegacy(self: ReportBody, allocator: std.mem.Allocator) ![]u8 {
+        return std.json.Stringify.valueAlloc(allocator, .{ .@"csp-report" = .{
+            .@"document-uri" = self.document_url,
+            .referrer = self.referrer,
+            .@"blocked-uri" = self.blocked_url,
+            .@"effective-directive" = self.effective_directive,
+            .@"violated-directive" = self.effective_directive,
+            .@"original-policy" = self.original_policy,
+            .@"script-sample" = self.sample,
+            .disposition = @tagName(self.disposition),
+            .@"status-code" = self.status_code,
+            .@"source-file" = self.source_file,
+            .@"line-number" = if (self.source_file != null) @as(?u32, self.line_number) else null,
+            .@"column-number" = if (self.source_file != null) @as(?u32, self.column_number) else null,
+        } }, .{ .emit_null_optional_fields = false });
+    }
+
+    /// CSP §5.5 step 3.5.1: Reporting API body members, including null
+    /// sourceFile/lineNumber/columnNumber when no source location is known.
+    pub fn serializeModern(self: ReportBody, allocator: std.mem.Allocator) ![]u8 {
+        return std.json.Stringify.valueAlloc(allocator, .{
+            .documentURL = self.document_url,
+            .referrer = self.referrer,
+            .blockedURL = self.blocked_url,
+            .effectiveDirective = self.effective_directive,
+            .originalPolicy = self.original_policy,
+            .sample = self.sample,
+            .disposition = @tagName(self.disposition),
+            .statusCode = self.status_code,
+            .sourceFile = self.source_file,
+            .lineNumber = if (self.source_file != null) @as(?u32, self.line_number) else null,
+            .columnNumber = if (self.source_file != null) @as(?u32, self.column_number) else null,
+        }, .{});
     }
 };
 
