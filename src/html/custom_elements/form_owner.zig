@@ -64,6 +64,10 @@ fn instanceOf(node: *NodeBase) ?*Instance {
 /// `node` was inserted (`old_parent` null), removed (`new_parent` null) or
 /// moved. The tree is already in its new shape.
 pub fn subtreeMoved(node: *Instance, old_parent: ?*Instance, new_parent: ?*Instance) void {
+    // The parser's form associations come first, for every element: a
+    // removal that separates a control from its form resets it (an empty
+    // list check when the document has none).
+    form_associated.parserAssociationsAfterMutation(node, new_parent);
     const state = activeState(node.ctx) orelse return;
     const base = dom.instance_bridge.getNodeBase(node) orelse return;
     resetShadowIncludingSubtree(base);
@@ -75,6 +79,8 @@ pub fn subtreeMoved(node: *Instance, old_parent: ?*Instance, new_parent: ?*Insta
 
 /// An attribute in no namespace changed on `element`.
 pub fn attributeChanged(element: *Instance, local_name: []const u8, old_value: ?[]const u8, new_value: ?[]const u8) void {
+    // A form attribute set, changed or removed resets a parser association.
+    form_associated.parserAssociationAttributeChanged(element, local_name);
     const state = activeState(element.ctx) orelse return;
     if (std.mem.eql(u8, local_name, "id")) {
         if (state.form_id_observers.count() == 0) return;

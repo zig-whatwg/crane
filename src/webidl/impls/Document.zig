@@ -405,6 +405,11 @@ pub const InternalState = struct {
     /// (dom.document_internals.allowsDeclarativeShadowRoots); this is set by
     /// parseHTMLUnsafe and copied by cloning.
     allow_declarative_shadow_roots: bool = false,
+    /// The HTML parser's form element pointer associations that differ from
+    /// the tree's (a misnested or foster-parented control), kept until
+    /// "reset the form owner" undoes them (html/form_associated.zig). Usually
+    /// empty. Raw links, generation-checked: they keep nothing alive.
+    parser_form_associations: std.ArrayListUnmanaged(@import("dom").document_internals.ParserFormAssociation) = .empty,
     custom_element_registry: @import("dom").custom_elements.RegistryAssociation = .{},
     owns_native_global_registry: bool = false,
 
@@ -520,6 +525,7 @@ pub const InternalState = struct {
 
         // Clean up lists (don't own the items, just the list storage)
         self.ranges.deinit(self.allocator);
+        self.parser_form_associations.deinit(self.allocator);
         self.node_iterators.deinit(self.allocator);
 
         // Free owned strings

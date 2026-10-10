@@ -161,7 +161,10 @@ pub fn parseHTML(
     document_internals.setMode(document, parser_script_execution.documentMode(tree_builder.quirks_mode)) catch {};
 
     // Step 6: Convert TreeNode tree to DOM nodes
-    try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document, .{});
+    var associations: PendingAssociations = .empty;
+    defer associations.deinit(allocator);
+    try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document, .{ .associations = &associations });
+    associateParsedControls(associations.items) catch return error.OutOfMemory;
 
     return document;
 }
@@ -516,7 +519,26 @@ pub fn parseFragmentWith(
 const Conversion = struct {
     fragment: bool = false,
     registry: dom.custom_elements.RegistrySelection = .default,
+    /// A full document's parse: the elements whose creation met "create an
+    /// element for a token" step 15's parser conditions, associated once the
+    /// tree is built (a foster-parented control can precede its form).
+    associations: ?*PendingAssociations = null,
 };
+
+const PendingAssociation = struct { element: *runtime.Instance, form: *TreeNode };
+const PendingAssociations = std.ArrayListUnmanaged(PendingAssociation);
+
+/// Step 15 for the elements `pending` names, now that the tree is built: the
+/// intended parent is the element's parent (nothing ran script to move it).
+fn associateParsedControls(pending: []const PendingAssociation) !void {
+    const form_associated = @import("form_associated.zig");
+    for (pending) |entry| {
+        const form: *runtime.Instance = @ptrCast(@alignCast(entry.form.dom_node orelse continue));
+        if (runtime.SlabAllocator.generationOf(form) != entry.form.dom_generation) continue;
+        const parent = (interfaces.Node.get_parentNode(entry.element) catch null) orelse continue;
+        try form_associated.parserAssociate(entry.element, form, parent);
+    }
+}
 
 /// Convert a TreeNode tree to DOM nodes recursively
 fn convertTreeNodeToDom(
@@ -579,7 +601,7 @@ fn convertChildrenToDom(
     // template's insertion target is its content DocumentFragment, whose
     // registry lookup is null even when the template itself has one.
     const child_conversion: Conversion = if (target != parent_dom)
-        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null } }
+        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null }, .associations = conversion.associations }
     else
         conversion;
     var index: usize = 0;
@@ -634,7 +656,7 @@ fn attachDeclarativeShadow(
     // The template's contents are the shadow root (7.11.6); create-for-token
     // step 6 looks the registry up from it.
     const shadow_registry = interfaces.ShadowRoot.get_customElementRegistry(shadow) catch return error.InvalidStateError;
-    try convertChildrenToDom(allocator, ctx, request.template, shadow, owner_document, .{ .fragment = conversion.fragment, .registry = .{ .explicit = shadow_registry } });
+    try convertChildrenToDom(allocator, ctx, request.template, shadow, owner_document, .{ .fragment = conversion.fragment, .registry = .{ .explicit = shadow_registry }, .associations = conversion.associations });
     return true;
 }
 
@@ -713,6 +735,16 @@ fn createElementNode(
 
     // "Append each attribute in the given token to element."
     for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);
+
+    // Step 15, deferred to the end of the conversion: a form keeps its DOM
+    // node on its tree node so the controls it was the pointer for find it.
+    if (conversion.associations) |pending| {
+        if (tree_node.namespace == .html and std.mem.eql(u8, local_name, "form")) {
+            tree_node.dom_node = element;
+            tree_node.dom_generation = runtime.SlabAllocator.generationOf(element);
+        }
+        if (tree_node.parser_form) |form| pending.append(allocator, .{ .element = element, .form = form }) catch return error.OutOfMemory;
+    }
 
     return element;
 }

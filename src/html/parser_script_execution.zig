@@ -729,12 +729,12 @@ pub const DomTreeAdapter = struct {
 
         // Create an element for the token, step 3: determine the intended
         // parent's document BEFORE creating an element or invoking its hooks.
-        const owner = if (tree_node.creation_location) |location| blk: {
-            const intended = (try parser_mutation.resolve(self, location)).parent;
-            break :blk if ((try interfaces.Node.get_nodeType(intended)) == interfaces.Node.get_DOCUMENT_NODE())
-                intended
+        const intended: ?*runtime.Instance = if (tree_node.creation_location) |location| (try parser_mutation.resolve(self, location)).parent else null;
+        const owner = if (intended) |parent| blk: {
+            break :blk if ((try interfaces.Node.get_nodeType(parent)) == interfaces.Node.get_DOCUMENT_NODE())
+                parent
             else
-                (try interfaces.Node.get_ownerDocument(intended)) orelse self.document;
+                (try interfaces.Node.get_ownerDocument(parent)) orelse self.document;
         } else self.document;
 
         // Check if this is an HTML element (most common case)
@@ -793,6 +793,14 @@ pub const DomTreeAdapter = struct {
         // HTML 4.2.7 records the token's stylesheet relationship and enabled
         // state at creation, before its post-connection steps start a fetch.
         if (is_html and (std.mem.eql(u8, local_name, "style") or std.mem.eql(u8, local_name, "link"))) dom.style_sheet_owners.createdByParser(element);
+
+        // Step 15: the tree builder found its parser conditions held; the
+        // intended parent must share the form's tree, and a form-associated
+        // custom element is never associated.
+        if (tree_node.parser_form) |form_node| {
+            if (intended) |parent| if (self.getDomNode(form_node)) |form|
+                try @import("form_associated.zig").parserAssociate(element, form, parent);
+        }
 
         self.last_creation = creation;
         return element;

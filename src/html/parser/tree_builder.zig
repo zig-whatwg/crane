@@ -271,6 +271,12 @@ pub const TreeNode = struct {
     /// 7): on its template, which owns it, and - in the tree-then-convert
     /// path - on its host. Null for every other node.
     declarative_shadow: ?*DeclarativeShadow = null,
+    /// The form element pointer's form when this element was created, if
+    /// "create an element for a token" step 15's parser conditions held: a
+    /// form-associated element's name, the pointer set, not parsing template
+    /// contents, no fragment context, and not a listed element with a form
+    /// attribute. The DOM side checks the rest and associates.
+    parser_form: ?*TreeNode = null,
     /// Attributes (for elements)
     attributes: infra.List(Attribute),
     /// Text content (for text/comment nodes)
@@ -3993,6 +3999,12 @@ pub const TreeBuilder = struct {
         for (attrs) |attr| {
             try element.addAttribute(attr.getName(), attr.getValue(), null);
         }
+        // Step 15's parser conditions; the adapter associates.
+        if (self.form_element) |form| {
+            if (namespace == .html and self.fragment_context == null and !self.parsingTemplateContents() and
+                isFormAssociatedName(name) and !(isListedName(name) and tagHasAttribute(tag, "form")))
+                element.parser_form = form;
+        }
         self.keepDetached(element);
 
         // Notify DOM adapter of element creation (for incremental DOM conversion)
@@ -5096,6 +5108,29 @@ fn isSpecialBlockElement(name: []const u8) bool {
 /// Whether `name` is one of "h1", "h2", "h3", "h4", "h5", "h6".
 fn isHeadingName(name: []const u8) bool {
     return name.len == 2 and name[0] == 'h' and name[1] >= '1' and name[1] <= '6';
+}
+
+/// HTML's form-associated elements: button, fieldset, img, input, object,
+/// output, select, textarea (and form-associated custom elements, which the
+/// parser never associates).
+fn isFormAssociatedName(name: []const u8) bool {
+    return isListedName(name) or std.mem.eql(u8, name, "img");
+}
+
+/// HTML's listed elements: button, fieldset, input, object, output, select,
+/// textarea.
+fn isListedName(name: []const u8) bool {
+    return std.StaticStringMap(void).initComptime(.{
+        .{ "button", {} }, .{ "fieldset", {} }, .{ "input", {} },    .{ "object", {} },
+        .{ "output", {} }, .{ "select", {} },   .{ "textarea", {} },
+    }).has(name);
+}
+
+fn tagHasAttribute(tag: TagToken, name: []const u8) bool {
+    for (tag.attributes.toSlice()) |attribute| {
+        if (std.mem.eql(u8, attribute.getName(), name)) return true;
+    }
+    return false;
 }
 
 /// Check if tag name is a formatting element.
