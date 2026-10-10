@@ -180,12 +180,13 @@ const Task = struct {
 
     fn prepareJwk(self: *Task) !void {
         const pending = self.result.import_jwk;
-        // §14.3.12 step 15 and §9 parse-a-JWK: intrinsic JSON parse, then the
-        // actual WebIDL dictionary conversion (including an abrupt completion).
-        // Q19 interim: the parser currently uses this realm's prototypes.
-        // Switch this single call to the fresh-global protocol operation once
-        // the adapter lands it; dictionary conversion remains steps 5–6.
-        const object = try engine.parseJsonToValue(self.realm, pending.bytes);
+        // §14.3.12 step 15 and §9 parse-a-JWK: steps 1-4, JSON.parse "in the
+        // context of a new global object" - so the result's objects inherit
+        // that global's Object.prototype, never this realm's, and a page's
+        // `Object.prototype.kty` cannot satisfy step 6 - then steps 5-6, the
+        // WebIDL dictionary conversion (including an abrupt completion). A
+        // SyntaxError is this realm's, left pending.
+        const object = try engine.parseJsonInNewGlobal(self.realm, pending.bytes);
         defer object.release();
         var dictionary = try @import("inputs.zig").dictionary(self.realm, object.borrow());
         if (dictionary.data.kty == null) {
