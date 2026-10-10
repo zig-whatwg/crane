@@ -542,6 +542,7 @@ pub fn installHooks() void {
         .append = &appendAttributeHook,
         .change = &changeAttributeHook,
         .node_at = &attrNodeAtHook,
+        .existing_node_at = &existingAttrNodeAtHook,
     });
     // The parsers' "create an element" sets names through `dom.node_creation`.
     dom.node_creation.installElement(.{ .set_names = &setNamesHook, .is_value = &isValueHook });
@@ -1591,6 +1592,15 @@ fn attrNodeAtHook(element: *runtime.Instance, index: usize) dom.element_attribut
         error.OutOfMemory => error.OutOfMemory,
         else => error.InvalidStateError,
     };
+}
+
+/// `dom.element_attributes.existingNodeAt`: the Attr node made for the
+/// attribute at `index`, if one was and it is still alive; never makes one.
+fn existingAttrNodeAtHook(element: *runtime.Instance, index: usize) ?*runtime.Instance {
+    const internal = getInternal(element) orelse return null;
+    const entry = internal.attributeAt(index) orelse return null;
+    const link = entry.attr_node orelse return null;
+    return if (link.isLive()) link.instance else null;
 }
 
 // Note: matches(), closest(), and webkitMatchesSelector() delegate to ParentNode mixin
