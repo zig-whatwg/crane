@@ -2442,6 +2442,20 @@ pub const TreeBuilder = struct {
             // "In body", a start tag whose tag name is "iframe".
             self.frameset_ok = false;
             try self.parseGenericRawText(tag);
+        } else if (isHeadingName(name)) {
+            // "In body", a start tag whose tag name is one of: "h1" ... "h6".
+            // 1. If the stack has a p element in button scope, close it.
+            try self.closePElementIfInButtonScope();
+            // 2. If the current node is an HTML element whose tag name is one
+            // of h1..h6, parse error; pop the current node.
+            if (self.currentNode()) |current| {
+                if (current.namespace == .html and current.local_name != null and isHeadingName(current.local_name.?)) {
+                    self.reportError(.invalid_first_character_of_tag_name);
+                    _ = self.popCurrentNode();
+                }
+            }
+            // 3. Insert an HTML element for the token.
+            _ = try self.insertHtmlElement(tag);
         } else if (isSpecialBlockElement(name)) {
             try self.closePElementIfInButtonScope();
             _ = try self.insertHtmlElement(tag);
@@ -2620,6 +2634,25 @@ pub const TreeBuilder = struct {
             }
             // Steps 1-3.
             self.closeListItem(name);
+        } else if (isHeadingName(name)) {
+            // "In body", an end tag whose tag name is one of: "h1", "h2",
+            // "h3", "h4", "h5", "h6". If the stack does not have an HTML
+            // element in scope whose tag name is one of h1..h6, parse error;
+            // ignore the token. Any heading, not only one of this name.
+            if (!self.hasHeadingInScope()) {
+                self.reportError(.invalid_first_character_of_tag_name);
+                return;
+            }
+            // 1. Generate implied end tags.
+            self.generateImpliedEndTags(null);
+            // 2. If the current node is not an HTML element with the same tag
+            // name as that of the token, parse error.
+            if (!self.currentNodeIs(name)) self.reportError(.invalid_first_character_of_tag_name);
+            // 3. Pop elements until an HTML element whose tag name is one of
+            // h1..h6 has been popped.
+            while (self.popCurrentNode()) |popped| {
+                if (popped.namespace == .html and popped.local_name != null and isHeadingName(popped.local_name.?)) break;
+            }
         } else if (isSpecialBlockElement(name) or std.mem.eql(u8, name, "button") or std.mem.eql(u8, name, "select")) {
             // The block end tags: "address" ... "ul", with "button" and
             // "select" (a select start tag no longer leaves "in body").
@@ -4304,6 +4337,19 @@ pub const TreeBuilder = struct {
         return false;
     }
 
+    /// "Has an element in scope that is an HTML element and whose tag name is
+    /// one of h1, h2, h3, h4, h5, or h6": the heading end tags' test.
+    fn hasHeadingInScope(self: *TreeBuilder) bool {
+        var i = self.open_elements.len;
+        while (i > 0) {
+            i -= 1;
+            const node = self.open_elements.get(i) orelse continue;
+            if (node.namespace == .html and node.local_name != null and isHeadingName(node.local_name.?)) return true;
+            if (isScopeBoundary(node)) return false;
+        }
+        return false;
+    }
+
     /// Scope tests naming a node (form/adoption agency) compare identity.
     fn hasNodeInScope(self: *TreeBuilder, target: *TreeNode) bool {
         var i = self.open_elements.len;
@@ -5090,6 +5136,11 @@ fn isSpecialBlockElement(name: []const u8) bool {
         if (std.mem.eql(u8, name, s)) return true;
     }
     return false;
+}
+
+/// Whether `name` is one of "h1", "h2", "h3", "h4", "h5", "h6".
+fn isHeadingName(name: []const u8) bool {
+    return name.len == 2 and name[0] == 'h' and name[1] >= '1' and name[1] <= '6';
 }
 
 /// Check if tag name is a formatting element.
