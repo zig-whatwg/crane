@@ -453,6 +453,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Measure the WPT process, not its supervisor](testing-measure-the-wpt-process-not-its-supervisor.md) - Even `--parallel=1` changes the process measured by `leaks --atExit`; compare direct runners.
 - [A red test for a step that has not landed asserts that it is still red](testing-a-red-test-for-an-unlanded-step-asserts-that-it-is-still-red.md) - Wrap the verdict in `knownRed(step_landed, ...)`: it passes while red, fails when it turns green unannounced, and is required once the flag is flipped in the commit that earns it.
 
+- [A union conversion needs a case per member type](testing-a-union-conversion-needs-a-case-per-member-type.md) - Enumerate the flattened member types from the IDL and give each its own case - plus an offset view and a detached buffer - before calling a conversion done.
 ### Debugging
 
 - [A Wrapperless Removal Orphans the Node Until Browser End](debugging-a-wrapperless-removal-orphans-the-node-until-browser-end.md) - A feature that starts passing can expose a leak in code merged rounds earlier; any InternalState owning non-arena memory needs a teardown sweep until refcounting.
