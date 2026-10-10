@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/headers/"><code>headers/</code></a></li><li aria-current="page"><code>headers-<wbr>errors.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>headers-<wbr>errors.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/headers/headers-errors.any.js">
-<p class="figures-main"><span class="fg-pass">28</span><span class="fg-of"> / 36</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">30</span><span class="fg-of"> / 36</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>6</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ed90afcf6f</code>, <span class="nowrap">9 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ed90afcf6f"><code>ed90afcf6f</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-3eb0c1e8c2</code>, <span class="nowrap">9 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/3eb0c1e8c2"><code>3eb0c1e8c2</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/headers/headers-errors.any.js"><code>fetch/<wbr>api/<wbr>headers/<wbr>headers-<wbr>errors.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,7 +34,7 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/fetch/api/headers/headers-errors.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 18</span></h3>
+<h3 class="run-head"><code>/fetch/api/headers/headers-errors.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>15</b> / 18</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-26b591a6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Create headers giving an array having one string as init argument</span></div><a class="self" href="#s-26b591a6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b8ad0a63"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Create headers giving an array having three strings as init argument</span></div><a class="self" href="#s-b8ad0a63" aria-label="Link to this subtest">&para;</a></li>
@@ -53,11 +53,11 @@
 <li class="sub s-pass" id="s-59b2692e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers append with an invalid name [object Object]</span></div><a class="self" href="#s-59b2692e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-187d35ce"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check headers append with an invalid value invalidĀ</span></summary><pre class="msg">assert_throws_js: function &quot;function() { headers.append(&quot;name&quot;, value); }&quot; did not throw</pre></details><a class="self" href="#s-187d35ce" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3cd87025"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers forEach throws if argument is not callable</span></div><a class="self" href="#s-3cd87025" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-278cf31f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Headers forEach loop should stop if callback is throwing exception</span></summary><pre class="msg">assert_unreached: Reached unreachable code</pre></details><a class="self" href="#s-278cf31f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-278cf31f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers forEach loop should stop if callback is throwing exception</span></div><a class="self" href="#s-278cf31f" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/fetch/api/headers/headers-errors.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 18</span></h3>
+<h3 class="run-head"><code>/fetch/api/headers/headers-errors.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>15</b> / 18</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-658e5816"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Create headers giving an array having one string as init argument</span></div><a class="self" href="#s-658e5816" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ec8d3cae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Create headers giving an array having three strings as init argument</span></div><a class="self" href="#s-ec8d3cae" aria-label="Link to this subtest">&para;</a></li>
@@ -76,7 +76,7 @@
 <li class="sub s-pass" id="s-39fd2cd3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers append with an invalid name [object Object]</span></div><a class="self" href="#s-39fd2cd3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-5d9e6491"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check headers append with an invalid value invalidĀ</span></summary><pre class="msg">assert_throws_js: function &quot;function() { headers.append(&quot;name&quot;, value); }&quot; did not throw</pre></details><a class="self" href="#s-5d9e6491" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-129a5d21"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers forEach throws if argument is not callable</span></div><a class="self" href="#s-129a5d21" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0ba2a3d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Headers forEach loop should stop if callback is throwing exception</span></summary><pre class="msg">assert_unreached: Reached unreachable code</pre></details><a class="self" href="#s-0ba2a3d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0ba2a3d8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers forEach loop should stop if callback is throwing exception</span></div><a class="self" href="#s-0ba2a3d8" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

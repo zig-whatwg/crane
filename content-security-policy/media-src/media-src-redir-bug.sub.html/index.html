@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../content-security-policy/"><code>content-<wbr>security-<wbr>policy/</code></a></li><li><a href="../../../content-security-policy/media-src/"><code>media-<wbr>src/</code></a></li><li aria-current="page"><code>media-<wbr>src-<wbr>redir-<wbr>bug.<wbr>sub.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>media-<wbr>src-<wbr>redir-<wbr>bug.<wbr>sub.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="content-security-policy/media-src/media-src-redir-bug.sub.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 5</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>2</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">5</span><span class="fg-of"> / 5</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ed90afcf6f</code>, <span class="nowrap">9 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ed90afcf6f"><code>ed90afcf6f</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-3eb0c1e8c2</code>, <span class="nowrap">9 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/3eb0c1e8c2"><code>3eb0c1e8c2</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/media-src/media-src-redir-bug.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>media-<wbr>src/<wbr>media-<wbr>src-<wbr>redir-<wbr>bug.<wbr>sub.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -34,13 +34,12 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/media-src/media-src-redir-bug.sub.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 5</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-6aac4ee3"><details><summary><span class="mark">FAIL</span><span class="sub-name">In-policy async video src</span></summary><pre class="msg">assert_unreached: Media error handler shouldn&#39;t be triggered for allowed domain. Reached unreachable code</pre></details><a class="self" href="#s-6aac4ee3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c4ca773a"><details><summary><span class="mark">FAIL</span><span class="sub-name">in-policy async video src w/redir</span></summary><pre class="msg">assert_unreached: Media error handler shouldn&#39;t be triggered for allowed domain. Reached unreachable code</pre></details><a class="self" href="#s-c4ca773a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d457f9d7"><details><summary><span class="mark">FAIL</span><span class="sub-name">In-policy async video source element</span></summary><pre class="msg">assert_unreached: Media error handler shouldn&#39;t be triggered for allowed domain. Reached unreachable code</pre></details><a class="self" href="#s-d457f9d7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-notrun" id="s-289bc579"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">In-policy async video source element w/redir</span></div><a class="self" href="#s-289bc579" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-notrun" id="s-a563b1b4"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Should not fire policy violation events</span></div><a class="self" href="#s-a563b1b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6aac4ee3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">In-policy async video src</span></div><a class="self" href="#s-6aac4ee3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4ca773a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">in-policy async video src w/redir</span></div><a class="self" href="#s-c4ca773a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d457f9d7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">In-policy async video source element</span></div><a class="self" href="#s-d457f9d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-289bc579"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">In-policy async video source element w/redir</span></div><a class="self" href="#s-289bc579" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a563b1b4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Should not fire policy violation events</span></div><a class="self" href="#s-a563b1b4" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
