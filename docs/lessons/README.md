@@ -260,6 +260,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A gate that trips once is not a scope - reset only what a mutation reaches](architecture-a-gate-that-trips-once-is-not-a-scope.md) - A "has any X" counter is a fast path, not a bound: once it trips, cost every mutation by what it can actually change, and derive that set from the spec's own triggers (and the engine that already implements them).
 
 ### Spec Compliance
+- [Required and optional apply to control categories](spec-compliance-required-and-optional-are-not-complements-on-all-elements.md) - Classify the element before negating pseudo-class state; use browser evidence for disputed input categories.
 - [An intervention's exceptions are decided one by one](spec-compliance-an-intervention-s-exceptions-are-decided-one-by-one.md) - For a behaviour the spec does not have, list each exception the shipping engines make, mark who allows it - counting a non-blocking engine as allowing - and test every line.
 
 - [Check the XHR send flag when abort is delivered](spec-compliance-check-the-xhr-send-flag-when-abort-is-delivered.md) - A queued document abort must recheck completed request state before touching its response or firing errors.
