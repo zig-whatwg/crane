@@ -283,6 +283,7 @@ pub const user_activation = @import("user_activation.zig");
 pub const origin_domain = @import("origin_domain.zig");
 /// HTML 6.6 focus: focusable areas, the focusing steps, activeElement.
 pub const focus = @import("focus.zig");
+pub const tables = @import("tables.zig");
 /// The events a user's pointer and keyboard produce, and their default
 /// actions (UI Events, Pointer Events, Input Events).
 pub const user_input = @import("user_input.zig");
