@@ -951,7 +951,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // Shadow mode (refcount step 3): what the counts would have said.
         // Nodes outside this document's own tree that still name it are
         // the ones step 7 makes its storage wait for.
-        refcount_log.debug("document freed: {d} referencing nodes, {d} holds in its tree, {d} foreign holds", .{
+        if (@import("dom").refcount.diagnosticsOn()) refcount_log.warn("document freed: {d} referencing nodes, {d} holds in its tree, {d} foreign holds", .{
             internal.refcounts.referencing_nodes,
             if (@import("dom").instance_bridge.getNodeBase(instance)) |document_base| document_base.subtree_holds -| 1 else 0,
             internal.refcounts.foreign_holds,

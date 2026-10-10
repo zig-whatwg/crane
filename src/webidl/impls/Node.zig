@@ -2068,7 +2068,7 @@ fn releaseDocumentCounts(internal: *InternalState, base: *NodeBase) void {
     if (counts == null and internal.owner_document != null and
         runtime.SlabAllocator.generationOf(internal.owner_document.?) != internal.owner_document_generation)
     {
-        refcount_log.debug("a node outlived its node document's storage", .{});
+        if (dom_module.refcount.diagnosticsOn()) refcount_log.warn("a node outlived its node document's storage (node type {d})", .{base.node_type});
     }
     dom_module.refcount.nodeFreed(base, counts);
 }

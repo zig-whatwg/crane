@@ -654,6 +654,15 @@ var tree_checks_requested: bool = false;
 /// `CRANE_REFCOUNT_CHECK=1`).
 pub fn enableTreeChecks() void {
     tree_checks_requested = true;
+    log.warn("tree checks on: every mutation checks the reference counts (CRANE_REFCOUNT_CHECK)", .{});
+}
+
+/// Whether a runner asked for the checks: the counts' diagnostics (a node
+/// that outlives its document's storage, a document's counts at its free)
+/// are logged then, and only then - unit tests free documents before their
+/// nodes on purpose.
+pub fn diagnosticsOn() bool {
+    return tree_checks_requested;
 }
 
 /// Whether mutations check the counts: always in unit tests, and when a
