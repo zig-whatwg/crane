@@ -807,7 +807,7 @@ pub const EUC_JP: Encoding = .{
 };
 
 pub const ISO_2022_JP: Encoding = .{
-    .name = "iso-2022-jp",
+    .name = "ISO-2022-JP",
     .whatwg_name = "iso-2022-jp",
     .decode_fn = japanese.iso_2022_jp_streaming.decode,
     .encode_fn = japanese.iso_2022_jp_streaming.encode,

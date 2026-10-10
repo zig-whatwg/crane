@@ -306,24 +306,48 @@ pub fn encode(
             code_point = @as(u21, cu);
         }
 
-        // Try to encode this code point
-        var temp_buf: [4]u8 = undefined;
-        const cu_slice: []const u16 = if (units_consumed == 2)
-            code_units[i .. i + 2]
-        else
-            code_units[i .. i + 1];
-
-        const result = encoder.encode(cu_slice, &temp_buf, true);
-
-        if (result.status == streaming.EncodeResult.Status.unmappable) {
-            // Step 2 (html mode): Emit &#NNNN; for unmappable code point
-            try appendHtmlNumericReference(&output, code_point);
-        } else {
-            // Successfully encoded - append bytes
+        // Step 2: keep one encoder for the queue. ISO-2022-JP may emit a
+        // designation plus a character (five bytes), or an ASCII designation
+        // before returning an error. Neither output may be discarded.
+        var temp_buf: [16]u8 = undefined;
+        const cu_slice = code_units[i .. i + units_consumed];
+        var consumed: usize = 0;
+        while (true) {
+            const result = encoder.encode(cu_slice[consumed..], &temp_buf, false);
             try output.appendSlice(temp_buf[0..result.bytes_written]);
+            consumed += result.code_units_consumed;
+            switch (result.status) {
+                .input_empty => break,
+                .output_full => {
+                    // The buffer fits the largest indivisible encoder unit.
+                    std.debug.assert(result.bytes_written != 0 or result.code_units_consumed != 0);
+                },
+                .unmappable => {
+                    // Process an item, HTML mode: use the handler's error
+                    // code point (ISO-2022-JP reports ESC as U+FFFD).
+                    try appendHtmlNumericReference(&output, if (result.error_code_point != 0) result.error_code_point else code_point);
+                    break;
+                },
+            }
         }
 
         i += units_consumed;
+    }
+
+    // Process the queue's single end-of-queue item after all its scalars.
+    // ISO-2022-JP encoder steps 1–2 emit the final ASCII designation here.
+    var tail: [16]u8 = undefined;
+    while (true) {
+        const result = encoder.encode(&.{}, &tail, true);
+        try output.appendSlice(tail[0..result.bytes_written]);
+        switch (result.status) {
+            .input_empty => break,
+            .output_full => std.debug.assert(result.bytes_written != 0),
+            .unmappable => {
+                try appendHtmlNumericReference(&output, result.error_code_point);
+                break;
+            },
+        }
     }
 
     return output.toOwnedSlice();

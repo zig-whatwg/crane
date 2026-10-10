@@ -188,6 +188,9 @@ pub fn encode(
     const allocator = fba.allocator();
 
     while (in_pos < input.len) {
+        const input_before = in_pos;
+        const pending_before = state_wrapper.pending_high_surrogate;
+        const encoder_before = byte_encoder.state;
         const code_unit = input[in_pos];
 
         var code_point: u21 = undefined;
@@ -224,14 +227,11 @@ pub fn encode(
             if (state_before == .jis0208) {
                 const escape = [_]u8{ 0x1B, 0x28, 0x42 };
                 if (out_pos + escape.len > output.len) {
-                    in_pos -= 1;
-                    if (code_point >= 0x10000) {
-                        state_wrapper.pending_high_surrogate = input[in_pos - 1];
-                    }
-                    state_wrapper.state = byte_encoder.state;
+                    state_wrapper.pending_high_surrogate = pending_before;
+                    state_wrapper.state = encoder_before;
                     return .{
                         .status = .output_full,
-                        .code_units_consumed = in_pos,
+                        .code_units_consumed = input_before,
                         .bytes_written = out_pos,
                     };
                 }
@@ -252,14 +252,13 @@ pub fn encode(
         };
 
         if (out_pos + encoded.len > output.len) {
-            in_pos -= 1;
-            if (code_point >= 0x10000) {
-                state_wrapper.pending_high_surrogate = input[in_pos - 1];
-            }
-            state_wrapper.state = byte_encoder.state;
+            // A designation changes state only when its bytes fit. Restore
+            // the input item too, including a carried leading surrogate.
+            state_wrapper.pending_high_surrogate = pending_before;
+            state_wrapper.state = encoder_before;
             return .{
                 .status = .output_full,
-                .code_units_consumed = in_pos,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
             };
         }
