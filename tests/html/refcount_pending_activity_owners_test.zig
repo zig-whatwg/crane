@@ -117,3 +117,164 @@ fn webSocketThatClosedReleasesOnce() !void {
 test "a WebSocket whose connection closed releases its keep once, and its teardown none" {
     try onFreshThread(webSocketThatClosedReleasesOnce);
 }
+
+/// Run `source` (which leaves `globalThis.weak`), turn the event loop until
+/// `globalThis.done` is true (or a bound), and collect: whether the object went.
+fn settledThenCollected(page: Page, source: []const u8) !bool {
+    try page.run(source);
+    var turns: usize = 0;
+    while (turns < 200) : (turns += 1) {
+        try page.turn();
+        const answer = try page.evaluate("String(globalThis.done === true)");
+        defer std.testing.allocator.free(answer);
+        if (std.mem.eql(u8, answer, "true")) break;
+    }
+    return collected(page);
+}
+
+fn mutationObserverObservingManyNodes() !void {
+    const page = try Page.open();
+    defer page.close();
+    try std.testing.expect(try settledThenCollected(page,
+        \\globalThis.done = true;
+        \\globalThis.weak = (() => {
+        \\  const mo = new MutationObserver(() => {});
+        \\  for (const n of [document.createElement('a'), document.createElement('b'), document.body]) mo.observe(n, { childList: true });
+        \\  mo.observe(document.body, { attributes: true });
+        \\  mo.disconnect();
+        \\  return new WeakRef(mo);
+        \\})();
+    ));
+}
+
+test "a MutationObserver that observed several nodes keeps itself once, and goes once disconnected" {
+    try onFreshThread(mutationObserverObservingManyNodes);
+}
+
+fn messagePortsStartedAndClosed() !void {
+    const page = try Page.open();
+    defer page.close();
+    try std.testing.expect(try settledThenCollected(page,
+        \\globalThis.done = false;
+        \\globalThis.weak = (() => {
+        \\  // Listeners reach the ports only through globals they delete: a
+        \\  // listener closing over its own target keeps it until refcount
+        \\  // step 8 (decision D7).
+        \\  const { port1, port2 } = new MessageChannel();
+        \\  globalThis.ports = [port1, port2];
+        \\  port1.onmessage = () => { for (const p of globalThis.ports) p.close(); delete globalThis.ports; globalThis.done = true; };
+        \\  port1.start();
+        \\  port2.start();
+        \\  port2.postMessage('one');
+        \\  return new WeakRef(port1);
+        \\})();
+    ));
+}
+
+test "a MessagePort started several times keeps itself once, and goes once closed" {
+    try onFreshThread(messagePortsStartedAndClosed);
+}
+
+fn eventSourceClosed() !void {
+    const page = try Page.open();
+    defer page.close();
+    try std.testing.expect(try settledThenCollected(page,
+        \\globalThis.done = false;
+        \\globalThis.weak = (() => {
+        \\  globalThis.source = new EventSource('http://127.0.0.1:9/rc4-events');
+        \\  const source = globalThis.source;
+        \\  source.onerror = () => { globalThis.source.close(); delete globalThis.source; globalThis.done = true; };
+        \\  return new WeakRef(source);
+        \\})();
+    ));
+}
+
+test "an EventSource keeps itself once while connecting, and goes once closed" {
+    try onFreshThread(eventSourceClosed);
+}
+
+fn workerTerminated() !void {
+    const page = try Page.open();
+    defer page.close();
+    try std.testing.expect(try settledThenCollected(page,
+        \\globalThis.done = false;
+        \\globalThis.weak = (() => {
+        \\  globalThis.worker = new Worker('data:text/javascript,postMessage(1)');
+        \\  const worker = globalThis.worker;
+        \\  worker.onmessage = () => { globalThis.worker.terminate(); globalThis.worker.terminate(); delete globalThis.worker; globalThis.done = true; };
+        \\  return new WeakRef(worker);
+        \\})();
+    ));
+}
+
+test "a Worker terminated (twice) releases its keep once, and goes" {
+    try onFreshThread(workerTerminated);
+}
+
+fn imageLoadedTwice() !void {
+    const page = try Page.open();
+    defer page.close();
+    try std.testing.expect(try settledThenCollected(page,
+        \\globalThis.done = false;
+        \\globalThis.loads = 0;
+        \\globalThis.weak = (() => {
+        \\  const img = document.createElement('img');
+        \\  img.onload = img.onerror = () => { if (++globalThis.loads >= 1) globalThis.done = true; };
+        \\  img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+        \\  img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+        \\  return new WeakRef(img);
+        \\})();
+    ));
+}
+
+test "an image whose source changed while loading keeps itself once, and goes once settled" {
+    try onFreshThread(imageLoadedTwice);
+}
+
+fn performanceObserverDisconnectedTwice() !void {
+    const page = try Page.open();
+    defer page.close();
+    try std.testing.expect(try settledThenCollected(page,
+        \\globalThis.done = true;
+        \\globalThis.weak = (() => {
+        \\  const observer = new PerformanceObserver(() => {});
+        \\  observer.observe({ type: 'mark' });
+        \\  observer.observe({ type: 'measure' });
+        \\  observer.disconnect();
+        \\  observer.disconnect();
+        \\  return new WeakRef(observer);
+        \\})();
+    ));
+}
+
+test "a PerformanceObserver disconnected twice releases its keep once, and goes" {
+    try onFreshThread(performanceObserverDisconnectedTwice);
+}
+
+fn slotSignaledAgainFromItsListener() !void {
+    const page = try Page.open();
+    defer page.close();
+    try std.testing.expect(try settledThenCollected(page,
+        \\globalThis.done = false;
+        \\globalThis.weak = (() => {
+        \\  globalThis.host = document.createElement('div');
+        \\  const host = globalThis.host;
+        \\  const root = host.attachShadow({ mode: 'open' });
+        \\  const slot = root.appendChild(document.createElement('slot'));
+        \\  document.body.append(host);
+        \\  globalThis.fired = 0;
+        \\  slot.addEventListener('slotchange', () => {
+        \\    // Signaled again from its own event: the second signal's keep is
+        \\    // its own, and the first one's still ends.
+        \\    if (++globalThis.fired == 1) globalThis.host.append(document.createElement('i'));
+        \\    else { globalThis.host.remove(); delete globalThis.host; globalThis.done = true; }
+        \\  });
+        \\  host.append(document.createElement('b'));
+        \\  return new WeakRef(host);
+        \\})();
+    ));
+}
+
+test "a slot signaled again from its own slotchange releases each signal's keep" {
+    try onFreshThread(slotSignaledAgainFromItsListener);
+}
