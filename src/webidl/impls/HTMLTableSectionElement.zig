@@ -9,6 +9,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLTableSectionElement = interfaces.HTMLTableSectionElement;
+const tables = @import("html").tables;
 
 pub const State = HTMLTableSectionElement.State;
 
@@ -20,7 +21,18 @@ pub const ImplError = error{
 /// Implementations can replace this with a real struct containing:
 /// - Private data not exposed via WebIDL attributes
 /// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+pub const InternalState = struct {
+    rows: tables.Collection = .{},
+};
+
+fn internalState(instance: *runtime.Instance) !*InternalState {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| return internal;
+    const internal = try instance.ctx.allocator.create(InternalState);
+    internal.* = .{};
+    state.own._internal = internal;
+    return internal;
+}
 
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
@@ -31,18 +43,20 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     // HTMLTableSectionElement has no additional initialization
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // HTMLTableSectionElement has no additional cleanup
-    // Chain to parent class
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.rows.deinit(instance, "rows");
+        instance.ctx.allocator.destroy(internal);
+        state.own._internal = null;
+    }
+    interfaces.HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
@@ -59,20 +73,15 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
 /// Getter for rows
 pub fn get_rows(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return (try internalState(instance)).rows.get(instance, .section_rows, "rows");
 }
 
 /// Operation: deleteRow
 pub fn call_deleteRow(instance: *runtime.Instance, index: i32) anyerror!void {
-    _ = instance;
-    _ = index;
-    return error.NotImplemented;
+    try tables.deleteChild(instance, .section_rows, index);
 }
 
 /// Operation: insertRow
 pub fn call_insertRow(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = index;
-    return error.NotImplemented;
+    return tables.insertChild(instance, .section_rows, "tr", if (index.wasPassed()) index.value else -1);
 }

@@ -3,6 +3,8 @@
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const process_start = @import("process_start.zig");
+const instance_bridge = @import("instance_bridge.zig");
+const refcount = @import("refcount.zig");
 
 pub const Hooks = struct {
     owner_document: ?*const fn (*runtime.Instance) anyerror!*runtime.Instance = null,
@@ -46,6 +48,11 @@ pub fn adopted(node: *runtime.Instance) !void {
 pub fn setHost(fragment: *runtime.Instance, element: *runtime.Instance) !void {
     const algorithm = hooks.set_host orelse return error.InvalidStateError;
     try algorithm(fragment, element);
+    // The contents' holds count in the template's chain from here on (the
+    // host-including chain of tmp/plans/refcount-design.md 1.4).
+    if (instance_bridge.getNodeBase(fragment)) |content| {
+        if (instance_bridge.getNodeBase(element)) |template| refcount.hostAttached(content, template);
+    }
 }
 
 /// The template whose contents `fragment` is has gone: the fragment is no
@@ -54,6 +61,15 @@ pub fn setHost(fragment: *runtime.Instance, element: *runtime.Instance) !void {
 pub fn releaseHost(fragment: *runtime.Instance) void {
     const algorithm = hooks.clear_host orelse return;
     algorithm(fragment);
+    // A detached root of its (inert) document from here on.
+    if (instance_bridge.getNodeBase(fragment)) |content| refcount.hostGone(content);
+}
+
+/// A template's contents, or null for anything else (or a template whose
+/// contents are not established): the refcount checks read it.
+pub fn contentOf(node: *runtime.Instance) ?*runtime.Instance {
+    if (node.stateAs(interfaces.HTMLTemplateElement.State) == null) return null;
+    return interfaces.HTMLTemplateElement.get_content(node) catch null;
 }
 
 /// Whether `fragment` is the template contents of a template that is alive:

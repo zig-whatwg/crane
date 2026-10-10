@@ -443,6 +443,27 @@ pub const PseudoClassKind = union(enum) {
     Checked,
     Valid,
     Invalid,
+    Default,
+    Indeterminate,
+    Required,
+    Optional,
+    InRange,
+    OutOfRange,
+    PlaceholderShown,
+    Autofill,
+    UserValid,
+    UserInvalid,
+    Open,
+    PopoverOpen,
+    Modal,
+    Playing,
+    Paused,
+    Seeking,
+    Buffering,
+    Stalled,
+    Muted,
+    VolumeLocked,
+    Heading: u6,
 
     // Language pseudo-classes
     Lang: []const u8,
@@ -970,21 +991,43 @@ pub const Parser = struct {
         if (std.mem.eql(u8, name, "empty")) return .Empty;
         if (std.mem.eql(u8, name, "root")) return .Root;
         if (std.mem.eql(u8, name, "scope")) return .Scope;
-        if (std.mem.eql(u8, name, "any-link")) return .AnyLink;
-        if (std.mem.eql(u8, name, "link")) return .Link;
-        if (std.mem.eql(u8, name, "visited")) return .Visited;
+        if (std.ascii.eqlIgnoreCase(name, "any-link")) return .AnyLink;
+        if (std.ascii.eqlIgnoreCase(name, "link")) return .Link;
+        if (std.ascii.eqlIgnoreCase(name, "visited")) return .Visited;
         if (std.mem.eql(u8, name, "hover")) return .Hover;
         if (std.mem.eql(u8, name, "active")) return .Active;
         if (std.mem.eql(u8, name, "focus")) return .Focus;
         if (std.mem.eql(u8, name, "focus-visible")) return .FocusVisible;
         if (std.mem.eql(u8, name, "focus-within")) return .FocusWithin;
-        if (std.mem.eql(u8, name, "enabled")) return .Enabled;
-        if (std.mem.eql(u8, name, "disabled")) return .Disabled;
-        if (std.mem.eql(u8, name, "read-only")) return .ReadOnly;
-        if (std.mem.eql(u8, name, "read-write")) return .ReadWrite;
-        if (std.mem.eql(u8, name, "checked")) return .Checked;
-        if (std.mem.eql(u8, name, "valid")) return .Valid;
-        if (std.mem.eql(u8, name, "invalid")) return .Invalid;
+        if (std.ascii.eqlIgnoreCase(name, "enabled")) return .Enabled;
+        if (std.ascii.eqlIgnoreCase(name, "disabled")) return .Disabled;
+        if (std.ascii.eqlIgnoreCase(name, "read-only")) return .ReadOnly;
+        if (std.ascii.eqlIgnoreCase(name, "read-write")) return .ReadWrite;
+        if (std.ascii.eqlIgnoreCase(name, "checked")) return .Checked;
+        if (std.ascii.eqlIgnoreCase(name, "valid")) return .Valid;
+        if (std.ascii.eqlIgnoreCase(name, "invalid")) return .Invalid;
+        if (std.ascii.eqlIgnoreCase(name, "default")) return .Default;
+        if (std.ascii.eqlIgnoreCase(name, "indeterminate")) return .Indeterminate;
+        if (std.ascii.eqlIgnoreCase(name, "required")) return .Required;
+        if (std.ascii.eqlIgnoreCase(name, "optional")) return .Optional;
+        if (std.ascii.eqlIgnoreCase(name, "in-range")) return .InRange;
+        if (std.ascii.eqlIgnoreCase(name, "out-of-range")) return .OutOfRange;
+        if (std.ascii.eqlIgnoreCase(name, "placeholder-shown")) return .PlaceholderShown;
+        if (std.ascii.eqlIgnoreCase(name, "autofill")) return .Autofill;
+        if (std.ascii.eqlIgnoreCase(name, "-webkit-autofill")) return .Autofill;
+        if (std.ascii.eqlIgnoreCase(name, "user-valid")) return .UserValid;
+        if (std.ascii.eqlIgnoreCase(name, "user-invalid")) return .UserInvalid;
+        if (std.ascii.eqlIgnoreCase(name, "open")) return .Open;
+        if (std.ascii.eqlIgnoreCase(name, "popover-open")) return .PopoverOpen;
+        if (std.ascii.eqlIgnoreCase(name, "modal")) return .Modal;
+        if (std.ascii.eqlIgnoreCase(name, "playing")) return .Playing;
+        if (std.ascii.eqlIgnoreCase(name, "paused")) return .Paused;
+        if (std.ascii.eqlIgnoreCase(name, "seeking")) return .Seeking;
+        if (std.ascii.eqlIgnoreCase(name, "buffering")) return .Buffering;
+        if (std.ascii.eqlIgnoreCase(name, "stalled")) return .Stalled;
+        if (std.ascii.eqlIgnoreCase(name, "muted")) return .Muted;
+        if (std.ascii.eqlIgnoreCase(name, "volume-locked")) return .VolumeLocked;
+        if (std.ascii.eqlIgnoreCase(name, "heading")) return .{ .Heading = 0b111111 };
         if (std.mem.eql(u8, name, "target")) return .Target;
         if (std.ascii.eqlIgnoreCase(name, "defined")) return .Defined;
 
@@ -1045,7 +1088,9 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, name, "lang")) {
             const lang_code = try self.parseLanguageCode();
             kind = PseudoClassKind{ .Lang = lang_code };
-        } else if (std.mem.eql(u8, name, "dir")) {
+        } else if (std.ascii.eqlIgnoreCase(name, "heading")) {
+            kind = .{ .Heading = try self.parseHeadingLevels() };
+        } else if (std.ascii.eqlIgnoreCase(name, "dir")) {
             const direction = try self.parseDirection();
             kind = PseudoClassKind{ .Dir = direction };
         } else {
@@ -1174,16 +1219,45 @@ pub const Parser = struct {
         return lang_code;
     }
 
-    /// Parse direction for :dir() pseudo-class
+    /// HTML :heading(<integer>#), CSS Values 4 integer syntax. Keep only
+    /// levels 1–6 in the mask, while accepting every syntactically valid integer.
+    fn parseHeadingLevels(self: *Parser) ParserError!u6 {
+        var levels: u6 = 0;
+        while (true) {
+            var token = self.current_token orelse return error.UnexpectedEOF;
+            const negative = token.tag == .minus;
+            if (token.tag == .plus or negative) {
+                const end = token.end;
+                try self.advance();
+                token = self.current_token orelse return error.UnexpectedEOF;
+                if (token.start != end) return error.InvalidSelector;
+            }
+            if (token.tag != .ident or token.value.len == 0) return error.InvalidSelector;
+            var level: u8 = 0;
+            for (token.value) |digit| {
+                if (!std.ascii.isDigit(digit)) return error.InvalidSelector;
+                level = @min(7, level * 10 + digit - '0');
+            }
+            if (!negative and level >= 1 and level <= 6) levels |= @as(u6, 1) << @as(u3, @intCast(level - 1));
+            try self.advance();
+            self.skipWhitespace();
+            const next = self.current_token orelse return error.UnexpectedEOF;
+            if (next.tag != .comma) return levels;
+            try self.advance();
+            self.skipWhitespace();
+        }
+    }
+
+    /// Parse direction for :dir() pseudo-class.
     fn parseDirection(self: *Parser) ParserError!Direction {
         const token = self.current_token orelse return error.UnexpectedEOF;
 
         // Direction must be either "ltr" or "rtl"
         if (token.tag != .ident) return error.InvalidSelector;
 
-        const direction = if (std.mem.eql(u8, token.value, "ltr"))
+        const direction = if (std.ascii.eqlIgnoreCase(token.value, "ltr"))
             Direction.ltr
-        else if (std.mem.eql(u8, token.value, "rtl"))
+        else if (std.ascii.eqlIgnoreCase(token.value, "rtl"))
             Direction.rtl
         else
             return error.InvalidSelector;

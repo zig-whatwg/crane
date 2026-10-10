@@ -73,6 +73,7 @@ pub const Token = struct {
         comma, // ,
         gt, // >
         plus, // +
+        minus, // - before a numeric argument; never an identifier start
         tilde, // ~
         lparen, // (
         rparen, // )
@@ -147,6 +148,7 @@ pub const Tokenizer = struct {
             ',' => self.makeToken(.comma, start, 1),
             '>' => self.makeToken(.gt, start, 1),
             '+' => self.makeToken(.plus, start, 1),
+            '-' => if (self.isIdentStart()) self.consumeIdentToken(start) else self.makeToken(.minus, start, 1),
             '~' => {
                 // Could be ~= (includes match) or ~ (general sibling)
                 if (self.peek() == '=') {

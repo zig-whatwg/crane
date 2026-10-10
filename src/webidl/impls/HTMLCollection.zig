@@ -45,6 +45,8 @@ pub const InternalState = struct {
     fieldset_controls: bool = false,
     options_root_traced: bool = false,
     selected_options_only: bool = false,
+    table_root_traced: bool = false,
+    table_filter: live_collections.TableFilter = .bodies,
 
     /// How a LIVE collection rebuilds its elements from `root`: set by the
     /// producer (`makeLive`) and run before every read. Null for a static
@@ -121,6 +123,27 @@ fn makeSelectOptions(collection: *runtime.Instance, select: *runtime.Instance, s
 fn liveRoot(collection: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(collection) orelse return null;
     return @import("html").forms.liveChild(internal.root, internal.root_generation);
+}
+
+fn makeTable(collection: *runtime.Instance, root: *runtime.Instance, filter: live_collections.TableFilter) void {
+    const internal = getInternal(collection) orelse return;
+    internal.table_filter = filter;
+    if (collection.ctx.hasEngine()) {
+        @import("engine").traceChild(collection, root, .{ .name = "tableRoot" });
+        internal.table_root_traced = true;
+    }
+    makeLive(collection, root, &refillTable);
+}
+
+fn refillTable(collection: *runtime.Instance, root: *runtime.Instance) void {
+    const internal = getInternal(collection) orelse return;
+    if (liveRoot(collection) == null) return;
+    const Visitor = struct {
+        fn append(target: *runtime.Instance, element: *runtime.Instance) anyerror!void {
+            try addElement(target, element);
+        }
+    };
+    @import("html").tables.forEach(root, internal.table_filter, collection, Visitor.append) catch return;
 }
 
 fn refillSelectOptions(collection: *runtime.Instance, select: *runtime.Instance) void {
@@ -288,7 +311,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls make a collection live through dom.live_collections.
-    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .root = &liveRoot });
+    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .table = &makeTable, .root = &liveRoot });
 }
 
 /// Initialize instance (creates the instance)
@@ -320,6 +343,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         if (internal.form_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "formControlsRoot" });
         if (internal.options_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "optionsRoot" });
+        if (internal.table_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "tableRoot" });
         internal.deinit();
 
         // Return the block itself, not just what it points to.

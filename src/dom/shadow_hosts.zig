@@ -23,6 +23,8 @@
 //!
 //! lint-impls: hook for ShadowRoot, Element
 const process_start = @import("process_start.zig");
+const instance_bridge = @import("instance_bridge.zig");
+const refcount = @import("refcount.zig");
 
 const runtime = @import("runtime");
 
@@ -47,9 +49,22 @@ pub fn install(impl: Implementation) void {
 /// `shadow`'s host is being torn down: `shadow` forgets it. Nothing to do
 /// when no shadow root was ever made.
 pub fn hostDestroyed(shadow: *runtime.Instance) void {
+    // A detached root of its document from here on (refcount: its holds
+    // leave the dying host's chain and count in its document).
+    if (instance_bridge.getNodeBase(shadow)) |root| refcount.hostGone(root);
     const impl = implementation orelse return;
     const step = impl.host_destroyed orelse return;
     step(shadow);
+}
+
+/// `shadow` was just attached to `host` (DOM "attach a shadow root", the
+/// step every shadow root - scripted or declarative - attaches through): its
+/// holds count in the host's chain from here on (the host-including chain of
+/// tmp/plans/refcount-design.md 1.4).
+pub fn attached(host: *runtime.Instance, shadow: *runtime.Instance) void {
+    const root = instance_bridge.getNodeBase(shadow) orelse return;
+    const host_base = instance_bridge.getNodeBase(host) orelse return;
+    refcount.hostAttached(root, host_base);
 }
 
 /// An element's shadow root, including a closed root. The IDL shadowRoot

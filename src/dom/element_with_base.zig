@@ -16,6 +16,7 @@ const std = @import("std");
 const infra = @import("infra");
 const node_base = @import("node_base.zig");
 const attr_with_base = @import("attr_with_base.zig");
+const refcount = @import("refcount.zig");
 const Allocator = std.mem.Allocator;
 
 pub const NodeBase = node_base.NodeBase;
@@ -215,8 +216,11 @@ pub const ElementWithBase = struct {
     /// Append a child node
     /// Simplified version for testing - doesn't implement full DOM spec
     pub fn appendChild(self: *ElementWithBase, child: *NodeBase) !*NodeBase {
-        // Set parent relationship
-        child.parent_node = &self.base;
+        // Set parent relationship (and the holds it moves: refcount). This
+        // simplified helper never took a child out of an old parent's list;
+        // its counts leave the old chain all the same.
+        if (child.parent_node != null) refcount.unlinkChild(child);
+        refcount.linkChild(child, &self.base);
 
         // Add to child list
         try self.base.child_nodes.append(child);
@@ -232,7 +236,7 @@ pub const ElementWithBase = struct {
         for (items, 0..) |item, i| {
             if (item == child) {
                 _ = self.base.child_nodes.remove(i) catch unreachable;
-                child.parent_node = null;
+                refcount.unlinkChild(child);
                 return child;
             }
         }

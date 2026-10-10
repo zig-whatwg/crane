@@ -1298,6 +1298,11 @@ fn run(init: std.process.Init) !u8 {
     // std.process.Init carries them and a process-lifetime arena. Its gpa is not
     // used: see `gpa_fast` above for why the runner owns its allocator.
     const want_traces = runner_allocator.wantsTraces(init.minimal.environ.getPosix("CRANE_LEAK_TRACES"));
+    // `CRANE_REFCOUNT_CHECK=1`: every DOM mutation checks the reference
+    // counts' invariants (src/dom/refcount.zig, shadow mode), as unit tests
+    // always do; a violation is an error line in the output
+    // ("refcount: ..."). Changes no behaviour.
+    if (runner_allocator.wantsTraces(init.minimal.environ.getPosix("CRANE_REFCOUNT_CHECK"))) @import("dom").refcount.enableTreeChecks();
     const allocator = if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
     defer {
         // Leak detection still runs; only the traces are gone in the fast case.

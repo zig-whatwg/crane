@@ -33,6 +33,7 @@ const runtime = @import("runtime");
 const NodeBase = @import("node_base.zig").NodeBase;
 const instance_bridge = @import("instance_bridge.zig");
 const node_creation = @import("node_creation.zig");
+const refcount = @import("refcount.zig");
 
 const SlabAllocator = runtime.SlabAllocator;
 
@@ -95,7 +96,9 @@ fn unlinkLastChild(parent: *NodeBase, child: *NodeBase) void {
     parent.last_child = prev;
     child.previous_sibling = null;
     child.next_sibling = null;
-    child.parent_node = null;
+    // The pointer and the parent bit only: a dying tree's holds stay on its
+    // root, which its own free takes out of its document (refcount.nodeFreed).
+    refcount.unlinkForTeardown(child);
     const size = parent.child_nodes.size();
     if (size > 0 and parent.child_nodes.items()[size - 1] == child) {
         _ = parent.child_nodes.remove(size - 1) catch {};

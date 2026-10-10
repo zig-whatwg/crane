@@ -19,10 +19,14 @@
 //!   their init frees an entry it finds at the new address, so no entry may
 //!   outlive its browser - the allocator its values came from goes with it
 //!   (0 entries left at the end: the boundary, not a leak).
+//! - HTMLSlotElement: an orphaned slot's SlotState - its name and its
+//!   assigned and manually assigned nodes' buffers (64 freed in
+//!   shadow-dom/declarative/declarative-shadow-dom-attachment.html, whose
+//!   attachShadow calls orphan each declarative root's slot, 2026-10-10).
 //! HTMLInputElement's sweep retired with the vtable dispatch: an input in a
 //! document is deinit'd by its tree, and none was left at the end (0 of 0).
 //!
-//! lint-impls: hook for HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction
+//! lint-impls: hook for HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction, HTMLSlotElement
 
 const std = @import("std");
 const process_start = @import("process_start.zig");

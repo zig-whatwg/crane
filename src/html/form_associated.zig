@@ -9,14 +9,23 @@
 //!   * labelable elements and a label's labeled control (§ 4.10.4)
 //!   * the directionality (§ 3.2.6.4), for dirname (§ 4.10.19.2)
 //!
-//! Stated deviation - the form owner is COMPUTED on each read, by the steps
-//! of "reset the form owner" (§ 4.10.18.3, steps 4-5), rather than stored and
-//! reset at insertion, removal and attribute changes. The two agree on every
-//! tree but one: a control the parser associated with its form element
-//! pointer while not a descendant of that form (`<form><div></form><input>`
-//! misnesting). Blink and Gecko store it; storing it needs insertion,
-//! removal and id-change steps for every listed element, which is its own
-//! piece of work.
+//! The form owner is COMPUTED on each read, by the steps of "reset the form
+//! owner" (§ 4.10.18.3, steps 4-5), rather than stored and reset at
+//! insertion, removal and attribute changes. The two agree on every tree but
+//! one: a control the parser associated with its form element pointer
+//! ("create an element for a token" step 15) where the tree would give
+//! another owner - misnested (`<div><form></div><input>`) or foster-parented
+//! out of a table. Only those are stored, per document
+//! (document_internals.parserFormAssociations), and `formOwner` answers them
+//! first; "reset the form owner" drops one (`formOwnerSubtreeMoved`,
+//! `formAttributeChanged`).
+//!
+//! Stated deviation, the browsers' (golden rule 2): removing the FORM resets
+//! the controls the parser associated with it that its removal leaves in
+//! another tree. The spec's removing steps reset only a removed control
+//! (HTML "removing steps" step 4). Blink: HTMLFormElement::RemovedFrom ->
+//! NotifyFormRemovedFromTree -> ListedElement::FormRemovedFromTree; WebKit:
+//! HTMLFormElement::removingSteps -> formOwnerRemovedFromTree.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -153,6 +162,7 @@ pub fn firstElementWithId(root: *Instance, id: []const u8) ?*Instance {
 /// 5. Otherwise, if element has an ancestor form element, then associate
 ///    element with the nearest such ancestor form element.
 pub fn formOwner(element: *Instance) ?*Instance {
+    if (parserFormOwner(element)) |form| return form;
     const connected = interfaces.Node.get_isConnected(element) catch false;
     if (connected and hasAttribute(element, "form")) {
         var value = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("form")) catch null) orelse return null;
@@ -165,6 +175,102 @@ pub fn formOwner(element: *Instance) ?*Instance {
         if (isForm(a)) return a;
     }
     return null;
+}
+
+/// The nearest inclusive ancestor of `node` that is a form element.
+fn nearestFormInclusive(node: *Instance) ?*Instance {
+    var current: ?*Instance = node;
+    while (current) |n| : (current = parentOf(n)) {
+        if (isForm(n)) return n;
+    }
+    return null;
+}
+
+/// Whether `element` is one of the form-associated elements the parser
+/// associates (HTML "create an element for a token" step 15): button,
+/// fieldset, img, input, object, output, select, textarea. A form-associated
+/// custom element is never one ("and not a form-associated custom element").
+pub fn isParserAssociatedName(local_name: []const u8) bool {
+    return std.StaticStringMap(void).initComptime(.{
+        .{ "button", {} }, .{ "fieldset", {} }, .{ "img", {} },    .{ "input", {} },
+        .{ "object", {} }, .{ "output", {} },   .{ "select", {} }, .{ "textarea", {} },
+    }).has(local_name);
+}
+
+/// "Create an element for a token" step 15, after its parser conditions held
+/// (the form element pointer is set, the parser is not parsing template
+/// contents, there is no fragment context, the element is not listed with a
+/// form attribute): if `intended_parent` is in the same tree as `form`,
+/// associate `element` with `form` and set its parser inserted flag. Stored
+/// only where the tree's owner would differ - the nearest form inclusive
+/// ancestor of `intended_parent` is not `form` - since `formOwner` computes
+/// the rest.
+pub fn parserAssociate(element: *Instance, form: *Instance, intended_parent: *Instance) !void {
+    if (!isForm(form) or isFormAssociatedCustom(element)) return;
+    if (rootOf(intended_parent) != rootOf(form)) return;
+    if (nearestFormInclusive(intended_parent) == form) return;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    try @import("dom").document_internals.addParserFormAssociation(document, .{
+        .control = element,
+        .control_generation = runtime.SlabAllocator.generationOf(element),
+        .form = form,
+        .form_generation = runtime.SlabAllocator.generationOf(form),
+    });
+}
+
+/// The form the parser associated `element` with, while that association
+/// stands: both still the instances it was made on, and in one tree (a
+/// removal that separates them drops it; this check is the net).
+fn parserFormOwner(element: *Instance) ?*Instance {
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return null;
+    const list = @import("dom").document_internals.parserFormAssociations(document) orelse return null;
+    if (list.items.len == 0) return null;
+    for (list.items) |entry| {
+        if (entry.control != element) continue;
+        if (runtime.SlabAllocator.generationOf(entry.control) != entry.control_generation) continue;
+        if (runtime.SlabAllocator.generationOf(entry.form) != entry.form_generation) continue;
+        if (rootOf(element) != rootOf(entry.form)) continue;
+        return entry.form;
+    }
+    return null;
+}
+
+/// "Reset the form owner" for parser associations, after `node` was
+/// inserted, removed or moved: drop each association of `node`'s document
+/// whose control and form no longer share a tree (a removed control, HTML
+/// removing steps step 4; a removed form, Blink's and WebKit's - see the
+/// module comment), or whose instances are gone. Insertion keeps them: the
+/// parser inserted flag is set. Nothing to do, and one length check, when
+/// the document has none.
+pub fn parserAssociationsAfterMutation(node: *Instance, new_parent: ?*Instance) void {
+    if (new_parent != null) return;
+    const document = (interfaces.Node.get_ownerDocument(node) catch null) orelse return;
+    const list = @import("dom").document_internals.parserFormAssociations(document) orelse return;
+    if (list.items.len == 0) return;
+    var index: usize = 0;
+    while (index < list.items.len) {
+        const entry = list.items[index];
+        const live = runtime.SlabAllocator.generationOf(entry.control) == entry.control_generation and
+            runtime.SlabAllocator.generationOf(entry.form) == entry.form_generation;
+        if (live and rootOf(entry.control) == rootOf(entry.form)) {
+            index += 1;
+            continue;
+        }
+        _ = list.swapRemove(index);
+    }
+}
+
+/// "When a listed form-associated element's form attribute is set, changed,
+/// or removed, then the user agent must reset the form owner of that
+/// element": its parser association, if any, goes for good.
+pub fn parserAssociationAttributeChanged(element: *Instance, local_name: []const u8) void {
+    if (!std.mem.eql(u8, local_name, "form")) return;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    const list = @import("dom").document_internals.parserFormAssociations(document) orelse return;
+    var index: usize = 0;
+    while (index < list.items.len) {
+        if (list.items[index].control == element) _ = list.swapRemove(index) else index += 1;
+    }
 }
 
 // ============================================================================
@@ -397,6 +503,8 @@ pub const Direction = enum { ltr, rtl };
 const DirState = enum { ltr, rtl, auto, undefined };
 
 fn dirState(element: *Instance) DirState {
+    // HTML 3.2.6.4: foreign elements inherit; dir is defined only for HTML.
+    if (element.stateAs(interfaces.HTMLElement.State) == null) return .undefined;
     var buffer: [4]u8 = undefined;
     const value = smallAttribute(element, "dir", &buffer) orelse return .undefined;
     if (std.ascii.eqlIgnoreCase(value, "ltr")) return .ltr;
@@ -432,7 +540,7 @@ pub fn directionality(element: *Instance) Direction {
             .auto => return autoDirectionality(current) orelse .ltr,
             .undefined => {
                 // bdi: its auto directionality, or 'ltr'.
-                if (isElementNamed(current, "bdi")) return autoDirectionality(current) orelse .ltr;
+                if (directionalityElement(current, "bdi")) return autoDirectionality(current) orelse .ltr;
                 // An input in the Telephone state: 'ltr'.
                 if (isInput(current)) {
                     var buffer: [16]u8 = undefined;
@@ -453,8 +561,7 @@ pub fn directionality(element: *Instance) Direction {
     return .ltr;
 }
 
-/// "The auto directionality" of `element` (slots excepted: assigned nodes
-/// are not consulted).
+/// HTML 3.2.6.4: auto directionality of controls, assigned slots and text.
 fn autoDirectionality(element: *Instance) ?Direction {
     // 1. An auto-directionality form-associated element: from its value.
     if (isAutoDirectionalityFormAssociated(element)) {
@@ -470,8 +577,20 @@ fn autoDirectionality(element: *Instance) ?Direction {
         if (value.asSlice().len > 0) return .ltr;
         return null;
     }
-    // 3. The contained text auto directionality, canExcludeRoot false.
-    return containedTextAutoDirectionality(element);
+    // Step 2: a shadow slot with assigned nodes uses those nodes, not fallback.
+    if (element.stateAs(interfaces.HTMLSlotElement.State) != null and shadowRootHost(element) != null) {
+        const assigned = @import("dom").shadow_dom_algorithms.assignedNodes(element.ctx.allocator, element, false, false) catch return null;
+        defer element.ctx.allocator.free(assigned);
+        if (assigned.len != 0) {
+            for (assigned) |child| {
+                const direction = if (isTextNode(child)) textDirectionality(child) else containedTextAutoDirectionality(child, true);
+                if (direction) |d| return d;
+            }
+            return null;
+        }
+    }
+    // Step 3: contained text, canExcludeRoot false.
+    return containedTextAutoDirectionality(element, false);
 }
 
 /// The direction of the first code point of bidirectional type L, AL or R
@@ -490,28 +609,56 @@ pub fn firstStrongDirection(text: []const u8) ?Direction {
     return null;
 }
 
-/// "The contained text auto directionality" of `element`, canExcludeRoot
-/// false: the first Text descendant with a strong character, skipping
-/// every subtree rooted at a bdi, script, style or textarea element or an
-/// element whose dir attribute is not in the Undefined state.
-fn containedTextAutoDirectionality(element: *Instance) ?Direction {
+/// HTML's contained text auto directionality, steps 1–2. Skip entire
+/// excluded subtrees; CDATASection is a Text node too (DOM's Text interface).
+fn containedTextAutoDirectionality(element: *Instance, can_exclude_root: bool) ?Direction {
+    if (can_exclude_root and excludesDirectionality(element)) return null;
     var node = nextInTree(element, element, false);
     while (node) |n| {
         if (isElement(n)) {
-            const skip = isElementNamed(n, "bdi") or isElementNamed(n, "script") or
-                isElementNamed(n, "style") or isElementNamed(n, "textarea") or dirState(n) != .undefined;
-            node = nextInTree(n, element, skip);
-            continue;
-        }
-        const node_type = interfaces.Node.get_nodeType(n) catch 0;
-        if (node_type == interfaces.Node.get_TEXT_NODE()) {
-            var data = interfaces.CharacterData.get_data(n) catch runtime.DOMString.initEmpty();
-            defer data.deinit(n.ctx.allocator);
-            if (firstStrongDirection(data.asSlice())) |d| return d;
+            if (excludesDirectionality(n)) {
+                node = nextInTree(n, element, true);
+                continue;
+            }
+            // Step 1.2: a descendant shadow slot uses its host direction.
+            if (n.stateAs(interfaces.HTMLSlotElement.State) != null) {
+                if (shadowRootHost(n)) |host| return directionality(host);
+            }
+        } else if (isTextNode(n)) {
+            if (textDirectionality(n)) |d| return d;
         }
         node = nextInTree(n, element, false);
     }
     return null;
+}
+
+fn excludesDirectionality(element: *Instance) bool {
+    return directionalityElement(element, "bdi") or directionalityElement(element, "script") or
+        directionalityElement(element, "style") or directionalityElement(element, "textarea") or dirState(element) != .undefined;
+}
+
+fn directionalityElement(element: *Instance, comptime name: []const u8) bool {
+    if (element.stateAs(interfaces.HTMLElement.State) == null) return false;
+    var local = interfaces.Element.get_localName(element) catch return false;
+    defer local.deinit(element.ctx.allocator);
+    return std.mem.eql(u8, local.asSlice(), name);
+}
+
+fn shadowRootHost(element: *Instance) ?*Instance {
+    const root = rootOf(element);
+    if (root.stateAs(interfaces.ShadowRoot.State) == null) return null;
+    return interfaces.ShadowRoot.get_host(root) catch null;
+}
+
+fn isTextNode(node: *Instance) bool {
+    const kind = interfaces.Node.get_nodeType(node) catch return false;
+    return kind == interfaces.Node.get_TEXT_NODE() or kind == interfaces.Node.get_CDATA_SECTION_NODE();
+}
+
+fn textDirectionality(node: *Instance) ?Direction {
+    var data = interfaces.CharacterData.get_data(node) catch return null;
+    defer data.deinit(node.ctx.allocator);
+    return firstStrongDirection(data.asSlice());
 }
 
 // ============================================================================

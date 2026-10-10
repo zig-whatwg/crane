@@ -12,6 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const event_construction = @import("dom").event_construction;
 const PointerEvent = interfaces.PointerEvent;
 const EventImpl = @import("Event.zig");
 const clock = @import("clock");
@@ -41,8 +42,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     // The event's own copy of pointerType (empty unless the init dictionary
     // gave one).
     instance.getState(State).own.pointerType.deinit(instance.ctx.allocator);
-    // Clean up inherited Event state (frees the type DOMString)
-    interfaces.Event.deinit(instance);
+    // MouseEvent's teardown (the related target it keeps), then Event's.
+    interfaces.MouseEvent.deinit(instance);
 }
 
 /// Constructor implementation
@@ -124,7 +125,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.own.metaKey = modifier_init.metaKey orelse false;
     state.base.own.button = mouse_init.button orelse 0;
     state.base.own.buttons = mouse_init.buttons orelse 0;
-    state.base.own.relatedTarget = mouse_init.relatedTarget orelse null;
+    // MouseEvent keeps it (dom.event_construction): an edge from this event.
+    try event_construction.setMouseRelatedTarget(instance, mouse_init.relatedTarget orelse null);
     state.base.own.movementX = mouse_init.movementX orelse 0.0;
     state.base.own.movementY = mouse_init.movementY orelse 0.0;
     state.base.own.pageX = clientX_f;

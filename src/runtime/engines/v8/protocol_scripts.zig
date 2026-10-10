@@ -32,6 +32,13 @@ pub const ScriptScope = realm_entry.Entered;
 /// execution context stack, whether or not a JavaScript frame runs above it.
 threadlocal var prepared_depth: u32 = 0;
 
+/// Whether a "prepare to run script" is open on this thread without its
+/// "clean up": a realm execution context on the JavaScript execution context
+/// stack (engine.hasRunningScript).
+pub fn hasPreparedScript() bool {
+    return prepared_depth > 0;
+}
+
 // ============================================================================
 // Prepare to run script / clean up after running script (HTML 8.1.4.3)
 // ============================================================================

@@ -147,6 +147,23 @@ pub fn installHooks() void {
     });
     // A host's teardown reaches its shadow root through this hook.
     @import("dom").shadow_hosts.install(.{ .host_destroyed = &hostDestroyed });
+    // The HTML parser's declarative shadow roots, and DOM attach-a-shadow-root
+    // step 4's reuse of one, read and set flags no IDL member reaches.
+    @import("dom").declarative_shadow.install(.{
+        .mark_declarative = &markDeclarative,
+        .is_declarative = &isDeclarative,
+        .set_declarative = &setDeclarative,
+    });
+}
+
+/// HTML "in head", template start tag, steps 7.11.4-7.11.7: the parser's
+/// root is available to element internals and declarative; a
+/// shadowrootcustomelementregistry attribute keeps its registry null.
+fn markDeclarative(instance: *runtime.Instance, keep_registry_null: bool) void {
+    const internal = getInternal(instance) orelse return;
+    internal.available_to_element_internals = true;
+    internal.declarative_flag = true;
+    if (keep_registry_null) internal.keep_custom_element_registry_null = true;
 }
 
 /// Initialize instance (creates the instance)
@@ -345,11 +362,12 @@ pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandle
 // ============================================================================
 
 /// InnerHTML.innerHTML getter
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-shadowroot-innerhtml
+/// "Return the result of running fragment serializing algorithm steps with
+/// this and true."
 pub fn get_innerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // TODO: Implement HTML serialization
-    _ = instance;
-    // Return empty string
-    return runtime.DOMString.initEmpty();
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("html").serialization.fragment(instance, true);
 }
 
 /// InnerHTML.innerHTML setter
@@ -453,11 +471,13 @@ pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 // ============================================================================
 
 /// getHTML(options) - Serialize shadow tree to HTML
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-shadowroot-gethtml
+/// "Return the result of HTML fragment serialization algorithm with this,
+/// options["serializableShadowRoots"], and options["shadowRoots"]."
 pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetHTMLOptions)) anyerror!runtime.DOMString {
-    // TODO: Implement HTML serialization with options
-    _ = instance;
-    _ = options;
-    return runtime.DOMString.initEmpty();
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    const given = options.getOrDefault(.{});
+    return @import("html").serialization.fragmentWithShadowRoots(instance, given.serializableShadowRoots orelse false, given.shadowRoots orelse &.{});
 }
 
 /// setHTMLUnsafe(html) - Parse and replace shadow tree contents
@@ -468,8 +488,16 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTM
     const allocator = instance.ctx.allocator;
     const compliant = try @import("dom").trusted_types.compliantStringFor(allocator, .html, instance, html, "ShadowRoot setHTMLUnsafe");
     defer allocator.free(compliant);
-    // TODO: step 2 - set and filter HTML with declarative shadow roots.
-    return error.NotImplemented;
+    // Step 2: "set and filter HTML" given this, compliantHTML and false: the
+    // context is this's host; no sanitizer (the IDL has no options); the
+    // HTML fragment parsing algorithm with allowDeclarativeShadowRoots true;
+    // then "replace all with fragment within this".
+    const dom = @import("dom");
+    const fragment = try @import("html").custom_elements.parseFragmentUnsafe(instance, compliant);
+    defer dom.node_creation.destroyUninserted(fragment);
+    const fragment_base = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
+    const shadow_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;
+    try dom.mutation.replaceAll(@as(?*dom.NodeBase, fragment_base), shadow_base);
 }
 
 /// getAnimations() - Get all animations in shadow tree

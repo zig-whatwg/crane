@@ -30,8 +30,7 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     // HTMLTableCellElement has no additional initialization
     return instance;
 }
@@ -40,8 +39,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // HTMLTableCellElement has no additional cleanup
     // Chain to parent class
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    interfaces.HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
@@ -58,19 +56,26 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
 /// Getter for cellIndex
 pub fn get_cellIndex(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML 4.9.9: index among HTML td/th children of the parent tr.
+    const parent = (try interfaces.Node.get_parentNode(instance)) orelse return -1;
+    if (parent.stateAs(interfaces.HTMLTableRowElement.State) == null) return -1;
+    return @import("html").tables.indexOf(parent, .row_cells, instance);
 }
 
 /// Getter for scope
 pub fn get_scope(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML 4.9.11: reflect scope, limited to only known values.
+    // HTML 2.6.1: missing/invalid values return the empty string; recognized
+    // keywords return their canonical case, without changing the attribute.
+    const attribute = (try interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("scope"))) orelse return runtime.DOMString.initEmpty();
+    inline for (.{ "row", "col", "rowgroup", "colgroup" }) |keyword| {
+        if (std.ascii.eqlIgnoreCase(attribute.asSlice(), keyword)) return runtime.DOMString.initInterned(keyword);
+    }
+    return runtime.DOMString.initEmpty();
 }
 
 /// Setter for scope
 pub fn set_scope(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // HTML 2.6.1 string reflection setter: set the supplied value verbatim.
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("scope"), .{ .domstring = value });
 }

@@ -164,8 +164,17 @@ pub fn agentHost(agent: *Agent) ?*anyopaque {
     return protocol_agents.agentHost(agent);
 }
 
+/// The protocol's contract: whether `agent`'s JavaScript execution context
+/// stack is non-empty. Only the current agent can have one on this thread;
+/// then a realm execution context the host pushed ("prepare to run script",
+/// not yet cleaned up) or a JavaScript frame is on it - the test "clean up
+/// after running script" makes. Being entered is not running script: the
+/// page's agent is entered for its whole life, and answering yes for that
+/// skipped every "if the JavaScript execution context stack is empty,
+/// perform a microtask checkpoint" step of the HTML parser.
 pub fn hasRunningScript(agent: *Agent) bool {
-    return worker_realm.hasRunningScript(agent);
+    if (!worker_realm.hasRunningScript(agent)) return false;
+    return protocol_scripts.hasPreparedScript() or ffi.v8_Isolate_HasJavaScriptOnStack(isolateOf(agent));
 }
 
 pub fn hasPendingEngineWork(agent: *Agent) bool {

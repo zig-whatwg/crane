@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -65,6 +66,11 @@ pub const InternalState = struct {
     /// Active flag to prevent recursive invocations
     active_flag: bool,
 
+    /// Whether the root edge was drawn, and the current node the current
+    /// edge holds (null while it is the root): see `setCurrent`.
+    root_traced: bool = false,
+    traced_current: ?*runtime.Instance = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -88,6 +94,29 @@ const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
 fn getInternal(instance: *runtime.Instance) *InternalState {
     return Accessor.getCast(instance);
+}
+
+/// The members a walker keeps its nodes in (engine.traceChild): its root, and
+/// its current node while that is another node - script can set it to any
+/// node, in any tree. A walker script holds keeps them, and through them
+/// their trees and documents. Blink: NodeIteratorBase::Trace visits root_,
+/// TreeWalker::Trace visits current_ (core/dom/tree_walker.cc). They were
+/// bare pointers (lane ownerdoc, crane/od-tree-walker-keeps-its-nodes.html).
+///
+/// A walker is made only by createTreeWalker(), which the binding wraps as it
+/// returns: until then traceChild holds the nodes strongly for the wrapper it
+/// waits for, and `deinit` lets that hold go if the walker is freed unwrapped.
+const root_slot: engine.TracedSlot = .{ .name = "root" };
+const current_slot: engine.TracedSlot = .{ .name = "currentNode" };
+
+/// Set `instance`'s current node to `node`, keeping it (`current_slot`) when
+/// it is not the root.
+fn setCurrent(instance: *runtime.Instance, internal: *InternalState, node: *runtime.Instance) void {
+    internal.current = node;
+    const kept: ?*runtime.Instance = if (node == internal.root) null else node;
+    if (kept == internal.traced_current) return;
+    internal.traced_current = kept;
+    if (kept) |n| engine.traceChild(instance, n, current_slot) else engine.forgetTracedChild(instance, current_slot);
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -123,6 +152,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
+        // A walker its wrapper's collection frees has no edges left to end;
+        // one freed unwrapped lets go of what waits for its wrapper.
+        if (internal.root_traced) engine.forgetTracedChild(instance, root_slot);
+        if (internal.traced_current != null) engine.forgetTracedChild(instance, current_slot);
         node_filter.release(internal.filter);
         internal.filter = null;
         internal.deinit();
@@ -141,7 +174,9 @@ fn setUp(
     const internal = getInternal(instance);
     // Step 2: Set walker's root and walker's current to root.
     internal.root = root;
-    internal.current = root;
+    setCurrent(instance, internal, root);
+    engine.traceChild(instance, root, root_slot);
+    internal.root_traced = true;
     // Step 3: Set walker's whatToShow to whatToShow.
     internal.what_to_show = what_to_show;
     // Step 4: Set walker's filter to filter.
@@ -186,7 +221,7 @@ pub fn get_currentNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Sets the current node to the given value
 pub fn set_currentNode(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance);
-    internal.current = value;
+    setCurrent(instance, internal, value);
 }
 
 // ============================================================================
@@ -210,7 +245,7 @@ pub fn call_parentNode(instance: *runtime.Instance) anyerror!?*runtime.Instance 
         // Step 2.2: If node is non-null and filtering node returns FILTER_ACCEPT
         const result = try filterNode(instance, node);
         if (result == NodeFilter.FILTER_ACCEPT) {
-            internal.current = node;
+            setCurrent(instance, internal, node);
             return node;
         }
     }
@@ -275,7 +310,7 @@ pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 
             // Step 2.2.4: If result is FILTER_ACCEPT, set current and return
             if (result == NodeFilter.FILTER_ACCEPT) {
-                internal.current = node;
+                setCurrent(instance, internal, node);
                 return node;
             }
 
@@ -297,7 +332,7 @@ pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instanc
         // Step 2.5: If filtering node returns FILTER_ACCEPT, set current and return
         const result = try filterNode(instance, node);
         if (result == NodeFilter.FILTER_ACCEPT) {
-            internal.current = node;
+            setCurrent(instance, internal, node);
             return node;
         }
     }
@@ -329,7 +364,7 @@ pub fn call_nextNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 
             // Step 3.1.3: If result is FILTER_ACCEPT, set current and return
             if (result == NodeFilter.FILTER_ACCEPT) {
-                internal.current = node;
+                setCurrent(instance, internal, node);
                 return node;
             }
         }
@@ -370,7 +405,7 @@ pub fn call_nextNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 
         // Step 3.6: If result is FILTER_ACCEPT, set current and return
         if (result == NodeFilter.FILTER_ACCEPT) {
-            internal.current = node;
+            setCurrent(instance, internal, node);
             return node;
         }
     }
@@ -400,7 +435,7 @@ fn traverseChildren(instance: *runtime.Instance, child_type: ChildType) ImplErro
 
         // Step 3.2: If result is FILTER_ACCEPT, set current and return
         if (result == NodeFilter.FILTER_ACCEPT) {
-            internal.current = node;
+            setCurrent(instance, internal, node);
             return node;
         }
 
@@ -480,7 +515,7 @@ fn traverseSiblings(instance: *runtime.Instance, sibling_type: SiblingType) Impl
 
             // Step 3.2.3: If result is FILTER_ACCEPT, set current and return
             if (result == NodeFilter.FILTER_ACCEPT) {
-                internal.current = node;
+                setCurrent(instance, internal, node);
                 return node;
             }
 

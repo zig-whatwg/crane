@@ -100,3 +100,69 @@ fn optionsRubyVoidAndRawText() !void {
 test "option, optgroup, select, ruby, void and raw text start tags follow the in-body steps, live and in DOMParser" {
     try onFreshThread(optionsRubyVoidAndRawText);
 }
+
+/// HTML "in body", an end tag whose tag name is one of "h1" ... "h6": it
+/// closes whichever heading is in scope, not only one of its own name, and
+/// pops until a heading has been popped. Chrome, Firefox and Safari agree
+/// (html5lib tests1/tests2 headings cases).
+fn headingEndTags() !void {
+    try compare(
+        \\[
+        \\  ['<h1>a</h2>b', '<h1>a</h1>b'],
+        \\  ['<h6>a</h1>b', '<h6>a</h6>b'],
+        \\  ['<h1><h2>x</h1>y', '<h1></h1><h2>x</h2>y'],
+        \\  ['<h3><span>a</h4>b', '<h3><span>a</span></h3>b'],
+        \\  ['<h2><b>a</h5>b', '<h2><b>a</b></h2><b>b</b>'],
+        \\  ['<div>a</h1>b</div>', '<div>ab</div>'],
+        \\  ['<h2><table><tbody><tr><td></h3>x</td></tr></tbody></table></h2>', '<h2><table><tbody><tr><td>x</td></tr></tbody></table></h2>'],
+        \\  ['<h4><p>a</h4>b', '<h4><p>a</p></h4>b'],
+        \\]
+    );
+}
+
+test "an h1-h6 end tag closes any heading in scope, live and in DOMParser" {
+    try onFreshThread(headingEndTags);
+}
+
+/// The current HTML parser has no "in select" or "in select in table"
+/// insertion modes (the relaxed select parser, whatwg/html#10557): a select's
+/// contents are parsed "in body", and "reset the insertion mode
+/// appropriately" has no select step. Chrome, Firefox and Safari all pass
+/// customizable-select/select-parsing.html 17/17. A reset with a select on
+/// the stack - after a table or template inside it ends - stays in body.
+fn selectAfterReset() !void {
+    try compare(
+        \\[
+        \\  ['<select><template></template><div>x</div></select>', '<select><template></template><div>x</div></select>'],
+        \\  ['<select><table></table><div>x</div></select>', '<select><table></table><div>x</div></select>'],
+        \\  ['<select><table></table><span>a</span><option>b</select>', '<select><table></table><span>a</span><option>b</option></select>'],
+        \\]
+    );
+}
+
+test "a reset with a select on the stack parses in body, live and in DOMParser" {
+    try onFreshThread(selectAfterReset);
+}
+
+/// The fragment case: innerHTML with a select context element resets to "in
+/// body" too (the select matches no step; the last node is the context).
+fn selectFragment() !void {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://example.test/select-fragment" });
+    const result = try page.evaluateScriptToString(
+        \\(() => {
+        \\  const select = document.createElement('select');
+        \\  select.innerHTML = '<div>x</div><option>o<span>s</span>';
+        \\  return select.innerHTML;
+        \\})()
+    , testing.allocator);
+    defer testing.allocator.free(result);
+    try testing.expectEqualStrings("<div>x</div><option>o<span>s</span></option>", result);
+}
+
+test "innerHTML on a select parses its fragment in body" {
+    try onFreshThread(selectFragment);
+}

@@ -78,25 +78,13 @@
 //! - Language pseudo-class: `:lang()`
 //! - Attribute case-sensitivity: `[attr=val i]`, `[attr=val s]`
 //!
-//! ### Parsed but Return False (Need Runtime State)
-//! - Link pseudo-classes: `:any-link`, `:link`, `:visited`
-//! - User action pseudo-classes: `:hover`, `:active`, `:focus`, `:focus-visible`, `:focus-within`
-//! - Input pseudo-classes: `:enabled`, `:disabled`, `:read-only`, `:read-write`, `:checked`
-//!
-//! ### Not Yet Implemented (Need HTML/Forms Integration)
-//! The following pseudo-classes require HTML element types and form semantics:
-//! - `:target` - Requires Document fragment identifier integration
-//! - `:defined` - Requires Web Components / Custom Elements
-//! - `:placeholder-shown` - Requires HTMLInputElement
-//! - `:default` - Requires HTMLFormElement
-//! - `:valid`, `:invalid` - Requires constraint validation API
-//! - `:in-range`, `:out-of-range` - Requires HTMLInputElement range validation
-//! - `:required`, `:optional` - Requires form element semantics
-//! - `:blank` - Requires form input tracking
-//! - `:user-invalid` - Requires user interaction event tracking
-//! - `:dir()` - Requires HTML directionality processing
-//!
-//! These will be implemented when HTML support is added to the monorepo.
+//! ### Runtime HTML state
+//! Bridged elements ask dom.html_pseudo_classes for form, link, disclosure,
+//! media, heading and directionality matching. Focus, custom states and the
+//! document target have their own owner hooks. Hover/active, user-validity,
+//! modal and stalled matching await owner state; HTML documents why each
+//! unavailable capability never matches. Unbridged native elements have no
+//! HTML state and do not match these pseudo-classes.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -411,31 +399,47 @@ pub const Matcher = struct {
             .Is, .Where => |selector_list| try self.matches(element, selector_list),
             .Has => |selector_list| try self.matchesHas(element, selector_list),
             .Lang => |lang_code| matchesLang(element, lang_code),
-            .Dir => |direction| matchesDir(element, direction),
+            .Dir => |direction| if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), if (direction == .ltr) .dir_ltr else .dir_rtl) else false,
             // User action pseudo-classes - not supported in querySelector
             // (these require runtime state tracking)
-            .AnyLink, .Link, .Visited, .Hover, .Active => false,
+            .Hover, .Active => false, // Crane has no pointer hover/pressed state.
             // :focus, :focus-within and :focus-visible - the focus state of
             // the element's top-level traversable (html.focus), asked of the
             // element's own node through the hook Document installs.
             .Focus => if (instanceOf(element)) |instance| dom.focus_matching.matchesFocus(@ptrCast(@alignCast(instance))) else false,
             .FocusWithin => if (instanceOf(element)) |instance| dom.focus_matching.matchesFocusWithin(@ptrCast(@alignCast(instance))) else false,
             .FocusVisible => if (instanceOf(element)) |instance| dom.focus_matching.matchesFocusVisible(@ptrCast(@alignCast(instance))) else false,
-            // Input pseudo-classes - not supported without HTML library
-            .ReadOnly, .ReadWrite, .Checked => false,
-            .Enabled, .Disabled => blk: {
-                const object = instanceOf(element) orelse break :blk false;
-                const disabled = dom.custom_elements.disabledState(@ptrCast(@alignCast(object))) orelse break :blk false;
-                break :blk if (pseudo.kind == .Disabled) disabled else !disabled;
-            },
-            .Valid, .Invalid => blk: {
-                const object = instanceOf(element) orelse break :blk false;
-                const validity = dom.custom_elements.validationState(@ptrCast(@alignCast(object)));
-                break :blk if (pseudo.kind == .Valid) validity == .valid else validity == .invalid;
-            },
-            // The document's target element and custom states live in the
-            // DOM's own documents and elements, which this matcher (over
-            // ElementWithBase) does not see; ParentNode's matcher answers them.
+            .AnyLink => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .any_link) else false,
+            .Link => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .any_link) else false,
+            .Visited => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .visited) else false,
+            .Enabled => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .enabled) else false,
+            .Disabled => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .disabled) else false,
+            .ReadOnly => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .read_only) else false,
+            .ReadWrite => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .read_write) else false,
+            .Checked => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .checked) else false,
+            .Valid => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .valid) else false,
+            .Invalid => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .invalid) else false,
+            .Default => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .default) else false,
+            .Indeterminate => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .indeterminate) else false,
+            .Required => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .required) else false,
+            .Optional => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .optional) else false,
+            .InRange => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .in_range) else false,
+            .OutOfRange => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .out_of_range) else false,
+            .PlaceholderShown => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .placeholder_shown) else false,
+            .Autofill => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .autofill) else false,
+            .UserValid => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .user_valid) else false,
+            .UserInvalid => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .user_invalid) else false,
+            .Open => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .open) else false,
+            .PopoverOpen => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .popover_open) else false,
+            .Modal => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .modal) else false,
+            .Playing => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .playing) else false,
+            .Paused => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .paused) else false,
+            .Seeking => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .seeking) else false,
+            .Buffering => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .buffering) else false,
+            .Stalled => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .stalled) else false,
+            .Muted => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .muted) else false,
+            .VolumeLocked => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .volume_locked) else false,
+            .Heading => |levels| if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .{ .heading = levels }) else false,
             .Target => false,
             .Defined => if (instanceOf(element)) |object| dom.custom_elements.isDefined(@ptrCast(@alignCast(object))) else false,
             .State => |name| blk: {
@@ -956,93 +960,6 @@ fn matchesLanguageCode(value: []const u8, code: []const u8) bool {
     return false;
 }
 
-/// Check if a Unicode code point has strong LTR directionality
-/// Based on Unicode Bidirectional Algorithm character classes
-fn isStrongLTR(cp: u21) bool {
-    // Basic Latin, Latin Extended, Greek, Cyrillic, etc.
-    if (cp >= 0x0041 and cp <= 0x005A) return true; // A-Z
-    if (cp >= 0x0061 and cp <= 0x007A) return true; // a-z
-    if (cp >= 0x00C0 and cp <= 0x00D6) return true; // Latin-1 letters
-    if (cp >= 0x00D8 and cp <= 0x00F6) return true;
-    if (cp >= 0x00F8 and cp <= 0x02B8) return true;
-    if (cp >= 0x0370 and cp <= 0x0373) return true; // Greek
-    if (cp >= 0x0376 and cp <= 0x0377) return true;
-    if (cp >= 0x037B and cp <= 0x037D) return true;
-    if (cp >= 0x037F and cp <= 0x03FF) return true;
-    if (cp >= 0x0400 and cp <= 0x052F) return true; // Cyrillic
-    return false;
-}
-
-/// Check if a Unicode code point has strong RTL directionality
-/// Based on Unicode Bidirectional Algorithm character classes (R, AL)
-fn isStrongRTL(cp: u21) bool {
-    // Hebrew
-    if (cp >= 0x0590 and cp <= 0x05FF) return true;
-    // Arabic, Arabic Supplement, Arabic Extended-A
-    if (cp >= 0x0600 and cp <= 0x06FF) return true;
-    if (cp >= 0x0750 and cp <= 0x077F) return true;
-    if (cp >= 0x08A0 and cp <= 0x08FF) return true;
-    // Syriac, Thaana, N'Ko
-    if (cp >= 0x0700 and cp <= 0x074F) return true;
-    if (cp >= 0x0780 and cp <= 0x07BF) return true;
-    if (cp >= 0x07C0 and cp <= 0x07FF) return true;
-    return false;
-}
-
-/// Compute direction for dir="auto" based on element content
-/// Spec: https://html.spec.whatwg.org/#the-dir-attribute
-/// Finds the first strong directional character in the element's text content
-///
-/// FOLLOW-UP: Full implementation requires:
-/// - Element.textContent() method to get all descendant text
-/// - Or ability to traverse and cast text nodes properly
-/// - Handle bidi isolates and other HTML spec requirements
-///
-/// Current implementation: Simplified version that checks any text content that's readily accessible
-fn computeAutoDirection(element: *Element) Direction {
-    _ = element;
-
-    // FOLLOW-UP: Implement full text traversal when Element.textContent is available
-    // For now, default to LTR per HTML spec (when no strong directional character is found)
-    // This is spec-compliant behavior for empty or neutral-only content
-
-    return .ltr;
-}
-
-/// Match :dir() pseudo-class
-/// Spec: https://drafts.csswg.org/selectors-4/#dir-pseudo
-fn matchesDir(element: *Element, direction: Direction) bool {
-    // Check for dir attribute on element or ancestors
-    // Per spec: Walk up tree checking dir attributes
-    var current: ?*Element = element;
-    while (current) |elem| {
-        if (elem.getAttribute("dir")) |dir_value| {
-            // Match direction (case-insensitive)
-            const matches = switch (direction) {
-                .ltr => std.ascii.eqlIgnoreCase(dir_value, "ltr"),
-                .rtl => std.ascii.eqlIgnoreCase(dir_value, "rtl"),
-            };
-            if (matches) return true;
-
-            // If dir="auto", compute direction from content
-            if (std.ascii.eqlIgnoreCase(dir_value, "auto")) {
-                const auto_dir = computeAutoDirection(elem);
-                return auto_dir == direction;
-            }
-        }
-        // Check parent
-        if (elem.base.parent_node) |parent| {
-            if (parent.node_type == NodeBase.ELEMENT_NODE) {
-                current = @ptrCast(parent);
-                continue;
-            }
-        }
-        break;
-    }
-    // Default directionality is ltr per HTML spec
-    return direction == .ltr;
-}
-
 /// Get element's index among all child elements (1-based)
 fn getChildIndex(element: *Element) ?usize {
     const parent = element.base.parent_node orelse return null;
@@ -1134,7 +1051,6 @@ const testing = std.testing;
 const infra = @import("infra");
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const Parser = @import("parser.zig").Parser;
-const Direction = parser.Direction;
 const AttrWithBase = dom.AttrWithBase;
 
 /// Helper to create element for testing
