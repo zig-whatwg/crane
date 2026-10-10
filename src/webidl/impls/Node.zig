@@ -2032,21 +2032,25 @@ pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !v
 }
 
 /// A node keeps its node document alive for as long as the node lives
-/// (dom.node_document.traced_slot): the edge from the node's wrapper to the
-/// document's, which the engine adapter draws when it makes the wrapper, is
-/// redrawn here when a wrapped node's document changes - adopt - and REPLACES
-/// the old one, so the node lets its old document go. Blink moves the traced
-/// tree scope (TreeScopeAdopter); WebKit moves the node's count from the old
-/// document to the new (Node::moveTreeToNewScope,
+/// (dom.node_document.traced_slot): a wrapped root's upward edge, which the
+/// engine adapter's node tracing points at the document, is redrawn here when
+/// adopt changes the root's document, and REPLACES the old target, so the node
+/// lets its old document go. Adopt removes a node from its parent first, so
+/// the adopted node is a root here; its wrapped descendants keep their
+/// parents, whose chain reaches it. Blink moves the traced tree scope
+/// (TreeScopeAdopter); WebKit moves the node's count from the old document
+/// to the new (Node::moveTreeToNewScope,
 /// Document::decrementReferencingNodeCount).
 ///
 /// A node script has not seen draws nothing - never engine.traceChild for an
 /// unwrapped owner, which would hold the document strongly until a wrapper
 /// that may never come (every node a parser makes): its wrapper, when made,
-/// draws the edge to the document it has then. The pointer test comes first,
-/// so a node being created pays one field read (refcount design 2.2).
+/// points at the document it has then. The pointer test comes first, so a
+/// node being created pays one field read (refcount design 2.2).
 fn keepNodeDocument(instance: *runtime.Instance, node_type: u16, base: *NodeBase, doc: ?*runtime.Instance) void {
-    if (node_type == NodeType.DOCUMENT_NODE) return;
+    // A node in a tree reaches its document through its parent: the slot
+    // holds the parent there (node tracing), and a root's holds its document.
+    if (node_type == NodeType.DOCUMENT_NODE or base.parent_node != null) return;
     if (base.bound_v8_wrapper == null or !engine.hasWrapper(instance)) return;
     if (doc) |document| {
         engine.traceChild(instance, document, dom_module.node_document.traced_slot);

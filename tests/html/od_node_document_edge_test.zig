@@ -35,13 +35,19 @@ fn instanceOf(page: Page, expression: []const u8) !*runtime.Instance {
     return engine.convertToPlatformObject(try realmOf(page), value.borrow()) orelse error.NotAPlatformObject;
 }
 
-/// `node`'s wrapper keeps `document`'s: the edge in the node document slot
-/// names exactly that document's wrapper.
-fn expectKeepsDocument(page: Page, node: *runtime.Instance, document: *runtime.Instance) !void {
+/// `node`'s wrapper keeps `kept`'s: node tracing's one slot
+/// (dom.node_document.traced_slot) names exactly that wrapper - its parent's
+/// while it has a parent, its document's while it is a root.
+fn expectSlotHolds(page: Page, node: *runtime.Instance, kept: *runtime.Instance) !void {
     try testing.expect(engine.hasWrapper(node));
-    const kept = engine.tracedValue(node, dom.node_document.traced_slot) orelse return error.NoNodeDocumentEdge;
-    defer kept.release();
-    try testing.expect(engine.sameValue(try realmOf(page), kept.borrow(), .{ .instance = document }));
+    const value = engine.tracedValue(node, dom.node_document.traced_slot) orelse return error.EmptySlot;
+    defer value.release();
+    try testing.expect(engine.sameValue(try realmOf(page), value.borrow(), .{ .instance = kept }));
+}
+
+/// `node`, a wrapped root, keeps `document`.
+fn expectKeepsDocument(page: Page, node: *runtime.Instance, document: *runtime.Instance) !void {
+    try expectSlotHolds(page, node, document);
 }
 
 /// Collect, let the deferred teardown free what was collected (it runs
@@ -86,7 +92,7 @@ test "a detached node keeps its node document, with its tree" {
     try onFreshThread(detachedNodesKeepTheirDocument);
 }
 
-fn everyWrappedNodeKeepsItsDocument() !void {
+fn aWrappedRootKeepsItsDocumentAndANodeItsParent() !void {
     const page = try Page.open();
     defer page.close();
     try page.run(
@@ -97,23 +103,61 @@ fn everyWrappedNodeKeepsItsDocument() !void {
         \\globalThis.text = d.createTextNode('t');
     );
     const doc = try instanceOf(page, "d");
-    // Wrapped by script while detached, and while in the tree - and the
-    // ancestor node tracing wrapped for it.
+    // Roots script wrapped keep their document.
     try expectKeepsDocument(page, try instanceOf(page, "made"), doc);
-    try expectKeepsDocument(page, try instanceOf(page, "inTree"), doc);
     try expectKeepsDocument(page, try instanceOf(page, "text"), doc);
+    // A node in its document's tree keeps its parent, every ancestor wrapped
+    // up to the document: the chain reaches the document.
     const in_tree = try instanceOf(page, "inTree");
     const div = (try interfaces.Node.get_parentNode(in_tree)) orelse return error.NoParent;
+    try expectSlotHolds(page, in_tree, div);
+    const body = (try interfaces.Node.get_parentNode(div)) orelse return error.NoParent;
+    try expectSlotHolds(page, div, body);
+    // The removal that makes the wrapped div a root turns its slot to its
+    // document - updated, never deleted.
+    try page.run("inTree.parentNode.remove()");
     try expectKeepsDocument(page, div, doc);
+    try expectSlotHolds(page, in_tree, div);
     // A document keeps none of its own.
-    if (engine.tracedValue(doc, dom.node_document.traced_slot)) |self_edge| {
-        self_edge.release();
+    if (engine.tracedValue(doc, dom.node_document.traced_slot)) |edge| {
+        edge.release();
         return error.DocumentKeepsItself;
     }
 }
 
-test "every wrapped node's wrapper keeps its node document's" {
-    try onFreshThread(everyWrappedNodeKeepsItsDocument);
+test "a wrapped root keeps its node document, a node in a tree its parent" {
+    try onFreshThread(aWrappedRootKeepsItsDocumentAndANodeItsParent);
+}
+
+fn aMovedNodeKeepsItsNewParent() !void {
+    const page = try Page.open();
+    defer page.close();
+    try page.run(
+        \\globalThis.a = document.body.appendChild(document.createElement('div'));
+        \\globalThis.b = document.body.appendChild(document.createElement('div'));
+        \\globalThis.node = a.appendChild(document.createElement('span'));
+        \\globalThis.other = document.implementation.createHTMLDocument('other');
+        \\globalThis.c = other.body.appendChild(other.createElement('div'));
+    );
+    const node = try instanceOf(page, "node");
+    try expectSlotHolds(page, node, try instanceOf(page, "a"));
+    // moveBefore: one step from parent to parent, no removal.
+    try page.run("b.moveBefore(node, null)");
+    try expectSlotHolds(page, node, try instanceOf(page, "b"));
+    // insertBefore from another parent: removed, then inserted.
+    try page.run("a.insertBefore(node, null)");
+    try expectSlotHolds(page, node, try instanceOf(page, "a"));
+    // Into another document's tree: removed, adopted, inserted.
+    try page.run("c.appendChild(node)");
+    try expectSlotHolds(page, node, try instanceOf(page, "c"));
+    // Out of it: a root of that document now.
+    try page.run("node.remove()");
+    try expectKeepsDocument(page, node, try instanceOf(page, "other"));
+    try page.run("a.remove(); b.remove()");
+}
+
+test "a node moved between parents keeps its new parent" {
+    try onFreshThread(aMovedNodeKeepsItsNewParent);
 }
 
 fn adoptReplacesTheEdge() !void {
@@ -122,24 +166,28 @@ fn adoptReplacesTheEdge() !void {
     try page.run(
         \\globalThis.d1 = document.implementation.createHTMLDocument('one');
         \\globalThis.d2 = document.implementation.createHTMLDocument('two');
-        \\globalThis.moved = d1.body.appendChild(d1.createElement('section'));
+        \\globalThis.moved = d1.createElement('section');
+        \\d1.body.appendChild(moved);
         \\moved.innerHTML = '<p><i></i></p>';
         \\globalThis.deep = moved.firstChild.firstChild;
         \\globalThis.unseen = moved.firstChild;
     );
-    const d1 = try instanceOf(page, "d1");
     const d2 = try instanceOf(page, "d2");
     const moved = try instanceOf(page, "moved");
-    try expectKeepsDocument(page, moved, d1);
+    try expectSlotHolds(page, moved, try instanceOf(page, "d1.body"));
     try page.run("d2.adoptNode(moved)");
-    // The node and every wrapped descendant now keep the new document only.
+    // The adopted root keeps the new document only; its wrapped descendants
+    // keep their parents, which reach it.
     try expectKeepsDocument(page, moved, d2);
-    try expectKeepsDocument(page, try instanceOf(page, "deep"), d2);
-    try expectKeepsDocument(page, try instanceOf(page, "unseen"), d2);
-    // Into the window's document by insertion (insert adopts).
+    const unseen = try instanceOf(page, "unseen");
+    try expectSlotHolds(page, try instanceOf(page, "deep"), unseen);
+    try expectSlotHolds(page, unseen, moved);
+    // Into the window's document by insertion (insert adopts): its parent
+    // now; removed again, the window's document.
     try page.run("document.body.appendChild(moved)");
-    try expectKeepsDocument(page, moved, try instanceOf(page, "document"));
+    try expectSlotHolds(page, moved, try instanceOf(page, "document.body"));
     try page.run("moved.remove()");
+    try expectKeepsDocument(page, moved, try instanceOf(page, "document"));
 }
 
 test "adopt replaces a wrapped node's document edge" {

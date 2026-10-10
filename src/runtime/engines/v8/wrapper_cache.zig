@@ -388,7 +388,7 @@ fn onNodeRemoved(node: *@import("dom").NodeBase, old_parent: ?*@import("dom").No
     const parent = old_parent orelse return;
     if (node.parent_node != null) return;
     const wrapper = nodeWrapper(node) orelse return;
-    eraseTreeEdges(wrapper, parent);
+    eraseTreeEdges(node, wrapper, parent);
 }
 
 /// The move algorithm (moveBefore) changes a node's parent without the
@@ -398,7 +398,7 @@ fn onNodeMoved(node: *@import("dom").NodeBase, old_parent: ?*@import("dom").Node
     const parent = old_parent orelse return;
     const wrapper = nodeWrapper(node) orelse return;
     if (node.parent_node == parent) return;
-    eraseTreeEdges(wrapper, parent);
+    eraseTreeEdges(node, wrapper, parent);
     if (node.parent_node != null) drawTreeEdges(node, wrapper);
 }
 
@@ -406,9 +406,11 @@ fn onNodeMoved(node: *@import("dom").NodeBase, old_parent: ?*@import("dom").Node
 // Node tracing
 // ============================================================================
 
-/// The private keys of a node wrapper's edges: to its parent's wrapper, and
-/// (a JS Set) to its wrapped children's.
-const tree_parent_key = "crane:tree:parent";
+/// The private keys of a node wrapper's edges: to its parent's wrapper - or,
+/// for a root, its node document's (`document_edge_key`: one slot, so a
+/// removal updates it rather than deleting it and adding another) - and (a JS
+/// Set) to its wrapped children's.
+const tree_parent_key = document_edge_key;
 const tree_children_key = "crane:tree:children";
 
 /// The wrapper of `node` - a node has one, whatever realm reads it
@@ -462,49 +464,63 @@ fn drawTreeEdges(child: *@import("dom").NodeBase, child_wrapper: *v8.Value) void
     v8.v8_Object_PrivateSetUpdate(parent_wrapper, tree_children_key.ptr, tree_children_key.len, child_wrapper, true);
 }
 
-/// The private key of the third edge: a node's wrapper to its node
-/// document's. `dom.node_document.traced_slot` in engine.traceChild's slot
-/// namespace (protocol_tracing.zig keyOf), so the Node impl's redraw when the
-/// node document changes - engine.traceChild under the same slot - replaces
-/// this one, and engine.tracedValue reads it back (tests/html/
+/// The private key of a node wrapper's one upward edge: to its parent's
+/// wrapper while it has a parent, to its node document's while it is a root.
+/// `dom.node_document.traced_slot` in engine.traceChild's slot namespace
+/// (protocol_tracing.zig keyOf), so the Node impl's redraw when adopt changes
+/// a wrapped root's document - engine.traceChild under the same slot -
+/// replaces it, and engine.tracedValue reads it back (tests/html/
 /// od_node_document_edge_test.zig pins the agreement).
 const document_edge_key = "crane:traced:" ++ @import("dom").node_document.traced_slot.name;
 
-/// Draw the edge from a node's new wrapper (`node_wrapper`) to its node
+/// Point a wrapped root's upward edge (`node_wrapper`) at its node
 /// document's wrapper - made in the document's relevant realm if script has
-/// not seen it: node tracing's third edge. Blink's `Node::Trace` visits
-/// `tree_scope_` beside the parent and siblings (core/dom/node.cc), and the
-/// tree scope traces its document, so a node script holds keeps its document
-/// and, through the document's wrapper and its tree edges, the document's
-/// tree (refcount decision D6). Drawn here because a wrap has no host step:
-/// a factory method sets the node document before the binding wraps its
-/// result, and a holder's rescue (dom.node_holds) and `drawTreeEdges` wrap
-/// nodes inside the adapter. Every wrapped node draws it - the root of a
-/// detached tree is what keeps its document, and any wrapped node may become
-/// one by a removal - and a document draws none (it is its own). Never makes
-/// the node's wrapper: this is that wrapper, still held strongly by the
-/// cache. Needs no context entered.
-fn drawDocumentEdge(node: *@import("dom").NodeBase, node_wrapper: *v8.Value) void {
-    if (node.node_type == @import("dom").NodeBase.DOCUMENT_NODE) return;
+/// not seen it. Blink's `Node::Trace` visits `tree_scope_` beside
+/// `parent_or_shadow_host_node_` (core/dom/node.cc), and the tree scope traces
+/// its document, so a node script holds keeps its document and, through the
+/// document's wrapper and its tree edges, the document's tree (refcount
+/// decision D6). A node in a tree reaches the document through its parent:
+/// wrapped nodes are upward-closed, and the root is the document or holds it.
+///
+/// One slot, not a second property: `set` points it at the document for a
+/// root it wraps (a factory method sets the node document before the binding
+/// wraps its result, and a holder's rescue wraps roots inside the adapter, so
+/// the host has no step there), `drawTreeEdges` at the parent on insertion,
+/// and `eraseTreeEdges` back at the document on removal - an update in place.
+/// A separate document property beside the parent's, with the parent's
+/// deleted on every removal, cost ed-qsa-timing about 400 ms of collection
+/// after its 100,000 wraps (lane ownerdoc); the single slot made the page
+/// faster than before the edge existed. A document draws none (it is its
+/// own). Never makes the node's wrapper. Needs no context entered.
+/// Whether the slot now holds the document.
+fn drawDocumentEdge(node: *@import("dom").NodeBase, node_wrapper: *v8.Value) bool {
+    if (node.node_type == @import("dom").NodeBase.DOCUMENT_NODE) return false;
     // NodeBase keeps the document as the document's own NodeBase.
-    const document: *@import("dom").NodeBase = @ptrCast(@alignCast(node.owner_document orelse return));
+    const document: *@import("dom").NodeBase = @ptrCast(@alignCast(node.owner_document orelse return false));
     if (nodeWrapper(document)) |document_wrapper| {
         v8.v8_Object_PrivateRefUpdate(node_wrapper, document_edge_key.ptr, document_edge_key.len, document_wrapper);
-        return;
+        return true;
     }
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return;
-    const instance = instanceOfNode(document) orelse return;
-    const made = @import("protocol_support.zig").relevantWrapper(isolate, instance) catch return;
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return false;
+    const instance = instanceOfNode(document) orelse return false;
+    const made = @import("protocol_support.zig").relevantWrapper(isolate, instance) catch return false;
     defer v8.v8_Global_Dispose(made);
-    if (!v8.v8_Value_IsObject(made)) return;
+    if (!v8.v8_Value_IsObject(made)) return false;
     v8.v8_Object_PrivateRefUpdate(node_wrapper, document_edge_key.ptr, document_edge_key.len, made);
+    return true;
 }
 
-/// End the edges between a removed subtree's root (`child_wrapper`) and its
-/// old parent. A parent whose wrapper is gone has no edge left to end.
-fn eraseTreeEdges(child_wrapper: *v8.Value, old_parent: *@import("dom").NodeBase) void {
+/// End the edges between a removed subtree's root (`child`, wrapped:
+/// `child_wrapper`) and its old parent: its parent slot now holds its node
+/// document instead (`drawDocumentEdge`) - updated in place, never deleted,
+/// which would push the wrapper out of V8's fast properties. A parent whose
+/// wrapper is gone has no edge left to end.
+fn eraseTreeEdges(child: *@import("dom").NodeBase, child_wrapper: *v8.Value, old_parent: *@import("dom").NodeBase) void {
     if (v8.v8_Isolate_GetCurrent() == null) return;
-    v8.v8_Object_PrivateRefUpdate(child_wrapper, tree_parent_key.ptr, tree_parent_key.len, null);
+    // No document wrapper to be had (its realm is gone): the parent edge
+    // still ends.
+    if (!drawDocumentEdge(child, child_wrapper))
+        v8.v8_Object_PrivateRefUpdate(child_wrapper, tree_parent_key.ptr, tree_parent_key.len, null);
     const parent_wrapper = nodeWrapper(old_parent) orelse return;
     v8.v8_Object_PrivateSetUpdate(parent_wrapper, tree_children_key.ptr, tree_children_key.len, child_wrapper, false);
 }
@@ -1661,7 +1677,7 @@ pub const WrapperCache = struct {
         if (@import("dom").instance_bridge.getNodeBase(@ptrCast(instance))) |node| {
             if (node.bound_v8_wrapper == null) node.bound_v8_wrapper = @ptrCast(wrapper);
             if (node.parent_node != null and !self.is_tearing_down) drawTreeEdges(node, @ptrCast(wrapper));
-            if (!self.is_tearing_down) drawDocumentEdge(node, @ptrCast(wrapper));
+            if (node.parent_node == null and !self.is_tearing_down) _ = drawDocumentEdge(node, @ptrCast(wrapper));
         }
         if (shouldBeStrong(entry) and self.detached_holder == null) {
             entry.strong = true;

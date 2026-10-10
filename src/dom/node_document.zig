@@ -20,24 +20,27 @@ const engine = @import("engine");
 /// Assigning the document establishes template contents, which can allocate.
 pub const Error = error{ InvalidStateError, OutOfMemory };
 
-/// The member a node keeps its node document in: an edge from the node's
-/// wrapper to its document's (engine.traceChild's slot namespace), so a node
-/// script can reach keeps its document - and through the document's own
-/// wrapper, its tree - for as long as the node lives. Blink: `Node::Trace`
-/// visits `tree_scope_` (core/dom/node.cc), whose `TreeScope::Trace` visits
-/// its document; WebKit counts the node on its document instead
-/// (`Document::incrementReferencingNodeCount` in `Node::Node`).
+/// The member through which a node keeps its node document: one edge from
+/// the node's wrapper - to its parent's wrapper while it has a parent, to its
+/// document's while it is a root (engine.traceChild's slot namespace) - so a
+/// node script can reach keeps its document, and through the document's own
+/// wrapper its tree, for as long as the node lives. Blink: `Node::Trace`
+/// visits `parent_or_shadow_host_node_` and `tree_scope_` (core/dom/node.cc),
+/// whose `TreeScope::Trace` visits its document; WebKit counts the node on its
+/// document instead (`Document::incrementReferencingNodeCount` in
+/// `Node::Node`).
 ///
-/// Drawn twice, under this one key: by the engine adapter when it makes a
-/// node's wrapper (node tracing - the host has no step at that moment: a
-/// factory method sets the node document before the binding wraps its
-/// result), and by the Node impl when a wrapped node's document changes
-/// (adopt), which replaces the edge, so an adopted node keeps its new
-/// document and lets the old one go. A node no wrapper reaches draws none: it
-/// is as safe as its tree, whose root's wrapper - script's, or a holder's
-/// rescue (node_holds.zig) - carries the same edge, or which is its
+/// The engine adapter's node tracing keeps the slot: the document when it
+/// wraps a root (the host has no step at that moment: a factory method sets
+/// the node document before the binding wraps its result, and a holder's
+/// rescue wraps a root inside the adapter), the parent on insertion, the
+/// document again on removal. The Node impl redraws it when adopt changes a
+/// wrapped root's document, replacing the old one, so an adopted node keeps
+/// its new document and lets the old one go. A node no wrapper reaches draws
+/// nothing: it is as safe as its tree, whose root's wrapper - script's, or a
+/// holder's rescue (node_holds.zig) - holds the document, or which is its
 /// document's own tree.
-pub const traced_slot: engine.TracedSlot = .{ .name = "node document" };
+pub const traced_slot: engine.TracedSlot = .{ .name = "tree parent or node document" };
 
 /// What the Node impl supplies.
 pub const Implementation = struct {
