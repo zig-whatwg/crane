@@ -13616,6 +13616,128 @@ bool v8_Context_IsCodeGenerationFromStringsAllowed(Global<Context>* context) {
 
 } // extern "C"
 // ---- end lane: cspenforce ----
+// ---- lane: wasmh (WebAssembly descriptors' `address` member) ----
+// DELETE THIS SECTION WITH THE V8 UPGRADE: V8 >= 13.3 reads `address` itself.
+//
+// The WebAssembly JS API's Memory and Table constructors take the address
+// type from `descriptor["address"]` (AddressType "i32" | "i64"; the memory64
+// proposal named the member `index` until late 2024). V8 13.1.203, which
+// Crane links, reads only `index` (13.1 wasm-js.cc GetIndexType, called from
+// WebAssemblyMemoryImpl and WebAssemblyTableImpl), so `{address: "i64",
+// initial: 10n}` was an i32 descriptor and ToNumber(10n) threw - the first
+// step of every wasm/core file (async_index.js reinitializeRegistry builds
+// such a table). Chrome (V8 >= 13.3), Firefox and Safari read `address`.
+//
+// So every realm's WebAssembly.Memory and WebAssembly.Table are replaced by
+// native constructors that convert the `address` member - first, as WebIDL
+// converts dictionary members in lexicographic order - and construct V8's
+// own constructor with a descriptor whose [[Prototype]] is the caller's and
+// whose one own property is `index`. V8 then reads every other member
+// through the caller's getters, in their order, and converts them itself.
+extern "C" {
+
+static void WasmAddressDescriptorConstructor(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    // The constructor V8 installed, kept as the function's data.
+    Local<Function> original = info.Data().As<Function>();
+    std::vector<Local<Value>> args;
+    args.reserve(static_cast<size_t>(info.Length()));
+    for (int i = 0; i < info.Length(); ++i) args.push_back(info[i]);
+    const int argc = static_cast<int>(args.size());
+    Local<Value> result;
+    if (!info.IsConstructCall()) {
+        // V8's own TypeError: the constructor must be invoked with new.
+        if (original->Call(context, Undefined(isolate), argc, args.data()).ToLocal(&result)) info.GetReturnValue().Set(result);
+        return;
+    }
+    // GetPrototypeFromConstructor(newTarget): read before the arguments are
+    // converted, as V8 itself reads it (it makes the receiver first).
+    Local<Value> new_target_prototype;
+    if (!info.NewTarget().As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&new_target_prototype)) return;
+    // A descriptor that is no object is V8's to reject (a TypeError, as
+    // WebIDL's dictionary conversion of a non-object gives).
+    if (argc > 0 && args[0]->IsObject()) {
+        Local<Object> descriptor = args[0].As<Object>();
+        // 1. If descriptor["address"] exists, the AddressType it converts to
+        //    (WebIDL enumeration: ToString, then one of the values or a
+        //    TypeError); otherwise i32.
+        Local<Value> address;
+        if (!descriptor->Get(context, String::NewFromUtf8Literal(isolate, "address")).ToLocal(&address)) return;
+        Local<String> address_type = String::NewFromUtf8Literal(isolate, "i32");
+        if (!address->IsUndefined()) {
+            Local<String> converted;
+            if (!address->ToString(context).ToLocal(&converted)) return;
+            if (!converted->StringEquals(String::NewFromUtf8Literal(isolate, "i32")) &&
+                !converted->StringEquals(String::NewFromUtf8Literal(isolate, "i64"))) {
+                isolate->ThrowException(Exception::TypeError(
+                    String::NewFromUtf8Literal(isolate, "Descriptor property 'address' must be 'i32' or 'i64'")));
+                return;
+            }
+            address_type = converted;
+        }
+        // V8 13.1's name for it, as the one own property of a descriptor that
+        // inherits every other member from the caller's. A caller's own
+        // `index` is no member of the dictionary, and is shadowed.
+        Local<Name> names[] = {String::NewFromUtf8Literal(isolate, "index")};
+        Local<Value> values[] = {address_type};
+        args[0] = Object::New(isolate, descriptor, names, values, 1);
+    }
+    Local<Object> made;
+    if (!original->NewInstance(context, argc, args.data()).ToLocal(&made)) return;
+    // V8 gave it the original's prototype, which is this constructor's too;
+    // a subclass, or Reflect.construct's newTarget, names another.
+    if (new_target_prototype->IsObject() && !made->GetPrototypeV2()->StrictEquals(new_target_prototype)) {
+        if (!made->SetPrototypeV2(context, new_target_prototype).FromMaybe(false)) return;
+    }
+    info.GetReturnValue().Set(made);
+}
+
+/// Replace `wasm[name]` with WasmAddressDescriptorConstructor over it. The
+/// interface object's observable shape stays WebIDL's: the same prototype
+/// object (the one V8 gives the memories and tables it makes) as a
+/// non-writable, non-enumerable, non-configurable `prototype`, that
+/// prototype's `constructor` pointing back, the original's `name` and
+/// `length`, and a writable, configurable, non-enumerable namespace member.
+static bool installWasmAddressDescriptorConstructor(Isolate* isolate, Local<Context> context, Local<Object> wasm, const char* name) {
+    Local<String> key = String::NewFromUtf8(isolate, name).ToLocalChecked();
+    Local<Value> value;
+    if (!wasm->Get(context, key).ToLocal(&value) || !value->IsFunction()) return false;
+    Local<Function> original = value.As<Function>();
+    Local<Value> prototype;
+    if (!original->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype) || !prototype->IsObject()) return false;
+    Local<Value> length_value;
+    if (!original->Get(context, String::NewFromUtf8Literal(isolate, "length")).ToLocal(&length_value) || !length_value->IsInt32()) return false;
+    Local<Function> constructor;
+    if (!Function::New(context, WasmAddressDescriptorConstructor, original, length_value.As<Int32>()->Value(), ConstructorBehavior::kAllow)
+             .ToLocal(&constructor)) {
+        return false;
+    }
+    constructor->SetName(key);
+    PropertyDescriptor prototype_descriptor(prototype, /*writable=*/false);
+    if (!constructor->DefineProperty(context, String::NewFromUtf8Literal(isolate, "prototype"), prototype_descriptor).FromMaybe(false)) return false;
+    if (!prototype.As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), constructor, DontEnum).FromMaybe(false)) return false;
+    return wasm->DefineOwnProperty(context, key, constructor, DontEnum).FromMaybe(false);
+}
+
+/// Every realm the adapter makes calls this once, before any script runs
+/// in it (protocol_realms.createWindowRealm, worker_realm.createWorkerRealm).
+/// A context with no WebAssembly (a jitless V8) is left alone; so is one
+/// where the replacement fails, which keeps V8's constructors.
+void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>* context_handle) {
+    HandleScope handle_scope(isolate);
+    Local<Context> context = context_handle->Get(isolate);
+    Context::Scope context_scope(context);
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
+    TryCatch try_catch(isolate);
+    Local<Value> wasm;
+    if (!context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "WebAssembly")).ToLocal(&wasm) || !wasm->IsObject()) return;
+    installWasmAddressDescriptorConstructor(isolate, context, wasm.As<Object>(), "Memory");
+    installWasmAddressDescriptorConstructor(isolate, context, wasm.As<Object>(), "Table");
+}
+
+} // extern "C"
+// ---- end lane: wasmh ----
 // ---- lane: csp2 ----
 extern "C" {
 
