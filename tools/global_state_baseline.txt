@@ -110,6 +110,8 @@ src/dom/policy_containers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/process_start.zig state 1 G P-res decl:befbfbf730f2b19f
 src/dom/range_boundaries.zig live_range 1 G H decl:1b0949cd267e9be6
 src/dom/range_boundaries.zig providers 1 G H decl:d31a717956152a62
+src/dom/refcount.zig hooks 1 G P-res decl:4dad5b7413d7153c
+src/dom/refcount.zig tree_checks_requested 1 G P-res decl:4b877655cb3bb361
 src/dom/script_elements.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/script_elements.zig svg_implementation 1 G H decl:2b000c56b2bcfae5
 src/dom/shadow_hosts.zig implementation 1 G H decl:9c737e7125e9c3d4
