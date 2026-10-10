@@ -208,6 +208,8 @@ pub const Observer = struct {
         try self.queue.append(self.allocator, record);
         record.retain();
         if (!first) return;
+        // Without a task, undo this append so the next report can schedule one.
+        errdefer self.queue.pop().?.release();
         // Browser majority (2-1), deviating from §4.3.4 / §4.4.1.1:
         // Blink core/frame/reporting_observer.cc QueueReport/ReportToCallback
         // and WebKit Modules/reporting/ReportingObserver.cpp
