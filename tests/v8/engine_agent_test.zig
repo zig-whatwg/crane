@@ -20,6 +20,7 @@ const protocol = @import("engine");
 /// The first stays entered - "the page's"; the second is "the worker's", and
 /// is entered only by the operations under test.
 var page: ?*ffi.Isolate = null;
+var page_context_once: ?*ffi.Context = null;
 var worker: ?*ffi.Isolate = null;
 var worker_context: ?*ffi.Context = null;
 var worker_realm: ?*runtime.ContextData = null;
@@ -31,6 +32,7 @@ fn setup() !void {
     _ = ffi.v8_HandleScope_New(p);
     const page_context = ffi.v8_Context_New(p) orelse return error.ContextCreationFailed;
     ffi.v8_Context_Enter(page_context);
+    page_context_once = page_context;
 
     // The worker's isolate, entered only to make its context.
     const w = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
@@ -99,11 +101,77 @@ test "script runs in the realm's agent, not the current one" {
     try std.testing.expectEqual(page, ffi.v8_Isolate_GetCurrent());
 }
 
-test "an agent with no script on the stack is not running any" {
+// engine.hasRunningScript answers the protocol's contract: whether the
+// agent's JavaScript execution context stack is non-empty - a realm execution
+// context the host pushed ("prepare to run script") or a JavaScript frame.
+// An agent that is merely entered, as the page's is for its whole life, runs
+// none: the HTML parser's "if the JavaScript execution context stack is
+// empty, perform a microtask checkpoint" steps read this, and the old answer
+// ("the current agent is running") skipped every one of them in a page.
+
+test "an agent with no script on the stack is not running any, entered or not" {
     try setup();
-    try std.testing.expect(!v8.worker_realm.hasRunningScript(@ptrCast(worker.?)));
-    // The current agent is, as far as V8 can tell.
-    try std.testing.expect(v8.worker_realm.hasRunningScript(@ptrCast(page.?)));
+    try std.testing.expect(!protocol.hasRunningScript(@ptrCast(worker.?)));
+    // The page's agent is entered, and its context too, but no realm
+    // execution context was prepared and no JavaScript frame runs.
+    try std.testing.expectEqual(page, ffi.v8_Isolate_GetCurrent());
+    try std.testing.expect(!protocol.hasRunningScript(@ptrCast(page.?)));
+}
+
+test "a prepared realm is on the stack until its clean-up" {
+    try setup();
+    const scope = try protocol.prepareToRunScript(worker_realm.?);
+    try std.testing.expect(protocol.hasRunningScript(@ptrCast(worker.?)));
+    protocol.cleanUpAfterRunningScript(scope);
+    try std.testing.expect(!protocol.hasRunningScript(@ptrCast(worker.?)));
+    try std.testing.expectEqual(page, ffi.v8_Isolate_GetCurrent());
+}
+
+var seen_from_script: ?bool = null;
+
+fn recordRunning(_: *const ffi.FunctionCallbackInfo) callconv(.c) void {
+    seen_from_script = protocol.hasRunningScript(@ptrCast(page.?));
+}
+
+test "a JavaScript frame on the stack is running script, with no realm prepared" {
+    try setup();
+    const isolate = page.?;
+    const context = page_context_once.?;
+    const template = ffi.v8_FunctionTemplate_New(isolate, recordRunning, null) orelse return error.TemplateFailed;
+    defer ffi.v8_FunctionTemplate_Dispose(template);
+    const function = ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionFailed;
+    defer ffi.v8_Function_Dispose(function);
+    const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+    defer ffi.v8_Object_Dispose(global);
+    const name = "recordRunning";
+    const key = ffi.v8_String_NewFromUtf8(isolate, name.ptr, name.len) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(key);
+    _ = ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(function));
+    // Run straight through V8, not through prepareToRunScript: only the
+    // JavaScript frame is on the stack.
+    const code = "recordRunning();";
+    const text = ffi.v8_String_NewFromUtf8(isolate, code.ptr, code.len) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(text);
+    const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
+    defer ffi.v8_Script_Dispose(script);
+    const result = ffi.v8_Script_Run(context, script) orelse return error.RunFailed;
+    ffi.v8_Value_Dispose(result);
+    try std.testing.expectEqual(@as(?bool, true), seen_from_script);
+    try std.testing.expect(!protocol.hasRunningScript(@ptrCast(page.?)));
+}
+
+fn observeProtocol(data: ?*anyopaque) void {
+    const seen: *Seen = @ptrCast(@alignCast(data.?));
+    seen.current = ffi.v8_Isolate_GetCurrent();
+    seen.running = protocol.hasRunningScript(@ptrCast(worker.?));
+}
+
+test "a task's own steps run with the stack empty, in the realm's entered agent" {
+    try setup();
+    var seen: Seen = .{ .running = true };
+    try v8.engine.v8RunTaskInRealm(worker_realm.?, observeProtocol, &seen);
+    try std.testing.expectEqual(worker, seen.current);
+    try std.testing.expect(!seen.running);
 }
 
 test "a new agent is made and disposed, and an idle one has no engine work" {
