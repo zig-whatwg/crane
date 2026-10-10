@@ -13717,6 +13717,18 @@ struct PatternMatcher {
     std::vector<Entry> entries;
 };
 
+/// The most backtracks one match of a pattern attribute's regexp may do; past
+/// it the match fails. Blink's value: ScriptRegexp compiles every regexp,
+/// the pattern attribute's included, with RegExp::NewWithBacktrackLimit and
+/// kBacktrackLimit = 1'000'000
+/// (third_party/blink/renderer/platform/bindings/script_regexp.cc). A page
+/// writes the pattern, and without a limit a catastrophic one - `(\d+)*$`
+/// against a long run of digits ending in a letter, ~2^n backtracks - holds
+/// the agent's thread for as long as it runs: the page freezes
+/// (html/semantics/forms/constraints/infinite_backtracking.tentative.html ran
+/// into the WPT runner's timeout).
+static constexpr uint32_t kPatternAttributeBacktrackLimit = 1'000'000;
+
 /// Compile `source` as HTML 4.10.5.3.6's steps 3-6 do, in `context` (entered,
 /// under `try_catch`): 1 with the anchored regexp in `*regexp`; -1 when
 /// RegExpCreate(pattern, "v") threw (no compiled pattern regular expression);
@@ -13739,7 +13751,17 @@ static int CompilePatternAttribute(Isolate* isolate, Local<Context> context, Try
     Local<String> anchored = String::Concat(isolate, String::Concat(isolate, String::NewFromUtf8Literal(isolate, "^(?:"), source), String::NewFromUtf8Literal(isolate, ")$"));
     // 6. Return ! RegExpCreate(anchoredPattern, "v"). The "!" is the spec's
     //    claim; a failure anyway (an engine limit) is treated as step 4's.
-    if (!RegExp::New(context, anchored, v).ToLocal(regexp)) {
+    //    Compiled with a backtrack limit, which the spec does not have: a
+    //    match past it fails (v8-regexp.h, NewWithBacktrackLimit: "a match
+    //    failure is immediately returned"), so the value does not match and
+    //    the input suffers from a pattern mismatch. That is the browsers'
+    //    answer: Blink's ScriptRegexp::Match answers -1 for the failed match
+    //    and BaseTextInputType::PatternMismatchPerValue reads it as a
+    //    mismatch; wpt.fyi (stable runs, 2026-10-10) has Chrome 155 and
+    //    Safari 27 passing infinite_backtracking.tentative.html (the input is
+    //    :invalid) and Firefox 157 timing out. Only the anchored regexp is
+    //    ever matched; step 3's is compiled to validate the pattern.
+    if (!RegExp::NewWithBacktrackLimit(context, anchored, v, kPatternAttributeBacktrackLimit).ToLocal(regexp)) {
         if (try_catch.HasTerminated()) {
             try_catch.ReThrow();
             return 0;
@@ -13852,10 +13874,11 @@ int v8_MatchesPatternAttribute(Isolate* isolate, PatternMatcher* matcher, const 
     Local<String> subject = String::Empty(isolate);
     if (value_len > 0 && !String::NewFromTwoByte(isolate, value, NewStringType::kNormal, value_len).ToLocal(&subject)) return -2;
     // "matches": ! RegExpBuiltinExec(regexp, input) is not null. Exec answers
-    // null as a Local<Object> holding Null (api.cc's own TODO). A throw the
-    // "!" rules out - an engine limit hit while matching - is no match, as in
-    // Blink (ScriptRegexp::Match answers -1, which PatternMismatchPerValue
-    // reads as not matched).
+    // null as a Local<Object> holding Null (api.cc's own TODO), and so it
+    // does past kPatternAttributeBacktrackLimit. A throw the "!" rules out -
+    // an engine limit hit while matching - is no match, as in Blink
+    // (ScriptRegexp::Match answers -1, which PatternMismatchPerValue reads as
+    // not matched).
     Local<Object> result;
     if (!regexp->Exec(context, subject).ToLocal(&result)) {
         if (try_catch.HasTerminated()) try_catch.ReThrow();
