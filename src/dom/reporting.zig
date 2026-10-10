@@ -13,6 +13,7 @@ const engine = @import("engine");
 const platform = @import("platform");
 const csp = @import("csp");
 const global_settings = @import("global_settings.zig");
+const keepalive_fetch = @import("keepalive_fetch.zig");
 
 /// Reporting §2.1: native immutable report data shared by the delivery
 /// queue, buffer and observer queues. Each holder takes its own reference.
@@ -500,7 +501,7 @@ const DeliveryTask = struct {
             request.cookie_jar = global_settings.cookieJarOf(global);
             // start takes the request on every path, and snapshots the
             // endpoint before any asynchronous completion can mutate it.
-            Pending.start(global.ctx, request, .{ .global = Link.of(global), .name = endpoint.name, .url = endpoint.url }) catch {
+            Upload.start(global, request, endpoint.name, endpoint.url) catch {
                 endpoint.failures +|= 1;
             };
         }
@@ -527,71 +528,50 @@ pub fn modernRequest(allocator: std.mem.Allocator, endpoint: []const u8, origin:
     return request;
 }
 
-/// Self-freeing AsyncFetch client (the html.hyperlink_auditing.Pending
-/// pattern), with no document-abort registry. Like fetch({keepalive:true})
-/// today, retirement of its realm still terminates it. Surviving that needs
-/// an agent-level owner; retaining a dead global would not provide one.
-const Pending = struct {
+/// Reporting §3.5.2 steps 5-7 for one upload: what it needs of its endpoint
+/// when the response comes, copied, because the endpoint list can change
+/// while the upload is in flight. The fetch is a dom.keepalive_fetch
+/// dispatch, which frees itself - and this with it - when the fetch ends,
+/// with no document-abort registry. Like fetch({keepalive:true}) today,
+/// retirement of its realm still terminates it. Surviving that needs an
+/// agent-level owner; retaining a dead global would not provide one.
+const Upload = struct {
     allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    endpoint: ?Endpoint = null,
-    active: ?*fetch.algorithms.AsyncFetch = null,
+    global: Link,
+    name: []const u8,
+    url: []const u8,
 
-    const Endpoint = struct { global: Link, name: []const u8, url: []const u8 };
-
-    /// Takes request on every path, and copies endpoint's borrowed strings.
-    fn start(ctx: runtime.Context, request: *fetch.internal.InternalRequest, endpoint: ?Endpoint) !void {
-        const allocator = ctx.allocator;
+    /// Takes request on every path, and copies the endpoint's borrowed
+    /// strings. Not started (an error) counts as the endpoint's failure.
+    fn start(global: *runtime.Instance, request: *fetch.internal.InternalRequest, name: []const u8, url: []const u8) !void {
+        const allocator = global.ctx.allocator;
         var owns_request = true;
         defer if (owns_request) request.deinit();
-        const self = try allocator.create(Pending);
+        const self = try allocator.create(Upload);
         errdefer allocator.destroy(self);
-        self.* = .{ .allocator = allocator, .ctx = ctx };
-        if (endpoint) |value| {
-            const name = try allocator.dupe(u8, value.name);
-            errdefer allocator.free(name);
-            const url = try allocator.dupe(u8, value.url);
-            self.endpoint = .{ .global = value.global, .name = name, .url = url };
-        }
-        errdefer self.freeEndpoint();
+        const owned_name = try allocator.dupe(u8, name);
+        errdefer allocator.free(owned_name);
+        const owned_url = try allocator.dupe(u8, url);
+        errdefer allocator.free(owned_url);
+        self.* = .{ .allocator = allocator, .global = Link.of(global), .name = owned_name, .url = owned_url };
         owns_request = false;
-        self.active = try fetch.algorithms.AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), .{
-            .context = self,
-            .done = done,
-            .alive = alive,
-            .gone = finish,
-            .finished = finish,
-        });
+        const dispatch = try keepalive_fetch.start(global, request, .{ .observer = .{ .context = self, .response = response, .ended = ended } });
+        // Rejected: nothing was sent, and the observer will hear nothing.
+        if (dispatch == null) return error.NetworkError;
     }
-    fn alive(context: *anyopaque) bool {
-        const self: *Pending = @ptrCast(@alignCast(context));
-        return self.ctx.hasEngine();
-    }
-    fn done(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
-        const self: *Pending = @ptrCast(@alignCast(context));
-        const status: u16 = blk: {
-            var result = outcome catch break :blk 0;
-            defer result.deinit();
-            break :blk result.response.status;
-        };
-        const identity = self.endpoint orelse return;
-        if (!identity.global.isLive() or !self.ctx.hasEngine()) return;
-        const endpoints = endpointsOf(identity.global.instance) orelse return;
-        const endpoint = endpoints.find(identity.name) orelse return;
-        if (!std.mem.eql(u8, endpoint.url, identity.url)) return;
+    fn response(context: *anyopaque, status: u16) void {
+        const self: *Upload = @ptrCast(@alignCast(context));
+        if (!self.global.isLive() or !self.global.instance.ctx.hasEngine()) return;
+        const endpoints = endpointsOf(self.global.instance) orelse return;
+        const endpoint = endpoints.find(self.name) orelse return;
+        if (!std.mem.eql(u8, endpoint.url, self.url)) return;
         // §3.5.2 steps 5-7 / §3.5.1 step 3.3: success, removal, failure.
-        if (status == 410) endpoints.remove(identity.name, identity.url) else if (status < 200 or status > 299) endpoint.failures +|= 1;
+        if (status == 410) endpoints.remove(self.name, self.url) else if (status < 200 or status > 299) endpoint.failures +|= 1;
     }
-    fn freeEndpoint(self: *Pending) void {
-        if (self.endpoint) |endpoint| {
-            self.allocator.free(endpoint.name);
-            self.allocator.free(endpoint.url);
-        }
-    }
-    fn finish(context: *anyopaque) void {
-        const self: *Pending = @ptrCast(@alignCast(context));
-        self.active = null;
-        self.freeEndpoint();
+    fn ended(context: *anyopaque) void {
+        const self: *Upload = @ptrCast(@alignCast(context));
+        self.allocator.free(self.name);
+        self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
 };
@@ -639,6 +619,8 @@ pub fn sendLegacy(global: *runtime.Instance, endpoint: []const u8, bytes: []cons
     var client = try global_settings.requestClient(global);
     defer client.deinit();
     const request = try legacyRequest(global.ctx.allocator, endpoint, bytes, client.request);
-    // Pending.start takes the request even if starting the fetch fails.
-    try Pending.start(global.ctx, request, null);
+    // send takes the request even if starting the fetch fails. A ping
+    // load: exempt from the fetch group's keepalive budget, as WebKit and
+    // Gecko send CSP reports (keepalive_fetch.Load).
+    _ = try keepalive_fetch.send(global, request, .{ .load = .ping });
 }

@@ -338,6 +338,11 @@ const FetchCall = struct {
     /// The request's keepalive flag: such a fetch outlives its document
     /// (`abortIn` leaves it).
     keepalive: bool = false,
+    /// A keepalive request's body bytes in this's relevant settings
+    /// object's fetch group, from the start of the fetch until it is done
+    /// or terminated (dom.keepalive_fetch.Reservation). Released once
+    /// (`releaseKeepalive`).
+    keepalive_reservation: ?@import("dom").keepalive_fetch.Reservation = null,
     /// p is settled (or never will be), and its resolver released.
     settled: bool = false,
     /// The fetch holds this call, until it lets go.
@@ -367,6 +372,7 @@ const FetchCall = struct {
     fn gone(context: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(context));
         self.in_flight = null;
+        self.releaseKeepalive();
         self.fetch_holds = false;
         self.maybeRelease();
     }
@@ -376,6 +382,7 @@ const FetchCall = struct {
     fn finished(context: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(context));
         self.in_flight = null;
+        self.releaseKeepalive();
         self.fetch_holds = false;
         self.maybeRelease();
     }
@@ -456,6 +463,15 @@ const FetchCall = struct {
         self.settleResolver();
     }
 
+    /// The fetch is done, or terminated, or never started: its body's
+    /// bytes leave the fetch group (Fetch "done flag"; Blink releases them
+    /// in ResourceFetcher::HandleLoaderFinish / HandleLoaderError). Once.
+    fn releaseKeepalive(self: *Self) void {
+        const reservation = self.keepalive_reservation orelse return;
+        self.keepalive_reservation = null;
+        reservation.release();
+    }
+
     /// p is settled: its capability has done its job. Holding it longer
     /// keeps p, and through it the realm, for nothing.
     fn settleResolver(self: *Self) void {
@@ -526,6 +542,7 @@ const FetchCall = struct {
             f.terminateWith(self.abortFailure(signal));
             self.fetch_holds = false;
         }
+        self.releaseKeepalive();
 
         // Step 11.4, step 1: reject p with the reason - a no-op once p
         // is settled.
@@ -598,6 +615,7 @@ const FetchCall = struct {
         if (self.pending_request) |r| r.deinit();
         self.pending_request = null;
         if (e == null) {
+            self.releaseKeepalive();
             self.settleResolver();
             self.fetch_holds = false;
             return self.maybeRelease();
@@ -608,6 +626,7 @@ const FetchCall = struct {
     /// The fetch never started: p rejects with a TypeError, as for a
     /// network error, and the fetch lets go of this call.
     fn startFailed(self: *Self) void {
+        self.releaseKeepalive();
         self.rejectTypeError("Failed to fetch");
         self.fetch_holds = false;
         self.maybeRelease();
@@ -642,6 +661,7 @@ const FetchCall = struct {
             if (result) |*r| r.deinit();
         }
         self.settleResolver();
+        self.releaseKeepalive();
         self.untrack();
         self.allocator.destroy(self);
     }
@@ -777,6 +797,7 @@ const FetchCall = struct {
                 .{ .kind = .aborted });
             self.fetch_holds = false;
         }
+        self.releaseKeepalive();
         self.settleResolver();
     }
 };
@@ -802,6 +823,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     const fetch = @import("fetch");
     const fetch_objects = @import("dom").fetch_objects;
     const abort_algorithms = @import("dom").abort_algorithms;
+    const keepalive_fetch = @import("dom").keepalive_fetch;
     const allocator = instance.ctx.allocator;
 
     const Call = FetchCall;
@@ -881,11 +903,23 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         fetched_request.deinit();
         return error.OutOfMemory;
     };
+    // Fetch HTTP-network-or-cache fetch step 8.10: a keepalive request's
+    // body and the keepalive bodies in flight in its client's fetch group
+    // may not exceed 64 KiB, or the fetch is a network error - p rejects
+    // with a TypeError. Reserved as the fetch starts and held until it is
+    // done, as the browsers count (dom.keepalive_fetch.Reservation.take).
+    const keepalive_reservation = keepalive_fetch.Reservation.take(instance, fetched_request, .fetch) catch {
+        fetched_request.deinit();
+        allocator.destroy(call);
+        rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
+        return p.take();
+    };
     call.* = .{
         .allocator = allocator,
         .ctx = instance.ctx,
         .capability = capability,
         .keepalive = fetched_request.keepalive,
+        .keepalive_reservation = keepalive_reservation,
         .document = if (fetchDocument(instance.ctx)) |document| same_object.Link.to(document) else null,
     };
     // Only HTTP(S) transmits a request body (HTTP-network fetch); a data:,
@@ -900,6 +934,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         call.pending_request = fetched_request;
         call.upload = fetch_body.ReadAll.start(allocator, realm, stream, call, Call.uploadRead, Call.uploadFailed) catch {
             fetched_request.deinit();
+            call.releaseKeepalive();
             allocator.destroy(call);
             rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
             return p.take();
@@ -907,6 +942,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     } else {
         call.in_flight = fetch.algorithms.AsyncFetch.startStreaming(allocator, fetched_request, .{}, fetch.network.scheduler.threadScheduler(), call.client()) catch {
             // The fetch owned the request, and freed it.
+            call.releaseKeepalive();
             allocator.destroy(call);
             rejectWithTypeError(instance.ctx, &capability, "Failed to fetch");
             return p.take();

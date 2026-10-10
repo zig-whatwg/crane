@@ -70,6 +70,9 @@ pub const template_contents = @import("template_contents.zig");
 pub const navigable_container = @import("navigable_container.zig");
 pub const document_lifecycle = @import("document_lifecycle.zig");
 pub const document_fetches = @import("document_fetches.zig");
+/// Fire-and-forget fetches (sendBeacon, Reporting uploads, hyperlink
+/// auditing): self-freeing, accepted or rejected synchronously.
+pub const keepalive_fetch = @import("keepalive_fetch.zig");
 pub const document_origin = @import("document_origin.zig");
 pub const window_documents = @import("window_documents.zig");
 pub const child_navigables = @import("child_navigables.zig");
