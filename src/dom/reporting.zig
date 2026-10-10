@@ -157,10 +157,17 @@ pub const Observer = struct {
         }
         if (!self.buffered) return;
         self.buffered = false;
-        // All three engines synchronously append buffered reports, unlike
+        // Synchronous buffering is shared by all three engines, unlike
         // observe() step 5's task per report: Blink ReportingContext::
         // RegisterObserver, WebKit ReportingScope::appendQueuedReportsForRelevantType,
         // Gecko nsIGlobalObject::RegisterReportingObserver.
+        // Related aligned wpt.fyi cc74d2669f evidence:
+        // content-security-policy/reporting-api/
+        // reporting-api-sends-reports-on-violation.https.sub.html:
+        // C154 3/4, F157 4/4, S27 4/4; runs 6218298311311360,
+        // 4877098740350976, 5164107446878208 respectively. This delivery
+        // file does not isolate these ordering/lifetime deviations;
+        // the engine functions above establish synchronous buffering.
         for (state.buffer.items) |record| try self.addReport(record);
     }
 
@@ -216,6 +223,8 @@ pub const Observer = struct {
         // appendQueuedReportIfCorrectType queue per observer on empty→one,
         // and invoke even if takeRecords emptied the queue. Gecko
         // dom/reporting/ReportingObserver.cpp MaybeNotify skips empty queues.
+        // The aligned reporting-api-sends-reports-on-violation counts above
+        // cover delivery; these functions establish the empty-queue timing.
         const task = try self.allocator.create(ObserverTask);
         task.* = .{ .allocator = self.allocator, .observer = self, .link = Link.of(self.instance) };
         if (self.instance.ctx.getOptionalEventLoop()) |loop| {
@@ -234,6 +243,8 @@ const ObserverTask = struct {
     // This is deliberately a weak task: Blink WrapWeakPersistent and
     // Gecko's registered-only notification beat WebKit's strong task (2-1).
     // A disconnected observer dropped by script must be collectible.
+    // The aligned WPT delivery counts above do not test weak lifetime;
+    // the engine ownership comparison establishes this behavior.
     link: Link,
 
     fn drop(data: ?*anyopaque) void {
