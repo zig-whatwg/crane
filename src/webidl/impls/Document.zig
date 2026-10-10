@@ -3686,52 +3686,14 @@ pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instanc
 /// HTML §3.1.3 - Returns a NodeList of elements with matching name attribute
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-getelementsbyname
 ///
-/// Note: Returns a live NodeList (but our implementation is static for now)
+/// HTML's live NodeList contains HTML elements with an identical name.
+/// A fresh list owns the query string; root retention is a refcount follow-up.
 pub fn call_getElementsByName(instance: *runtime.Instance, elementName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const target_name = elementName.asSlice();
-
-    // Create a NodeList to hold results
-    // We use HTMLCollection since we don't have a separate NodeList impl yet
-    // Use interface instead of impl (per Golden Rule #13)
-    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-
-    // Traverse tree and collect elements with matching name attribute
-    try collectElementsByName(instance, target_name, collection);
-
-    return collection;
-}
-
-/// Helper: Recursively collect elements by name attribute
-fn collectElementsByName(
-    node: *runtime.Instance,
-    target_name: []const u8,
-    collection: *runtime.Instance,
-) ImplError!void {
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const ElementImpl = @import("Element.zig");
-
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // Check if element has matching "name" attribute
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                // Look for "name" attribute in element's attributes using findAttribute
-                if (elem_internal.findAttribute(null, "name")) |attr| {
-                    if (std.mem.eql(u8, attr.value, target_name)) {
-                        HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
-                    }
-                }
-            }
-        }
-
-        // Recursively search descendants
-        try collectElementsByName(c, target_name, collection);
-
-        child = NodeImpl.getNextSibling(c);
-    }
+    const list = try interfaces.NodeList.init(internal.allocator, instance.ctx);
+    errdefer interfaces.NodeList.deinit(list);
+    try @import("dom").node_lists.elementsByName(list, instance, elementName.asSlice());
+    return list;
 }
 
 /// Operation: writeln

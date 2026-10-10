@@ -53,6 +53,7 @@ pub const ImplError = error{
 pub const LiveCollectionType = enum {
     labels,
     named_controls,
+    elements_by_name,
     /// Match all direct children (for Node.childNodes)
     children,
     /// Match elements by tag name (for getElementsByTagName)
@@ -126,9 +127,18 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls fill a static list they created (an element's labels).
-    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls });
+    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls, .elements_by_name = &makeElementsByName });
     // A static list holds its nodes; the removing steps rescue a held tree.
     node_holds.installHooks();
+}
+
+fn makeElementsByName(list: *runtime.Instance, document: *runtime.Instance, name: []const u8) !void {
+    const internal = getInternal(list) orelse return error.InvalidState;
+    internal.control_name = try internal.allocator.dupe(u8, name);
+    internal.is_live = true;
+    internal.root = document;
+    internal.root_generation = runtime.SlabAllocator.generationOf(document);
+    internal.live_type = .elements_by_name;
 }
 
 fn makeNamedControls(list: *runtime.Instance, collection: *runtime.Instance, name: []const u8) !void {
@@ -307,6 +317,13 @@ fn getLiveLength(internal: *InternalState) u32 {
     const NodeImpl = @import("Node.zig");
 
     switch (internal.live_type) {
+        .elements_by_name => {
+            if (!prepareCache(internal)) return 0;
+            var walk = NameWalk{ .root = root, .name = internal.control_name orelse return 0 };
+            const length = internal.cache.count(&walk);
+            if (walk.failed) internal.cache = .{};
+            return length;
+        },
         .named_controls => {
             // Form-owner association needs invalidation beyond tree versions.
             var count: u32 = 0;
@@ -344,6 +361,13 @@ fn getLiveItem(internal: *InternalState, index: u32) ?*runtime.Instance {
     const NodeImpl = @import("Node.zig");
 
     switch (internal.live_type) {
+        .elements_by_name => {
+            if (!prepareCache(internal)) return null;
+            var walk = NameWalk{ .root = root, .name = internal.control_name orelse return null };
+            const node = internal.cache.item(&walk, index);
+            if (walk.failed) internal.cache = .{};
+            return node;
+        },
         .named_controls => {
             // Form-owner association needs invalidation beyond tree versions.
             var count: u32 = 0;
@@ -402,5 +426,49 @@ const ChildrenWalk = struct {
     }
     pub fn next(_: *@This(), node: *runtime.Instance) ?*runtime.Instance {
         return interfaces.Node.get_nextSibling(node) catch null;
+    }
+};
+
+/// HTML getElementsByName steps: all HTML descendants whose null-namespace
+/// name attribute is identical to the query, in tree order. Empty matches a
+/// present name="", never a missing name. Blink NameNodeList uses this filter.
+const NameWalk = struct {
+    root: *runtime.Instance,
+    name: []const u8,
+    failed: bool = false,
+
+    pub fn first(self: *@This()) ?*runtime.Instance {
+        return self.seek(interfaces.Node.get_firstChild(self.root) catch null);
+    }
+    pub fn next(self: *@This(), node: *runtime.Instance) ?*runtime.Instance {
+        return self.seek(self.nextInTree(node));
+    }
+    fn seek(self: *@This(), start: ?*runtime.Instance) ?*runtime.Instance {
+        var current = start;
+        while (current) |node| : (current = self.nextInTree(node)) {
+            if (self.matches(node) catch {
+                self.failed = true;
+                return null;
+            }) return node;
+        }
+        return null;
+    }
+    fn nextInTree(self: *@This(), node: *runtime.Instance) ?*runtime.Instance {
+        if (interfaces.Node.get_firstChild(node) catch null) |child| return child;
+        var current = node;
+        while (current != self.root) {
+            if (interfaces.Node.get_nextSibling(current) catch null) |sibling| return sibling;
+            current = (interfaces.Node.get_parentNode(current) catch null) orelse return null;
+        }
+        return null;
+    }
+    fn matches(self: *@This(), node: *runtime.Instance) !bool {
+        if ((try interfaces.Node.get_nodeType(node)) != interfaces.Node.get_ELEMENT_NODE()) return false;
+        var namespace = (try interfaces.Element.get_namespaceURI(node)) orelse return false;
+        defer namespace.deinit(node.ctx.allocator);
+        if (!std.mem.eql(u8, namespace.asSlice(), "http://www.w3.org/1999/xhtml")) return false;
+        var value = (try interfaces.Element.call_getAttributeNS(node, null, runtime.DOMString.initInterned("name"))) orelse return false;
+        defer value.deinit(node.ctx.allocator);
+        return std.mem.eql(u8, value.asSlice(), self.name);
     }
 };
