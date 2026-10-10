@@ -434,7 +434,33 @@ pub const DocumentCounts = struct {
     /// total and this are both zero: a held detached node keeps its
     /// document's tree (Blink; decision D6).
     foreign_holds: u32 = 0,
+    /// The DOM tree version (Blink `Document::dom_tree_version_`): it moves
+    /// on every insert, remove, replace and move of a node of this document,
+    /// on adoption into and out of it, on every attribute set or removal of
+    /// an element of it, and when a node of it is freed outside a mutation
+    /// (a tree's teardown). A live collection caches its walk under it and
+    /// walks again once it has moved (Blink's InvalidateNodeListCaches).
+    tree_version: u64 = 0,
 };
+
+fn bumpTreeVersion(counts: *DocumentCounts) void {
+    counts.tree_version +%= 1;
+}
+
+/// `document`'s DOM tree version (see `DocumentCounts.tree_version`), or
+/// null for an instance that is not a live Document. A cache keyed on it is
+/// valid while the number is unchanged.
+pub fn treeVersion(document: *runtime.Instance) ?u64 {
+    const counts = documentCounts(document) orelse return null;
+    return counts.tree_version;
+}
+
+/// An attribute of `element` was set, changed or removed (DOM "handle
+/// attribute changes"): its node document's tree version moves.
+pub fn attributeChanged(element: *runtime.Instance) void {
+    const accessor = hooks.node_document_counts orelse return;
+    if (accessor(element)) |counts| bumpTreeVersion(counts);
+}
 
 /// What the owners supply: the Document impl its counts, the Node impl the
 /// counts of a node's live node document (it keeps the document's slab
@@ -522,14 +548,16 @@ pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     const was_foreign = node.rc_flags.foreign;
     node.rc_flags.foreign = false;
     node.setParent(parent);
-    if (holds == 0) return;
     const delta: i64 = holds;
-    const tree_root = walkAdd(null, parent, delta);
+    const tree_root = if (holds != 0) walkAdd(null, parent, delta) else root(null, parent);
+    const document = countsAt(parent, tree_root);
+    if (document) |counts| bumpTreeVersion(counts);
+    if (holds == 0) return;
     // Within one document's detached trees, a move changes nothing there.
     if (was_foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
     if (was_foreign) {
-        const document = if (isNodeDocumentOf(node, tree_root)) countsOfDocumentNode(tree_root) else countsOfNodeDocument(node);
-        if (document) |counts| addTo(&counts.foreign_holds, -delta, "foreign_holds");
+        const own = if (sameNodeDocument(node, parent)) document else countsOfNodeDocument(node);
+        if (own) |counts| addTo(&counts.foreign_holds, -delta, "foreign_holds");
     }
     adjustForeign(tree_root, delta);
 }
@@ -546,14 +574,16 @@ pub fn unlinkChild(node: *NodeBase) void {
     node.setParent(null);
     const foreign = countsAsForeign(node);
     node.rc_flags.foreign = foreign;
-    if (holds == 0) return;
     const delta: i64 = holds;
-    const tree_root = walkAdd(null, parent, -delta);
+    const tree_root = if (holds != 0) walkAdd(null, parent, -delta) else root(null, parent);
+    const document = countsAt(parent, tree_root);
+    if (document) |counts| bumpTreeVersion(counts);
+    if (holds == 0) return;
     if (foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
     adjustForeign(tree_root, -delta);
     if (!foreign) return;
-    const document = if (isNodeDocumentOf(node, tree_root)) countsOfDocumentNode(tree_root) else countsOfNodeDocument(node);
-    if (document) |counts| addTo(&counts.foreign_holds, delta, "foreign_holds");
+    const own = if (sameNodeDocument(node, parent)) document else countsOfNodeDocument(node);
+    if (own) |counts| addTo(&counts.foreign_holds, delta, "foreign_holds");
 }
 
 /// Move (DOM move 19-20): `node`, still linked to its old parent, goes under
@@ -566,14 +596,31 @@ pub fn moveChild(node: *NodeBase, new_parent: *NodeBase) void {
     };
     node.setParent(new_parent);
     const holds = node.subtree_holds;
-    if (holds == 0 or old_parent == new_parent) return;
     const delta: i64 = holds;
-    const new_root = walkAdd(null, new_parent, delta);
+    const moves = holds != 0 and old_parent != new_parent;
+    const new_root = if (moves) walkAdd(null, new_parent, delta) else root(null, new_parent);
+    if (countsAt(new_parent, new_root)) |counts| bumpTreeVersion(counts);
+    if (!moves) return;
     const old_root = walkAdd(null, old_parent, -delta);
     if (new_root != old_root) {
         adjustForeign(new_root, delta);
         adjustForeign(old_root, -delta);
     }
+}
+
+/// The counts of `parent`'s node document, where `tree_root` is the root of
+/// `parent`'s host-including tree: one lookup when that root is the document
+/// itself (the common case), else through the Node impl's accessor.
+fn countsAt(parent: *NodeBase, tree_root: *NodeBase) ?*DocumentCounts {
+    if (parent.node_type == NodeBase.DOCUMENT_NODE) return countsOfDocumentNode(parent);
+    if (isNodeDocumentOf(parent, tree_root)) return countsOfDocumentNode(tree_root);
+    return countsOfNodeDocument(parent);
+}
+
+/// Whether `node`'s node document is `parent`'s (pointer compares only).
+fn sameNodeDocument(node: *const NodeBase, parent: *const NodeBase) bool {
+    const parents: usize = if (parent.node_type == NodeBase.DOCUMENT_NODE) @intFromPtr(parent) else @intFromPtr(parent.owner_document);
+    return @intFromPtr(node.owner_document) == parents;
 }
 
 /// A dying tree's teardown unlinks a child (dom.tree_teardown): the pointer
@@ -617,8 +664,14 @@ pub fn hostGone(hosted_root: *NodeBase) void {
 /// already freed, or none.
 pub fn nodeDocumentChanged(node: *NodeBase, old: ?*DocumentCounts, new: ?*DocumentCounts) void {
     if (node.node_type == NodeBase.DOCUMENT_NODE) return;
-    if (old) |counts| addTo(&counts.referencing_nodes, -1, "referencing_nodes");
-    if (new) |counts| addTo(&counts.referencing_nodes, 1, "referencing_nodes");
+    if (old) |counts| {
+        addTo(&counts.referencing_nodes, -1, "referencing_nodes");
+        bumpTreeVersion(counts);
+    }
+    if (new) |counts| {
+        addTo(&counts.referencing_nodes, 1, "referencing_nodes");
+        bumpTreeVersion(counts);
+    }
     if (node.parent_node != null or node.rc_flags.hosted) return;
     const holds: i64 = node.subtree_holds;
     if (node.rc_flags.foreign) if (old) |counts| addTo(&counts.foreign_holds, -holds, "foreign_holds");
@@ -633,6 +686,7 @@ pub fn nodeFreed(node: *NodeBase, counts: ?*DocumentCounts) void {
     if (node.node_type == NodeBase.DOCUMENT_NODE) return;
     const document = counts orelse return;
     addTo(&document.referencing_nodes, -1, "referencing_nodes");
+    bumpTreeVersion(document);
     if (node.rc_flags.foreign) addTo(&document.foreign_holds, -@as(i64, node.subtree_holds), "foreign_holds");
     node.rc_flags.foreign = false;
 }

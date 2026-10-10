@@ -1304,6 +1304,10 @@ fn handleAttributeChanges(
     old_value: ?[]const u8,
     new_value: ?[]const u8,
 ) void {
+    // Collections filter on any attribute: the node document's DOM tree
+    // version moves (Blink's InvalidateNodeListCaches on attribute change).
+    dom.refcount.attributeChanged(instance);
+
     // Step 1: "Queue a mutation record of "attributes" for element with
     // attribute's local name, attribute's namespace, oldValue, « », « »,
     // null, and null." The record copies what it keeps. A failure to queue
