@@ -1,0 +1,152 @@
+//! A wrap whose wrapper cache insert fails (OutOfMemory) fails: Codex row 15
+//! Q22. template_registry.wrapInstanceAsV8Object logged and swallowed a failed
+//! WrapperCache.set and handed back the wrapper as if the instance were
+//! wrapped - nothing owned the instance, and callers' error paths never ran
+//! (row 15's OOM trial leaked a stream graph and an AbortController). The
+//! failure now propagates, the wrapper made for it is let go, and the
+//! wrapper's counted reference (refcount step 4) is not taken.
+
+const std = @import("std");
+const testing = std.testing;
+const runtime = @import("runtime");
+const v8 = @import("v8");
+const protocol = @import("engine");
+const interfaces = @import("interfaces");
+const dom = @import("dom");
+
+const WindowHost = struct {
+    fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
+        _ = global_this;
+        _ = host;
+        return interfaces.Window.init(std.heap.c_allocator, r) catch null;
+    }
+};
+
+const Reports = struct {
+    count: usize = 0,
+
+    fn report(host: ?*anyopaque, info: *const protocol.ErrorInfo) void {
+        const self: *Reports = @ptrCast(@alignCast(host.?));
+        self.count += 1;
+        std.debug.print("reported: {s}\n", .{info.message});
+    }
+
+    fn reporter(self: *Reports) protocol.Reporter {
+        return .{ .report = report, .host = self };
+    }
+};
+
+var pools_ready = false;
+
+fn setup() !void {
+    try protocol.initializeEngine(.{});
+    if (pools_ready) return;
+    interfaces.process_hooks.startHooksForTest();
+    runtime.SlabAllocator.init(std.heap.page_allocator);
+    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    pools_ready = true;
+}
+
+const Page = struct {
+    agent: *protocol.Agent,
+    realm: runtime.Context,
+
+    fn open() !Page {
+        try setup();
+        const no_hooks: protocol.HostHooks = .{};
+        const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+        errdefer protocol.destroyAgent(agent);
+        const realm = try protocol.createWindowRealm(&.{
+            .agent = agent,
+            .allocator = std.heap.c_allocator,
+            .from_snapshot = false,
+            .timer = null,
+            .origin = "https://example.test",
+            .create_global_object = WindowHost.createGlobalObject,
+        });
+        return .{ .agent = agent, .realm = realm };
+    }
+
+    fn close(self: Page) void {
+        protocol.destroyWindowRealm(self.realm, .global_detached);
+        protocol.destroyAgent(self.agent);
+    }
+
+    fn eval(self: Page, source: []const u8) !void {
+        var reports: Reports = .{};
+        const held = try protocol.evaluateClassicScript(self.realm, .{ .utf8 = source }, "", null, reports.reporter());
+        held.release();
+        try testing.expectEqual(@as(usize, 0), reports.count);
+    }
+
+    fn instance(self: Page, source: []const u8) !*runtime.Instance {
+        var reports: Reports = .{};
+        const held = try protocol.evaluateClassicScript(self.realm, .{ .utf8 = source }, "", null, reports.reporter());
+        defer held.release();
+        try testing.expectEqual(@as(usize, 0), reports.count);
+        return protocol.convertToPlatformObject(self.realm, held.value) orelse error.NotAPlatformObject;
+    }
+
+    fn collect(self: Page) !void {
+        const Collect = struct {
+            fn steps(data: ?*anyopaque) void {
+                protocol.requestGarbageCollection(@ptrCast(@alignCast(data.?)));
+            }
+        };
+        try protocol.runInRealm(self.realm, Collect.steps, self.agent);
+        try protocol.runInRealm(self.realm, Collect.steps, self.agent);
+    }
+
+    fn cache(self: Page) *v8.wrapper_cache_mod.WrapperCache {
+        return @ptrCast(@alignCast(self.realm.getV8WrapperCacheStorage().?));
+    }
+};
+
+const xhtml = "http://www.w3.org/1999/xhtml";
+
+const Attempt = struct {
+    instance: *runtime.Instance,
+    realm: runtime.Context,
+    result: ?anyerror = null,
+    wrapped: bool = false,
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *Attempt = @ptrCast(@alignCast(data.?));
+        const isolate: *v8.ffi.Isolate = v8.ffi.v8_Isolate_GetCurrent().?;
+        const context: *v8.ffi.Context = @ptrCast(@alignCast(self.realm.engine_ctx.?));
+        if (v8.template_registry.wrapInstanceAsV8Object(self.instance, "HTMLDivElement", isolate, context)) |_| {
+            self.wrapped = true;
+        } else |err| self.result = err;
+    }
+};
+
+test "a wrap whose cache insert runs out of memory fails, and takes nothing" {
+    const page = try Page.open();
+    defer page.close();
+    const document = try page.instance("globalThis.d = new Document(); d");
+    const div = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("div"), .{ .was_passed = false, .value = undefined });
+    const cache = page.cache();
+    const node = dom.instance_bridge.getNodeBase(div).?;
+
+    var failing = std.testing.FailingAllocator.init(cache.allocator, .{ .fail_index = 0 });
+    const saved = cache.allocator;
+    cache.allocator = failing.allocator();
+    var attempt: Attempt = .{ .instance = div, .realm = page.realm };
+    try protocol.runInRealm(page.realm, Attempt.steps, &attempt);
+    cache.allocator = saved;
+
+    try testing.expectEqual(@as(?anyerror, error.OutOfMemory), attempt.result);
+    try testing.expect(!attempt.wrapped);
+    // Nothing owns the instance through a wrapper: not the cache, not the
+    // node's alias, and the wrapper's counted reference was never taken.
+    try testing.expect(!protocol.hasWrapper(div));
+    try testing.expect(node.bound_v8_wrapper == null);
+    try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));
+
+    // With memory, the same instance wraps.
+    var again: Attempt = .{ .instance = div, .realm = page.realm };
+    try protocol.runInRealm(page.realm, Attempt.steps, &again);
+    try testing.expect(again.wrapped);
+    try testing.expect(protocol.hasWrapper(div));
+    try testing.expectEqual(@as(u32, 2), dom.refcount.count(node));
+}
