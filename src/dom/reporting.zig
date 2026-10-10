@@ -10,7 +10,7 @@ const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const fetch = @import("fetch");
 const engine = @import("engine");
-const clock = @import("clock");
+const platform = @import("platform");
 const csp = @import("csp");
 const global_settings = @import("global_settings.zig");
 
@@ -335,7 +335,7 @@ pub fn generate(global: *runtime.Instance, kind: []const u8, destination: []cons
         .destination = destination,
         .url = report_url,
         .body_json = body_json,
-        .timestamp_ms = clock.wallMillis(),
+        .timestamp_ms = platform.wallMillis(),
         .user_agent = fetch.internal.user_agent.default_user_agent,
     });
     defer record.release();
@@ -481,7 +481,7 @@ const DeliveryTask = struct {
                 try batch.append(self.allocator, record);
                 grouped[j] = true;
             }
-            const bytes = try serializeReports(self.allocator, batch.items, clock.wallMillis());
+            const bytes = try serializeReports(self.allocator, batch.items, platform.wallMillis());
             defer self.allocator.free(bytes);
             const request = try modernRequest(self.allocator, endpoint.url, origin, bytes);
             request.cookie_jar = global_settings.cookieJarOf(global);

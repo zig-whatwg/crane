@@ -5419,6 +5419,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .memory = memory_mod,
     });
     const platform_mod = platform_binding.facade;
+    dom_mod.addImport("platform", platform_mod);
     const platform_options_mod = platform_binding.options;
 
     // HTML Core module (WHATWG HTML Standard) - Interface-free subset
