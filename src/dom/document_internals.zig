@@ -335,6 +335,25 @@ pub fn isScriptingEnabled(instance: *runtime.Instance) bool {
     return internal.scripting_enabled;
 }
 
+/// DOM "allow declarative shadow roots", the value an HTML parser for the
+/// document takes (HTML "parse HTML from a string", document.open's step 16).
+/// Every navigable's document - navigation's and the initial about:blank -
+/// is created with it true (HTML "create and initialize a Document object",
+/// "create a new browsing context"), so a document with a browsing context
+/// answers true; any other answers its stored flag (parseHTMLUnsafe sets it,
+/// cloning copies it; DOMParser, createHTMLDocument and XHR documents keep
+/// false).
+pub fn allowsDeclarativeShadowRoots(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.allow_declarative_shadow_roots or internal.default_view != null;
+}
+
+/// Set the document's stored "allow declarative shadow roots".
+pub fn setAllowDeclarativeShadowRoots(instance: *runtime.Instance, value: bool) void {
+    const internal = getInternal(instance) orelse return;
+    internal.allow_declarative_shadow_roots = value;
+}
+
 /// Set scripting enabled flag.
 pub fn setScriptingEnabled(instance: *runtime.Instance, enabled: bool) void {
     if (getInternal(instance)) |internal| {

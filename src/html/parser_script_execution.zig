@@ -393,6 +393,53 @@ pub fn domAdapterOnChildrenFinished(tree_node: *TreeNode, context: ?*anyopaque) 
     dom.finish_parsing_children.finishedParsingChildren(element, local_name);
 }
 
+/// The tree builder's declarative shadow root step for the live parser
+/// ("in head", a start tag whose tag name is "template", steps 7.10-7.11):
+/// attach a shadow root to the request's host, mark it declarative, and
+/// record it, so the template's contents insert into it. False - the template
+/// is inserted as an ordinary one - when the host is already a shadow host
+/// (7.10) or attaching threw (7.11.2). The attach draws the same host and
+/// shadow root edges attachShadow does, so it wraps the host and the root:
+/// two wrappers per declarative host, none for a page without one.
+/// Passed to tree_builder.setDomAdapterDeclarativeShadowCallback().
+pub fn domAdapterAttachDeclarativeShadow(request: *html_core.parser.DeclarativeShadow, context: ?*anyopaque) bool {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return false));
+    const host = adapter.getDomNode(request.host) orelse return false;
+    // Step 7.10: "If declarativeShadowHostElement is a shadow host".
+    if (dom.shadow_hosts.rootForHost(host) != null) return false;
+    // Step 7.11.1: "Let registry be null if templateStartTag has a
+    // shadowrootcustomelementregistry attribute; otherwise
+    // declarativeShadowHostElement's node document's custom element
+    // registry."
+    const registry: ?*runtime.Instance = if (request.keep_registry_null) null else blk: {
+        const document = (interfaces.Node.get_ownerDocument(host) catch return false) orelse return false;
+        break :blk interfaces.Document.get_customElementRegistry(document) catch return false;
+    };
+    // Steps 7.11.2-7.11.7.
+    const shadow = dom.declarative_shadow.attach(host, declarativeRequest(request.*), registry) catch return false;
+    request.shadow_root = shadow;
+    request.shadow_generation = runtime.SlabAllocator.generationOf(shadow);
+    return true;
+}
+
+/// The DOM request for a tree builder's declarative shadow root.
+pub fn declarativeRequest(request: html_core.parser.DeclarativeShadow) dom.declarative_shadow.Request {
+    return .{
+        .mode = switch (request.mode) {
+            .open => ._open_,
+            .closed => ._closed_,
+        },
+        .delegates_focus = request.delegates_focus,
+        .serializable = request.serializable,
+        .slot_assignment = switch (request.slot_assignment) {
+            .named => ._named_,
+            .manual => ._manual_,
+        },
+        .clonable = request.clonable,
+        .keep_registry_null = request.keep_registry_null,
+    };
+}
+
 /// The DOM document mode for the parser's.
 pub fn documentMode(mode: html_core.parser.QuirksMode) document_internals.Mode {
     return switch (mode) {

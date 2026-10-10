@@ -46,9 +46,21 @@ pub fn resolve(adapter: anytype, location: TreeBuilder.InsertionLocation) !Locat
     // template, or - foster parenting - the table's live parent, which script
     // can have made anything. Skip the template lookup otherwise.
     if (location.foster_table == null and !isHtmlTemplate(location.parent)) return .{ .parent = parent, .before = before };
+    // A declarative shadow root's template: its template contents are the
+    // shadow root ("in head", template start tag, step 7.11.6).
+    if (location.foster_table == null) if (declarativeShadowRoot(location.parent)) |shadow| return .{ .parent = shadow, .before = null };
     const target = try dom.template_contents.insertionTarget(parent);
     if (target != parent) before = null;
     return .{ .parent = target, .before = before };
+}
+
+/// The shadow root the live adapter attached for `template`, a declarative
+/// shadow root's template; null for any other node, or once it is freed.
+pub fn declarativeShadowRoot(template: *const TreeNode) ?*runtime.Instance {
+    const request = template.declarative_shadow orelse return null;
+    if (request.template != template) return null;
+    const shadow: *runtime.Instance = @ptrCast(@alignCast(request.shadow_root orelse return null));
+    return if (runtime.SlabAllocator.generationOf(shadow) == request.shadow_generation) shadow else null;
 }
 
 fn isHtmlTemplate(node: *const TreeNode) bool {

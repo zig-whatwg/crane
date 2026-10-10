@@ -2751,14 +2751,14 @@ pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, op
 }
 
 /// Operation: getHTML
-/// HTML Sanitizer API - Returns sanitized HTML serialization
-/// Spec: https://wicg.github.io/sanitizer-api/#dom-element-gethtml
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-element-gethtml
 ///
-/// Returns the innerHTML with optional shadow roots serialized
+/// "Return the result of HTML fragment serialization algorithm with this,
+/// options["serializableShadowRoots"], and options["shadowRoots"]."
 pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetHTMLOptions)) anyerror!runtime.DOMString {
-    _ = options;
     _ = getInternal(instance) orelse return error.InvalidStateError;
-    return @import("html").serialization.fragment(instance, true);
+    const given = options.getOrDefault(.{});
+    return @import("html").serialization.fragmentWithShadowRoots(instance, given.serializableShadowRoots orelse false, given.shadowRoots orelse &.{});
 }
 
 /// Operation: getAttributeNode
@@ -2802,9 +2802,22 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTM
     const allocator = instance.ctx.allocator;
     const compliant = try dom.trusted_types.compliantStringFor(allocator, .html, instance, html, "Element setHTMLUnsafe");
     defer allocator.free(compliant);
-    // TODO: steps 2-4 require the fragment parsing algorithm with
-    // declarative shadow roots allowed.
-    return error.NotImplemented;
+    // Step 2: "Let target be this's template contents if this is a template
+    // element; otherwise this."
+    const target = try dom.template_contents.insertionTarget(instance);
+    const target_base = dom.instance_bridge.getNodeBase(target) orelse return error.InvalidStateError;
+    // Step 3, "set and filter HTML" given target, this, compliantHTML and
+    // false. Steps 4-6: the IDL has no options, so no sanitizer and the
+    // Inert scripting mode. Step 7: the HTML fragment parsing algorithm with
+    // allowDeclarativeShadowRoots true (the context is this).
+    const fragment = @import("html").custom_elements.parseFragmentUnsafe(instance, compliant) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.NotSupportedError,
+    };
+    defer dom.node_creation.destroyUninserted(fragment);
+    const fragment_base = dom.instance_bridge.getNodeBase(@ptrCast(fragment)) orelse return error.InvalidStateError;
+    // Step 9: "Replace all with fragment within target."
+    try dom.mutation.replaceAll(@as(?*dom.NodeBase, fragment_base), target_base);
 }
 
 /// Operation: scrollIntoView
@@ -3280,13 +3293,19 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
         if (definition.disable_shadow) return error.NotSupportedError;
     }
 
-    // Step 4: "If element is a shadow host": its shadow root is declarative
-    // only when the parser attached it, which Crane's parser does not do yet
-    // (no declarative shadow DOM), so step 4.2's "currentShadowRoot's
-    // declarative is false" always holds: "throw a NotSupportedError
-    // DOMException". (Step 4.3, reusing a declarative root: TODO with
-    // declarative shadow roots.)
-    if (internal.shadow_root != null) return error.NotSupportedError;
+    // Step 4: "If element is a shadow host":
+    if (internal.shadow_root) |current| {
+        // 4.1-4.2: "If currentShadowRoot's declarative is false, or its mode
+        // is not mode, then throw a NotSupportedError DOMException."
+        if (!dom.declarative_shadow.isDeclarative(current)) return error.NotSupportedError;
+        if (try interfaces.ShadowRoot.get_mode(current) != init_data.mode) return error.NotSupportedError;
+        // 4.3: "Remove all of currentShadowRoot's children, in tree order."
+        while (try interfaces.Node.get_firstChild(current)) |child| _ = try interfaces.Node.call_removeChild(current, child);
+        // 4.4: "Set currentShadowRoot's declarative to false."
+        dom.declarative_shadow.setDeclarative(current, false);
+        // 4.5: "Return." attachShadow then returns this's shadow root.
+        return current;
+    }
 
     // Steps 5–14: create and initialize through the shadow root's owner.
     const shadow_root = try dom.custom_elements.createShadow(instance, init_data, registry);

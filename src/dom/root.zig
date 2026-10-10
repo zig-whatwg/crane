@@ -210,6 +210,7 @@ pub const boundary_points = @import("boundary_points.zig");
 pub const target_element = @import("target_element.zig");
 pub const fragment_scroll = @import("fragment_scroll.zig");
 pub const shadow_hosts = @import("shadow_hosts.zig");
+pub const declarative_shadow = @import("declarative_shadow.zig");
 
 pub const indexeddb = @import("indexeddb.zig");
 pub const string_lists = @import("string_lists.zig");

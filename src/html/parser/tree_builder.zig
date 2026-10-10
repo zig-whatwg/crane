@@ -161,6 +161,72 @@ pub const AttributeNamespace = enum {
     }
 };
 
+/// A declarative shadow root: what a template start tag's shadowroot*
+/// attributes ask for (HTML "in head", a start tag whose tag name is
+/// "template", steps 7.4-7.9 and 7.11.1), and where it went.
+pub const DeclarativeShadow = struct {
+    pub const Mode = enum { open, closed };
+    pub const SlotAssignment = enum { named, manual };
+
+    mode: Mode,
+    delegates_focus: bool = false,
+    serializable: bool = false,
+    slot_assignment: SlotAssignment = .named,
+    clonable: bool = false,
+    /// A shadowrootcustomelementregistry attribute: the root's registry is
+    /// null and kept null.
+    keep_registry_null: bool = false,
+    /// The template the request came from (on the stack of open elements,
+    /// never inserted) and its declarative shadow host element.
+    template: *TreeNode,
+    host: *TreeNode,
+    /// The tree-then-convert path: how many children the host had when the
+    /// template was met. A conversion whose attach throws (step 7.11's
+    /// exception branch) inserts the template there.
+    host_child_index: usize = 0,
+    /// The live DOM adapter: the shadow root it attached - the DOM node,
+    /// typed opaquely, and its slab generation - which the template's
+    /// contents insert into instead of its template contents (step 7.11.6,
+    /// "set template's template contents to shadow").
+    shadow_root: ?*anyopaque = null,
+    shadow_generation: u64 = 0,
+
+    /// Steps 7.4-7.9 from the start tag; null when its shadowrootmode is in
+    /// the None state (absent, or not "open" or "closed").
+    pub fn fromToken(tag: TagToken) ?DeclarativeShadow {
+        var request: DeclarativeShadow = .{ .mode = .open, .template = undefined, .host = undefined };
+        var has_mode = false;
+        for (tag.attributes.toSlice()) |attribute| {
+            const name = attribute.getName();
+            const value = attribute.getValue();
+            if (std.mem.eql(u8, name, "shadowrootmode")) {
+                // An enumerated attribute: "open" and "closed", ASCII
+                // case-insensitively; anything else is the None state.
+                if (std.ascii.eqlIgnoreCase(value, "open")) {
+                    request.mode = .open;
+                    has_mode = true;
+                } else if (std.ascii.eqlIgnoreCase(value, "closed")) {
+                    request.mode = .closed;
+                    has_mode = true;
+                }
+            } else if (std.mem.eql(u8, name, "shadowrootdelegatesfocus")) {
+                request.delegates_focus = true;
+            } else if (std.mem.eql(u8, name, "shadowrootserializable")) {
+                request.serializable = true;
+            } else if (std.mem.eql(u8, name, "shadowrootslotassignment")) {
+                // Its Manual state is "manual"; the missing and invalid
+                // value defaults are Named.
+                if (std.ascii.eqlIgnoreCase(value, "manual")) request.slot_assignment = .manual;
+            } else if (std.mem.eql(u8, name, "shadowrootclonable")) {
+                request.clonable = true;
+            } else if (std.mem.eql(u8, name, "shadowrootcustomelementregistry")) {
+                request.keep_registry_null = true;
+            }
+        }
+        return if (has_mode) request else null;
+    }
+};
+
 /// A node in the DOM tree being constructed.
 ///
 /// This is a simplified node representation for the parser.
@@ -201,6 +267,10 @@ pub const TreeNode = struct {
     /// adapter made, or the parser removed, unwrapped and not taken by an
     /// insertion, which the adapter frees at its end - or `not_an_orphan`.
     dom_orphan_index: u32 = not_an_orphan,
+    /// A declarative shadow root (HTML "in head", template start tag, step
+    /// 7): on its template, which owns it, and - in the tree-then-convert
+    /// path - on its host. Null for every other node.
+    declarative_shadow: ?*DeclarativeShadow = null,
     /// Attributes (for elements)
     attributes: infra.List(Attribute),
     /// Text content (for text/comment nodes)
@@ -392,6 +462,8 @@ pub const TreeNode = struct {
         self.attributes.deinit();
         // Free text content
         self.text_content.deinit();
+        // A declarative shadow root's request belongs to its template.
+        if (self.declarative_shadow) |request| if (request.template == self) self.allocator.destroy(request);
         // Free DOCTYPE fields
         if (self.doctype_name) |n| self.allocator.free(n);
         if (self.doctype_public_id) |p| self.allocator.free(p);
@@ -650,6 +722,17 @@ pub const TreeBuilder = struct {
     /// `dom_adapter_context`; see `finishedParsingChildren`.
     dom_adapter_on_children_finished: ?*const fn (*TreeNode, ?*anyopaque) void = null,
 
+    /// The live DOM adapter's step 7.10-7.11 for a declarative shadow root:
+    /// attach a shadow root to the request's host (DOM attach-a-shadow-root)
+    /// and record it on the request. False when the host is already a shadow
+    /// host or the attach threw - the template is then inserted. Without it
+    /// (the tree-then-convert path), the request is recorded on its host and
+    /// the conversion attaches it.
+    dom_adapter_attach_declarative_shadow: ?*const fn (*DeclarativeShadow, ?*anyopaque) bool = null,
+
+    /// HTML parser "allow declarative shadow roots" (initially false).
+    allow_declarative_shadow_roots: bool = false,
+
     /// Input stream manager for document.write() support.
     ///
     /// HTML Standard §13.2.3: When document.write() is called during parsing,
@@ -792,6 +875,10 @@ pub const TreeBuilder = struct {
 
     /// Set the adapter's finished-parsing-children callback (see
     /// `dom_adapter_on_children_finished`); it shares `dom_adapter_context`.
+    pub fn setDomAdapterDeclarativeShadowCallback(self: *TreeBuilder, attach: ?*const fn (*DeclarativeShadow, ?*anyopaque) bool) void {
+        self.dom_adapter_attach_declarative_shadow = attach;
+    }
+
     pub fn setDomAdapterFinishedCallback(self: *TreeBuilder, on_finished: ?*const fn (*TreeNode, ?*anyopaque) void) void {
         self.dom_adapter_on_children_finished = on_finished;
     }
@@ -1826,11 +1913,7 @@ pub const TreeBuilder = struct {
                 } else if (std.mem.eql(u8, name, "script")) {
                     try self.handleScriptStartTag(tag);
                 } else if (std.mem.eql(u8, name, "template")) {
-                    _ = try self.insertHtmlElement(tag);
-                    try self.active_formatting_elements.append(.marker);
-                    self.frameset_ok = false;
-                    self.insertion_mode = .in_template;
-                    try self.template_insertion_modes.append(.in_template);
+                    try self.handleTemplateStartTag(tag);
                 } else if (std.mem.eql(u8, name, "head")) {
                     self.reportError(.invalid_first_character_of_tag_name);
                 } else {
@@ -1896,6 +1979,88 @@ pub const TreeBuilder = struct {
     fn popTemplateInsertionMode(self: *TreeBuilder) void {
         if (self.template_insertion_modes.len == 0) return;
         _ = self.template_insertion_modes.remove(self.template_insertion_modes.len - 1) catch {};
+    }
+
+    /// "In head", a start tag whose tag name is "template".
+    fn handleTemplateStartTag(self: *TreeBuilder, tag: TagToken) !void {
+        // Step 7's condition first: a template with no shadowrootmode (in
+        // the None state) is step 9's ordinary template - inserted before the
+        // marker and modes are pushed, which nothing observes in between.
+        var request = DeclarativeShadow.fromToken(tag) orelse return self.insertTemplate(tag);
+        // Steps 2-5: a marker, frameset-ok "not ok", "in template", pushed
+        // onto the stack of template insertion modes.
+        try self.active_formatting_elements.append(.marker);
+        self.frameset_ok = false;
+        self.insertion_mode = .in_template;
+        try self.template_insertion_modes.append(.in_template);
+        // Step 6: the adjusted insertion location.
+        const location = self.appropriateLocation(null);
+        // Step 7.1: "If the parser's allow declarative shadow roots is false,
+        // or the adjusted current node is the topmost element in the stack of
+        // open elements, then insert an HTML element for the token and
+        // return." In the fragment case, with only the root on the stack, the
+        // adjusted current node is the context element, which is in no tree
+        // the fragment builds - Blink's HTMLTreeBuilder takes its host from
+        // the current node, the fragment's root there, and so inserts the
+        // template; so does this.
+        const current = self.currentNode() orelse return self.insertHtmlElementAt(tag, location);
+        if (!self.allow_declarative_shadow_roots or current == self.open_elements.get(0).?)
+            return self.insertHtmlElementAt(tag, location);
+        // Step 7.2: the declarative shadow host is the adjusted current node.
+        const host = self.adjustedCurrentNode() orelse current;
+        // Step 7.3: insert a foreign element for the token, HTML namespace,
+        // only adding it to the stack of open elements.
+        const template = try self.createElementForToken(tag, .html, location);
+        try self.open_elements.append(template);
+        // Steps 7.4-7.9 were read from the token.
+        request.template = template;
+        request.host = host;
+        request.host_child_index = childCount(host);
+        const recorded = try self.allocator.create(DeclarativeShadow);
+        recorded.* = request;
+        template.declarative_shadow = recorded;
+        // Steps 7.10-7.11. The live adapter attaches now; the
+        // tree-then-convert path records the request on its host, unless the
+        // host already has one (step 7.10, "a shadow host"), and attaches when
+        // it converts the host.
+        const attached = if (self.dom_adapter_attach_declarative_shadow) |attach|
+            attach(recorded, self.dom_adapter_context)
+        else if (host.declarative_shadow == null) blk: {
+            host.declarative_shadow = recorded;
+            break :blk true;
+        } else false;
+        if (attached) return;
+        // Step 7.10, or 7.11.2's exception: "insert an element at the
+        // adjusted insertion location with template and
+        // adjustedInsertionLocation" - an ordinary template now.
+        template.declarative_shadow = null;
+        self.allocator.destroy(recorded);
+        self.insertNodeAt(location, template);
+    }
+
+    /// Step 9 (and 7.1): insert an HTML element for the template start tag,
+    /// then steps 2-5.
+    fn insertTemplate(self: *TreeBuilder, tag: TagToken) !void {
+        _ = try self.insertHtmlElement(tag);
+        try self.active_formatting_elements.append(.marker);
+        self.frameset_ok = false;
+        self.insertion_mode = .in_template;
+        try self.template_insertion_modes.append(.in_template);
+    }
+
+    /// "Insert an HTML element" for `tag` at `location`, computed before
+    /// steps 2-5 ran (they change nothing it depends on).
+    fn insertHtmlElementAt(self: *TreeBuilder, tag: TagToken, location: InsertionLocation) !void {
+        const element = try self.createElementForToken(tag, .html, location);
+        self.insertNodeAt(location, element);
+        try self.open_elements.append(element);
+    }
+
+    fn childCount(node: *const TreeNode) usize {
+        var count: usize = 0;
+        var child = node.first_child;
+        while (child) |c| : (child = c.next_sibling) count += 1;
+        return count;
     }
 
     fn handleTemplateEndTag(self: *TreeBuilder) !void {
