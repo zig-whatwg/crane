@@ -288,8 +288,7 @@ fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
     };
     if (text_constraints) {
         // HTML 4.10.5.3.6: only these states support the pattern attribute.
-        // TODO(engine.matchesPatternAttribute): supplied by the engine lane.
-        flags.patternMismatch = false;
+        flags.patternMismatch = patternMismatch(instance, input_type, value);
         // HTML 4.10.19.3–4: a dirty value last changed by a user edit,
         // measured in UTF-16 code units. Empty never suffers tooShort.
         if (internal.editor_text != null) {
@@ -323,6 +322,55 @@ fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
     };
     flags.badInput = input_type == .number and internal.bad_input;
     return flags;
+}
+
+/// HTML 4.10.5.3.6, the pattern attribute's two constraint validation
+/// rules: the value is not the empty string, the element has a compiled
+/// pattern regular expression, and that expression does not match the value
+/// - or, where `multiple` applies and is set (Email, the one text-entry state
+/// it applies to), does not match each of its values. `value` is the element's
+/// value, already sanitized: for Email with `multiple`, its values joined by
+/// commas, each stripped of ASCII whitespace.
+fn patternMismatch(instance: *runtime.Instance, input_type: InputType, value: []const u8) bool {
+    if (value.len == 0) return false;
+    // Steps 1-2 of the compiled pattern regular expression: no attribute,
+    // no expression.
+    const pattern = attribute(instance, "pattern") orelse return false;
+    defer instance.ctx.allocator.free(pattern);
+    if (input_type == .email and hasAttribute(instance, "multiple")) {
+        var values = std.mem.splitScalar(u8, value, ',');
+        while (values.next()) |item| {
+            const one = std.mem.trim(u8, item, "\t\n\x0c\r ");
+            // Deviation from the spec text, which matches each value, an
+            // empty one included ("a," against `a+` would mismatch): Blink
+            // and WebKit both skip empty values - Blink's
+            // BaseTextInputType::PatternMismatch splits with String::Split
+            // (empty entries dropped) and PatternMismatchPerValue answers an
+            // empty value with no mismatch; WebKit's
+            // BaseTextInputType::patternMismatch iterates value.split(','),
+            // which drops empty entries too.
+            if (one.len == 0) continue;
+            const matched = matchesPattern(instance, pattern, one) orelse return false;
+            if (!matched) return true;
+        }
+        return false;
+    }
+    const matched = matchesPattern(instance, pattern, value) orelse return false;
+    return !matched;
+}
+
+/// Whether `pattern`'s compiled pattern regular expression matches `value`
+/// (HTML 4.10.5.3.6, steps 3-6 and "matches"), in the element's relevant
+/// realm's agent; null when the element has no compiled pattern regular
+/// expression - `pattern` is not a valid standalone UnicodeSets pattern -
+/// which imposes no constraint. An engine that cannot match (NotSupported) is
+/// read the same way, and so, since validity cannot fail, is running out of
+/// memory.
+fn matchesPattern(instance: *runtime.Instance, pattern: []const u8, value: []const u8) ?bool {
+    return @import("engine").matchesPatternAttribute(instance.ctx, pattern, value) catch |err| {
+        if (err == error.OutOfMemory) log.warn("pattern attribute not checked: out of memory", .{});
+        return null;
+    };
 }
 
 fn radioValueMissing(instance: *runtime.Instance) bool {
