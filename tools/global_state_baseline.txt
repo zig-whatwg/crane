@@ -36,6 +36,7 @@ src/dom/cssom.zig rule_lists 1 TL I/engine decl:aee1b21ecd071830
 src/dom/cssom.zig rule_objects 1 TL I/engine decl:2ff910def65b901b
 src/dom/cssom.zig sheets 1 TL I/engine decl:d5da0433784f149e
 src/dom/custom_elements.zig implementation 1 G P-res decl:89dd82c5fbd26c9f
+src/dom/declarative_shadow.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_activity.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_browsing_context.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_fetches.zig cancelers 1 G H decl:30e1703fbc925361

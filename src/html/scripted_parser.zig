@@ -407,6 +407,10 @@ pub const DocumentParser = struct {
         self.tree_builder.setDomAdapterModeCallback(&parser_scripts.domAdapterOnModeSet);
         self.tree_builder.setDomAdapterPoppedCallback(&parser_scripts.domAdapterOnElementPopped);
         self.tree_builder.setDomAdapterFinishedCallback(&parser_scripts.domAdapterOnChildrenFinished);
+        self.tree_builder.setDomAdapterDeclarativeShadowCallback(&parser_scripts.domAdapterAttachDeclarativeShadow);
+        // The parser's "allow declarative shadow roots" is its document's:
+        // navigation's document and document.open (step 16) create it so.
+        self.tree_builder.allow_declarative_shadow_roots = document_internals.allowsDeclarativeShadowRoots(document);
         self.adapter.notifies_children_finished = true;
         if (document_internals.getURL(document)) |url| self.tree_builder.iframe_srcdoc = matchesAboutSrcdoc(url);
         self.script_context = ParserScriptContext.init(

@@ -37,6 +37,7 @@ const html_core = @import("html_core");
 const Tokenizer = html_core.parser.Tokenizer;
 const TreeBuilder = html_core.parser.TreeBuilder;
 const TreeNode = html_core.parser.TreeNode;
+const DeclarativeShadow = html_core.parser.DeclarativeShadow;
 const QuirksMode = html_core.parser.QuirksMode;
 const ParserNamespace = html_core.parser.Namespace;
 
@@ -70,6 +71,17 @@ pub const ParseOptions = struct {
     context_element: ?[]const u8 = null,
     /// Fragment parsing context element namespace
     context_namespace: Namespace = .html,
+    /// The new document's "allow declarative shadow roots", which its parser
+    /// takes (HTML "parse HTML from a string" step 2): true for
+    /// parseHTMLUnsafe, false for DOMParser.
+    allow_declarative_shadow_roots: bool = false,
+};
+
+/// Options for the HTML fragment parsing algorithm.
+pub const FragmentOptions = struct {
+    /// Its allowDeclarativeShadowRoots argument (default false): true for
+    /// setHTMLUnsafe ("set and filter HTML" step 7).
+    allow_declarative_shadow_roots: bool = false,
 };
 
 /// Namespace enumeration matching the parser's namespace
@@ -125,6 +137,7 @@ pub fn parseHTML(
 
     // Configure tree builder
     tree_builder.scripting_enabled = options.scripting_enabled;
+    tree_builder.allow_declarative_shadow_roots = options.allow_declarative_shadow_roots;
 
     // Step 4: Parse the document using full algorithm
     tree_builder.parse() catch return error.TreeBuilderError;
@@ -141,13 +154,17 @@ pub fn parseHTML(
     // A document parsed without a browsing context has disabled scripting;
     // serialization (notably noscript) consults this document state too.
     document_internals.setScriptingEnabled(document, options.scripting_enabled);
+    document_internals.setAllowDeclarativeShadowRoots(document, options.allow_declarative_shadow_roots);
 
     // The document's mode, as the "initial" insertion mode set it. Nothing
     // runs script during this parse, so it can follow the parse.
     document_internals.setMode(document, parser_script_execution.documentMode(tree_builder.quirks_mode)) catch {};
 
     // Step 6: Convert TreeNode tree to DOM nodes
-    try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document, .{});
+    var associations: PendingAssociations = .empty;
+    defer associations.deinit(allocator);
+    try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document, .{ .associations = &associations });
+    associateParsedControls(associations.items) catch return error.OutOfMemory;
 
     return document;
 }
@@ -303,6 +320,17 @@ pub fn parseFragment(
     html: []const u8,
     target: ?*runtime.Instance,
 ) ParseError!*runtime.Instance {
+    return parseFragmentWith(allocator, ctx, html, target, .{});
+}
+
+/// The HTML fragment parsing algorithm with its optional arguments.
+pub fn parseFragmentWith(
+    allocator: Allocator,
+    ctx: runtime.Context,
+    html: []const u8,
+    target: ?*runtime.Instance,
+    options: FragmentOptions,
+) ParseError!*runtime.Instance {
     // Fragment steps 2 and 13: a shadow root supplies the registry, while
     // its host supplies tokenizer context and the ancestor form pointer.
     const is_shadow = if (target) |value| value.stateAs(interfaces.ShadowRoot.State) != null else false;
@@ -355,6 +383,9 @@ pub fn parseFragment(
     // Step 2: Create tree builder for fragment parsing
     var tree_builder = TreeBuilder.init(allocator, &tokenizer) catch return error.OutOfMemory;
     defer tree_builder.deinit();
+    // Step 8: "Create a new HTML parser whose allow declarative shadow roots
+    // is allowDeclarativeShadowRoots".
+    tree_builder.allow_declarative_shadow_roots = options.allow_declarative_shadow_roots;
 
     // HTML Standard §13.4 "Parsing HTML fragments"
     // Step 7: Create a root html element and append to document
@@ -477,7 +508,7 @@ pub fn parseFragment(
         _ = interfaces.Node.call_appendChild(fragment, dom_node) catch return error.InvalidStateError;
 
         // Recursively convert children
-        try convertChildrenToDom(allocator, ctx, tc, dom_node, owner_doc, conversion);
+        try convertChildrenToDom(allocator, ctx, tc, dom_node, owner_doc, childConversion(tc, conversion));
 
         tree_child = tc.next_sibling;
     }
@@ -488,7 +519,26 @@ pub fn parseFragment(
 const Conversion = struct {
     fragment: bool = false,
     registry: dom.custom_elements.RegistrySelection = .default,
+    /// A full document's parse: the elements whose creation met "create an
+    /// element for a token" step 15's parser conditions, associated once the
+    /// tree is built (a foster-parented control can precede its form).
+    associations: ?*PendingAssociations = null,
 };
+
+const PendingAssociation = struct { element: *runtime.Instance, form: *TreeNode };
+const PendingAssociations = std.ArrayListUnmanaged(PendingAssociation);
+
+/// Step 15 for the elements `pending` names, now that the tree is built: the
+/// intended parent is the element's parent (nothing ran script to move it).
+fn associateParsedControls(pending: []const PendingAssociation) !void {
+    const form_associated = @import("form_associated.zig");
+    for (pending) |entry| {
+        const form: *runtime.Instance = @ptrCast(@alignCast(entry.form.dom_node orelse continue));
+        if (runtime.SlabAllocator.generationOf(form) != entry.form.dom_generation) continue;
+        const parent = (interfaces.Node.get_parentNode(entry.element) catch null) orelse continue;
+        try form_associated.parserAssociate(entry.element, form, parent);
+    }
+}
 
 /// Convert a TreeNode tree to DOM nodes recursively
 fn convertTreeNodeToDom(
@@ -512,7 +562,7 @@ fn convertTreeNodeToDom(
         }
 
         // Recursively convert children
-        try convertChildrenToDom(allocator, ctx, tree_child, dom_node, owner_document, conversion);
+        try convertChildrenToDom(allocator, ctx, tree_child, dom_node, owner_document, childConversion(tree_child, conversion));
 
         child = tree_child.next_sibling;
     }
@@ -527,9 +577,18 @@ fn convertChildrenToDom(
     owner_document: ?*runtime.Instance,
     conversion: Conversion,
 ) ParseError!void {
+    // A declarative shadow root the parser recorded on this host ("in
+    // head", template start tag, step 7.11): attach it, with the template's
+    // contents in it, before the host's children - or, when attaching
+    // throws, insert the template where the parser met it.
+    var failed: ?*DeclarativeShadow = null;
+    if (tree_node.declarative_shadow) |request| if (!tree_node.owns_declarative_shadow) {
+        if (!try attachDeclarativeShadow(allocator, ctx, request, parent_dom, owner_document, conversion)) failed = request;
+    };
     // A tree node with no children converts nothing (most of them: text,
     // void elements, leaves) - and looks nothing up.
-    var child: ?*TreeNode = tree_node.first_child orelse return;
+    var child: ?*TreeNode = tree_node.first_child;
+    if (child == null and failed == null) return;
     const target = dom.template_contents.insertionTarget(parent_dom) catch return error.InvalidStateError;
     // The children are made in the intended parent's node document. The
     // caller made `parent_dom` in `owner_document`; only a template's
@@ -542,18 +601,73 @@ fn convertChildrenToDom(
     // template's insertion target is its content DocumentFragment, whose
     // registry lookup is null even when the template itself has one.
     const child_conversion: Conversion = if (target != parent_dom)
-        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null } }
+        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null }, .associations = conversion.associations }
     else
         conversion;
-    while (child) |tree_child| {
-        const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, document, child_conversion);
-        _ = interfaces.Node.call_appendChild(target, dom_node) catch {
-            dom.node_creation.destroyUninserted(dom_node);
-            return error.InvalidStateError;
+    var index: usize = 0;
+    while (true) : (index += 1) {
+        if (failed) |request| if (index == request.host_child_index) {
+            try convertChild(allocator, ctx, request.template, target, document, child_conversion);
+            failed = null;
         };
-        try convertChildrenToDom(allocator, ctx, tree_child, dom_node, document, child_conversion);
+        const tree_child = child orelse break;
+        try convertChild(allocator, ctx, tree_child, target, document, child_conversion);
         child = tree_child.next_sibling;
     }
+    if (failed) |request| try convertChild(allocator, ctx, request.template, target, document, child_conversion);
+}
+
+fn convertChild(
+    allocator: Allocator,
+    ctx: runtime.Context,
+    tree_child: *TreeNode,
+    target: *runtime.Instance,
+    document: ?*runtime.Instance,
+    conversion: Conversion,
+) ParseError!void {
+    const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, document, conversion);
+    _ = interfaces.Node.call_appendChild(target, dom_node) catch {
+        dom.node_creation.destroyUninserted(dom_node);
+        return error.InvalidStateError;
+    };
+    try convertChildrenToDom(allocator, ctx, tree_child, dom_node, document, childConversion(tree_child, conversion));
+}
+
+/// Step 6 for the children of `tree_node`: their intended parent is it, so
+/// an element made with a null registry for its customelementregistry
+/// attribute passes null down.
+fn childConversion(tree_node: *TreeNode, conversion: Conversion) Conversion {
+    if (tree_node.node_type != .element or !@import("custom_elements/parser.zig").hasRegistryAttribute(tree_node)) return conversion;
+    var child = conversion;
+    child.registry = .{ .explicit = null };
+    return child;
+}
+
+/// "In head", template start tag, steps 7.11.1-7.11.7 for a host the
+/// tree-then-convert path made: attach the shadow root and convert the
+/// template's contents into it. False when attaching threw (step 7.11.2's
+/// exception branch).
+fn attachDeclarativeShadow(
+    allocator: Allocator,
+    ctx: runtime.Context,
+    request: *DeclarativeShadow,
+    host: *runtime.Instance,
+    owner_document: ?*runtime.Instance,
+    conversion: Conversion,
+) ParseError!bool {
+    // 7.11.1: null for a shadowrootcustomelementregistry attribute, else
+    // the host's node document's registry.
+    const registry: ?*runtime.Instance = if (request.keep_registry_null) null else if (owner_document) |document|
+        interfaces.Document.get_customElementRegistry(document) catch return error.InvalidStateError
+    else
+        null;
+    // Steps 7.11.2-7.11.7.
+    const shadow = dom.declarative_shadow.attach(host, parser_script_execution.declarativeRequest(request.*), registry) catch return false;
+    // The template's contents are the shadow root (7.11.6); create-for-token
+    // step 6 looks the registry up from it.
+    const shadow_registry = interfaces.ShadowRoot.get_customElementRegistry(shadow) catch return error.InvalidStateError;
+    try convertChildrenToDom(allocator, ctx, request.template, shadow, owner_document, .{ .fragment = conversion.fragment, .registry = .{ .explicit = shadow_registry }, .associations = conversion.associations });
+    return true;
 }
 
 /// Create a single DOM node from a TreeNode
@@ -590,8 +704,12 @@ fn createElementNode(
     const namespace = Namespace.fromParserNamespace(tree_node.namespace).toUri();
     const parser_ce = @import("custom_elements/parser.zig");
     const is_value = parser_ce.isValue(tree_node);
+    // Create-for-token step 6: the registry the conversion looked up from the
+    // intended parent - or null for a token with a customelementregistry
+    // attribute (Chrome and Safari; browsers-first audit R3).
+    const registry: dom.custom_elements.RegistrySelection = if (parser_ce.hasRegistryAttribute(tree_node)) .{ .explicit = null } else conversion.registry;
     const scope = if (owner_document) |document|
-        parser_ce.Scope.begin(document, local_name, namespace, is_value, conversion.fragment) catch return error.InvalidStateError
+        parser_ce.Scope.beginWithRegistry(document, local_name, namespace, is_value, conversion.fragment, registry) catch return error.InvalidStateError
     else
         null;
     defer if (scope) |current| current.end();
@@ -603,7 +721,7 @@ fn createElementNode(
             .namespace = namespace,
             .is_value = is_value,
             .synchronous = scope.?.synchronous,
-            .registry = conversion.registry,
+            .registry = registry,
         }) catch return error.InvalidStateError
     else if (tree_node.namespace == .html)
         parser_script_execution.createHTMLElement(allocator, ctx, local_name) catch return error.OutOfMemory
@@ -631,6 +749,16 @@ fn createElementNode(
 
     // "Append each attribute in the given token to element."
     for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);
+
+    // Step 15, deferred to the end of the conversion: a form keeps its DOM
+    // node on its tree node so the controls it was the pointer for find it.
+    if (conversion.associations) |pending| {
+        if (tree_node.namespace == .html and std.mem.eql(u8, local_name, "form")) {
+            tree_node.dom_node = element;
+            tree_node.dom_generation = runtime.SlabAllocator.generationOf(element);
+        }
+        if (tree_node.parser_form) |form| pending.append(allocator, .{ .element = element, .form = form }) catch return error.OutOfMemory;
+    }
 
     return element;
 }
