@@ -15,9 +15,29 @@
 const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
+const engine = @import("engine");
 
 /// Assigning the document establishes template contents, which can allocate.
 pub const Error = error{ InvalidStateError, OutOfMemory };
+
+/// The member a node keeps its node document in: an edge from the node's
+/// wrapper to its document's (engine.traceChild's slot namespace), so a node
+/// script can reach keeps its document - and through the document's own
+/// wrapper, its tree - for as long as the node lives. Blink: `Node::Trace`
+/// visits `tree_scope_` (core/dom/node.cc), whose `TreeScope::Trace` visits
+/// its document; WebKit counts the node on its document instead
+/// (`Document::incrementReferencingNodeCount` in `Node::Node`).
+///
+/// Drawn twice, under this one key: by the engine adapter when it makes a
+/// node's wrapper (node tracing - the host has no step at that moment: a
+/// factory method sets the node document before the binding wraps its
+/// result), and by the Node impl when a wrapped node's document changes
+/// (adopt), which replaces the edge, so an adopted node keeps its new
+/// document and lets the old one go. A node no wrapper reaches draws none: it
+/// is as safe as its tree, whose root's wrapper - script's, or a holder's
+/// rescue (node_holds.zig) - carries the same edge, or which is its
+/// document's own tree.
+pub const traced_slot: engine.TracedSlot = .{ .name = "node document" };
 
 /// What the Node impl supplies.
 pub const Implementation = struct {

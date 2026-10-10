@@ -105,6 +105,23 @@ from the second pass; JavaScriptCore, QuickJS and the test adapter take the
 field and tear down inline. The queue is engine-neutral: a reference-counted
 DOM queues an object whose count reached zero the same way.
 
+**Node tracing: a wrapped node keeps its tree and its node document.** With no
+tracing of native objects, the V8 adapter keeps a node's wrapper alive by
+edges between wrappers, drawn when it makes a node's wrapper
+(wrapper_cache.zig, `WrapperCache.set`): to the parent's wrapper and back from
+it (a Set of the wrapped children; an unwrapped parent is wrapped first, so the
+wrapped part of a tree is upward-closed and goes whole), and to the node
+document's wrapper, made in the document's relevant realm if script has not
+seen it (`dom.node_document.traced_slot`, the key `traceChild` uses for that
+slot). Blink's `Node::Trace` visits the parent, the siblings and `tree_scope_`
+(core/dom/node.cc). So a node script holds keeps its document and, through the
+document's wrapper, the document's tree (refcount decision D6); a holder's
+rescued root carries the same edge. The host redraws the document edge when
+adopt changes a wrapped node's document (`traceChild` under the same slot,
+from the Node impl), which replaces the old one. The refcount design's step 4
+moves all three edges to host-driven operations (`joinOpaqueRoot`,
+`leaveOpaqueRoot`, `keepOpaqueRoot`).
+
 **A realm's end finalizes what no wrapper owns.** The host data behind a
 promise reaction that has not run (`PromiseReactionSteps.dropped`) and behind
 an asynchronous iterator still alive (`AsyncIteratorSteps.finalize`) is freed

@@ -1994,6 +1994,7 @@ fn setNodeDocumentHook(node: *runtime.Instance, document: ?*runtime.Instance) do
 
 pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const previous = internal.owner_document;
     internal.owner_document = doc;
 
     // The tree algorithms in src/dom read the node document off the NodeBase,
@@ -2008,6 +2009,31 @@ pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !v
                 if (document_internal.node_base) |document_base| base.owner_document = @ptrCast(@alignCast(document_base));
             }
         }
+        if (doc != previous) keepNodeDocument(instance, internal.node_type, base, doc);
+    }
+}
+
+/// A node keeps its node document alive for as long as the node lives
+/// (dom.node_document.traced_slot): the edge from the node's wrapper to the
+/// document's, which the engine adapter draws when it makes the wrapper, is
+/// redrawn here when a wrapped node's document changes - adopt - and REPLACES
+/// the old one, so the node lets its old document go. Blink moves the traced
+/// tree scope (TreeScopeAdopter); WebKit moves the node's count from the old
+/// document to the new (Node::moveTreeToNewScope,
+/// Document::decrementReferencingNodeCount).
+///
+/// A node script has not seen draws nothing - never engine.traceChild for an
+/// unwrapped owner, which would hold the document strongly until a wrapper
+/// that may never come (every node a parser makes): its wrapper, when made,
+/// draws the edge to the document it has then. The pointer test comes first,
+/// so a node being created pays one field read (refcount design 2.2).
+fn keepNodeDocument(instance: *runtime.Instance, node_type: u16, base: *NodeBase, doc: ?*runtime.Instance) void {
+    if (node_type == NodeType.DOCUMENT_NODE) return;
+    if (base.bound_v8_wrapper == null or !engine.hasWrapper(instance)) return;
+    if (doc) |document| {
+        engine.traceChild(instance, document, dom_module.node_document.traced_slot);
+    } else {
+        engine.forgetTracedChild(instance, dom_module.node_document.traced_slot);
     }
 }
 
