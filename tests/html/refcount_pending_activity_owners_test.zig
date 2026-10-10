@@ -67,3 +67,53 @@ fn mediaElementWithManyTasksGoesOnceIdle() !void {
 test "a media element whose tasks were queued several times keeps itself once, and goes when idle" {
     try onFreshThread(mediaElementWithManyTasksGoesOnceIdle);
 }
+
+// An owner that releases more than it kept would end ANOTHER owner's keep
+// under a count: the extra release is an error log in Debug (fatal here), so
+// each of these fails if its owner releases twice.
+
+fn broadcastChannelClosedTwiceReleasesOnce() !void {
+    const page = try Page.open();
+    defer page.close();
+    try page.run(
+        \\globalThis.weak = (() => {
+        \\  const channel = new BroadcastChannel('rc4-owners');
+        \\  channel.close();
+        \\  channel.close();
+        \\  return new WeakRef(channel);
+        \\})();
+    );
+    // Collected: its deinit must not release again.
+    try std.testing.expect(try collected(page));
+}
+
+test "a BroadcastChannel closed twice releases its keep once, and its teardown none" {
+    try onFreshThread(broadcastChannelClosedTwiceReleasesOnce);
+}
+
+fn webSocketThatClosedReleasesOnce() !void {
+    const page = try Page.open();
+    defer page.close();
+    try page.run(
+        \\globalThis.closed = false;
+        \\globalThis.weak = (() => {
+        \\  const socket = new WebSocket('ws://127.0.0.1:9/');
+        \\  socket.onclose = () => { globalThis.closed = true; };
+        \\  return new WeakRef(socket);
+        \\})();
+    );
+    var turns: usize = 0;
+    while (turns < 200) : (turns += 1) {
+        try page.turn();
+        const answer = try page.evaluate("String(closed)");
+        defer std.testing.allocator.free(answer);
+        if (std.mem.eql(u8, answer, "true")) break;
+    }
+    // Closed: the close task released the constructor's keep, and the
+    // socket's teardown must not release again.
+    try std.testing.expect(try collected(page));
+}
+
+test "a WebSocket whose connection closed releases its keep once, and its teardown none" {
+    try onFreshThread(webSocketThatClosedReleasesOnce);
+}
