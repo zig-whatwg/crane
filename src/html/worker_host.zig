@@ -799,9 +799,13 @@ pub const WorkerHost = struct {
             .hooks = &worker_hooks,
             .host = &self.agent_host,
             .allocator = allocator,
+            // A collected node's teardown is queued here, for the worker's
+            // loop to run between tasks (runtime.gc.DeferredTeardown).
+            .deferred_teardown = &self.agent_host.deferred_teardown,
         });
         self.agent = agent;
         thread.loop.agent = agent;
+        thread.loop.deferred_teardown = &self.agent_host.deferred_teardown;
         const runs = thread.link.publishAgent(agent);
         self.script_url = try allocator.dupe(u8, start.script_url);
         self.name = try allocator.dupe(u8, start.name);

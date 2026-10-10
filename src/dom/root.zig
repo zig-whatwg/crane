@@ -82,6 +82,9 @@ pub const activation = @import("activation.zig");
 pub const form_controls = @import("form_controls.zig");
 pub const form_submission = @import("form_submission.zig");
 pub const node_lists = @import("node_lists.zig");
+/// Node holds: native references that keep nodes alive without a wrapper
+/// per node, and the removing steps that rescue a held tree's root.
+pub const node_holds = @import("node_holds.zig");
 pub const teardown_sweeps = @import("teardown_sweeps.zig");
 pub const unloading_cleanup = @import("unloading_cleanup.zig");
 pub const idle_periods = @import("idle_periods.zig");
@@ -144,6 +147,9 @@ pub const document_browsing_context = @import("document_browsing_context.zig");
 /// What the parsers' tree construction sets on the nodes it makes where no
 /// IDL member fits: an element's names, a doctype's identifiers.
 pub const node_creation = @import("node_creation.zig");
+/// Freeing a detached tree a bounded number of nodes at a time, leaves first
+/// (the agent's deferred teardown queue, runtime.gc.DeferredTeardown).
+pub const tree_teardown = @import("tree_teardown.zig");
 pub const custom_elements = @import("custom_elements.zig");
 /// HTML's user activation timestamps, the focused area of a document and a
 /// document's visibility state: the hooks the user input algorithms reach
@@ -153,6 +159,12 @@ pub const user_activation_state = @import("user_activation_state.zig");
 pub const focused_area = @import("focused_area.zig");
 pub const visibility_state = @import("visibility_state.zig");
 pub const focus_matching = @import("focus_matching.zig");
+/// A FileList's contents, set natively by its owners (an input's selected
+/// files, a DataTransfer's files): the hook FileList installs.
+pub const file_lists = @import("file_lists.zig");
+/// HTML 6.11.2 the drag data store a DataTransfer owns, and the hooks its
+/// item list and items are made through.
+pub const drag_data_store = @import("drag_data_store.zig");
 
 // Re-export CookieChangeEvent
 pub const CookieChangeEvent = cookie_change_event.CookieChangeEvent;

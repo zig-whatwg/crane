@@ -22,6 +22,8 @@ pub const Implementation = struct {
     /// `class_names`" for `root` (a non-empty set of classes).
     class_names: *const fn (collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) error{OutOfMemory}!void,
     form_controls: *const fn (*runtime.Instance, *runtime.Instance, bool) void,
+    select_options: *const fn (*runtime.Instance, *runtime.Instance, bool) void,
+    root: *const fn (*runtime.Instance) ?*runtime.Instance,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -54,6 +56,16 @@ pub fn formControls(collection: *runtime.Instance, root: *runtime.Instance, fiel
     (implementation orelse return error.NotSupported).form_controls(collection, root, fieldset);
 }
 
+/// HTML 4.10.7: the select's live options, optionally only selected options.
+pub fn selectOptions(collection: *runtime.Instance, select: *runtime.Instance, selected_only: bool) !void {
+    (implementation orelse return error.NotSupported).select_options(collection, select, selected_only);
+}
+
+/// The owner-checked live root, or null after its native lifetime ends.
+pub fn rootOf(collection: *runtime.Instance) ?*runtime.Instance {
+    return (implementation orelse return null).root(collection);
+}
+
 test "elementChildren without an installed implementation reports NotSupported" {
     const std = @import("std");
     const saved = implementation;
@@ -63,4 +75,6 @@ test "elementChildren without an installed implementation reports NotSupported" 
     var object: runtime.Instance = undefined;
     try std.testing.expectError(error.NotSupported, elementChildren(&object, &object));
     try std.testing.expectError(error.NotSupported, elementsWithClassNames(&object, &object, "a"));
+    try std.testing.expectError(error.NotSupported, selectOptions(&object, &object, false));
+    try std.testing.expectEqual(null, rootOf(&object));
 }

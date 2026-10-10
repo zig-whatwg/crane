@@ -3,8 +3,8 @@
 //! This file owns the SELECTION MODEL for `<select>`/`<option>`: the list of
 //! options, selectedness, dirtiness, and the lazily-evaluated form of the
 //! selectedness setting algorithm ("ask for a reset"). `HTMLSelectElement.zig`
-//! imports it; this file imports nothing from the select side, so the
-//! dependency stays one-way.
+//! reaches its selection steps through dom.form_controls; the option owns
+//! the state, while the shared forms helper owns option-list traversal.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -152,7 +152,7 @@ pub const InternalState = struct {
 pub fn installHooks() void {
     // The select element's reset algorithm is this file's, as the rest of
     // the selection model is: installed before any option exists.
-    @import("dom").form_controls.install(.{ .is = &isSelectElement, .reset = &resetSelect });
+    @import("dom").form_controls.install(.{ .is = &isSelectElement, .reset = &resetSelect, .selected_index = &selectedIndex, .set_selected_index = &setSelectedIndex });
     @import("dom").teardown_sweeps.install(&cleanupAllRemainingInternal);
 }
 
@@ -243,51 +243,7 @@ fn attrValue(instance: *runtime.Instance, comptime attr: []const u8) ?[]const u8
 /// `select-value.html` ("option is child of div") asserts outright. The walk
 /// skips the subtree of a nested `select`, an `hr`, a `datalist`, an `option`,
 /// and a NESTED `optgroup`.
-pub fn collectOptions(
-    select: *runtime.Instance,
-    allocator: std.mem.Allocator,
-    out: *std.ArrayListUnmanaged(*runtime.Instance),
-) !void {
-    try walkOptions(select, 0, allocator, out);
-}
-
-fn walkOptions(
-    node: *runtime.Instance,
-    optgroup_depth: u32,
-    allocator: std.mem.Allocator,
-    out: *std.ArrayListUnmanaged(*runtime.Instance),
-) !void {
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        // Read the sibling link before recursing: nothing here mutates the tree,
-        // but the walk is deep and the link is cheaper to hold than to re-find.
-        const next = NodeImpl.getNextSibling(c);
-        if (localName(c)) |name| {
-            if (std.ascii.eqlIgnoreCase(name, "option")) {
-                try out.append(allocator, c);
-                child = next;
-                continue;
-            }
-            if (std.ascii.eqlIgnoreCase(name, "select") or
-                std.ascii.eqlIgnoreCase(name, "hr") or
-                std.ascii.eqlIgnoreCase(name, "datalist"))
-            {
-                child = next;
-                continue;
-            }
-            if (std.ascii.eqlIgnoreCase(name, "optgroup")) {
-                // A nested optgroup contributes nothing.
-                if (optgroup_depth == 0) {
-                    try walkOptions(c, optgroup_depth + 1, allocator, out);
-                }
-                child = next;
-                continue;
-            }
-        }
-        try walkOptions(c, optgroup_depth, allocator, out);
-        child = next;
-    }
-}
+const collectOptions = @import("html").forms.options.collect;
 
 /// The select whose list of options contains `option`, or null.
 ///
@@ -341,9 +297,26 @@ fn resetSelect(select: *runtime.Instance) void {
     for (options.items) |option| _ = StateMap.remove(option);
 }
 
+// The select's non-IDL steps keep this owner’s lazy selectedness model.
+fn selectedIndex(select: *runtime.Instance) !?usize {
+    var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer options.deinit(select.ctx.allocator);
+    try collectOptions(select, select.ctx.allocator, &options);
+    return selectedIndexOf(select, options.items);
+}
+
+fn setSelectedIndex(select: *runtime.Instance, index: ?usize) !void {
+    var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer options.deinit(select.ctx.allocator);
+    try collectOptions(select, select.ctx.allocator, &options);
+    for (options.items, 0..) |option, i| {
+        try setSelectedness(option, if (index) |selected| (if (selected == i) .on else .off) else .off_no_reset);
+    }
+}
+
 /// The option's own selectedness, which never consults the owning select - that
 /// is what keeps `get_selected` from recursing through its siblings.
-pub fn explicitSelectedness(option: *runtime.Instance) Explicit {
+fn explicitSelectedness(option: *runtime.Instance) Explicit {
     if (StateMap.get(option)) |internal| {
         switch (internal.selectedness) {
             .on => return .on,
@@ -360,7 +333,7 @@ pub fn explicitSelectedness(option: *runtime.Instance) Explicit {
 
 /// Record an explicit selectedness. Used by `option.selected` and, through this
 /// module, by `select.value` / `select.selectedIndex`.
-pub fn setSelectedness(option: *runtime.Instance, state: Selectedness) !void {
+fn setSelectedness(option: *runtime.Instance, state: Selectedness) !void {
     const internal = try StateMap.getOrPut(option);
     internal.selectedness = state;
 }
@@ -409,7 +382,7 @@ pub fn displaySize(select: *runtime.Instance) u32 {
 ///
 /// Returns the index into `options` of the selected option, or null when nothing
 /// is selected.
-pub fn selectedIndexOf(select: *runtime.Instance, options: []const *runtime.Instance) ?usize {
+fn selectedIndexOf(select: *runtime.Instance, options: []const *runtime.Instance) ?usize {
     var first_on: ?usize = null;
     var last_on: ?usize = null;
     var any_no_reset = false;

@@ -135,6 +135,293 @@ pub fn releaseStorage(inst: *Instance) void {
     SlabAllocator.get().free(inst);
 }
 
+/// An agent's queue of native objects whose last owner went away - a node
+/// root whose wrapper the collector took, today; an object whose reference
+/// count reached zero, once the DOM counts references - to be torn down soon,
+/// but not where the owner went away. A collected tree of thousands of nodes
+/// torn down in V8's second pass landed in the middle of whatever script the
+/// next collection interrupted; Blink sweeps incrementally (Oilpan's lazy and
+/// concurrent sweeping) and WebKit frees by reference count as it goes. Here
+/// the teardown runs:
+///
+/// - a bounded slice at a time from the agent's event loop, between tasks
+///   (`runSlice`: at most `slice_budget` nodes, so a 10,000-node tree is freed
+///   over several slices);
+/// - fully at the end of the realm an item belongs to (`drainOwner`), and at
+///   the agent's and the Browser's ends (`drainAll`, then `close`);
+/// - inline past the memory bound (`relieve`): over `high_water` queued nodes,
+///   the safe point that queued an item frees as many nodes as it added, and a
+///   slice more, so churn inside one long script cannot grow the queue.
+///
+/// The queue never interprets an item: its `Steps` re-check whether the object
+/// may still be freed (a new owner may have taken it in between - the queue
+/// holds it, not a reference) and free it, a budget at a time. An item's
+/// instance keeps its slab generation until its steps free it.
+///
+/// One per agent, on the agent's thread (the host's AgentHost owns it; the
+/// engine adapter queues into it - engine.AgentOptions.deferred_teardown).
+/// Not thread-safe.
+pub const DeferredTeardown = struct {
+    allocator: std.mem.Allocator,
+    head: ?*Item = null,
+    tail: ?*Item = null,
+    /// Items queued (not counting the one a slice has in hand).
+    count: usize = 0,
+    /// The nodes the queued items stood for when queued, less those freed
+    /// since: what the memory bound reads.
+    pending: usize = 0,
+    /// A slice is running: the memory bound waits for it to return instead of
+    /// running one inside it (a collection during a teardown queues more).
+    slicing: bool = false,
+    /// The agent ended: `push` refuses, and its caller tears down inline.
+    closed: bool = false,
+    /// Totals for tests and diagnostics.
+    queued_total: usize = 0,
+    freed_total: usize = 0,
+
+    /// Nodes a slice frees at most.
+    pub const slice_budget: usize = 512;
+    /// Queued nodes past which the safe points that queue items free them.
+    pub const high_water: usize = 100_000;
+    /// Queued nodes an event loop's turn leaves at most: past it, the turn
+    /// frees down to it whatever waits - a bounded pause between tasks - so a
+    /// page whose every task makes more garbage than a turn's share never
+    /// grows the queue into `high_water`, where it would be freed inside
+    /// script again.
+    pub const loop_low_water: usize = high_water / 4;
+
+    /// What `push` takes.
+    pub const Request = struct {
+        /// The object; its slab slot stays issued until `steps` frees it.
+        instance: *Instance,
+        /// Its slab generation when it was queued.
+        generation: u64,
+        /// Whose end must drain it (`drainOwner`) - a realm's - or null.
+        owner: ?*const anyopaque,
+        steps: *const Steps,
+        /// The steps' own, BORROWED while queued.
+        data: ?*anyopaque = null,
+        /// The nodes it stands for (an estimate is fine), for the memory bound.
+        weight: usize = 1,
+    };
+
+    /// An item's place in its own teardown, kept by its steps between slices:
+    /// the object the next slice resumes from, and its slab generation.
+    pub const Position = struct {
+        instance: ?*Instance = null,
+        generation: u64 = 0,
+    };
+
+    pub const Item = struct {
+        prev: ?*Item = null,
+        next: ?*Item = null,
+        instance: *Instance,
+        generation: u64,
+        owner: ?*const anyopaque,
+        steps: *const Steps,
+        data: ?*anyopaque,
+        weight: usize,
+        /// The part of `weight` already taken off `pending`.
+        accounted: usize = 0,
+        position: Position = .{},
+    };
+
+    /// How a slice of one item went.
+    pub const Progress = struct {
+        /// Nodes freed (or found already gone).
+        freed: usize,
+        /// The item is finished: freed, or no longer the queue's to free.
+        done: bool,
+    };
+
+    pub const Steps = struct {
+        /// Free at most `budget` nodes of `item` (at least one unless done);
+        /// re-check first that it is still the queue's to free.
+        run: *const fn (item: *Item, budget: usize) Progress,
+    };
+
+    pub fn init(allocator: std.mem.Allocator) DeferredTeardown {
+        return .{ .allocator = allocator };
+    }
+
+    /// The queue is empty by now: its agent's end drained it.
+    pub fn deinit(self: *DeferredTeardown) void {
+        std.debug.assert(self.isEmpty());
+        // Whatever a release build still holds goes without its teardown:
+        // its instances go with the runtime's pools.
+        while (self.popFront()) |item| self.allocator.destroy(item);
+    }
+
+    pub fn isEmpty(self: *const DeferredTeardown) bool {
+        return self.head == null;
+    }
+
+    pub fn len(self: *const DeferredTeardown) usize {
+        return self.count;
+    }
+
+    pub fn pendingNodes(self: *const DeferredTeardown) usize {
+        return self.pending;
+    }
+
+    /// Queue `request`: false when the queue is closed or out of memory - the
+    /// caller then tears the object down itself, as before there was a queue.
+    pub fn push(self: *DeferredTeardown, request: Request) bool {
+        if (self.closed) return false;
+        const item = self.allocator.create(Item) catch return false;
+        item.* = .{
+            .instance = request.instance,
+            .generation = request.generation,
+            .owner = request.owner,
+            .steps = request.steps,
+            .data = request.data,
+            .weight = request.weight,
+        };
+        self.pushBack(item);
+        self.pending += request.weight;
+        self.queued_total += 1;
+        return true;
+    }
+
+    /// One slice: items in the order they were queued, until `budget` nodes
+    /// are freed or the queue is empty. An item left unfinished stays first.
+    /// Returns the nodes freed.
+    pub fn runSlice(self: *DeferredTeardown, budget: usize) usize {
+        const was_slicing = self.slicing;
+        self.slicing = true;
+        defer self.slicing = was_slicing;
+        var freed: usize = 0;
+        while (freed < budget) {
+            const item = self.popFront() orelse break;
+            const progress = item.steps.run(item, budget - freed);
+            self.account(item, progress.freed);
+            // An item that freed nothing and is not done would hold the
+            // queue: count it as one, so the slice still ends.
+            freed += @max(progress.freed, 1);
+            if (progress.done) self.finish(item) else self.pushFront(item);
+        }
+        return freed;
+    }
+
+    /// `owner`'s end - its realm's: every item of it, in full, now. Items a
+    /// teardown queues meanwhile for the same owner go too.
+    pub fn drainOwner(self: *DeferredTeardown, owner: *const anyopaque) void {
+        self.drainMatching(owner, false);
+    }
+
+    /// The agent's end, a full collection, the host short of memory: every
+    /// item, in full, now.
+    pub fn drainAll(self: *DeferredTeardown) void {
+        self.drainMatching(null, true);
+    }
+
+    /// `owner` ends without teardowns (its objects go with the pools): forget
+    /// its items.
+    pub fn dropOwner(self: *DeferredTeardown, owner: *const anyopaque) void {
+        var at = self.head;
+        while (at) |item| {
+            at = item.next;
+            if (item.owner != @as(?*const anyopaque, owner)) continue;
+            self.unlink(item);
+            self.finish(item);
+        }
+    }
+
+    /// The agent is ending: nothing is queued from here on.
+    pub fn close(self: *DeferredTeardown) void {
+        self.closed = true;
+    }
+
+    /// The memory bound, at a safe point that just queued `added` nodes: under
+    /// `high_water`, nothing; over it, free `added` nodes and a slice more -
+    /// inline, as before there was a queue - so the queue shrinks instead of
+    /// growing. A no-op inside a slice, which returns soon.
+    pub fn relieve(self: *DeferredTeardown, added: usize) void {
+        if (self.slicing or self.pending <= high_water) return;
+        _ = self.runSlice(added +| slice_budget);
+    }
+
+    fn drainMatching(self: *DeferredTeardown, owner: ?*const anyopaque, all: bool) void {
+        const was_slicing = self.slicing;
+        self.slicing = true;
+        defer self.slicing = was_slicing;
+        while (true) {
+            // Take the matching items out first: a teardown may end another
+            // realm, whose drain must not meet the items in hand.
+            var taken: ?*Item = null;
+            var at = self.head;
+            while (at) |item| {
+                at = item.next;
+                if (!all and item.owner != owner) continue;
+                self.unlink(item);
+                item.next = taken;
+                taken = item;
+            }
+            if (taken == null) return;
+            // `taken` is in reverse; run in queue order.
+            var ordered: ?*Item = null;
+            while (taken) |item| {
+                taken = item.next;
+                item.next = ordered;
+                ordered = item;
+            }
+            while (ordered) |item| {
+                ordered = item.next;
+                item.next = null;
+                while (true) {
+                    const progress = item.steps.run(item, std.math.maxInt(usize));
+                    self.account(item, progress.freed);
+                    if (progress.done) break;
+                }
+                self.finish(item);
+            }
+        }
+    }
+
+    fn account(self: *DeferredTeardown, item: *Item, freed: usize) void {
+        self.freed_total += freed;
+        const take = @min(freed, item.weight - item.accounted);
+        item.accounted += take;
+        self.pending -|= take;
+    }
+
+    /// The item is done: what is left of its weight comes off `pending`.
+    fn finish(self: *DeferredTeardown, item: *Item) void {
+        self.pending -|= item.weight - item.accounted;
+        self.allocator.destroy(item);
+    }
+
+    fn pushBack(self: *DeferredTeardown, item: *Item) void {
+        item.prev = self.tail;
+        item.next = null;
+        if (self.tail) |tail| tail.next = item else self.head = item;
+        self.tail = item;
+        self.count += 1;
+    }
+
+    fn pushFront(self: *DeferredTeardown, item: *Item) void {
+        item.prev = null;
+        item.next = self.head;
+        if (self.head) |head| head.prev = item else self.tail = item;
+        self.head = item;
+        self.count += 1;
+    }
+
+    fn popFront(self: *DeferredTeardown) ?*Item {
+        const item = self.head orelse return null;
+        self.unlink(item);
+        return item;
+    }
+
+    fn unlink(self: *DeferredTeardown, item: *Item) void {
+        if (item.prev) |prev| prev.next = item.next else self.head = item.next;
+        if (item.next) |next| next.prev = item.prev else self.tail = item.prev;
+        item.prev = null;
+        item.next = null;
+        self.count -= 1;
+    }
+};
+
 /// GC sweep callback - called after JS engine completes a GC sweep
 ///
 /// This is called by the JavaScript engine after it has completed a full

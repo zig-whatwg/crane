@@ -303,6 +303,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                         // Continue to cleanup below
                         node_base.child_nodes.deinit();
                         dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
+                        dom_module.node_holds.nodeReleased(node_base);
                         // Free dynamically allocated node_name if it was allocated
                         if (node_base.node_name_allocated and node_base.node_name.len > 0) {
                             internal.allocator.free(@constCast(node_base.node_name));
@@ -336,6 +337,7 @@ pub fn deinit(instance: *runtime.Instance) void {
             // Clean up NodeBase resources
             node_base.child_nodes.deinit();
             dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
+            dom_module.node_holds.nodeReleased(node_base);
 
             freeNodeName(internal, node_base);
 
@@ -2144,6 +2146,7 @@ pub fn cleanupAllRemainingInternal() void {
             // Clean up NodeBase resources
             node_base.child_nodes.deinit();
             dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
+            dom_module.node_holds.nodeReleased(node_base);
             freeNodeName(internal, node_base);
 
             // Unregister from instance_bridge

@@ -1369,6 +1369,17 @@ fn markMaterializedInterfaceObject(constructor: *v8.Function) void {
     v8.v8_Object_SetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len, @ptrCast(constructor));
 }
 
+/// Whether `Interface` declares `name` as `fn (*runtime.Instance, u32)`: an
+/// indexed property getter's shape (WebIDL 2.5.6.1).
+fn takesIndex(comptime Interface: type, comptime name: []const u8) bool {
+    if (!@hasDecl(Interface, name)) return false;
+    const info = @typeInfo(@TypeOf(@field(Interface, name)));
+    if (info != .@"fn") return false;
+    const params = info.@"fn".params;
+    if (params.len != 2) return false;
+    return (params[1].type orelse return false) == u32;
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -1386,6 +1397,25 @@ pub fn V8Interface(comptime Interface: type) type {
 
     const Meta = Interface.Meta;
     const interface_name = Meta.name;
+
+    // WebIDL 2.5.6.1: the indexed property getter - a named one, `getter T?
+    // item(unsigned long index)` (codegen's `call_item`), or an anonymous
+    // one, `getter T (unsigned long index)` (`call_getter`). Codegen gates an
+    // anonymous one: its delegate answers NotImplemented until the impl
+    // declares it, and Meta.indexed_getter_implemented says whether it has
+    // (DataTransferItemList, TextTrackList yes; AudioTrackList and most
+    // others not yet). Indexed access is installed only through a getter the
+    // impl implements - the default, with no constant, is not to install it.
+    const indexed_getter_name: ?[]const u8 = comptime blk: {
+        if (takesIndex(Interface, "call_item")) break :blk "call_item";
+        if (@hasDecl(Meta, "indexed_getter_implemented") and Meta.indexed_getter_implemented and takesIndex(Interface, "call_getter")) break :blk "call_getter";
+        break :blk null;
+    };
+    const has_indexed_getter = indexed_getter_name != null;
+    // An anonymous getter is the impl's for a supported property index only
+    // (an impl answers IndexSizeError past the end, where an `item` answers
+    // null): its supported indices are those below `length`.
+    const indexed_getter_checks_length = comptime has_indexed_getter and std.mem.eql(u8, indexed_getter_name.?, "call_getter") and @hasDecl(Interface, "get_length");
 
     // WebIDL 2.5.9: one type parameter is a value iterator, two a pair
     // iterator. Codegen's Meta.iterable carries a null key type for the first.
@@ -1628,15 +1658,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Register indexed property callbacks if interface has call_item with u32 parameter
             // This matches the condition in createTemplate() for indexed property handler registration
             ext_refs.setRegistrationContext(interface_name, .interface_indexed_property);
-            const has_indexed_item = comptime blk: {
-                if (!@hasDecl(Interface, "call_item")) break :blk false;
-                const CallItemFn = @TypeOf(Interface.call_item);
-                const fn_info = @typeInfo(CallItemFn).@"fn";
-                if (fn_info.params.len != 2) break :blk false;
-                const second_param = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param == u32;
-            };
-            if (has_indexed_item) {
+            if (has_indexed_getter) {
                 ext_refs.registerPointer(@intFromPtr(&indexedPropertyGetter));
                 ext_refs.registerPointer(@intFromPtr(&indexedPropertySetter));
                 ext_refs.registerPointer(@intFromPtr(&indexedPropertySetterReadOnly));
@@ -2595,15 +2617,9 @@ pub fn V8Interface(comptime Interface: type) type {
             // - both: supports both features
             //
             // Only register if call_item takes u32 index (not Opt(DOMString) like HTMLAllCollection)
-            const has_indexed_item = comptime blk: {
-                if (!@hasDecl(Interface, "call_item")) break :blk false;
-                const CallItemFn = @TypeOf(Interface.call_item);
-                const fn_info = @typeInfo(CallItemFn).@"fn";
-                // Expect: fn(instance: *runtime.Instance, index: u32) !ReturnType
-                if (fn_info.params.len != 2) break :blk false;
-                const second_param = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param == u32;
-            };
+            // call_item or an implemented anonymous call_getter, taking a u32
+            // index (`indexed_getter_name`).
+            const has_indexed_item = has_indexed_getter;
             // Check if interface has get_length for enumerator support
             const has_length = comptime @hasDecl(Interface, "get_length");
             // Check if interface has indexed setter (set_item or call_setter)
@@ -2634,9 +2650,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // NamedNodeMap, HTMLFormControlsCollection, NodeList - takes
             // %Array.prototype.values% as its %Symbol.iterator%, so
             // `[...el.children]` and `for (const x of form.elements)` work.
-            // A value iterator is declared only where there is an indexed
-            // getter (2.5.9) - an anonymous one, `getter T (unsigned long)`,
-            // is not call_item - and step 1.2 gives it %Array.prototype.entries%,
+            // An anonymous indexed getter, `getter T (unsigned long)`, counts
+            // once its impl implements it (`has_indexed_getter`). A value
+            // iterator is declared only where there is an indexed getter
+            // (2.5.9), and step 1.2 gives it %Array.prototype.entries%,
             // keys, values and forEach as well: the realm's own function
             // objects (`NodeList.prototype.forEach === Array.prototype.forEach`),
             // which an intrinsic data property of the template resolves in
@@ -5535,11 +5552,12 @@ pub fn V8Interface(comptime Interface: type) type {
             index: u32,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
-            // Only compile this function body if Interface has call_item
-            if (comptime !@hasDecl(Interface, "call_item")) {
-                // No item() method - just return to let V8 handle lookup
+            // Only compile this function body if Interface has an indexed getter
+            if (comptime !has_indexed_getter) {
+                // No indexed getter - just return to let V8 handle lookup
                 return .kNo;
             }
+            const indexed_getter = @field(Interface, indexed_getter_name.?);
 
             const isolate = info.getIsolate();
             // The current context, taken where a path uses it - wrapping or
@@ -5586,10 +5604,16 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
-            // Call the item() method
-            std.log.debug("[indexedPropertyGetter] Calling {s}.call_item(instance={*}, index={})", .{ interface_name, instance, index });
+            // An anonymous getter: only a supported property index reaches it.
+            if (comptime indexed_getter_checks_length) {
+                const length = Interface.get_length(instance) catch return .kNo;
+                if (index >= length) return .kNo;
+            }
+
+            // Call the indexed getter
+            std.log.debug("[indexedPropertyGetter] Calling {s}.{s}(instance={*}, index={})", .{ interface_name, indexed_getter_name.?, instance, index });
             const result_allocator = instance.ctx.allocator;
-            const result = Interface.call_item(instance, index) catch |err| {
+            const result = indexed_getter(instance, index) catch |err| {
                 if (err == conv.ConversionError.ExceptionPending) {
                     return .kNo;
                 }
@@ -5607,7 +5631,7 @@ pub fn V8Interface(comptime Interface: type) type {
             defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value based on return type
-            const ReturnType = @typeInfo(@TypeOf(Interface.call_item)).@"fn".return_type.?;
+            const ReturnType = @typeInfo(@TypeOf(indexed_getter)).@"fn".return_type.?;
             const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
 
             // Handle different return types
@@ -5733,8 +5757,8 @@ pub fn V8Interface(comptime Interface: type) type {
             index: u32,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
-            // Only compile if Interface has call_item and get_length
-            if (comptime !@hasDecl(Interface, "call_item") or !@hasDecl(Interface, "get_length")) {
+            // Only compile if Interface has an indexed getter and get_length
+            if (comptime !has_indexed_getter or !@hasDecl(Interface, "get_length")) {
                 return .kNo;
             }
 
@@ -5789,10 +5813,11 @@ pub fn V8Interface(comptime Interface: type) type {
             index: u32,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
-            // Only compile if Interface has call_item and get_length
-            if (comptime !@hasDecl(Interface, "call_item") or !@hasDecl(Interface, "get_length")) {
+            // Only compile if Interface has an indexed getter and get_length
+            if (comptime !has_indexed_getter or !@hasDecl(Interface, "get_length")) {
                 return .kNo;
             }
+            const indexed_getter = @field(Interface, indexed_getter_name.?);
 
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
@@ -5831,12 +5856,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the value at this index
             const result_allocator = instance.ctx.allocator;
-            const result = Interface.call_item(instance, index) catch return .kNo;
+            const result = indexed_getter(instance, index) catch return .kNo;
             // A string item() made for the result is the binding's.
             defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value
-            const ReturnType = @typeInfo(@TypeOf(Interface.call_item)).@"fn".return_type.?;
+            const ReturnType = @typeInfo(@TypeOf(indexed_getter)).@"fn".return_type.?;
             const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
             const type_info = @typeInfo(ActualReturnType);
 
@@ -5910,8 +5935,8 @@ pub fn V8Interface(comptime Interface: type) type {
         ) callconv(.c) v8.Intercepted {
             _ = value;
 
-            // Only compile if Interface has call_item (i.e., has indexed getter)
-            if (comptime !@hasDecl(Interface, "call_item") or !@hasDecl(Interface, "get_length")) {
+            // Only compile if Interface has an indexed getter
+            if (comptime !has_indexed_getter or !@hasDecl(Interface, "get_length")) {
                 return .kNo;
             }
 
@@ -6475,14 +6500,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
 
                 // 1. Add indexed properties (ascending) if interface supports them
-                const has_indexed_item = comptime blk: {
-                    if (!@hasDecl(Interface, "call_item")) break :blk false;
-                    const CallItemFn = @TypeOf(Interface.call_item);
-                    const fn_info = @typeInfo(CallItemFn).@"fn";
-                    if (fn_info.params.len != 2) break :blk false;
-                    const second_param = fn_info.params[1].type orelse break :blk false;
-                    break :blk second_param == u32;
-                };
+                const has_indexed_item = has_indexed_getter;
 
                 if (has_indexed_item and comptime @hasDecl(Interface, "get_length")) {
                     const length = Interface.get_length(instance) catch 0;

@@ -3106,17 +3106,70 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
 /// - "beforeend": Just inside the element, after its last child
 /// - "afterend": After the element itself
 ///
-/// Note: Requires HTML fragment parsing algorithm (not implemented)
 pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DOMString, string: typedefs.TrustedHTMLOrDOMString) anyerror!void {
-    _ = position;
     // Step 1: "Let compliantString be the result of invoking the get trusted
     // type compliant string algorithm with TrustedHTML, this's relevant
     // global object, string, "Element insertAdjacentHTML", and "script"."
     const allocator = instance.ctx.allocator;
     const compliant = try dom.trusted_types.compliantStringFor(allocator, .html, instance, string, "Element insertAdjacentHTML");
     defer allocator.free(compliant);
-    // TODO: steps 2-6 require the fragment parsing algorithm.
-    return error.NotImplemented;
+    // HTML 8.5.6 steps 2–3: choose a context or throw before parsing.
+    const Position = enum { beforebegin, afterbegin, beforeend, afterend };
+    const where: Position = blk: {
+        inline for (std.meta.fields(Position)) |field| {
+            if (std.ascii.eqlIgnoreCase(position.asSlice(), field.name)) break :blk @enumFromInt(field.value);
+        }
+        return error.SyntaxError;
+    };
+    var context = switch (where) {
+        .beforebegin, .afterend => (try interfaces.Node.get_parentNode(instance)) orelse return error.NoModificationAllowedError,
+        .afterbegin, .beforeend => instance,
+    };
+    const context_type = try interfaces.Node.get_nodeType(context);
+    if (context_type == interfaces.Node.get_DOCUMENT_NODE()) return error.NoModificationAllowedError;
+
+    // Step 4: a fragment/shadow parent, or an HTML document's html element,
+    // uses a fresh HTML body only as the parsing context, never as the target.
+    var temporary_body: ?*runtime.Instance = null;
+    defer if (temporary_body) |body| dom.node_creation.destroyUninserted(body);
+    const use_body = if (context_type != interfaces.Node.get_ELEMENT_NODE()) true else blk: {
+        const state = getInternal(context) orelse return error.InvalidStateError;
+        if (!std.mem.eql(u8, state.local_name.asSlice(), "html")) break :blk false;
+        const namespace = state.namespace_uri orelse break :blk false;
+        if (!std.mem.eql(u8, namespace.asSlice(), infra.namespaces.HTML_NAMESPACE)) break :blk false;
+        const document = (try interfaces.Node.get_ownerDocument(context)) orelse return error.InvalidStateError;
+        break :blk dom.document_internals.getDocumentType(document) == .html;
+    };
+    if (use_body) {
+        const document = (try interfaces.Node.get_ownerDocument(instance)) orelse return error.InvalidStateError;
+        context = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(infra.namespaces.HTML_NAMESPACE), runtime.DOMString.initInterned("body"), .notPassed());
+        temporary_body = context;
+    }
+
+    // Step 5: the existing fragment parser owns parsing and upgrades.
+    const fragment = try @import("html").dom_parser.parseFragment(allocator, instance.ctx, compliant, context);
+    defer dom.node_creation.destroyUninserted(fragment);
+    const fragment_base = dom.instance_bridge.getNodeBase(@ptrCast(fragment)) orelse return error.InvalidStateError;
+
+    // Step 6: insert the whole fragment within the calling IDL member's
+    // reaction scope. Unlike innerHTML, template gets ordinary child nodes.
+    const parent = switch (where) {
+        .beforebegin, .afterend => (try interfaces.Node.get_parentNode(instance)) orelse return error.NotFoundError,
+        .afterbegin, .beforeend => instance,
+    };
+    const parent_base = dom.instance_bridge.getNodeBase(@ptrCast(parent)) orelse return error.InvalidStateError;
+    const reference = switch (where) {
+        .beforebegin => instance,
+        .afterbegin => try interfaces.Node.get_firstChild(instance),
+        .afterend => try interfaces.Node.get_nextSibling(instance),
+        .beforeend => null,
+    };
+    const reference_base: ?*dom.NodeBase = if (reference) |node| dom.instance_bridge.getNodeBase(@ptrCast(node)) orelse return error.InvalidStateError else null;
+    if (where == .beforeend) {
+        _ = try dom.mutation.append(fragment_base, parent_base);
+    } else {
+        try dom.mutation.insert(fragment_base, parent_base, reference_base, false);
+    }
 }
 
 /// Operation: checkVisibility

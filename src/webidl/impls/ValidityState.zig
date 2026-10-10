@@ -17,24 +17,26 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// HTML 4.10.21.3: a live view of its owner's constraints. As in Blink's
+/// ValidityState::Trace, the edge keeps the control alive when only this
+/// object remains reachable. Its generation is a teardown safety net.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    internals: ?*runtime.Instance = null,
+    owner: ?union(enum) {
+        internals: *runtime.Instance,
+        control: *runtime.Instance,
+    } = null,
     generation: u64 = 0,
     traced: bool = false,
 };
 
 pub fn installHooks() void {
-    ce.installValidity(.{ .set_internals = &setInternals });
+    ce.installValidity(.{ .set_internals = &setInternals, .set_control = &setControl });
 }
 
 fn setInternals(instance: *runtime.Instance, internals: *runtime.Instance) !void {
     const state = instance.getState(State).own._internal orelse return error.InvalidStateError;
-    state.internals = internals;
+    state.owner = .{ .internals = internals };
     state.generation = runtime.SlabAllocator.generationOf(internals);
     if (instance.ctx.hasEngine()) {
         engine.traceChild(instance, internals, .{ .name = "elementInternals" });
@@ -42,11 +44,27 @@ fn setInternals(instance: *runtime.Instance, internals: *runtime.Instance) !void
     }
 }
 
+fn setControl(instance: *runtime.Instance, control: *runtime.Instance) !void {
+    const state = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    state.owner = .{ .control = control };
+    state.generation = runtime.SlabAllocator.generationOf(control);
+    if (instance.ctx.hasEngine()) {
+        engine.traceChild(instance, control, .{ .name = "control" });
+        state.traced = true;
+    }
+}
+
 fn flagsOf(instance: *runtime.Instance) !ce.ValidityFlags {
     const state = instance.getState(State).own._internal orelse return error.InvalidStateError;
-    const internals = state.internals orelse return error.NotImplemented;
-    if (runtime.SlabAllocator.generationOf(internals) != state.generation or runtime.instance_lifecycle.isCleanedUp(internals)) return error.InvalidStateError;
-    return ce.validityFlags(internals);
+    const owner = state.owner orelse return error.InvalidStateError;
+    const element = switch (owner) {
+        inline else => |value| value,
+    };
+    if (runtime.SlabAllocator.generationOf(element) != state.generation or runtime.instance_lifecycle.isCleanedUp(element)) return error.InvalidStateError;
+    return switch (owner) {
+        .internals => ce.validityFlags(element),
+        .control => @import("dom").form_controls.validityFlags(element),
+    };
 }
 
 /// Initialize instance (creates the instance)
@@ -68,7 +86,12 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
-    if (internal.traced) engine.forgetTracedChild(instance, .{ .name = "elementInternals" });
+    if (internal.traced) if (internal.owner) |owner| {
+        engine.forgetTracedChild(instance, .{ .name = switch (owner) {
+            .internals => "elementInternals",
+            .control => "control",
+        } });
+    };
     internal.allocator.destroy(internal);
     state.own._internal = null;
 }

@@ -180,6 +180,9 @@ pub fn runEngineTasks(agent: *Agent) bool {
 /// LowMemoryNotification: a full, synchronous collection.
 pub fn requestGarbageCollection(agent: *Agent) void {
     ffi.v8_Isolate_RequestGarbageCollection(isolateOf(agent));
+    // "As completely as the engine can": the trees the collection queued for
+    // deferred teardown are freed before it returns.
+    protocol_agents.drainDeferredTeardown(agent);
 }
 
 pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
@@ -388,6 +391,7 @@ pub fn withPendingExceptionSetAside(agent: *Agent, steps: *const fn (data: ?*any
 pub const parseJsonToValue = protocol_values.parseJsonToValue;
 pub const parseJsonInNewGlobal = protocol_values.parseJsonInNewGlobal;
 pub const serializeJsonToBytes = protocol_values.serializeJsonToBytes;
+pub const matchesPatternAttribute = protocol_values.matchesPatternAttribute;
 
 // ============================================================================
 // 4.6 WebIDL: ECMAScript to IDL

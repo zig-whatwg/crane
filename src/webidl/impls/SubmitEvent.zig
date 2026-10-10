@@ -19,6 +19,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -35,12 +36,12 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// The submitter, as a generation-checked link rather than a pin, as
-/// ToggleEvent keeps its source: a strong hold from the event to a button
-/// whose listener keeps the event would be a cycle of strong handles.
+/// The event traces its submitter; a cycle through the event is collected
+/// with it. The generation and saved realm are only the teardown net.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     submitter: ?same_object.Link = null,
+    submitter_realm: ?runtime.Context = null,
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -67,6 +68,9 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // A native event can die before its wrapper exists: end the edge
+        // waiting for that wrapper, just as CustomEvent does for detail.
+        engine.forgetTracedChild(instance, .{ .name = "submitter" });
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -82,14 +86,20 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.submitter = if (dict.submitter) |element| same_object.Link.to(element) else null;
+    if (dict.submitter) |element| {
+        internal.submitter_realm = element.ctx;
+        engine.traceChild(instance, element, .{ .name = "submitter" });
+    }
     return instance;
 }
 
 /// Getter for submitter: "the submitter attribute must return the value it
-/// was initialized to" - while that element lives.
+/// was initialized to". Its traced edge keeps the element alive.
 pub fn get_submitter(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     const link = internal.submitter orelse return null;
+    const realm = internal.submitter_realm orelse return null;
+    if (!realm.hasEngine()) return null;
     if (!link.isLive()) return null;
     return link.instance;
 }

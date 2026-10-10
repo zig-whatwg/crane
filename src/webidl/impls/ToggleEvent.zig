@@ -30,8 +30,9 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const EventImpl = @import("Event.zig");
-const same_object = @import("same_object.zig");
+const KeptInstance = @import("dom").custom_elements.KeptInstance;
 const ToggleEvent = interfaces.ToggleEvent;
 
 pub const State = ToggleEvent.State;
@@ -48,22 +49,25 @@ pub const InternalState = struct {
     /// Owned copies.
     old_state: []u8 = &.{},
     new_state: []u8 = &.{},
-    /// The source element, as a generation-checked link rather than a pin.
-    /// Blink traces `source_` from the event (ToggleEvent::Trace); Crane has
-    /// no tracing, and a strong pin would make an element whose listener
-    /// keeps its event (`el.last = e`) a cycle of strong handles that holds
-    /// the page. The link reads null only once the element itself is
-    /// collected - nothing, no tree and no script, refers to it any more.
-    source: ?same_object.Link = null,
+    /// The source element. The event keeps it alive: an edge from the
+    /// event's wrapper (engine.traceChild, `source_slot`), drawn in the
+    /// constructor and ended in deinit, so an element whose listener keeps
+    /// its event (`el.last = e`) is collected with it once script holds
+    /// neither. Blink: ToggleEvent::Trace visits source_ (Member<Element>).
+    /// The pointer, its slab generation and its realm (KeptInstance) are
+    /// only the teardown net: it reads null once a realm's teardown freed
+    /// the element, never a freed or reissued object.
+    source: ?KeptInstance = null,
 
     fn clear(self: *InternalState) void {
         self.allocator.free(self.old_state);
         self.allocator.free(self.new_state);
         self.old_state = &.{};
         self.new_state = &.{};
-        self.source = null;
     }
 };
+
+const source_slot: engine.TracedSlot = .{ .name = "source" };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     const state = instance.stateAs(State) orelse return null;
@@ -89,6 +93,9 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // An event freed without ever being wrapped lets the hold waiting
+        // for its wrapper go; a collected one's edge went with the wrapper.
+        if (internal.source != null) engine.forgetTracedChild(instance, source_slot);
         internal.clear();
         internal.allocator.destroy(internal);
         state.own._internal = null;
@@ -112,7 +119,10 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     internal.clear();
     internal.old_state = old_state;
     internal.new_state = new_state;
-    internal.source = if (dict.source) |element| same_object.Link.to(element) else null;
+    if (dict.source) |element| {
+        internal.source = KeptInstance.of(element);
+        engine.traceChild(instance, element, source_slot);
+    }
     return instance;
 }
 
@@ -133,10 +143,10 @@ pub fn get_newState(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// this's currentTarget."
 pub fn get_source(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    const link = internal.source orelse return null;
-    if (!link.isLive()) return null;
+    const kept = internal.source orelse return null;
+    const source = kept.get() orelse return null;
     const current_target = try interfaces.Event.get_currentTarget(instance);
-    return retarget(link.instance, current_target);
+    return retarget(source, current_target);
 }
 
 // ============================================================================

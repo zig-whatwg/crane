@@ -297,6 +297,10 @@ pub fn createDate(_: Context, _: f64) Error!Owned {
 pub fn serializeJsonToBytes(_: Context, _: JSValue, _: Allocator) Error![]u8 {
     return error.NotSupported;
 }
+/// No engine: no regular expressions.
+pub fn matchesPatternAttribute(_: Context, _: []const u8, _: []const u8) error{ InvalidPattern, NotSupported, OutOfMemory }!bool {
+    return error.NotSupported;
+}
 
 // 4.6 WebIDL: ECMAScript to IDL
 pub fn convertToDOMString(_: Context, _: JSValue, _: Allocator) Error![]u8 {

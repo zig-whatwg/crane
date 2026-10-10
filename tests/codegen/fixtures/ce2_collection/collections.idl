@@ -10,3 +10,7 @@ interface OverrideCollection : BaseCollection {
   readonly attribute unsigned long length;
   getter Item? item(unsigned long index);
 };
+interface SetterCollection : BaseCollection {
+  attribute unsigned long length;
+  setter undefined (unsigned long index, Item? item);
+};

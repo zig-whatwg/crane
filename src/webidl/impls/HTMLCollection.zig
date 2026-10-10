@@ -43,6 +43,8 @@ pub const InternalState = struct {
     root_generation: u64 = 0,
     form_root_traced: bool = false,
     fieldset_controls: bool = false,
+    options_root_traced: bool = false,
+    selected_options_only: bool = false,
 
     /// How a LIVE collection rebuilds its elements from `root`: set by the
     /// producer (`makeLive`) and run before every read. Null for a static
@@ -104,6 +106,51 @@ fn makeFormControls(collection: *runtime.Instance, root: *runtime.Instance, fiel
         internal.form_root_traced = true;
     }
     makeLive(collection, root, &refillFormControls);
+}
+
+fn makeSelectOptions(collection: *runtime.Instance, select: *runtime.Instance, selected_only: bool) void {
+    const internal = getInternal(collection) orelse return;
+    internal.selected_options_only = selected_only;
+    if (collection.ctx.hasEngine()) {
+        @import("engine").traceChild(collection, select, .{ .name = "optionsRoot" });
+        internal.options_root_traced = true;
+    }
+    makeLive(collection, select, &refillSelectOptions);
+}
+
+fn liveRoot(collection: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(collection) orelse return null;
+    return @import("html").forms.liveChild(internal.root, internal.root_generation);
+}
+
+fn refillSelectOptions(collection: *runtime.Instance, select: *runtime.Instance) void {
+    const internal = getInternal(collection) orelse return;
+    if (liveRoot(collection) == null) return;
+    const multiple = interfaces.HTMLSelectElement.get_multiple(select) catch return;
+    // Resolve single-select selectedness once, not once per option: O(options).
+    const selected_index = if (internal.selected_options_only and !multiple)
+        interfaces.HTMLSelectElement.get_selectedIndex(select) catch return
+    else
+        -1;
+    const Visitor = struct {
+        collection: *runtime.Instance,
+        selected_only: bool,
+        multiple: bool,
+        selected_index: i32,
+        index: usize = 0,
+        fn append(self: *@This(), option: *runtime.Instance) anyerror!void {
+            const index = self.index;
+            self.index += 1;
+            if (self.selected_only) {
+                if (self.multiple) {
+                    if (!(try interfaces.HTMLOptionElement.get_selected(option))) return;
+                } else if (self.selected_index < 0 or index != @as(usize, @intCast(self.selected_index))) return;
+            }
+            try addElement(self.collection, option);
+        }
+    };
+    var visitor = Visitor{ .collection = collection, .selected_only = internal.selected_options_only, .multiple = multiple, .selected_index = selected_index };
+    @import("html").forms.options.forEach(select, &visitor, Visitor.append) catch return;
 }
 
 fn refillFormControls(collection: *runtime.Instance, owner: *runtime.Instance) void {
@@ -241,7 +288,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls make a collection live through dom.live_collections.
-    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .form_controls = &makeFormControls });
+    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .root = &liveRoot });
 }
 
 /// Initialize instance (creates the instance)
@@ -272,6 +319,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.form_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "formControlsRoot" });
+        if (internal.options_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "optionsRoot" });
         internal.deinit();
 
         // Return the block itself, not just what it points to.

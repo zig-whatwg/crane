@@ -54,6 +54,10 @@ pub const FontFacePalettes = struct {
 
         pub const has_constructor = false;
 
+        /// The anonymous indexed getter (`getter T (unsigned long index)`,
+        /// `call_getter`) is implemented: the binding installs indexed access.
+        pub const indexed_getter_implemented = @hasDecl(FontFacePalettesImpl, "call_getter");
+
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "FontFacePalette",
@@ -112,6 +116,10 @@ pub const FontFacePalettes = struct {
     }
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        return try FontFacePalettesImpl.call_getter(instance, index);
+        if (comptime @hasDecl(FontFacePalettesImpl, "call_getter")) {
+            return try FontFacePalettesImpl.call_getter(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
     }
 };

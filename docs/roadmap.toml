@@ -51,6 +51,7 @@ progress = [
   "3d9f97caa0 - the live parser holds only the nodes its structures name and rescues a detached held tree's root with one wrapper, ending per-node wrapping: live parse 1,053 -> 517 ms; the in-body start-tag rules for li, dd/dt, button, option, ruby and the void elements land (pholds)",
   "f62e45fe68 - elements trace only scoped registries; form-owner resets reach only the mutated subtree; registry, FormData File and [SameObject] readers are generation-checked; a destroyed script element leaves the script queues (lifefix2)",
   "560eea1871 - StaticRange keeps its containers, a queued SVG script keeps its element until load (edges)",
+  "184e365062, e3b7d0f9e1 - MutationRecord and static NodeList hold their nodes natively through a chain on the node and rescue a detached tree's root with one wrapper; a queued record makes no NodeList; the parser's holds share the facility (nodeholds)",
 ]
 
   [[infra.items]]

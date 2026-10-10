@@ -325,22 +325,31 @@ pub fn queueMutationRecord(
 ///
 /// Spec: https://dom.spec.whatwg.org/#queue-a-tree-mutation-record
 ///
-/// Note: This function uses *runtime.Instance for all node parameters to support
-/// the unified DOM tree model where mutation.zig operates on NodeBase but needs
-/// to integrate with the WebIDL MutationObserver system.
+/// The added and removed nodes come as the tree's own nodes, and no NodeList
+/// is made for them here: each record holds them and makes its addedNodes
+/// and removedNodes when script first reads one (MutationRecord.create).
+/// The spec's two lists are the same objects in every observer's record; a
+/// record's lists are its own here, made from the same nodes in the same
+/// order (Blink shares the whole record instead).
 pub fn queueTreeMutationRecord(
     allocator: Allocator,
     target: *runtime.Instance,
-    added_nodes: *runtime.Instance,
-    removed_nodes: *runtime.Instance,
+    added_nodes: []const *NodeBase,
+    removed_nodes: []const *NodeBase,
     previous_sibling: ?*runtime.Instance,
     next_sibling: ?*runtime.Instance,
 ) !void {
     // Step 1: Assert: either addedNodes or removedNodes is not empty
-    // Get lengths from NodeList impls
-    const added_len = NodeListImpl.get_length(added_nodes) catch 0;
-    const removed_len = NodeListImpl.get_length(removed_nodes) catch 0;
-    std.debug.assert(added_len > 0 or removed_len > 0);
+    std.debug.assert(added_nodes.len > 0 or removed_nodes.len > 0);
+
+    // The nodes as platform objects: a node with no instance (built below
+    // the WebIDL layer) is not script-visible and is left out, as it was.
+    var fixed: [16]*runtime.Instance = undefined;
+    const total = added_nodes.len + removed_nodes.len;
+    const instances = if (total <= fixed.len) fixed[0..total] else try allocator.alloc(*runtime.Instance, total);
+    defer if (total > fixed.len) allocator.free(instances);
+    const added_count = collectInstances(added_nodes, instances);
+    const removed_count = collectInstances(removed_nodes, instances[added_count..]);
 
     // Step 2: Queue a mutation record of "childList" for target with null, null, null,
     // addedNodes, removedNodes, previousSibling, and nextSibling
@@ -351,15 +360,24 @@ pub fn queueTreeMutationRecord(
         null, // name
         null, // namespace
         null, // oldValue
-        added_nodes,
-        removed_nodes,
+        instances[0..added_count],
+        instances[added_count .. added_count + removed_count],
         previous_sibling,
         next_sibling,
     );
 }
 
-// Import NodeList impl for accessing length
-const NodeListImpl = @import("impls").NodeList;
+/// The platform objects of `nodes`, in order, into `out`; how many.
+fn collectInstances(nodes: []const *NodeBase, out: []*runtime.Instance) usize {
+    var count: usize = 0;
+    for (nodes) |node| {
+        const object = @import("instance_bridge.zig").getInstance(node) orelse continue;
+        out[count] = @ptrCast(@alignCast(object));
+        count += 1;
+    }
+    return count;
+}
+
 const runtime = @import("runtime");
 const NodeBase = @import("node_base.zig").NodeBase;
 const RegisteredObserverOptions = @import("registered_observer.zig").RegisteredObserver.Options;
@@ -459,7 +477,10 @@ pub fn queueCharacterDataMutationRecord(node: *runtime.Instance, old_data: []con
 
 /// A record whose added and removed nodes are « » and whose siblings are
 /// null - every "attributes" and "characterData" record. Nothing is built
-/// unless an observer wants it.
+/// unless an observer wants it, and its two empty NodeLists not until script
+/// reads one (MutationRecord.get_addedNodes; Blink's RecordWithEmptyNodeLists
+/// makes them lazily too): two lists per observed attribute change were
+/// made and, unread, never freed.
 fn queueRecordWithoutNodes(
     mutation_type: MutationType,
     target: *runtime.Instance,
@@ -471,13 +492,7 @@ fn queueRecordWithoutNodes(
     const base = instance_bridge.getNodeBase(@ptrCast(target)) orelse return;
     if (!hasInterestedObservers(base, mutation_type, name, namespace)) return;
 
-    const allocator = target.ctx.allocator;
-    const added_nodes = try interfaces.NodeList.init(allocator, target.ctx);
-    errdefer interfaces.NodeList.deinit(added_nodes);
-    const removed_nodes = try interfaces.NodeList.init(allocator, target.ctx);
-    errdefer interfaces.NodeList.deinit(removed_nodes);
-
-    try queueMutationRecordInternal(allocator, mutation_type, target, name, namespace, old_value, added_nodes, removed_nodes, null, null);
+    try queueMutationRecordInternal(target.ctx.allocator, mutation_type, target, name, namespace, old_value, &.{}, &.{}, null, null);
 }
 
 /// Internal version of queueMutationRecord that uses runtime.Instance
@@ -491,8 +506,8 @@ fn queueMutationRecordInternal(
     name: ?[]const u8,
     namespace: ?[]const u8,
     old_value: ?[]const u8,
-    added_nodes: *runtime.Instance,
-    removed_nodes: *runtime.Instance,
+    added_nodes: []const *runtime.Instance,
+    removed_nodes: []const *runtime.Instance,
     previous_sibling: ?*runtime.Instance,
     next_sibling: ?*runtime.Instance,
 ) !void {

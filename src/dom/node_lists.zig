@@ -11,12 +11,18 @@
 const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
+const NodeBase = @import("node_base.zig").NodeBase;
 
 /// What the NodeList impl supplies.
 pub const Implementation = struct {
     /// Make `list` - just created, empty - the static list of `nodes`, in
-    /// order.
-    set_static: *const fn (list: *runtime.Instance, nodes: []const *runtime.Instance) anyerror!void,
+    /// order, which it holds (src/dom/node_holds.zig). `within`: a node
+    /// every one of them is a descendant of (querySelectorAll's receiver),
+    /// whose tree's root they share - found once, not once per node.
+    set_static: *const fn (list: *runtime.Instance, nodes: []const *runtime.Instance, within: ?*runtime.Instance) anyerror!void,
+    /// `set_static`, given the tree nodes themselves - every one a
+    /// descendant of `within` - so no node is looked up.
+    set_static_bases: *const fn (list: *runtime.Instance, nodes: []const *NodeBase, within: *NodeBase) anyerror!void,
     labels: *const fn (list: *runtime.Instance, element: *runtime.Instance) anyerror!void,
     named_controls: *const fn (*runtime.Instance, *runtime.Instance, []const u8) anyerror!void,
 };
@@ -34,7 +40,19 @@ pub fn install(impl: Implementation) void {
 /// `nodes`, in order.
 pub fn setStatic(list: *runtime.Instance, nodes: []const *runtime.Instance) !void {
     const impl = implementation orelse return error.NotSupported;
-    try impl.set_static(list, nodes);
+    try impl.set_static(list, nodes, null);
+}
+
+/// `setStatic`, for nodes that are all descendants of `within`.
+pub fn setStaticWithin(list: *runtime.Instance, nodes: []const *runtime.Instance, within: *runtime.Instance) !void {
+    const impl = implementation orelse return error.NotSupported;
+    try impl.set_static(list, nodes, within);
+}
+
+/// `setStaticWithin`, given the tree nodes (querySelectorAll's walk).
+pub fn setStaticBasesWithin(list: *runtime.Instance, nodes: []const *NodeBase, within: *NodeBase) !void {
+    const impl = implementation orelse return error.NotSupported;
+    try impl.set_static_bases(list, nodes, within);
 }
 
 pub fn labels(list: *runtime.Instance, element: *runtime.Instance) !void {

@@ -323,40 +323,64 @@ pub fn call_reset(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: checkValidity
 pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-    return validateCustomControls(instance);
+    return validateControls(instance);
 }
 
-fn validateCustomControls(form: *runtime.Instance) !bool {
-    // HTML 4.10.21.2: snapshot invalid custom controls before firing events.
+fn validateControls(form: *runtime.Instance) !bool {
+    // HTML 4.10.21.2 steps 1–4: snapshot every invalid candidate before
+    // firing any events. In script realms, owned roots keep each control
+    // alive if an earlier invalid listener detaches it and collects garbage.
     const allocator = form.ctx.allocator;
+    const realm = form.ctx;
     var invalid: std.ArrayList(engine.Owned) = .empty;
+    var any_invalid = false;
     defer {
-        for (invalid.items) |value| value.release();
+        for (invalid.items) |held| held.release();
         invalid.deinit(allocator);
     }
     const root = form_associated.rootOf(form);
     var node: ?*runtime.Instance = root;
     while (node) |element| : (node = nextInTree(element, root, false)) {
-        if (!form_associated.isFormAssociatedCustom(element) or form_associated.formOwner(element) != form) continue;
-        const internals = try @import("dom").custom_elements.ensureInternals(element);
-        if (!(try interfaces.ElementInternals.get_willValidate(internals))) continue;
-        if (try interfaces.ValidityState.get_valid(try interfaces.ElementInternals.get_validity(internals))) continue;
-        const held = try engine.retainValue(form.ctx, .{ .instance = element });
+        if (form_associated.formOwner(element) != form) continue;
+        if (form_associated.isFormAssociatedCustom(element)) {
+            const internals = try @import("dom").custom_elements.ensureInternals(element);
+            if (!(try interfaces.ElementInternals.get_willValidate(internals))) continue;
+            if (try interfaces.ValidityState.get_valid(try interfaces.ElementInternals.get_validity(internals))) continue;
+        } else {
+            const candidate = if (form_associated.isInput(element))
+                try interfaces.HTMLInputElement.get_willValidate(element)
+            else if (isElementNamed(element, "button"))
+                try interfaces.HTMLButtonElement.get_willValidate(element)
+            else if (isElementNamed(element, "select"))
+                try interfaces.HTMLSelectElement.get_willValidate(element)
+            else if (form_associated.isTextArea(element))
+                try interfaces.HTMLTextAreaElement.get_willValidate(element)
+            else
+                false;
+            if (!candidate or @import("html").forms.isValid(@import("dom").form_controls.validityFlags(element))) continue;
+        }
+        any_invalid = true;
+        // No engine means no listener can run: keep only the result, making
+        // no event that releaseIfUnwrapped would leave ownerless. This follows
+        // validateCustomControls's pre-event break in base 63d0e68b2a.
+        if (!realm.hasEngine()) continue;
+        const held = try engine.retainValue(realm, .{ .instance = element });
         invalid.append(allocator, held) catch |err| {
             held.release();
             return err;
         };
     }
-    const realm = form.ctx;
-    for (invalid.items) |value| {
+    // Steps 5–7: fire invalid at the saved list, even if a preceding listener
+    // repaired a later control. Canceling the event does not change the result.
+    for (invalid.items) |held| {
         if (!realm.hasEngine()) break;
-        const element = engine.convertToPlatformObject(realm, value.value) orelse continue;
+        const element = engine.convertToPlatformObject(realm, held.value) orelse continue;
         const event = try interfaces.Event.call_constructor(realm, runtime.DOMString.initInterned("invalid"), .passed(.{ .cancelable = true }));
         const generation = runtime.SlabAllocator.generationOf(event);
         defer event.releaseIfUnwrapped(generation);
         _ = try @import("dom").fire_event.dispatchTrusted(element, event);
     }
-    return invalid.items.len == 0;
+    return !any_invalid;
 }
 
 /// Operation: submit
@@ -401,12 +425,20 @@ fn resetForm(form: *runtime.Instance) anyerror!void {
     };
     if (!reset) return;
 
-    // The resettable elements - input, output, select and textarea - whose
-    // form owner is form, in tree order. Collected first: a reset algorithm
-    // changes state, never the tree, but nothing here depends on that.
+    // Step 2: snapshot resettable controls in tree order before any resets.
+    // Blink's Reset and WebKit's reset copy and hold this list: an earlier
+    // reset may change the tree, but every original control still resets.
     const allocator = form.ctx.allocator;
-    var controls: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-    defer controls.deinit(allocator);
+    const realm = form.ctx;
+    const Control = union(enum) {
+        held: engine.Owned,
+        native: struct { instance: *runtime.Instance, generation: u64 },
+    };
+    var controls: std.ArrayListUnmanaged(Control) = .empty;
+    defer {
+        for (controls.items) |control| if (control == .held) control.held.release();
+        controls.deinit(allocator);
+    }
     const root = form_associated.rootOf(form);
     var node: ?*runtime.Instance = root;
     while (node) |n| : (node = nextInTree(n, root, false)) {
@@ -415,10 +447,30 @@ fn resetForm(form: *runtime.Instance) anyerror!void {
             form_associated.isTextArea(n) or n.stateAs(interfaces.HTMLOutputElement.State) != null or form_associated.isFormAssociatedCustom(n);
         if (!resettable) continue;
         if (form_associated.formOwner(n) != form) continue;
-        try controls.append(allocator, n);
+        if (realm.hasEngine()) {
+            const held = try engine.retainValue(realm, .{ .instance = n });
+            controls.append(allocator, .{ .held = held }) catch |err| {
+                held.release();
+                return err;
+            };
+        } else {
+            try controls.append(allocator, .{ .native = .{ .instance = n, .generation = runtime.SlabAllocator.generationOf(n) } });
+        }
     }
     const form_controls = @import("dom").form_controls;
-    for (controls.items) |control| form_controls.reset(control);
+    for (controls.items) |control| switch (control) {
+        .held => |held| {
+            if (!realm.hasEngine()) break;
+            const element = engine.convertToPlatformObject(realm, held.value) orelse continue;
+            form_controls.reset(element);
+        },
+        .native => |native| {
+            // Engine-free resets cannot run script. Generation is only the
+            // teardown net; moving a control does not remove it from the list.
+            const element = @import("html").forms.liveChild(native.instance, native.generation) orelse continue;
+            form_controls.reset(element);
+        },
+    };
 }
 
 // ============================================================================
@@ -428,12 +480,8 @@ fn resetForm(form: *runtime.Instance) anyerror!void {
 // shared form-associated algorithms (form_associated.zig). Stated
 // deviations:
 //
-//   * Native control constraint validation is still incomplete; FACE
-//     validity participates in submit step 5.4.
 //   * "Submit as entity body" encodes multipart/form-data through Fetch's
-//     FormData extraction: UTF-8 whatever the form's encoding, and a file
-//     control's empty File as an empty string field; custom-element File
-//     submission values retain their platform objects through FormData.
+//     FormData extraction: UTF-8 whatever the form's encoding.
 //   * An Image Button's selected coordinate is always (0, 0): nothing is
 //     rendered, so no activation selects one.
 // ============================================================================
@@ -488,30 +536,7 @@ fn hasAncestorNamed(node: *runtime.Instance, comptime name: []const u8) bool {
 /// § 4.10.7 "get the list of options" of a select: its option descendants in
 /// tree order, not looking inside a select, hr, option or datalist, nor
 /// inside an optgroup that is itself inside an optgroup.
-fn forEachOption(select: *runtime.Instance, context: anytype, comptime visit: fn (@TypeOf(context), *runtime.Instance) anyerror!void) !void {
-    // Steps 1-2: node is select's first child.
-    var node = interfaces.Node.get_firstChild(select) catch null;
-    // Step 3.
-    while (node) |n| {
-        // 3.1: an option is in the list.
-        const is_option = isElementNamed(n, "option");
-        if (is_option) try visit(context, n);
-        // 3.2: the next descendant, skipping these subtrees.
-        const skip = is_option or isElementNamed(n, "select") or isElementNamed(n, "hr") or
-            isElementNamed(n, "datalist") or (isElementNamed(n, "optgroup") and hasOptgroupAncestorWithin(n, select));
-        node = nextInTree(n, select, skip);
-    }
-}
-
-/// Whether an optgroup ancestor lies between `node` and `select`.
-fn hasOptgroupAncestorWithin(node: *runtime.Instance, select: *runtime.Instance) bool {
-    var ancestor = parentOf(node);
-    while (ancestor) |a| : (ancestor = parentOf(a)) {
-        if (a == select) return false;
-        if (isElementNamed(a, "optgroup")) return true;
-    }
-    return false;
-}
+const forEachOption = @import("html").forms.options.forEach;
 
 /// § 4.10.22.5 "Picking an encoding for the form".
 fn pickEncoding(allocator: std.mem.Allocator, form: *runtime.Instance, document: *runtime.Instance) !*const encoding_mod.Encoding {
@@ -577,6 +602,12 @@ fn constructEntryList(allocator: std.mem.Allocator, form: *runtime.Instance, sub
         if (form_associated.formOwner(field) != form) continue;
         try appendFieldEntries(allocator, &entries, field, submitter, encoding);
     }
+
+    // No engine means no listener can run or change the entries. Skip the
+    // script-only FormData/event that releaseIfUnwrapped would leave ownerless,
+    // as validateCustomControls skips events in base 63d0e68b2a; step 9 returns
+    // the entries directly because there was no observable intermediate list.
+    if (!form.ctx.hasEngine()) return entries;
 
     // 6. Let form data be a new FormData object associated with entry list.
     const form_data = try entryListFormData(form, entries.items);
@@ -670,10 +701,31 @@ fn appendFieldEntries(allocator: std.mem.Allocator, entries: *EntryList, field: 
         const value = (try attributeValue(allocator, field, "value")) orelse try allocator.dupe(u8, "on");
         try appendEntry(allocator, entries, name, value);
     } else if (is_input and eql(input_type, "file")) {
-        // 5.8.1: no files are ever selected here, so a File with an empty
-        // name - represented by that name.
-        try appendEntry(allocator, entries, name, try allocator.dupe(u8, ""));
-        entries.items[entries.items.len - 1].is_file = true;
+        // HTML 4.10.22.4 step 5.8.1: an empty selection contributes an empty
+        // File, not a string. Its root uses the existing File-entry lifetime.
+        // TODO(FileList/DataTransfer lane): enumerate a live nonempty selection
+        // through the input owner's read hook, without creating a FileList.
+        if (field.ctx.hasEngine()) {
+            const parts = try engine.createSequenceOfValues(field.ctx, &.{});
+            defer parts.release();
+            const file = try interfaces.File.call_constructor(field.ctx, parts.value, "", .passed(.{
+                .base = .{ .type = runtime.DOMString.initInterned("application/octet-stream") },
+            }));
+            const generation = runtime.SlabAllocator.generationOf(file);
+            defer file.releaseIfUnwrapped(generation);
+            const held = try engine.retainValue(field.ctx, .{ .instance = file });
+            errdefer held.release();
+            try appendEntry(allocator, entries, name, try allocator.dupe(u8, ""));
+            const added = &entries.items[entries.items.len - 1];
+            added.is_file = true;
+            added.file = file;
+            added.file_root = held;
+        } else {
+            // Engine-free entry construction retains its native filename
+            // representation; creating an ECMAScript sequence needs an engine.
+            try appendEntry(allocator, entries, name, try allocator.dupe(u8, ""));
+            entries.items[entries.items.len - 1].is_file = true;
+        }
     } else if (is_input and eql(input_type, "hidden") and std.ascii.eqlIgnoreCase(name, "_charset_")) {
         // 5.9: the encoding's name.
         try appendEntry(allocator, entries, name, try allocator.dupe(u8, encoding.name));
@@ -862,14 +914,14 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
         // 5.1-5.2: firing submission events.
         if (internal.firing_submission_events) return;
         internal.firing_submission_events = true;
-        // 5.3–5.4: FACE participates in interactive constraint validation.
-        // Native control validation remains in the controls' own algorithms.
+        // 5.4: statically validate all native and form-associated custom
+        // controls; a headless host has no additional validation UI.
         defer if (Registry.get(form)) |after| {
             after.firing_submission_events = false;
         };
         const no_validate = hasAttribute(form, "novalidate") or
             (submitter != form and hasAttribute(submitter, "formnovalidate"));
-        if (!no_validate and !(try validateCustomControls(form))) return;
+        if (!no_validate and !(try validateControls(form))) return;
 
         // 5.5: submitterButton is null if submitter is form.
         const submitter_button: ?*runtime.Instance = if (submitter == form) null else submitter;
@@ -1347,5 +1399,5 @@ fn navigateSteps(data: ?*anyopaque) void {
 
 /// Operation: reportValidity
 pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-    return validateCustomControls(instance);
+    return validateControls(instance);
 }

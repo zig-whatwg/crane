@@ -182,4 +182,6 @@ pub const HTMLOptionsCollection = struct {
         "call_remove",
         "call_add",
     };
+
+    pub const call_item = HTMLCollection.call_item;
 };

@@ -53,6 +53,12 @@ pub const Page = struct {
         };
     }
 
+    /// The completion of `source` as a string, OWNED by std.testing.allocator.
+    pub fn evaluate(self: Page, source: []const u8) ![]u8 {
+        const page = self.browser.current_context orelse return error.NoPage;
+        return page.evaluateScriptToString(source, std.testing.allocator);
+    }
+
     /// Leave the job that made a WeakRef, so its target can be collected.
     pub fn turn(self: Page) !void {
         _ = try self.browser.runEventLoopBlocking(20);

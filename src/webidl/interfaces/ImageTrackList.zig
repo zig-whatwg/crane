@@ -60,6 +60,10 @@ pub const ImageTrackList = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// The anonymous indexed getter (`getter T (unsigned long index)`,
+        /// `call_getter`) is implemented: the binding installs indexed access.
+        pub const indexed_getter_implemented = @hasDecl(ImageTrackListImpl, "call_getter");
     };
 
     pub const State = runtime.FlattenedState(
@@ -131,6 +135,10 @@ pub const ImageTrackList = struct {
     }
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        return try ImageTrackListImpl.call_getter(instance, index);
+        if (comptime @hasDecl(ImageTrackListImpl, "call_getter")) {
+            return try ImageTrackListImpl.call_getter(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
     }
 };

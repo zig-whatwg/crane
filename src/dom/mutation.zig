@@ -470,12 +470,16 @@ fn isText(node: anytype) bool {
 /// Queue a tree mutation record for MutationObserver notifications
 ///
 /// This function bridges the NodeBase-based mutation algorithms with the
-/// WebIDL MutationObserver system. It converts NodeBase arrays to NodeLists
-/// and calls the mutation observer algorithm.
+/// WebIDL MutationObserver system: the target and siblings as platform
+/// objects, and the added and removed nodes as they are - each record holds
+/// them itself and makes its NodeLists only when script reads one
+/// (MutationRecord.create; lane nodeholds). Two NodeLists used to be built
+/// here per mutation, shared by every observer's record and never freed
+/// unless script read them.
 ///
 /// Spec: https://dom.spec.whatwg.org/#queue-a-tree-mutation-record
 ///
-/// @param allocator - Allocator for creating NodeLists
+/// @param allocator - Allocator for the record's scratch
 /// @param target - The parent node that was mutated (NodeBase)
 /// @param added_nodes - Array of NodeBase pointers that were added
 /// @param removed_nodes - Array of NodeBase pointers that were removed
@@ -495,9 +499,7 @@ fn queueTreeMutationRecord(
     // Get the target as a runtime.Instance via the instance bridge
     const target_nodebase: *NodeBase = @ptrCast(target);
 
-    // Nothing is built unless an observer wants the record: these two lists
-    // were made on every insert and remove, and nothing freed them until the
-    // page ended.
+    // Nothing is built unless an observer wants the record.
     if (!mutation_observer.hasInterestedObservers(target_nodebase, .child_list, null, null)) return;
     const target_instance_ptr = instance_bridge.getInstance(target_nodebase) orelse {
         // Target is not a registered runtime.Instance - cannot queue mutation record
@@ -505,23 +507,6 @@ fn queueTreeMutationRecord(
         return;
     };
     const target_instance: *runtime.Instance = @ptrCast(@alignCast(target_instance_ptr));
-
-    // Get runtime context from the instance
-    // The context is needed for creating NodeLists
-    const ctx = target_instance.ctx;
-
-    // Create NodeList for added nodes
-    const added_list = createNodeListFromBases(allocator, ctx, added_nodes) catch {
-        // If we can't create the NodeList, skip the mutation record
-        return;
-    };
-
-    // Create NodeList for removed nodes
-    const removed_list = createNodeListFromBases(allocator, ctx, removed_nodes) catch {
-        // Clean up added_list if we fail
-        NodeListImpl.deinit(added_list);
-        return;
-    };
 
     // Convert previous_sibling and next_sibling to runtime.Instance
     const prev_instance: ?*runtime.Instance = if (previous_sibling) |prev| blk: {
@@ -534,54 +519,16 @@ fn queueTreeMutationRecord(
         break :blk @ptrCast(@alignCast(next_inst_ptr));
     } else null;
 
-    // Call the mutation observer algorithm
+    // Call the mutation observer algorithm. A record that cannot be made is
+    // skipped, as before.
     mutation_observer.queueTreeMutationRecord(
         allocator,
         target_instance,
-        added_list,
-        removed_list,
+        added_nodes,
+        removed_nodes,
         prev_instance,
         next_instance,
-    ) catch {
-        // If queueing fails, clean up the NodeLists
-        NodeListImpl.deinit(added_list);
-        NodeListImpl.deinit(removed_list);
-    };
-}
-
-/// Create a NodeList from an array of NodeBase pointers
-///
-/// This converts NodeBase pointers to runtime.Instance pointers via the
-/// instance bridge and creates a static NodeList containing them.
-///
-/// @param allocator - Allocator for the NodeList
-/// @param ctx - Runtime context for NodeList creation
-/// @param nodes - Array of NodeBase pointers to include
-/// @returns A NodeList instance, or error if creation fails
-fn createNodeListFromBases(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    nodes: []const *NodeBase,
-) !*runtime.Instance {
-    // Collect instances from the NodeBase array
-    var instances: std.ArrayList(*runtime.Instance) = .empty;
-    defer instances.deinit(allocator);
-
-    for (nodes) |node_base_ptr| {
-        if (instance_bridge.getInstance(node_base_ptr)) |instance_ptr| {
-            // Cast anyopaque to *runtime.Instance
-            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-            std.log.debug("[createNodeListFromBases] NodeBase={*} -> Instance={*}", .{ node_base_ptr, instance });
-            try instances.append(allocator, instance);
-        } else {
-            std.log.debug("[createNodeListFromBases] NodeBase={*} -> NO INSTANCE FOUND!", .{node_base_ptr});
-        }
-        // Skip nodes that aren't registered as runtime instances
-        // This handles internal nodes that may not have WebIDL wrappers
-    }
-
-    // Create a static NodeList from the collected instances
-    return NodeListImpl.createFromSlice(allocator, ctx, instances.items);
+    ) catch {};
 }
 
 /// Helper to check if node is a CharacterData node

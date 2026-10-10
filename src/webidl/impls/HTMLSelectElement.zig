@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const forms = @import("html").forms;
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -16,11 +17,8 @@ const engine = @import("engine");
 const HTMLSelectElement = interfaces.HTMLSelectElement;
 
 const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
-const HTMLCollectionImpl = @import("HTMLCollection.zig");
-// One-way, by design: the option impl owns selectedness and never imports this
-// file back. See the header comment in HTMLOptionElement.zig.
-const OptionImpl = @import("HTMLOptionElement.zig");
+const collections = @import("dom").live_collections;
+const controls = @import("dom").form_controls;
 const form_associated = @import("html").form_associated;
 
 pub const State = HTMLSelectElement.State;
@@ -35,14 +33,74 @@ pub const ImplError = error{
     NotFoundError,
 };
 
-/// Internal state for implementation-specific data
-///
-/// Deliberately empty and deliberately unregistered: a select holds no selection
-/// state of its own - every bit of it lives on the options, which is what lets
-/// `option.selected` and `select.value` agree without either caching the other.
-/// Nothing calls `Registry.createIn` here, so the zero-sized-InternalState abort
-/// does not apply.
-pub const InternalState = struct {};
+/// Selection state belongs to the options. The select's custom validity
+/// state is made lazily when its constraint API is first used.
+pub const InternalState = struct {
+    validation: forms.Validation = .{},
+    options: ?*runtime.Instance = null,
+    options_generation: u64 = 0,
+    options_traced: bool = false,
+    selected_options: ?*runtime.Instance = null,
+    selected_options_generation: u64 = 0,
+    selected_options_traced: bool = false,
+};
+
+/// Constraint state is allocated only when script first uses the API.
+fn internalState(instance: *runtime.Instance) !*InternalState {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| return internal;
+    const internal = try instance.ctx.allocator.create(InternalState);
+    internal.* = .{};
+    state.own._internal = internal;
+    return internal;
+}
+
+fn validationState(instance: *runtime.Instance) !*forms.Validation {
+    return &(try internalState(instance)).validation;
+}
+
+fn isValidationControl(instance: *runtime.Instance) bool {
+    return instance.stateAs(State) != null;
+}
+
+fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
+    const internal = instance.getState(State).own._internal;
+    var flags = forms.ValidityFlags{ .customError = if (internal) |state| !state.validation.custom_error.isEmpty() else false };
+    if (!form_associated.hasAttribute(instance, "required")) return flags;
+    var options = optionList(instance) catch return flags;
+    defer options.deinit(instance.ctx.allocator);
+    // Unlike cached HTML 4.10.7's paragraph, multiple never has a placeholder,
+    // even at size=1. Blink HTMLSelectElement::HasPlaceholderLabelOption,
+    // WebKit HTMLSelectElement::hasPlaceholderLabelOption and Gecko
+    // HTMLSelectElement::IsValueMissing agree. wpt.fyi aligned stable
+    // cc74d2669f (2026-10-06), the-select-element/select-validity.html:
+    // Chrome 6/6, Firefox 6/6, Safari 6/6, all harness OK.
+    const multiple = form_associated.hasAttribute(instance, "multiple");
+    const single = !multiple and
+        (interfaces.HTMLSelectElement.get_size(instance) catch 0) <= 1;
+    const selected_index = if (!multiple) controls.selectedIndex(instance) catch null else null;
+    flags.valueMissing = true;
+    for (options.items, 0..) |option, index| {
+        // Single-select selectedness walks the list: resolve it once.
+        if (multiple) {
+            if (!(interfaces.HTMLOptionElement.get_selected(option) catch false)) continue;
+        } else if (selected_index == null or selected_index.? != index) continue;
+        // HTML 4.10.7: only the first option directly under the select can
+        // be its placeholder label option. All other selected options count.
+        if (single and index == 0 and form_associated.parentOf(option) == instance) {
+            var value = interfaces.HTMLOptionElement.get_value(option) catch continue;
+            defer value.deinit(instance.ctx.allocator);
+            if (value.isEmpty()) continue;
+        }
+        flags.valueMissing = false;
+        break;
+    }
+    return flags;
+}
+
+pub fn installHooks() void {
+    @import("dom").form_controls.install(.{ .is = &isValidationControl, .validity_flags = &constraintFlags });
+}
 
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
@@ -52,19 +110,23 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    // HTMLSelectElement has no additional initialization
-    return instance;
+    return interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // HTMLSelectElement has no additional cleanup
-    // Chain to parent class
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.validation.validity_traced) @import("engine").forgetTracedChild(instance, .{ .name = "validity" });
+        internal.validation.deinit(instance.ctx.allocator);
+        if (internal.options_traced) engine.forgetTracedChild(instance, .{ .name = "options" });
+        if (internal.selected_options_traced) engine.forgetTracedChild(instance, .{ .name = "selectedOptions" });
+        if (!internal.options_traced) if (forms.liveChild(internal.options, internal.options_generation)) |child| runtime.Instance.deinit(child);
+        if (!internal.selected_options_traced) if (forms.liveChild(internal.selected_options, internal.selected_options_generation)) |child| runtime.Instance.deinit(child);
+        instance.ctx.allocator.destroy(internal);
+        state.own._internal = null;
+    }
+    interfaces.HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
@@ -82,26 +144,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// Indexed setter - sets option at index
 /// Spec: https://html.spec.whatwg.org/multipage/form-elements.html#dom-select-setter
 pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
-    const existing = try call_item(instance, index);
-
-    if (option) |new_option| {
-        if (existing) |old_option| {
-            const parent = NodeImpl.getParent(old_option) orelse instance;
-            _ = try interfaces.Node.call_replaceChild(parent, new_option, old_option);
-        } else {
-            // Beyond the end: the spec pads with blank options first, then puts
-            // the new one at `index`.
-            try set_length(instance, index);
-            _ = try interfaces.Node.call_appendChild(instance, new_option);
-        }
-        return;
-    }
-
-    // Setting null removes the option at that index.
-    if (existing) |old_option| {
-        const parent = NodeImpl.getParent(old_option) orelse return;
-        _ = try interfaces.Node.call_removeChild(parent, old_option);
-    }
+    try forms.options.setIndex(instance, index, option);
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +167,7 @@ fn optionList(instance: *runtime.Instance) anyerror!std.ArrayListUnmanaged(*runt
     const allocator = instance.ctx.allocator;
     var options = std.ArrayListUnmanaged(*runtime.Instance).empty;
     errdefer options.deinit(allocator);
-    try OptionImpl.collectOptions(instance, allocator, &options);
+    try forms.options.collect(instance, allocator, &options);
     return options;
 }
 
@@ -168,25 +211,18 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for options
 /// Spec: https://html.spec.whatwg.org/multipage/form-elements.html#dom-select-options
 pub fn get_options(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // KNOWN LIMITATION, shared with HTMLFormElement.get_elements: HTMLCollection
-    // is a SNAPSHOT in this tree (nothing calls its `setRoot`, and `get_length`
-    // reads a stored list), while `options` is [SameObject] - so the generated
-    // interface caches whatever this returns and never asks again. An option
-    // appended after the first `select.options` read will not appear in it.
-    //
-    // `select.length`, `select.item()`, `selectedIndex` and `value` all re-walk
-    // the tree on every call, so the live answers are available; only the
-    // collection object goes stale. Making it live needs a root+filter mode in
-    // HTMLCollection.zig.
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-
-    const collection = try interfaces.HTMLCollection.init(elem_internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-
-    var options = try optionList(instance);
-    defer options.deinit(instance.ctx.allocator);
-    for (options.items) |option| try HTMLCollectionImpl.addElement(collection, option);
-
+    // HTML 4.10.7: a SameObject live HTMLOptionsCollection rooted here.
+    const internal = try internalState(instance);
+    if (forms.liveChild(internal.options, internal.options_generation)) |collection| return collection;
+    const collection = try interfaces.HTMLOptionsCollection.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(collection);
+    try collections.selectOptions(collection, instance, false);
+    if (instance.ctx.hasEngine()) {
+        engine.traceChild(instance, collection, .{ .name = "options" });
+        internal.options_traced = true;
+    }
+    internal.options = collection;
+    internal.options_generation = runtime.SlabAllocator.generationOf(collection);
     return collection;
 }
 
@@ -201,35 +237,23 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 
 /// Getter for selectedOptions
 pub fn get_selectedOptions(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // [SameObject], so the same snapshot caveat as `get_options` applies.
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-
-    const collection = try interfaces.HTMLCollection.init(elem_internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-
-    var options = try optionList(instance);
-    defer options.deinit(instance.ctx.allocator);
-
-    if (try reflectBool(instance, "multiple")) {
-        for (options.items) |option| {
-            if (OptionImpl.explicitSelectedness(option) == .on) {
-                try HTMLCollectionImpl.addElement(collection, option);
-            }
-        }
-    } else if (OptionImpl.selectedIndexOf(instance, options.items)) |index| {
-        try HTMLCollectionImpl.addElement(collection, options.items[index]);
+    const internal = try internalState(instance);
+    if (forms.liveChild(internal.selected_options, internal.selected_options_generation)) |collection| return collection;
+    const collection = try interfaces.HTMLCollection.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(collection);
+    try collections.selectOptions(collection, instance, true);
+    if (instance.ctx.hasEngine()) {
+        engine.traceChild(instance, collection, .{ .name = "selectedOptions" });
+        internal.selected_options_traced = true;
     }
-
+    internal.selected_options = collection;
+    internal.selected_options_generation = runtime.SlabAllocator.generationOf(collection);
     return collection;
 }
 
 /// Getter for selectedIndex
 pub fn get_selectedIndex(instance: *runtime.Instance) anyerror!i32 {
-    var options = try optionList(instance);
-    defer options.deinit(instance.ctx.allocator);
-
-    const index = OptionImpl.selectedIndexOf(instance, options.items) orelse return -1;
-    return @intCast(index);
+    return @intCast((try controls.selectedIndex(instance)) orelse return -1);
 }
 
 /// Getter for value
@@ -240,27 +264,36 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
     var options = try optionList(instance);
     defer options.deinit(instance.ctx.allocator);
 
-    const index = OptionImpl.selectedIndexOf(instance, options.items) orelse
+    const index = (try controls.selectedIndex(instance)) orelse
         return runtime.DOMString.initEmpty();
     return interfaces.HTMLOptionElement.get_value(options.items[index]);
 }
 
 /// Getter for willValidate
 pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return !forms.isBarred(instance);
 }
 
 /// Getter for validity
 pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML 4.10.21.3: the same live ValidityState on every access.
+    const internal = try validationState(instance);
+    if (forms.liveChild(internal.validity, internal.validity_generation)) |validity| return validity;
+    const validity = try interfaces.ValidityState.init(instance.ctx.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(validity);
+    try @import("dom").custom_elements.setValidityControl(validity, instance);
+    if (instance.ctx.hasEngine()) {
+        @import("engine").traceChild(instance, validity, .{ .name = "validity" });
+        internal.validity_traced = true;
+    }
+    internal.validity = validity;
+    internal.validity_generation = runtime.SlabAllocator.generationOf(validity);
+    return validity;
 }
 
 /// Getter for validationMessage
 pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return forms.validationMessage(instance.ctx.allocator, try get_willValidate(instance), constraintFlags(instance), (try validationState(instance)).custom_error);
 }
 
 /// Getter for labels
@@ -271,38 +304,7 @@ pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Setter for length
 /// Spec: https://html.spec.whatwg.org/multipage/form-elements.html#dom-htmloptionscollection-length
 pub fn set_length(instance: *runtime.Instance, value: u32) anyerror!void {
-    var options = try optionList(instance);
-    defer options.deinit(instance.ctx.allocator);
-
-    const current: u32 = @intCast(options.items.len);
-    if (value == current) return;
-
-    if (value < current) {
-        // Shrinking removes options from the END, in reverse order so the
-        // surviving prefix keeps its indices.
-        var i: u32 = current;
-        while (i > value) : (i -= 1) {
-            const option = options.items[i - 1];
-            const parent = NodeImpl.getParent(option) orelse continue;
-            _ = try interfaces.Node.call_removeChild(parent, option);
-        }
-        return;
-    }
-
-    // Growing appends blank option elements. Needs the node document, because
-    // creating an element is the document's job.
-    const node_internal = NodeImpl.getInternalState(instance) orelse return error.InvalidState;
-    const document = node_internal.owner_document orelse return error.InvalidState;
-
-    var i: u32 = current;
-    while (i < value) : (i += 1) {
-        const option = try interfaces.Document.call_createElement(
-            document,
-            runtime.DOMString.initInterned("option"),
-            webidl.Opt(runtime.JSValue).notPassed(),
-        );
-        _ = try interfaces.Node.call_appendChild(instance, option);
-    }
+    try forms.options.setLength(instance, value);
 }
 
 /// Setter for selectedIndex
@@ -311,29 +313,16 @@ pub fn set_selectedIndex(instance: *runtime.Instance, value: i32) anyerror!void 
     var options = try optionList(instance);
     defer options.deinit(instance.ctx.allocator);
 
-    // "Set the selected index": clear every option, then select the one at the
-    // given index if there is one. An out-of-range index (including -1) is not an
-    // error - it legitimately leaves NOTHING selected, and unlike
-    // `option.selected = false` it does not ask for a reset, so the first enabled
-    // option must not quietly take over. That is what `.off_no_reset` encodes.
-    const in_range = value >= 0 and @as(usize, @intCast(@max(value, 0))) < options.items.len;
-    const target: usize = if (in_range) @intCast(value) else 0;
-
-    for (options.items, 0..) |option, i| {
-        if (in_range and i == target) {
-            try OptionImpl.setSelectedness(option, .on);
-        } else {
-            try OptionImpl.setSelectedness(option, if (in_range) .off else .off_no_reset);
-        }
-    }
+    // HTML set the selected index: an out-of-range value clears all options
+    // without asking for a reset; the option owner implements that step.
+    const index: ?usize = if (value >= 0 and @as(usize, @intCast(value)) < options.items.len) @intCast(value) else null;
+    try controls.setSelectedIndex(instance, index);
 }
 
 /// Setter for value
 /// Spec: https://html.spec.whatwg.org/multipage/form-elements.html#dom-select-value
 pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // The half React depends on: `select.value = x` selects the first option
-    // whose VALUE is x, and its dirtiness then keeps a later `selected` attribute
-    // write from overriding it.
+    // HTML value setter: select the first matching value, marking dirtiness.
     const allocator = instance.ctx.allocator;
     var options = try optionList(instance);
     defer options.deinit(allocator);
@@ -350,16 +339,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
         }
     }
 
-    for (options.items, 0..) |option, i| {
-        if (match != null and i == match.?) {
-            try OptionImpl.setSelectedness(option, .on);
-        } else {
-            // No match at all means nothing is selected and nothing asks for a
-            // reset, so `select.value = "nonexistent"` reads back "" rather than
-            // the first option's value.
-            try OptionImpl.setSelectedness(option, if (match == null) .off_no_reset else .off);
-        }
-    }
+    try controls.setSelectedIndex(instance, match);
 }
 
 // ---------------------------------------------------------------------------
@@ -379,134 +359,40 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
 /// Operation: namedItem
 /// Spec: https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#dom-htmloptionscollection-nameditem
 pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
-    const wanted = name.asSlice();
-    if (wanted.len == 0) return null;
-
-    var options = try optionList(instance);
-    defer options.deinit(instance.ctx.allocator);
-
-    // id first, then name, per the collection's supported property names.
-    for (options.items) |option| {
-        const elem_internal = ElementImpl.getInternal(option) orelse continue;
-        if (elem_internal.findAttribute(null, "id")) |entry| {
-            if (std.mem.eql(u8, entry.value, wanted)) return option;
-        }
-    }
-    for (options.items) |option| {
-        const elem_internal = ElementImpl.getInternal(option) orelse continue;
-        if (elem_internal.findAttribute(null, "name")) |entry| {
-            if (std.mem.eql(u8, entry.value, wanted)) return option;
-        }
-    }
-    return null;
-}
-
-/// The platform object `value` is, or null: a union argument reaches the impl
-/// unconverted (an object as a handle, never an `.instance`), so the platform
-/// object comes out of it through the engine protocol.
-fn platformObjectOf(instance: *runtime.Instance, value: runtime.JSValue) ?*runtime.Instance {
-    return engine.convertToPlatformObject(engine.currentRealm() orelse instance.ctx, value);
-}
-
-/// WebIDL 3.2.4.8 "convert to long" of `value` (no [EnforceRange], no
-/// [Clamp]): ToNumber, NaN and the infinities to 0, the integer part, then
-/// modulo 2^32 into the signed range.
-fn convertToLong(instance: *runtime.Instance, value: runtime.JSValue) !i32 {
-    const x = try engine.convertToUnrestrictedDouble(engine.currentRealm() orelse instance.ctx, value);
-    // 1-5 (the default conversion): +/-0, NaN, +/-Infinity are 0.
-    if (std.math.isNan(x) or std.math.isInf(x)) return 0;
-    // 6-7. x = IntegerPart(x), modulo 2^32.
-    const modulo = @mod(@trunc(x), 4294967296.0);
-    // 8. If x >= 2^31, return x - 2^32.
-    const as_unsigned: u32 = @intFromFloat(modulo);
-    return @bitCast(as_unsigned);
-}
-
-fn isInclusiveAncestorOf(ancestor: *runtime.Instance, node: *runtime.Instance) bool {
-    var current: ?*runtime.Instance = node;
-    while (current) |c| {
-        if (c == ancestor) return true;
-        current = NodeImpl.getParent(c);
-    }
-    return false;
+    // HTML: the same first match in tree order as the options collection.
+    return interfaces.HTMLCollection.call_namedItem(try get_options(instance), name);
 }
 
 /// Operation: add
 /// Spec: https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#dom-htmloptionscollection-add
 pub fn call_add(instance: *runtime.Instance, element: typedefs.HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
-    // `element` is (HTMLOptionElement or HTMLOptGroupElement), converted by
-    // the binding before `before` (WebIDL 3.2.24: a platform object
-    // implementing either, else a TypeError).
-    const new_option = switch (element) {
+    const option = switch (element) {
         inline else => |object| object,
     };
-
-    // 1. Adding an ancestor of the select would make a cycle.
-    if (isInclusiveAncestorOf(new_option, instance)) return error.HierarchyRequestError;
-
-    // 2-4. Resolve `before` - (HTMLElement or long)?, null by default - to a
-    // reference node. An HTMLElement must be inside the select; anything else
-    // but null or undefined converts to long, an index into the options.
-    var reference: ?*runtime.Instance = null;
-    if (before.wasPassed()) {
-        if (before.getValue()) |before_value| {
-            switch (before_value) {
-                .undefined, .null => {},
-                else => {
-                    const html_element = if (platformObjectOf(instance, before_value)) |object|
-                        (if (object.stateAs(interfaces.HTMLElement.State) != null) object else null)
-                    else
-                        null;
-                    if (html_element) |before_node| {
-                        if (!isInclusiveAncestorOf(instance, before_node)) return error.NotFoundError;
-                        reference = before_node;
-                    } else {
-                        // An index with no option at it - negative included -
-                        // leaves reference null: append.
-                        const index = try convertToLong(instance, before_value);
-                        if (index >= 0) reference = try call_item(instance, @intCast(index));
-                    }
-                },
-            }
-        }
-    }
-
-    // 3. Inserting an element before itself is a no-op rather than an error.
-    if (reference) |ref| {
-        if (ref == new_option) return;
-    }
-
-    // 5-6. Pre-insert into the reference's parent, which is not necessarily the
-    // select - `before` may be an option inside an optgroup.
-    const parent = if (reference) |ref| NodeImpl.getParent(ref) orelse instance else instance;
-    _ = try interfaces.Node.call_insertBefore(parent, new_option, reference);
+    try forms.options.add(instance, option, before);
 }
 
 /// Operation: remove
 /// Spec: https://html.spec.whatwg.org/multipage/form-elements.html#dom-select-remove
 pub fn call_remove(instance: *runtime.Instance) anyerror!void {
-    // This is the NO-ARGUMENT overload, which acts like ChildNode.remove() and
-    // removes the select itself.
-    //
-    // TODO: the IDL also declares `remove(long index)`, which removes that
-    // option, but codegen emits a single arity-0 binding (see the `methods`
-    // table in interfaces/HTMLSelectElement.zig) so the index never reaches
-    // here. Overload dispatch for this pair has to be fixed in
-    // src/webidl/codegen/, not worked around here.
+    // HTML remove() without an argument removes the select itself.
     try interfaces.Element.call_remove(instance);
+}
+
+/// HTML remove(index) runs the options collection removal algorithm.
+pub fn call_remove__1(instance: *runtime.Instance, index: i32) anyerror!void {
+    try forms.options.remove(instance, index);
 }
 
 /// Operation: setCustomValidity
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = @"error";
-    return error.NotImplemented;
+    // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
+    try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
 }
 
 /// Operation: checkValidity
 pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));
 }
 
 /// Operation: showPicker
@@ -517,6 +403,6 @@ pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: reportValidity
 pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    // HTML reportValidity steps 1–2; a headless host has no validation UI.
+    return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));
 }
