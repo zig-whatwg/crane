@@ -68,6 +68,22 @@ pub const InternalState = struct {
     document_abort_pending: ?u64 = null,
     active_fetch: ?*ImageFetch = null,
     event_pending: bool = false,
+    /// The element's one pending-activity keep for "update the image data"
+    /// is held: a restarted update keeps no second one (the keep is
+    /// counted), and only the first release of it ends it.
+    kept_alive: bool = false,
+
+    fn keepLoad(self: *InternalState, instance: *runtime.Instance) void {
+        if (self.kept_alive) return;
+        self.kept_alive = true;
+        engine.keepPlatformObjectAlive(instance);
+    }
+
+    fn releaseLoad(self: *InternalState, instance: *runtime.Instance) void {
+        if (!self.kept_alive) return;
+        self.kept_alive = false;
+        engine.releasePlatformObject(instance);
+    }
 
     fn cancelFetch(self: *InternalState) void {
         self.document_abort_pending = null;
@@ -339,7 +355,7 @@ fn abortDocument(document: *runtime.Instance) void {
         internal.complete = true;
         internal.event_pending = false;
         const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
-        engine.releasePlatformObject(instance);
+        internal.releaseLoad(instance);
     }
 }
 fn discardRealm(realm: runtime.Context) void {
@@ -351,7 +367,7 @@ fn discardRealm(realm: runtime.Context) void {
         entry.internal.load_generation +%= 1;
         entry.internal.complete = true;
         entry.internal.event_pending = false;
-        engine.releasePlatformObject(instance);
+        entry.internal.releaseLoad(instance);
     }
 }
 
@@ -438,7 +454,7 @@ fn startLoad(instance: *runtime.Instance, url_str: []const u8) !void {
     internal.complete = false; // Mark as loading
     // HTML keeps the element while update-the-image-data is running, even
     // when disconnected. Cancellation and the event's completed task end it.
-    engine.keepPlatformObjectAlive(instance);
+    internal.keepLoad(instance);
     errdefer {
         internal.complete = true;
         releaseLoadHold(instance, runtime.SlabAllocator.generationOf(instance), internal.load_generation);
@@ -741,7 +757,7 @@ fn fireEventTaskCallback(data: ?*anyopaque) void {
 fn releaseLoadHold(instance: *runtime.Instance, instance_generation: u64, load_generation: u64) void {
     if (runtime.SlabAllocator.generationOf(instance) != instance_generation) return;
     const internal = getInternal(instance) orelse return;
-    if (internal.load_generation == load_generation and internal.complete and !internal.event_pending) engine.releasePlatformObject(instance);
+    if (internal.load_generation == load_generation and internal.complete and !internal.event_pending) internal.releaseLoad(instance);
 }
 fn dropImageEvent(context: ?*anyopaque) void {
     const task: *FireEventTaskContext = @ptrCast(@alignCast(context.?));
