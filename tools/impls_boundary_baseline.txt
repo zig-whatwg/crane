@@ -74,7 +74,6 @@ src/webidl/impls/Attr.zig Node.NodeType 2
 src/webidl/impls/Attr.zig Node.deinit 1
 src/webidl/impls/Attr.zig Node.init 1
 src/webidl/impls/Attr.zig Node.setNodeType 2
-src/webidl/impls/Attr.zig Node.setOwnerDocument 1
 src/webidl/impls/CDATASection.zig CharacterData.deinit 1
 src/webidl/impls/CDATASection.zig CharacterData.init 1
 src/webidl/impls/CSSStyleDeclaration.zig Element.getInternal 1

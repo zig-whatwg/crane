@@ -263,6 +263,7 @@ pub const InternalState = struct {
     /// first activation notification. Read and written by
     /// src/html/user_activation.zig through dom.user_activation_state.
     user_activation: @import("dom").user_activation_state.Timestamps = .{},
+    reporting: @import("dom").reporting.State = .{},
 
     pub fn init(allocator: Allocator) !InternalState {
         return .{
@@ -276,6 +277,7 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        self.reporting.deinit(self.allocator);
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         if (self.own_performance) |*performance| performance.edge.release(performance.owner);
         if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
@@ -470,6 +472,7 @@ pub fn installHooks() void {
         .trusted_types = &settingsTrustedTypes,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
+        .reporting = &settingsReporting,
         .prohibits_mixed_security_contexts = &settingsProhibitsMixedSecurityContexts,
     });
 }
@@ -561,6 +564,11 @@ fn settingsProhibitsMixedSecurityContexts(instance: *runtime.Instance) error{Out
 fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").CookieJar {
     const internal = getInternal(instance) orelse return null;
     return internal.browsing_context.cookieJar();
+}
+
+fn settingsReporting(instance: *runtime.Instance) ?*@import("dom").reporting.State {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.reporting;
 }
 
 /// The settings object's policy container: the window's associated

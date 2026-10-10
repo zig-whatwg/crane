@@ -127,6 +127,10 @@ fn associateWithAttribute(list: *runtime.Instance, element: *runtime.Instance, l
             element.stateAs(interfaces.HTMLStyleElement.State) != null))
     {
         internal.supported_tokens = &.{"render"};
+    } else if (std.mem.eql(u8, local_name, "rel") and element.stateAs(interfaces.HTMLLinkElement.State) != null) {
+        // HTML link types this engine fetches. Other supported rel tokens
+        // are a separate link-type feature, not implied by token syntax.
+        internal.supported_tokens = &.{ "stylesheet", "preload", "modulepreload", "prefetch" };
     }
 }
 

@@ -128,8 +128,9 @@ pub fn reportViolationsForRequest(csp_list: *const types.CSPList, request: Reque
 /// §6.7.2.1 Does request violate policy? The violated directive's name, or
 /// null for "Does Not Violate".
 pub fn doesRequestViolatePolicy(request: Request, policy: *const types.Policy) ?[]const u8 {
-    // 1. A prefetch is checked as a resource hint (§6.7.2.2): against
-    // default-src. Not modelled beyond that, stated.
+    // 1. A prefetch uses the resource-hint source union (§6.7.2.2), not a
+    // regular destination's directive fallback chain.
+    if (std.mem.eql(u8, request.initiator, "prefetch")) return doesResourceHintViolatePolicy(request, policy);
     // 2. Let violates be "Does Not Violate".
     var violates: ?[]const u8 = null;
     // 3. For each directive of policy: its pre-request check.
@@ -140,6 +141,38 @@ pub fn doesRequestViolatePolicy(request: Request, policy: *const types.Policy) ?
     }
     // 4. Return violates.
     return violates;
+}
+
+/// §6.7.2.2 Does resource hint request violate policy? Each policy is
+/// checked separately; a permissive source in one cannot bypass another.
+fn doesResourceHintViolatePolicy(request: Request, policy: *const types.Policy) ?[]const u8 {
+    // 1-2. Without default-src there is no resource-hint restriction.
+    const default = policy.getDirective("default-src") orelse return null;
+    // Browser deviation: report-only checks default-src alone. Both
+    // shipping engines agree: Blink AllowResourceHintRequestForPolicy
+    // gates its union on kEnforce; Gecko nsPrefetchService::EnqueueURI
+    // uses TYPE_OTHER, which CSP_ContentTypeToDirective maps to default-src
+    // (dom/security/nsCSPUtils.cpp). Safari does not ship prefetch.
+    if (policy.disposition == .report) {
+        return if (doesRequestMatchSourceList(request, &default.value, policy)) null else default.name;
+    }
+    // 3. Any URL-matching fetch directive allows this hint. Unlike a script
+    // pre-request check, a nonce, hash or strict-dynamic is not a URL match.
+    // For enforce, Blink's union and Gecko's default-only check split 1-1;
+    // the spec's union decides that tie.
+    // Browser deviation: include default-src itself. CSP's list omits it,
+    // but Chrome and Firefox both pass prefetch-allowed-by-default (1/1)
+    // at wpt.fyi stable cc74d2669f, runs 6218298311311360 and
+    // 4877098740350976; Safari reports the feature unsupported. Blink's
+    // AllowResourceHintRequestForPolicy checks default-src after the union:
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/frame/csp/content_security_policy.cc
+    var it = policy.directive_set.items.iterator();
+    while (it.next()) |entry| {
+        const directive = entry.value_ptr;
+        if (isFetchDirective(directive.name) and doesRequestMatchSourceList(request, &directive.value, policy)) return null;
+    }
+    // 4. Report the default directive when none of the lists matched.
+    return default.name;
 }
 
 /// §6.8.1 Get the effective directive for request; null for a "report"
@@ -233,6 +266,10 @@ fn preRequestCheck(directive: *const types.Directive, request: Request, policy: 
     if (std.mem.eql(u8, check_name, "script-src") or std.mem.eql(u8, check_name, "script-src-elem")) {
         return scriptDirectivesPreRequestCheck(request, &directive.value, policy);
     }
+    // §6.1.13.1 / §6.1.14.1 step 3: a matching cryptographic nonce
+    // permits a style request, including the default-src fallback.
+    if ((std.mem.eql(u8, check_name, "style-src") or std.mem.eql(u8, check_name, "style-src-elem")) and
+        request.nonce.len != 0 and matching.doesNonceMatch(request.nonce, &directive.value)) return .allowed;
     // Every other fetch directive: "If the result of executing Does request
     // match source list? on request, this directive's value, and policy, is
     // "Does Not Match", return "Blocked"." (§6.1.2.1 and the like.)

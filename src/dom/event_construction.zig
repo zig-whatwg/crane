@@ -1,15 +1,18 @@
 //! The event constructing steps an Event subclass runs and no IDL member
 //! reaches: DOM's "inner event creation steps" (the initialized flag,
 //! timeStamp, bubbles, cancelable, composed), the dispatch flag the legacy
-//! init*Event() methods consult, and UIEventInit's members (view, detail,
-//! the legacy which), which every UIEvent subclass's constructor sets.
+//! init*Event() methods consult, UIEventInit's members (view, detail, the
+//! legacy which), which every UIEvent subclass's constructor sets, and
+//! MouseEventInit's relatedTarget, which every MouseEvent subclass's
+//! constructor sets and the MouseEvent keeps.
 //!
-//! Event and UIEvent install their steps here once, at process start (their
-//! installHooks), and the subclasses ask, never naming either impl.
+//! Event, UIEvent and MouseEvent install their steps here once, at process
+//! start (their installHooks), and the subclasses ask, never naming the
+//! impls.
 //!
 //! Spec: https://dom.spec.whatwg.org/#inner-event-creation-steps
 //!
-//! lint-impls: hook for Event, UIEvent
+//! lint-impls: hook for Event, UIEvent, MouseEvent
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
@@ -64,9 +67,18 @@ pub const UIEventSteps = struct {
     initialize: *const fn (event: *runtime.Instance, init: UIEventInit) void,
 };
 
+/// What the MouseEvent impl supplies.
+pub const MouseEventSteps = struct {
+    /// Set `event`'s relatedTarget to `target` and keep it - an edge from the
+    /// event's wrapper, which the MouseEvent's teardown ends.
+    set_related_target: *const fn (event: *runtime.Instance, target: ?*runtime.Instance) error{OutOfMemory}!void,
+};
+
 /// Process-wide, written once at start-up (process_start.zig).
 var event_steps: ?EventSteps = null;
 var ui_event_steps: ?UIEventSteps = null;
+// process-wide: an immutable function pointer installed once at process start, before Browsers start; each call acts only on the event it is given.
+var mouse_event_steps: ?MouseEventSteps = null;
 
 /// Called by Event's installHooks, once, at process start (process_start.zig).
 pub fn installEvent(steps: EventSteps) void {
@@ -78,6 +90,19 @@ pub fn installEvent(steps: EventSteps) void {
 pub fn installUIEvent(steps: UIEventSteps) void {
     process_start.assertInstalling();
     ui_event_steps = steps;
+}
+
+/// Called by MouseEvent's installHooks, once, at process start (process_start.zig).
+pub fn installMouseEvent(steps: MouseEventSteps) void {
+    process_start.assertInstalling();
+    mouse_event_steps = steps;
+}
+
+/// Set a MouseEvent's (or a subclass's) relatedTarget from its init
+/// dictionary, kept by the event for as long as it lives.
+pub fn setMouseRelatedTarget(event: *runtime.Instance, target: ?*runtime.Instance) error{ NotSupported, OutOfMemory }!void {
+    const steps = mouse_event_steps orelse return error.NotSupported;
+    try steps.set_related_target(event, target);
 }
 
 /// DOM "inner event creation steps" for `event` - made by its interface's

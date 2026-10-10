@@ -1380,6 +1380,7 @@ pub const AsyncModuleLoader = struct {
 
         fn fetched(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
             const self: *SingleFetch = @ptrCast(@alignCast(context));
+            if (self.loader) |loader| @import("dom").reporting.reportScriptFetch(loader.env.realm(), self.transport, outcome);
             self.transport = null;
             self.outcome = outcome catch null;
             const loader = self.loader orelse return self.destroy();

@@ -393,6 +393,53 @@ pub fn domAdapterOnChildrenFinished(tree_node: *TreeNode, context: ?*anyopaque) 
     dom.finish_parsing_children.finishedParsingChildren(element, local_name);
 }
 
+/// The tree builder's declarative shadow root step for the live parser
+/// ("in head", a start tag whose tag name is "template", steps 7.10-7.11):
+/// attach a shadow root to the request's host, mark it declarative, and
+/// record it, so the template's contents insert into it. False - the template
+/// is inserted as an ordinary one - when the host is already a shadow host
+/// (7.10) or attaching threw (7.11.2). The attach draws the same host and
+/// shadow root edges attachShadow does, so it wraps the host and the root:
+/// two wrappers per declarative host, none for a page without one.
+/// Passed to tree_builder.setDomAdapterDeclarativeShadowCallback().
+pub fn domAdapterAttachDeclarativeShadow(request: *html_core.parser.DeclarativeShadow, context: ?*anyopaque) bool {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return false));
+    const host = adapter.getDomNode(request.host) orelse return false;
+    // Step 7.10: "If declarativeShadowHostElement is a shadow host".
+    if (dom.shadow_hosts.rootForHost(host) != null) return false;
+    // Step 7.11.1: "Let registry be null if templateStartTag has a
+    // shadowrootcustomelementregistry attribute; otherwise
+    // declarativeShadowHostElement's node document's custom element
+    // registry."
+    const registry: ?*runtime.Instance = if (request.keep_registry_null) null else blk: {
+        const document = (interfaces.Node.get_ownerDocument(host) catch return false) orelse return false;
+        break :blk interfaces.Document.get_customElementRegistry(document) catch return false;
+    };
+    // Steps 7.11.2-7.11.7.
+    const shadow = dom.declarative_shadow.attach(host, declarativeRequest(request.*), registry) catch return false;
+    request.shadow_root = shadow;
+    request.shadow_generation = runtime.SlabAllocator.generationOf(shadow);
+    return true;
+}
+
+/// The DOM request for a tree builder's declarative shadow root.
+pub fn declarativeRequest(request: html_core.parser.DeclarativeShadow) dom.declarative_shadow.Request {
+    return .{
+        .mode = switch (request.mode) {
+            .open => ._open_,
+            .closed => ._closed_,
+        },
+        .delegates_focus = request.delegates_focus,
+        .serializable = request.serializable,
+        .slot_assignment = switch (request.slot_assignment) {
+            .named => ._named_,
+            .manual => ._manual_,
+        },
+        .clonable = request.clonable,
+        .keep_registry_null = request.keep_registry_null,
+    };
+}
+
 /// The DOM document mode for the parser's.
 pub fn documentMode(mode: html_core.parser.QuirksMode) document_internals.Mode {
     return switch (mode) {
@@ -682,12 +729,12 @@ pub const DomTreeAdapter = struct {
 
         // Create an element for the token, step 3: determine the intended
         // parent's document BEFORE creating an element or invoking its hooks.
-        const owner = if (tree_node.creation_location) |location| blk: {
-            const intended = (try parser_mutation.resolve(self, location)).parent;
-            break :blk if ((try interfaces.Node.get_nodeType(intended)) == interfaces.Node.get_DOCUMENT_NODE())
-                intended
+        const intended: ?*runtime.Instance = if (tree_node.creation_location) |location| (try parser_mutation.resolve(self, location)).parent else null;
+        const owner = if (intended) |parent| blk: {
+            break :blk if ((try interfaces.Node.get_nodeType(parent)) == interfaces.Node.get_DOCUMENT_NODE())
+                parent
             else
-                (try interfaces.Node.get_ownerDocument(intended)) orelse self.document;
+                (try interfaces.Node.get_ownerDocument(parent)) orelse self.document;
         } else self.document;
 
         // Check if this is an HTML element (most common case)
@@ -699,9 +746,22 @@ pub const DomTreeAdapter = struct {
         };
         const parser_ce = @import("custom_elements/parser.zig");
         const is_value = parser_ce.isValue(tree_node);
+        // Step 6: "Let registry be the result of looking up a custom element
+        // registry given intendedParent" - an element's own, so a descendant
+        // of a null-registry element is null too (Chrome does so; Safari does
+        // not: a tie between the browsers that ship scoped registries, which
+        // goes to the spec text). A token with a customelementregistry
+        // attribute gets null instead (Chrome and Safari; browsers-first
+        // audit R3 - the spec text has no such attribute).
+        const registry: dom.custom_elements.RegistrySelection = if (parser_ce.hasRegistryAttribute(tree_node))
+            .{ .explicit = null }
+        else if (intended) |parent|
+            .{ .explicit = try parser_ce.lookUpRegistry(parent) }
+        else
+            .default;
         // This adapter is the incremental full-document parser, including
         // document.write. Fragment conversion uses HTMLParser's explicit bit.
-        const scope = try parser_ce.Scope.begin(owner, local_name, ns_uri, is_value, false);
+        const scope = try parser_ce.Scope.beginWithRegistry(owner, local_name, ns_uri, is_value, false, registry);
         // Scope.begin found a definition exactly when this creation will
         // execute script.
         const creation: Creation = if (scope.synchronous) .may_have_run_script else .ran_no_script;
@@ -712,6 +772,7 @@ pub const DomTreeAdapter = struct {
             .namespace = ns_uri,
             .is_value = is_value,
             .synchronous = scope.synchronous,
+            .registry = registry,
         });
 
         errdefer if (!engine.hasWrapper(element)) dom.node_creation.destroyUninserted(element);
@@ -746,6 +807,14 @@ pub const DomTreeAdapter = struct {
         // HTML 4.2.7 records the token's stylesheet relationship and enabled
         // state at creation, before its post-connection steps start a fetch.
         if (is_html and (std.mem.eql(u8, local_name, "style") or std.mem.eql(u8, local_name, "link"))) dom.style_sheet_owners.createdByParser(element);
+
+        // Step 15: the tree builder found its parser conditions held; the
+        // intended parent must share the form's tree, and a form-associated
+        // custom element is never associated.
+        if (tree_node.parser_form) |form_node| {
+            if (intended) |parent| if (self.getDomNode(form_node)) |form|
+                try @import("form_associated.zig").parserAssociate(element, form, parent);
+        }
 
         self.last_creation = creation;
         return element;

@@ -61,6 +61,10 @@ pub const InternalState = struct {
     // DOM §2.3 - Touch target list (initially empty)
     touch_target_list: infra.List(*runtime.Instance),
 
+    /// The target `target_slot`'s edge holds, or null for none (see
+    /// `keepTarget`).
+    traced_target: ?*runtime.Instance = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -82,6 +86,39 @@ pub const InternalState = struct {
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
+/// The member an event keeps its target in (engine.traceChild): the target
+/// dispatch left it with, which script reads after dispatch (`event.target`,
+/// `srcElement`). Blink: Event::Trace visits target_ (core/dom/events/
+/// event.cc); it was a bare pointer here, and a held event read a freed node
+/// once the target's tree was collected (lane ownerdoc,
+/// crane/od-event-keeps-its-targets.html).
+///
+/// Only an event script can reach keeps it: one with a wrapper. An event
+/// script has not seen - the engine fires most of them, and nobody hears
+/// most of those - keeps nothing: tracing would wrap every target the engine
+/// fires at (docs/lessons/architecture-tracing-a-holders-nodes-makes-a-
+/// wrapper-per-node.md) and hold it strongly until the event is freed. The
+/// dispatcher holds the target while it runs; a listener that sees the event
+/// wraps it, and the end of dispatch (`setDispatchFlag(false)`) draws the edge
+/// then.
+const target_slot: engine.TracedSlot = .{ .name = "target" };
+
+/// Keep the event's current target (`target_slot`) while script can reach
+/// the event, and let a target it no longer has go.
+fn keepTarget(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    const target = instance.getState(State).own.target;
+    if (target == internal.traced_target) return;
+    if (target) |t| {
+        if (!engine.hasWrapper(instance)) return;
+        internal.traced_target = t;
+        engine.traceChild(instance, t, target_slot);
+    } else {
+        internal.traced_target = null;
+        engine.forgetTracedChild(instance, target_slot);
+    }
+}
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
@@ -134,6 +171,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     state.own.type.deinit(instance.ctx.allocator);
 
     if (state.own._internal) |internal| {
+        // An event its wrapper's collection frees has no edge left to end.
+        if (internal.traced_target != null) engine.forgetTracedChild(instance, target_slot);
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator
         // Return the block itself, not just what it points to. `internal.deinit()`
@@ -388,6 +427,7 @@ fn initializeEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubb
 
     // Step 4: Set event's target to null
     state.own.target = null;
+    keepTarget(instance);
 
     // Step 5: Set event's type attribute to type
     // The previous value was ours, so release it rather than leaking one
@@ -642,6 +682,9 @@ fn sequenceOfEventTargets(instance: *runtime.Instance, targets: []const *runtime
 pub fn setDispatchFlag(instance: *runtime.Instance, value: bool) void {
     const internal = getInternal(instance) orelse return;
     internal.dispatch_flag = value;
+    // Dispatch is over (step 10): a listener may have wrapped the event since
+    // its target was set.
+    if (!value) keepTarget(instance);
 }
 
 /// Get the dispatch flag
@@ -723,6 +766,7 @@ pub fn setTarget(instance: *runtime.Instance, target: ?*runtime.Instance) void {
     const state = instance.getState(State);
     state.own.target = target;
     state.own.srcElement = target;
+    keepTarget(instance);
 }
 
 /// Set the current target

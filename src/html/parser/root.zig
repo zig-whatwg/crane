@@ -51,6 +51,7 @@ pub const Tokenizer = @import("tokenizer.zig").Tokenizer;
 pub const TreeBuilder = @import("tree_builder.zig").TreeBuilder;
 pub const InsertionMode = @import("tree_builder.zig").InsertionMode;
 pub const TreeNode = @import("tree_builder.zig").TreeNode;
+pub const DeclarativeShadow = @import("tree_builder.zig").DeclarativeShadow;
 pub const QuirksMode = @import("tree_builder.zig").QuirksMode;
 pub const Namespace = @import("tree_builder.zig").Namespace;
 pub const AttributeNamespace = @import("tree_builder.zig").AttributeNamespace;

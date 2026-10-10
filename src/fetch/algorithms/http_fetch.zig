@@ -568,6 +568,8 @@ fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *s
             return err;
         };
     }
+    // 8.14. The prefetch purpose is added after the CORS header decision.
+    if (request.initiator == .prefetch) try addHeader(allocator, added, "Sec-Purpose", "prefetch");
     // 8.15. If httpRequest's header list does not contain `User-Agent`,
     //       append (`User-Agent`, the environment default `User-Agent`
     //       value).
@@ -1673,6 +1675,37 @@ test "HTTP-network-or-cache fetch step 8.11: a URL referrer is sent as Referer, 
     }
     try std.testing.expect(referer_at.? < origin_at.?);
     try std.testing.expect(!request.header_list.contains("Referer"));
+}
+
+test "HTTP-network-or-cache fetch step 8.14 adds Sec-Purpose after the CORS header decision" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://other.test/resource");
+    defer request.deinit();
+    try request.setOrigin("https://example.test");
+    request.mode = .cors;
+    request.initiator = .prefetch;
+    var added: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
+    defer {
+        for (added.items) |header| allocator.free(header.value);
+        added.deinit(allocator);
+    }
+    try httpRequestHeaders(allocator, request, &added);
+    var count: usize = 0;
+    for (added.items) |header| {
+        if (std.ascii.eqlIgnoreCase(header.name, "Sec-Purpose")) {
+            count += 1;
+            try std.testing.expectEqualStrings("prefetch", header.value);
+        }
+        try std.testing.expect(!std.ascii.eqlIgnoreCase(header.name, "Purpose"));
+        try std.testing.expect(!std.ascii.eqlIgnoreCase(header.name, "X-moz"));
+    }
+    try std.testing.expectEqual(@as(usize, 1), count);
+    try std.testing.expect(!request.header_list.contains("Sec-Purpose"));
+    for (added.items) |header| allocator.free(header.value);
+    added.clearRetainingCapacity();
+    request.initiator = .empty;
+    try httpRequestHeaders(allocator, request, &added);
+    for (added.items) |header| try std.testing.expect(!std.ascii.eqlIgnoreCase(header.name, "Sec-Purpose"));
 }
 
 test "HTTP-network-or-cache fetch step 8.21: includeCredentials sends the jar's cookies, last" {

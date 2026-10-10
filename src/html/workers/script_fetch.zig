@@ -443,11 +443,14 @@ fn fetchHttpWorkerScript(
     defer if (csp_report_only) |value| allocator.free(value);
     const referrer_policy_value = response.header_list.get(allocator, "Referrer-Policy") catch return WorkerScriptError.OutOfMemory;
     defer if (referrer_policy_value) |value| allocator.free(value);
+    const reporting_endpoints = response.header_list.get(allocator, "Reporting-Endpoints") catch return WorkerScriptError.OutOfMemory;
+    defer if (reporting_endpoints) |value| allocator.free(value);
     script.policy_container = fetch.internal.PolicyContainer.fromResponseHeaders(allocator, .{
         .url = final_url,
         .csp = csp_value,
         .csp_report_only = csp_report_only,
         .referrer_policy = referrer_policy_value,
+        .reporting_endpoints = reporting_endpoints,
     }) catch return WorkerScriptError.OutOfMemory;
     return script;
 }

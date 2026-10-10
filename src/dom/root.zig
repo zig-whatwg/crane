@@ -109,6 +109,7 @@ pub const policy_containers = @import("policy_containers.zig");
 /// CSP 5.5 report a violation: the securitypolicyviolation event at the
 /// global's side.
 pub const csp_violations = @import("csp_violations.zig");
+pub const reporting = @import("reporting.zig");
 /// Trusted Types enforcement: get trusted type compliant string, the
 /// default policy, compliant attribute values.
 pub const trusted_types = @import("trusted_types.zig");
@@ -176,6 +177,10 @@ pub const scopeMatchSelectorsString = selectors.scopeMatchSelectorsString;
 
 // Base types for interface inheritance (NodeBase pattern)
 pub const node_base = @import("node_base.zig");
+/// Reference counting for nodes: `Ref`, `GCReachableRef`, `WeakRef` and the
+/// agent's ledger (lane rc12, tmp/plans/refcount-design.md). Unused by
+/// production code until step 3.
+pub const refcount = @import("refcount.zig");
 pub const NodeBase = node_base.NodeBase;
 
 // Instance bridge for runtime.Instance <-> NodeBase conversion
@@ -208,6 +213,7 @@ pub const boundary_points = @import("boundary_points.zig");
 pub const target_element = @import("target_element.zig");
 pub const fragment_scroll = @import("fragment_scroll.zig");
 pub const shadow_hosts = @import("shadow_hosts.zig");
+pub const declarative_shadow = @import("declarative_shadow.zig");
 
 pub const indexeddb = @import("indexeddb.zig");
 pub const string_lists = @import("string_lists.zig");

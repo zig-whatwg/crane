@@ -412,11 +412,14 @@ fn policyContainerOf(allocator: Allocator, response: *const @import("fetch").int
     defer if (csp_report_only) |value| allocator.free(value);
     const referrer_policy_value = try response.header_list.get(allocator, "Referrer-Policy");
     defer if (referrer_policy_value) |value| allocator.free(value);
+    const reporting_endpoints = try response.header_list.get(allocator, "Reporting-Endpoints");
+    defer if (reporting_endpoints) |value| allocator.free(value);
     return fetch_internal.PolicyContainer.fromResponseHeaders(allocator, .{
         .url = url,
         .csp = csp_value,
         .csp_report_only = csp_report_only,
         .referrer_policy = referrer_policy_value,
+        .reporting_endpoints = reporting_endpoints,
     });
 }
 
