@@ -73,6 +73,9 @@ pub const LinkOptions = struct {
     cors: CorsSetting = .no_cors,
     /// The referrerpolicy attribute's state; `.empty` for none.
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    nonce: []const u8 = "",
+    integrity: []const u8 = "",
+    fetch_priority: fetch.internal.request.Priority = .auto,
 };
 
 /// Imports deeper than this are not fetched.
@@ -87,6 +90,8 @@ const Kind = enum {
     /// A link element's preload: the one resource, no subresources, and no
     /// delay on the document's load event.
     preload,
+    /// HTML 4.6.8.19: a speculative fetch, with no load-event delay.
+    prefetch,
     /// A link element's modulepreload: one module script, fetched "cors",
     /// failing on a MIME type that is not JavaScript; no delay on the
     /// document's load event either.
@@ -173,8 +178,12 @@ threadlocal var next_id: u64 = 1;
 pub fn delaysLoadEvent(document: *runtime.Instance) bool {
     for (loads.items) |load| {
         // "A user agent must not delay the load event for this link type"
-        // - preload and modulepreload.
-        if (load.kind == .preload or load.kind == .modulepreload) continue;
+        // - preload and modulepreload. Prefetch also does not block in
+        // browsers, despite HTML 4.2.4.3's default delay rule: Gecko fetches
+        // it with LOAD_BACKGROUND (nsPrefetchNode::OpenChannel). WPT
+        // preload/prefetch-load-event.html is 1/1 in Chrome 154, Firefox 157
+        // and Safari 27 at cc74d2669f (Safari does not fetch prefetch).
+        if (load.kind == .preload or load.kind == .modulepreload or load.kind == .prefetch) continue;
         if (!load.superseded and load.document == document and load.documentIsLive()) return true;
     }
     return false;
@@ -380,6 +389,13 @@ pub fn startPreload(element: *runtime.Instance, options: LinkOptions, destinatio
     return startLinkFetch(element, .preload, options, destination);
 }
 
+/// HTML 4.6.8.19 steps 2-7: a link request with the empty destination,
+/// prefetch initiator and the element's CORS settings. The existing Load
+/// owns the fetch and its eventual load/error event.
+pub fn startPrefetch(element: *runtime.Instance, options: LinkOptions) ?u64 {
+    return startLinkFetch(element, .prefetch, options, .empty);
+}
+
 /// HTML "fetch and process the linked resource" for `element`, a link
 /// element whose modulepreload link is to be fetched, `destination` its `as`
 /// attribute's state ("script" when it has none): step 3, a destination
@@ -413,7 +429,7 @@ fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, 
         return null;
     };
     defer element.ctx.allocator.free(url);
-    startFetch(load, url, null, options.cors, options.referrer_policy, destination);
+    startFetch(load, url, null, options, destination);
     if (load.in_flight == 0) complete(load);
     return load.id;
 }
@@ -672,15 +688,16 @@ fn fireEventSteps(data: ?*anyopaque) void {
 
 /// Fetch `url` for `load`: the link's own sheet when `parent` is null, an
 /// @import of `parent` otherwise. A request that cannot start is a failure.
-fn startFetch(load: *Load, url: []const u8, parent: ?*Sheet, cors: CorsSetting, referrer_policy: fetch.internal.ReferrerPolicy, destination: fetch.internal.Destination) void {
-    startFetchOrFail(load, url, parent, cors, referrer_policy, destination) catch |err| {
+fn startFetch(load: *Load, url: []const u8, parent: ?*Sheet, options: LinkOptions, destination: fetch.internal.Destination) void {
+    startFetchOrFail(load, url, parent, options, destination) catch |err| {
         log.debug("style sheet fetch of {s} not started: {}", .{ url, err });
         load.failed = true;
     };
 }
 
-fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, cors: CorsSetting, referrer_policy: fetch.internal.ReferrerPolicy, destination: fetch.internal.Destination) !void {
+fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, options: LinkOptions, destination: fetch.internal.Destination) !void {
     const allocator = load.allocator;
+    const cors = options.cors;
     const sheet = try allocator.create(Sheet);
     errdefer allocator.destroy(sheet);
     sheet.* = .{
@@ -714,11 +731,19 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, cors: CorsSet
     }
     request.use_url_credentials = true;
     // "Set request's referrer policy to options's referrer policy."
-    request.referrer_policy = referrer_policy;
+    request.referrer_policy = options.referrer_policy;
+    // HTML "create a link request", steps 6-7 and 10: the link's integrity,
+    // cryptographic nonce and fetch priority. CSS imports use defaults.
+    try request.setIntegrityMetadata(options.integrity);
+    if (options.nonce.len != 0) try request.setCryptographicNonceMetadata(options.nonce);
+    request.priority = options.fetch_priority;
     // Step 6 of "default fetch and process the linked resource": the
     // initiator type is "css" for a stylesheet link, "link" otherwise; an
     // import's is "css" too.
-    request.initiator_type = if (load.kind == .preload) .link else .css;
+    request.initiator_type = if (load.kind == .preload or load.kind == .prefetch) .link else .css;
+    // Prefetch step 5. Fetch consumes this for CSP's union check.
+    // It is distinct from Resource Timing's initiatorType.
+    if (load.kind == .prefetch) request.initiator = .prefetch;
     // "Set request's client to options's environment": the element's
     // relevant settings object - its realm's global's.
     if (globalOf(load.realm)) |global| {
@@ -789,6 +814,9 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     // status is not an ok status, then set success to false." A network
     // error has neither.
     if (response.response_type == .@"error") return fail(load);
+    // Prefetch step 6: any non-network-error response fires load, including
+    // a null body (204) and an opaque filtered response.
+    if (load.kind == .prefetch) return;
     const body = response.body orelse return fail(load);
     // A preload: "If response is a network error, fire an event named error
     // at el. Otherwise, fire an event named load at el" - whatever its
@@ -852,7 +880,7 @@ fn fetchImports(load: *Load, sheet: ?*Sheet, text: []const u8, base: ?[]const u8
                 continue;
             }
         }
-        startFetch(load, url, sheet, .no_cors, .empty, .style);
+        startFetch(load, url, sheet, .{ .href = url }, .style);
     }
 }
 
