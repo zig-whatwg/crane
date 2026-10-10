@@ -1,67 +1,69 @@
-//! Implementation for CommandEvent interface
-
+//! HTML 6.5.2: CommandEvent's EventInit, command, and retargeted source.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const dom = @import("dom");
+const engine = @import("engine");
 const CommandEvent = interfaces.CommandEvent;
 
 pub const State = CommandEvent.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
+pub const ImplError = error{NotImplemented};
+pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    command: []u8 = &.{},
+    // The event traces its source, including while waiting for its wrapper.
+    // Generation and saved realm are the teardown net, as in ToggleEvent.
+    source: ?dom.custom_elements.KeptInstance = null,
+};
+const source_slot: engine.TracedSlot = .{ .name = "source" };
+
+pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
+    const instance = try interfaces.Event.initWithState(allocator, StateType, vtable, ctx);
+    errdefer runtime.Instance.deinit(instance);
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(State).own._internal = internal;
     return instance;
 }
 
-/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.source != null) engine.forgetTracedChild(instance, source_slot);
+        internal.allocator.free(internal.command);
+        internal.allocator.destroy(internal);
+        state.own._internal = null;
+    }
+    interfaces.Event.deinit(instance);
 }
 
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CommandEventInit)) !*runtime.Instance {
-    // Create instance through init()
     const instance = try init(ctx.allocator, State, &CommandEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = @"type";
-    _ = eventInitDict;
-    // TODO: Implement constructor logic with parameters
-
+    errdefer runtime.Instance.deinit(instance);
+    const dict: dictionaries.CommandEventInit = eventInitDict.getOrDefault(.{ .base = .{} });
+    // Interface dictionary conversion currently accepts any wrapped instance.
+    if (dict.source) |source| if (source.stateAs(interfaces.Element.State) == null) return error.TypeError;
+    // DOM inner event creation, then HTML's event-specific initialized values.
+    try dom.event_construction.innerEventCreationSteps(instance, @"type", dom.event_construction.eventInitFrom(dict.base));
+    const internal = instance.getState(State).own._internal.?;
+    internal.command = try ctx.allocator.dupe(u8, if (dict.command) |command| command.asSlice() else "");
+    if (dict.source) |source| {
+        internal.source = dom.custom_elements.KeptInstance.of(source);
+        engine.traceChild(instance, source, source_slot);
+    }
     return instance;
 }
 
-/// Getter for source
 pub fn get_source(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const internal = instance.getState(State).own._internal orelse return null;
+    const kept = internal.source orelse return null;
+    const source = kept.get() orelse return null;
+    return dom.retarget.retarget(source, try interfaces.Event.get_currentTarget(instance));
 }
 
-/// Getter for command
 pub fn get_command(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = instance.getState(State).own._internal orelse return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initDupe(instance.ctx.allocator, internal.command);
 }
