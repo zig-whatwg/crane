@@ -146,6 +146,9 @@ pub const document_browsing_context = @import("document_browsing_context.zig");
 /// What the parsers' tree construction sets on the nodes it makes where no
 /// IDL member fits: an element's names, a doctype's identifiers.
 pub const node_creation = @import("node_creation.zig");
+/// Freeing a detached tree a bounded number of nodes at a time, leaves first
+/// (the agent's deferred teardown queue, runtime.gc.DeferredTeardown).
+pub const tree_teardown = @import("tree_teardown.zig");
 pub const custom_elements = @import("custom_elements.zig");
 /// HTML's user activation timestamps, the focused area of a document and a
 /// document's visibility state: the hooks the user input algorithms reach

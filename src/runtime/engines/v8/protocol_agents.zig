@@ -125,6 +125,10 @@ const AgentRecord = struct {
     /// patterns (v8_wrapper.cpp, PatternMatcher): made on first use, on the
     /// agent's thread; deleted by its end.
     pattern_matcher: ?*ffi.PatternMatcher = null,
+    /// AgentOptions.deferred_teardown: the host's queue a collected node's
+    /// teardown goes to (wrapper_cache.queueCollectedNode), BORROWED; the
+    /// agent's end drains and closes it.
+    deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
 };
 
 /// The agent's PatternMatcher, made on its first use; null for an isolate
@@ -170,6 +174,26 @@ pub fn agentHost(agent: *Agent) ?*anyopaque {
     return record.host;
 }
 
+/// The deferred teardown queue the host gave the agent whose isolate this is
+/// (AgentOptions.deferred_teardown); null when it gave none, or for an
+/// isolate createAgent did not make - whose collected nodes are then torn
+/// down in the second pass, as before.
+pub fn deferredTeardownOf(isolate: *ffi.Isolate) ?*runtime.gc.DeferredTeardown {
+    const record = recordOf(isolate) orelse return null;
+    return record.deferred_teardown;
+}
+
+/// Run every teardown queued for `agent` now, its isolate entered: a full
+/// collection (requestGarbageCollection) or the host short of memory asked
+/// for everything the collector found to be freed.
+pub fn drainDeferredTeardown(agent: *Agent) void {
+    const queue = deferredTeardownOf(@ptrCast(@alignCast(agent))) orelse return;
+    if (queue.isEmpty()) return;
+    const entered = EnteredIsolate.of(agent);
+    defer entered.leave();
+    queue.drainAll();
+}
+
 /// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
 /// new isolate - restored from the engine's snapshot when asked for and one
 /// was given - with [[CanBlock]] as the options say and the host's hooks
@@ -197,7 +221,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent };
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent, .deferred_teardown = options.deferred_teardown };
     {
         std.Io.Threaded.mutexLock(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
@@ -279,12 +303,22 @@ pub fn endAgent(agent: *Agent) void {
     const host_agent = if (record) |r| r.host_agent else false;
     const shadow_realms = if (record) |r| r.shadow_realms else null;
     const pattern_matcher = if (record) |r| r.pattern_matcher else null;
+    const deferred_teardown = if (record) |r| r.deferred_teardown else null;
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
     // Its utility context and compiled patterns: handles of this isolate,
     // released before it is disposed.
     ffi.v8_PatternMatcher_Delete(pattern_matcher);
+    // The deferred teardown queue is empty: every node in it was queued by a
+    // realm, and each realm's end drained its own (they end before their
+    // agent). Closed from here on - what the collections below find is torn
+    // down in the second pass, as before.
+    if (deferred_teardown) |queue| {
+        std.debug.assert(queue.isEmpty());
+        queue.drainAll();
+        queue.close();
+    }
     // This agent's ShadowRealms, whichever kind of agent it is: they were
     // every agent's once, cleared by whichever host agent ended first.
     if (shadow_realms) |data| shadow_realm.deinitializeShadowRealmSupport(data);
@@ -375,8 +409,14 @@ pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
             ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
             ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
             ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
-            // A third pass for what the second's weak callbacks revived.
+            // The trees the collections queued are torn down now - the host
+            // wants the memory back - and what their teardown let go of is
+            // collected by the third pass, which also takes what the
+            // second's weak callbacks revived.
+            const queue = deferredTeardownOf(entered.isolate);
+            if (queue) |q| q.drainAll();
             ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
+            if (queue) |q| q.drainAll();
         },
         .moderate => _ = ffi.v8_Isolate_ContextDisposedNotification(entered.isolate, false),
     }

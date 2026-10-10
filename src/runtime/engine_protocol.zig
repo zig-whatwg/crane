@@ -465,6 +465,17 @@ pub const AgentOptions = struct {
     /// What the engine allocates for the agent itself (its caches, what
     /// destroyAgent frees), BORROWED for the agent's life.
     allocator: std.mem.Allocator = std.heap.c_allocator,
+    /// The host's queue of native objects whose last owner went away
+    /// (runtime.gc.DeferredTeardown), BORROWED past the agent's end. When the
+    /// collector takes a node's wrapper, the adapter QUEUES the node's
+    /// teardown here instead of running it (4.12): the host's event loop frees
+    /// it a slice at a time between tasks, the end of the node's realm and the
+    /// agent's end drain it, `requestGarbageCollection` and a `.critical`
+    /// `notifyMemoryPressure` drain it after collecting, and past its memory
+    /// bound the adapter frees inline where it queued. The agent's end closes
+    /// it. Null - or an adapter that does not queue yet (JavaScriptCore,
+    /// QuickJS) - tears down inline, as before.
+    deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
 };
 
 /// The host's side of the ECMAScript host hooks, installed per agent. A hook
@@ -831,7 +842,8 @@ pub inline fn runEngineTasks(agent: *Agent) bool {
 }
 
 /// Collect `agent`'s garbage now, as completely as the engine can - for
-/// TestUtils.gc() only (never in a shipping configuration).
+/// TestUtils.gc() only (never in a shipping configuration). The teardowns the
+/// collection queued (AgentOptions.deferred_teardown) run before it returns.
 pub inline fn requestGarbageCollection(agent: *Agent) void {
     impl.requestGarbageCollection(agent);
 }
@@ -839,7 +851,9 @@ pub inline fn requestGarbageCollection(agent: *Agent) void {
 /// The host wants `agent`'s memory back: it has just let go of what a page
 /// held (a navigation's old realm, a removed frame's), which is garbage now,
 /// or it is short of memory. The engine collects as `level` asks. No spec
-/// observes it; every engine answers, doing what it can.
+/// observes it; every engine answers, doing what it can. At `.critical` the
+/// teardowns the collections queued (AgentOptions.deferred_teardown) run
+/// before it returns.
 pub inline fn notifyMemoryPressure(agent: *Agent, level: MemoryPressure) void {
     impl.notifyMemoryPressure(agent, level);
 }
@@ -1736,6 +1750,13 @@ pub inline fn structuredDeserializeWithTransfer(realm: Context, serialized: []co
 // inside its collector (JavaScriptCore's JSObjectFinalizeCallback, QuickJS's
 // class finalizer) queues the teardown the same way. Nor does a teardown run
 // for an instance wrapped again in between: the new wrapper owns it.
+//
+// A node's teardown - its whole subtree's, for a collected root - is deferred
+// further, when the host gave the agent a queue (AgentOptions.deferred_teardown):
+// the adapter queues the node there, and the host frees it a slice at a time
+// from its event loop. The checks above are made again when the queue reaches
+// it - script has run since - so a node wrapped again, put back in a tree, or
+// freed by someone else in between is not the queue's to free.
 
 /// Whether `instance` has a wrapper in its relevant realm.
 pub inline fn hasWrapper(instance: *Instance) bool {

@@ -101,6 +101,12 @@ pub const EventLoop = struct {
     /// frame long or longer (`noteWork`).
     idle_blocked_until_ns: i64 = 0,
 
+    /// The agent's deferred teardown queue (the host's AgentHost owns it;
+    /// engine.AgentOptions.deferred_teardown): the nodes whose wrappers the
+    /// collector took, freed here between tasks, a slice at a time. Null for
+    /// a loop whose agent has none.
+    deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
+
     const Self = @This();
 
     /// Default maximum wait time when no explicit timeout is provided.
@@ -258,6 +264,10 @@ pub const EventLoop = struct {
         // settled a promise - d8's ProcessMessages does the same).
         if (engine.runEngineTasks(self.agent)) did_work = true;
 
+        // Step 2b': the collected trees the agent queued for teardown -
+        // between tasks, never inside script (runtime.gc.DeferredTeardown).
+        if (self.runDeferredTeardown()) did_work = true;
+
         // Step 2c: move the fetches in flight along. A fetch that ended
         // queues its task for the next turn. The wait below is sliced at 1ms
         // (native_timer.zig), and a fetch in flight is pending work, so the
@@ -275,8 +285,9 @@ pub const EventLoop = struct {
         // Step 3: how long to wait - until the next timer or max_wait_ms.
         const wait_time = blk: {
             // A task left for the next turn is work waiting now: poll, but
-            // do not block. So is one another thread posted meanwhile.
-            if (self.tasks.items.len > 0 or self.sink.hasPosted()) break :blk 0;
+            // do not block. So is one another thread posted meanwhile, and a
+            // tree still waiting for its teardown.
+            if (self.tasks.items.len > 0 or self.sink.hasPosted() or self.deferredPending()) break :blk 0;
             var wait = max_wait_ms;
             if (self.timer_manager) |mgr| {
                 if (mgr.getNextTimerDeadline()) |deadline| wait = @min(deadline, wait);
@@ -342,6 +353,34 @@ pub const EventLoop = struct {
         return posted.items.len > 0;
     }
 
+    /// How long one turn frees collected trees at most, past its first slice:
+    /// a task that arrives meanwhile waits at most a slice, a timer due
+    /// meanwhile at most this - the order of a frame's idle work.
+    const deferred_teardown_turn_ns: i64 = 4 * std.time.ns_per_ms;
+
+    /// The agent's deferred teardown, between tasks: a slice, and more while
+    /// no task waits and the turn's share lasts - and, past the queue's
+    /// `loop_low_water`, down to it whatever waits. Whether any ran.
+    fn runDeferredTeardown(self: *Self) bool {
+        const DeferredTeardown = runtime.gc.DeferredTeardown;
+        const queue = self.deferred_teardown orelse return false;
+        if (queue.isEmpty()) return false;
+        const start = monotonicNs();
+        while (true) {
+            _ = queue.runSlice(DeferredTeardown.slice_budget);
+            if (queue.isEmpty()) break;
+            if (queue.pendingNodes() > DeferredTeardown.loop_low_water) continue;
+            if (self.tasks.items.len > 0 or self.sink.hasPosted()) break;
+            if (monotonicNs() - start >= deferred_teardown_turn_ns) break;
+        }
+        return true;
+    }
+
+    fn deferredPending(self: *const Self) bool {
+        const queue = self.deferred_teardown orelse return false;
+        return !queue.isEmpty();
+    }
+
     /// HTML "perform a microtask checkpoint", the agent's.
     fn checkpoint(self: *Self) void {
         engine.performMicrotaskCheckpoint(self.agent) catch {};
@@ -391,6 +430,8 @@ pub const EventLoop = struct {
     /// Whether there is pending work that should keep the loop from idling.
     pub fn hasPendingWork(self: *Self) bool {
         if (self.tasks.items.len > 0) return true;
+        // Collected trees waiting for their teardown.
+        if (self.deferredPending()) return true;
         // Posted by another thread, and not taken yet.
         if (self.sink.hasPosted()) return true;
         // A worker this loop owns is running: it may post at any time.
@@ -867,4 +908,65 @@ test "a microtask still queued at the loop's end runs nothing and is freed when 
     try testing.expect(!probe.failed);
     try testing.expect(!probe.ran);
     try testing.expect(!probe.leaked);
+}
+
+/// A tree of `nodes` nodes a deferred teardown frees a budget at a time.
+const QueuedTree = struct {
+    nodes: usize,
+    freed: usize = 0,
+
+    fn run(item: *runtime.gc.DeferredTeardown.Item, budget: usize) runtime.gc.DeferredTeardown.Progress {
+        const self: *QueuedTree = @ptrCast(@alignCast(item.data.?));
+        const n = @min(budget, self.nodes - self.freed);
+        self.freed += n;
+        return .{ .freed = n, .done = self.freed == self.nodes };
+    }
+
+    const steps: runtime.gc.DeferredTeardown.Steps = .{ .run = run };
+
+    fn queue(self: *QueuedTree, q: *runtime.gc.DeferredTeardown, instance: *runtime.Instance) !void {
+        try testing.expect(q.push(.{ .instance = instance, .generation = 1, .owner = null, .steps = &steps, .data = self, .weight = self.nodes }));
+    }
+};
+
+test "the deferred teardown runs between tasks: slices while nothing waits, one when a task does, down to the mark regardless" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var q = runtime.gc.DeferredTeardown.init(testing.allocator);
+    defer q.deinit();
+    loop.deferred_teardown = &q;
+    var instance: runtime.Instance = undefined;
+
+    // Nothing queued: nothing to do, and no reason to keep turning.
+    try testing.expect(!loop.runDeferredTeardown());
+    try testing.expect(!loop.hasPendingWork());
+
+    // A task waiting, and more queued than a turn leaves: down to the
+    // turn's mark first, whatever waits.
+    const DeferredTeardown = runtime.gc.DeferredTeardown;
+    var big: QueuedTree = .{ .nodes = DeferredTeardown.loop_low_water + 10 * DeferredTeardown.slice_budget };
+    try big.queue(&q, &instance);
+    try testing.expect(loop.hasPendingWork());
+    try loop.tasks.append(testing.allocator, .{ .callback = &noop, .context = null });
+    try testing.expect(loop.runDeferredTeardown());
+    try testing.expect(q.pendingNodes() <= DeferredTeardown.loop_low_water);
+    try testing.expect(q.pendingNodes() > DeferredTeardown.loop_low_water - DeferredTeardown.slice_budget);
+
+    // At the mark, with a task waiting: one slice, then the task's turn.
+    const at_mark = big.freed;
+    try testing.expect(loop.runDeferredTeardown());
+    try testing.expectEqual(at_mark + DeferredTeardown.slice_budget, big.freed);
+    _ = loop.tasks.orderedRemove(0);
+
+    // Nothing waiting: slices until the queue is empty or the turn's share
+    // is spent; every turn makes progress until it is empty.
+    var turns: usize = 0;
+    while (loop.deferredPending()) : (turns += 1) {
+        const before = big.freed;
+        try testing.expect(loop.runDeferredTeardown());
+        try testing.expect(big.freed > before);
+        try testing.expect(turns < 1000);
+    }
+    try testing.expectEqual(big.nodes, big.freed);
+    try testing.expect(!loop.hasPendingWork());
 }
