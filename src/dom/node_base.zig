@@ -90,11 +90,50 @@ pub const NodeBase = struct {
     /// chain names exactly the holders that must rescue the subtree's root.
     holds: ?*@import("node_holds.zig").Hold = null,
 
+    /// The reference count word, WebKit's encoding (Source/WebCore/dom/Node.h
+    /// `m_refCountAndParentBit`): bit 0 is the parent bit (this node has a
+    /// parent), the rest is the count of references held through `Ref`, in
+    /// units of `rc_one`. A node is born with one reference, its creator's.
+    /// Maintained only through src/dom/refcount.zig; nothing reads it for
+    /// lifetime yet (tmp/plans/refcount-design.md, steps 2 to 6: shadow mode).
+    /// Non-atomic: nodes belong to one agent's thread.
+    rc: u32 = rc_one,
+
+    /// The number of held nodes - nodes whose count is not zero - in this
+    /// node's host-including subtree, itself included: decision D1 (a held node
+    /// keeps its whole tree) as arithmetic. A tree is garbage when its root's
+    /// total is 0. A node is born held (`rc_one`), so it starts at 1.
+    subtree_holds: u32 = 1,
+
+    /// The reference counting state that is not a number (see RcFlags).
+    rc_flags: RcFlags = .{},
+
     /// V8 wrapper for cross-context identity
     /// When set, this wrapper is returned for ALL contexts to ensure `===` identity works.
     /// Solves the problem where MutationObserver addedNodes[0] !== original element
     /// because different contexts were creating different wrappers for the same instance.
     bound_v8_wrapper: ?*anyopaque = null,
+
+    // ========================================================================
+    // Reference counting (tmp/plans/refcount-design.md section 1)
+    // ========================================================================
+
+    /// One reference in `rc`'s units (WebKit `s_refCountIncrement`).
+    pub const rc_one: u32 = 2;
+    /// `rc`'s parent bit (WebKit `s_refCountMask` is its complement).
+    pub const rc_parent_bit: u32 = 1;
+
+    /// The booleans the count machinery keeps beside the numbers.
+    pub const RcFlags = packed struct(u8) {
+        /// The node is the root of a tree whose total reached zero and which
+        /// is queued for teardown: a `Ref` taken on it is a bug, and a
+        /// `WeakRef` reads it as gone.
+        garbage: bool = false,
+        /// The node is being torn down (WebKit
+        /// `applyRefDuringDestructionCheck`): a `Ref` taken on it is a bug.
+        destroying: bool = false,
+        _unused: u6 = 0,
+    };
 
     // ========================================================================
     // Node Type Constants (DOM Spec §5.1)

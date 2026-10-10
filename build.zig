@@ -3648,6 +3648,42 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(lint_global_state_tests).step);
 
     // ========================================================================
+    // LINT: reference counting's structural rules, as a ratchet
+    // ========================================================================
+    // tmp/plans/refcount-design.md section 7 step 2. tools/lint_refcount.zig
+    // counts, through std.zig.Ast, every write to `.parent_node` outside
+    // NodeBase's one setter and every counted reference (`Ref`, `GCReachableRef`)
+    // held inside a node's own state, per file, and fails if any count rises
+    // above tools/refcount_baseline.txt or a new pair appears. The baseline only
+    // goes down (`zig build lint-refcount -- --update`). `zig build test`
+    // depends on it.
+    const lint_refcount_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_refcount.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_refcount_exe = b.addExecutable(.{
+        .name = "lint_refcount",
+        .root_module = lint_refcount_module,
+    });
+    const lint_refcount_step = b.step("lint-refcount", "Fail on a new write to .parent_node outside NodeBase's setter or a counted reference in node state (use -- --update after removing some)");
+    const lint_refcount = b.addRunArtifact(lint_refcount_exe);
+    // It reads src/ and the baseline, which the build graph does not track.
+    lint_refcount.has_side_effects = true;
+    lint_refcount.setCwd(b.path("."));
+    if (b.args) |args| lint_refcount.addArgs(args);
+    lint_refcount_step.dependOn(&lint_refcount.step);
+    // Part of `zig build test`: the check itself (never with --update) and the
+    // tool's own tests.
+    const lint_refcount_check = b.addRunArtifact(lint_refcount_exe);
+    lint_refcount_check.has_side_effects = true;
+    lint_refcount_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_refcount_check.step);
+    const lint_refcount_tests = b.addTest(.{ .root_module = lint_refcount_module });
+    test_step.dependOn(&b.addRunArtifact(lint_refcount_tests).step);
+
+    // ========================================================================
     // WPT: the wpt.fyi upload package
     // ========================================================================
     // tools/wpt_upload_package.zig turns a supervised sweep's reports, result

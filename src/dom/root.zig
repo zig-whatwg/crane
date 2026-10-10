@@ -174,6 +174,10 @@ pub const scopeMatchSelectorsString = selectors.scopeMatchSelectorsString;
 
 // Base types for interface inheritance (NodeBase pattern)
 pub const node_base = @import("node_base.zig");
+/// Reference counting for nodes: `Ref`, `GCReachableRef`, `WeakRef` and the
+/// agent's ledger (lane rc12, tmp/plans/refcount-design.md). Unused by
+/// production code until step 3.
+pub const refcount = @import("refcount.zig");
 pub const NodeBase = node_base.NodeBase;
 
 // Instance bridge for runtime.Instance <-> NodeBase conversion

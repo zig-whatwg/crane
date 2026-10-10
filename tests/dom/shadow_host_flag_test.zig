@@ -13,12 +13,8 @@ fn base(instance: *runtime.Instance) *dom.NodeBase {
     return dom.instance_bridge.getNodeBase(instance).?;
 }
 
-test "the shadow host bit fits NodeBase's padding" {
-    // 440 bytes before the bit was added, and after. 448 since lane
-    // nodeholds' hold chain head (`NodeBase.holds`, a pointer: the padding
-    // beside node_type and the bools is 3 bytes), accepted by the integrator.
-    try std.testing.expectEqual(@as(usize, 448), @sizeOf(dom.NodeBase));
-}
+// The size of NodeBase is pinned in tests/dom/refcount_test.zig (456 B since the
+// reference counts: 440 before this bit, 448 with nodeholds' `holds`).
 
 const Fixture = struct {
     ctx: runtime.ContextData,
