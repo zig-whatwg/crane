@@ -249,3 +249,73 @@ test "a canceled dispatch's bytes leave its fetch group at once" {
         }
     }.body);
 }
+
+test "fetch() with keepalive reserves its body, and one over the budget never starts and rejects" {
+    try onThread(struct {
+        fn body() !void {
+            var page = try Page.open(std.testing.allocator);
+            defer page.close();
+            const group = try groupOf(&page);
+            const before = async_fetch.inFlight();
+            try page.page.runScript(
+                \\window.log = [];
+                \\const url = 'http://127.0.0.1:65533/keepalive';
+                \\const big = '*'.repeat(65536);
+                \\fetch(url, {keepalive: true, method: 'POST', body: big})
+                \\  .catch(e => log.push('first:' + e.name));
+                \\fetch(url, {keepalive: true, method: 'POST', body: '*'})
+                \\  .catch(e => log.push('second:' + e.name));
+                \\// No body, no budget: it starts even when the budget is full.
+                \\fetch(url, {keepalive: true}).catch(e => log.push('third:' + e.name));
+            );
+            // The second never reached the network.
+            try std.testing.expectEqual(before + 2, async_fetch.inFlight());
+            try std.testing.expectEqual(@as(u64, 65536), group.inflight_keepalive_bytes);
+            try turnUntilIdle(&page, before);
+            try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+            _ = try page.browser.runEventLoopBlocking(20);
+            const log = try page.page.evaluateScriptToString("log.slice().sort().join()", std.testing.allocator);
+            defer std.testing.allocator.free(log);
+            // The refused connections are network errors too.
+            try std.testing.expectEqualStrings("first:TypeError,second:TypeError,third:TypeError", log);
+        }
+    }.body);
+}
+
+test "aborting a keepalive fetch() returns its bytes at once" {
+    try onThread(struct {
+        fn body() !void {
+            var page = try Page.open(std.testing.allocator);
+            defer page.close();
+            const group = try groupOf(&page);
+            const before = async_fetch.inFlight();
+            try page.page.runScript(
+                \\window.controller = new AbortController();
+                \\fetch('http://127.0.0.1:65533/keepalive', {keepalive: true, method: 'POST',
+                \\  body: '*'.repeat(1000), signal: controller.signal}).catch(() => {});
+            );
+            try std.testing.expectEqual(@as(u64, 1000), group.inflight_keepalive_bytes);
+            try page.page.runScript("controller.abort()");
+            try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+            try turnUntilIdle(&page, before);
+            try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+        }
+    }.body);
+}
+
+test "window.stop() ends a keepalive fetch() and returns its bytes" {
+    try onThread(struct {
+        fn body() !void {
+            var page = try Page.open(std.testing.allocator);
+            defer page.close();
+            const group = try groupOf(&page);
+            try page.page.runScript(
+                \\fetch('http://127.0.0.1:65533/keepalive', {keepalive: true, method: 'POST',
+                \\  body: '*'.repeat(1000)}).catch(() => {});
+            );
+            try std.testing.expectEqual(@as(u64, 1000), group.inflight_keepalive_bytes);
+            try page.page.runScript("window.stop()");
+            try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+        }
+    }.body);
+}
