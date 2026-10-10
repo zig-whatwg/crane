@@ -66,6 +66,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const realm_finalizers = @import("realm_finalizers.zig");
 
 const log = std.log.scoped(.wrapper_cache);
@@ -420,6 +421,26 @@ pub fn leaveOpaqueRoot(member: *runtime.Instance, old_parent: *runtime.Instance)
     const wrapper = nodeWrapper(node) orelse return;
     const parent = dom.instance_bridge.getNodeBase(@ptrCast(old_parent)) orelse return;
     eraseTreeEdges(node, wrapper, parent);
+}
+
+/// engine.keepOpaqueRoot: `owner`'s wrapper keeps `member`'s opaque root in
+/// `slot` - an edge drawn with engine.traceChild - to `member`'s own wrapper,
+/// else to its tree's wrapped root, else nothing (and the slot is emptied):
+/// a root script has not seen means no wrapper anywhere in its tree, and a
+/// document with a browsing context is kept by its window. nodeholds' rescue
+/// and its `isKeptRoot`, as an operation (refcount design 2.3). Never makes
+/// a wrapper.
+pub fn keepOpaqueRoot(owner: *runtime.Instance, member: *runtime.Instance, slot: engine.TracedSlot) void {
+    const tracing = @import("protocol_tracing.zig");
+    const dom = @import("dom");
+    const node = dom.instance_bridge.getNodeBase(@ptrCast(member)) orelse return tracing.traceChild(owner, member, slot);
+    if (node.bound_v8_wrapper != null) return tracing.traceChild(owner, member, slot);
+    var root = node;
+    while (root.parent_node) |parent| root = parent;
+    const root_instance = instanceOfNode(root) orelse return tracing.forgetTracedChild(owner, slot);
+    if (root.node_type == dom.NodeBase.DOCUMENT_NODE and engineHoldsWrapper(root_instance)) return tracing.forgetTracedChild(owner, slot);
+    if (root.bound_v8_wrapper == null) return tracing.forgetTracedChild(owner, slot);
+    tracing.traceChild(owner, root_instance, slot);
 }
 
 // ============================================================================

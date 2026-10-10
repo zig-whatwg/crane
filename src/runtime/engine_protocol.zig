@@ -1909,6 +1909,32 @@ pub inline fn leaveOpaqueRoot(member: *Instance, old_parent: *Instance) void {
     impl.leaveOpaqueRoot(member, old_parent);
 }
 
+/// `owner` - a platform object that holds `member`, a node, for script: a
+/// MutationRecord's nodes, a static NodeList's - keeps `member`'s opaque root
+/// for as long as `owner`'s wrapper lives: an edge, never a root, in `slot`
+/// (`traceChild`'s namespace: a new member replaces the slot's old one, and
+/// `forgetTracedChild` ends it). WebKit's non-node visitors do this at
+/// marking time (`ChildListRecord::visitNodesInGCThread` ->
+/// `addWebCoreOpaqueRoot`, MutationRecord.cpp). It keeps wrapper IDENTITY
+/// only - expandos, `===` - never the native node, whose lifetime is its
+/// counted holders' (refcount design 2.3-2.4).
+///
+/// V8: the edge goes to `member`'s own wrapper when it has one - a node that
+/// moves takes its tree edges with it; else to its tree's root's wrapper
+/// when that is wrapped (the wrapped part of a tree is upward-closed, so an
+/// unwrapped root means no wrapper anywhere in the tree: nothing to keep);
+/// and nothing for a tree whose root is a document the host keeps (one with
+/// a browsing context). Never makes a wrapper. A member that is not a node
+/// is kept as `traceChild` keeps it. THE GAP against WebKit's reading at
+/// marking time: an unwrapped member that moves into a tree which only later
+/// gets wrappers is not followed (closing it needs a per-node hold chain;
+/// decision D4 keeps the gap unless a test shows it matters).
+/// JavaScriptCore, QuickJS and the test adapter keep nothing (no node is
+/// wrapped there). Never call it while the collector runs.
+pub inline fn keepOpaqueRoot(owner: *Instance, member: *Instance, slot: TracedSlot) void {
+    impl.keepOpaqueRoot(owner, member, slot);
+}
+
 // ============================================================================
 // 4.13 Diagnostics tier (tools only; never spec code)
 // ============================================================================

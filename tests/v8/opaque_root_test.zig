@@ -197,3 +197,89 @@ test "joining under a parent script has not seen wraps the parent's chain: the w
     try expectSlot(page, nodes[2], nodes[1]);
     try expectSlot(page, nodes[1], nodes[0]);
 }
+
+// ============================================================================
+// keepOpaqueRoot: a holder's wrapper keeps a node's opaque root
+// ============================================================================
+
+const kept_slot: protocol.TracedSlot = .{ .name = "rc4:opaque-root-test" };
+
+test "keepOpaqueRoot: a wrapped member is kept by the owner's wrapper itself" {
+    const page = try Page.open();
+    defer page.close();
+    try page.eval(
+        \\globalThis.d = new Document();
+        \\globalThis.owner = new Event('holder');
+        \\globalThis.m = d.createElement('b'); m.mark = 'member';
+    );
+    const owner = try page.instance("owner");
+    const member = try page.instance("m");
+    protocol.keepOpaqueRoot(owner, member, kept_slot);
+    try expectKept(page, owner, member);
+    const generation = runtime.SlabAllocator.generationOf(member);
+    try page.eval("delete globalThis.m");
+    try page.collect();
+    try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(member));
+    // The same wrapper, expando and all.
+    const value = protocol.tracedValue(owner, kept_slot) orelse return error.EmptySlot;
+    defer value.release();
+    try testing.expect(protocol.sameValue(page.realm, value.borrow(), .{ .instance = member }));
+}
+
+test "keepOpaqueRoot: an unwrapped member's tree is kept through its wrapped root, and forgetTracedChild ends it" {
+    const page = try Page.open();
+    defer page.close();
+    try page.eval(
+        \\globalThis.d = new Document();
+        \\globalThis.owner = new Event('holder');
+        \\globalThis.r = d.createElement('section'); r.mark = 'root';
+    );
+    const document = try page.instance("d");
+    const root = try page.instance("r");
+    // An unwrapped member deep in the tree.
+    const middle = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("div"), .{ .was_passed = false, .value = undefined });
+    const member = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("i"), .{ .was_passed = false, .value = undefined });
+    _ = try interfaces.Node.call_appendChild(middle, member);
+    _ = try interfaces.Node.call_appendChild(root, middle);
+    try testing.expect(!protocol.hasWrapper(member));
+
+    const owner = try page.instance("owner");
+    protocol.keepOpaqueRoot(owner, member, kept_slot);
+    // No wrapper made for the member: the edge goes to its tree's root.
+    try testing.expect(!protocol.hasWrapper(member));
+    try expectKept(page, owner, root);
+    const generation = runtime.SlabAllocator.generationOf(member);
+    try page.eval("delete globalThis.r");
+    try page.collect();
+    try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(member));
+
+    // Ended: nothing keeps the tree, and it goes.
+    protocol.forgetTracedChild(owner, kept_slot);
+    try page.collect();
+    try testing.expect(generation != runtime.SlabAllocator.generationOf(member));
+}
+
+test "keepOpaqueRoot: a tree with no wrapper has nothing to keep, and the slot is emptied" {
+    const page = try Page.open();
+    defer page.close();
+    try page.eval(
+        \\globalThis.d = new Document();
+        \\globalThis.owner = new Event('holder');
+        \\globalThis.w = d.createElement('p');
+    );
+    const owner = try page.instance("owner");
+    const document = try page.instance("d");
+    const member = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("i"), .{ .was_passed = false, .value = undefined });
+    // A member kept earlier is replaced by the new one's (nothing).
+    protocol.keepOpaqueRoot(owner, try page.instance("w"), kept_slot);
+    protocol.keepOpaqueRoot(owner, member, kept_slot);
+    try testing.expect(!protocol.hasWrapper(member));
+    try testing.expect(protocol.tracedValue(owner, kept_slot) == null);
+}
+
+/// What `owner` keeps in `kept_slot` is `expected`'s wrapper.
+fn expectKept(page: Page, owner: *runtime.Instance, expected: *runtime.Instance) !void {
+    const value = protocol.tracedValue(owner, kept_slot) orelse return error.EmptySlot;
+    defer value.release();
+    try testing.expect(protocol.sameValue(page.realm, value.borrow(), .{ .instance = expected }));
+}

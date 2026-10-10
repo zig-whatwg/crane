@@ -479,6 +479,7 @@ pub fn tracedValue(_: *Instance, _: engine.TracedSlot) ?Owned {
 /// linked, a node class's `gc_mark` reports these edges natively.
 pub fn joinOpaqueRoot(_: *Instance, _: *Instance) void {}
 pub fn leaveOpaqueRoot(_: *Instance, _: *Instance) void {}
+pub fn keepOpaqueRoot(_: *Instance, _: *Instance, _: engine.TracedSlot) void {}
 
 // 4.13 Diagnostics tier
 pub fn heapStatistics(_: *Agent) engine.HeapStatistics {
