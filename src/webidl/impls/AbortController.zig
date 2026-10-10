@@ -80,19 +80,21 @@ pub fn init(
     errdefer runtime.Instance.deinit(instance);
 
     const state = instance.getState(StateType);
-    state.own._internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(state.own._internal.?);
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
 
     // Create the associated AbortSignal
     const signal = try interfaces.AbortSignal.init(allocator, ctx);
     errdefer interfaces.AbortSignal.deinit(signal);
 
-    const internal = state.own._internal.?;
     internal.allocator = allocator;
     internal.signal = signal;
     internal.signal_edge = .{ .slot = .{ .name = "signal" } };
     internal.signal_link = same_object.Link.to(signal);
 
+    // Publish only fully initialized state. If signal creation fails, the
+    // outer instance cleanup must not see a freed or uninitialized state.
+    state.own._internal = internal;
     return instance;
 }
 
