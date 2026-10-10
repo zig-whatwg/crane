@@ -1751,6 +1751,13 @@ pub inline fn structuredDeserializeWithTransfer(realm: Context, serialized: []co
 // class finalizer) queues the teardown the same way. Nor does a teardown run
 // for an instance wrapped again in between: the new wrapper owns it.
 //
+// A wrapper owns one reference to a counted instance (VTable.counted: the
+// nodes, refcount design 2.1): the adapter acquires it when it makes and
+// caches the wrapper and releases it, on the agent's thread and never inside a
+// collection, when the wrapper is finalized - through runtime.lifetime, whose
+// owner (dom.refcount) decides what the reference means. Until refcount step
+// 7 that is shadow mode: the counts are kept and checked and decide nothing.
+//
 // A node's teardown - its whole subtree's, for a collected root - is deferred
 // further, when the host gave the agent a queue (AgentOptions.deferred_teardown):
 // the adapter queues the node there, and the host frees it a slice at a time

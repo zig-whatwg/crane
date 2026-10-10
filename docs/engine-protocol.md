@@ -89,6 +89,21 @@ class finalizer run inside their collectors, so those adapters queue the
 teardown the same way once they wrap platform objects; today they wrap none.
 `AsyncIteratorSteps.finalize` runs under the same rule.
 
+**A wrapper owns one reference to a counted instance.** A type whose
+VTable is counted (`VTable.counted`: every node, refcount design 2.1, decision
+D3) has its wrapper hold one counted reference: the adapter acquires it when it
+makes and caches the wrapper (`runtime.lifetime.wrapperAcquired`) and releases
+it - on the agent's thread, never inside a collection - when the wrapper is
+finalized, removed, replaced or its realm ends, or when the node's own teardown
+begins under it (`wrapperReleased`). The adapter keeps what the acquire
+answered (a node's NodeBase) beside the wrapper, so its second pass looks
+nothing up, and decides nothing about what the reference means: dom.refcount
+does. Until refcount step 7 the counts run in shadow mode - kept and checked,
+deciding nothing; a node the collector freed while its wrapper waited for its
+second pass is forgotten (`wrapperForgotten`), never read. JavaScriptCore's
+design (2.5): the class finalizer only queues the instance on a thread-safe
+list the agent drains at its next safe point, and derefs there.
+
 **A collected node's teardown is the host's to schedule.** When the host gives
 an agent a queue (`AgentOptions.deferred_teardown`, a
 `runtime.gc.DeferredTeardown` its AgentHost owns), the adapter queues a node
