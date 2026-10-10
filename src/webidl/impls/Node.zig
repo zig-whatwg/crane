@@ -101,6 +101,11 @@ pub const InternalState = struct {
     /// The owner document for this node
     /// Document nodes return null from ownerDocument getter
     owner_document: ?*runtime.Instance = null,
+    /// `owner_document`'s slab generation when it was set: the net under the
+    /// rule that a node keeps its document (dom.node_document.traced_slot).
+    /// A document freed under a node that names it - a hole in that rule -
+    /// reads as an error and a log line, never as the freed object.
+    owner_document_generation: u64 = 0,
 
     /// Cached childNodes NodeList (lazily created)
     /// This is a live NodeList that reflects changes to the tree
@@ -717,7 +722,19 @@ pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!?*runtime.Instanc
         return null;
     }
 
-    return internal.owner_document;
+    return liveOwnerDocument(internal);
+}
+
+/// `internal`'s node document, through the net (`owner_document_generation`):
+/// a document freed under the node that names it is never handed out. A node
+/// keeps its document, so a freed one is a bug, logged.
+fn liveOwnerDocument(internal: *const InternalState) error{InvalidStateError}!?*runtime.Instance {
+    const document = internal.owner_document orelse return null;
+    if (runtime.SlabAllocator.generationOf(document) != internal.owner_document_generation) {
+        log.warn("a node's document was freed while the node named it (node type {d})", .{internal.node_type});
+        return error.InvalidStateError;
+    }
+    return document;
 }
 
 /// Getter for parentNode
@@ -1996,6 +2013,7 @@ pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !v
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const previous = internal.owner_document;
     internal.owner_document = doc;
+    internal.owner_document_generation = if (doc) |document| runtime.SlabAllocator.generationOf(document) else 0;
 
     // The tree algorithms in src/dom read the node document off the NodeBase,
     // as the document's own NodeBase. Both copies name the same document:
@@ -2130,7 +2148,7 @@ pub fn getOwnerDocument(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     // Document nodes have no owner document (they ARE the document)
     if (internal.node_type == NodeType.DOCUMENT_NODE) return null;
-    return internal.owner_document;
+    return liveOwnerDocument(internal) catch null;
 }
 
 /// Append a node as the last child
