@@ -212,7 +212,10 @@ fn documentHeldThroughDetachedNode() !void {
     // via Node.get_ownerDocument). So the script is read only once the
     // property holds.
     const holds = kept >= 33;
-    try probe.knownRed(probe.migrated.switch_step7, holds, "a windowless document is kept by a detached node of it (D6; reading it crashes today)");
+    // Green since lane ownerdoc (220e867202, 79fa02b520): a node's wrapper keeps
+    // its tree parent or, as a root, its node document, so D6 holds before the
+    // refcount switch (step 7). Required from here on.
+    try std.testing.expect(holds);
     if (holds) try page.expect("node.ownerDocument.title + ':' + node.ownerDocument.body.childNodes.length", "rc-d6:30");
     try page.run("globalThis.node = null;");
     try page.settle();
