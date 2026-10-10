@@ -283,3 +283,42 @@ fn expectKept(page: Page, owner: *runtime.Instance, expected: *runtime.Instance)
     defer value.release();
     try testing.expect(protocol.sameValue(page.realm, value.borrow(), .{ .instance = expected }));
 }
+
+test "joinOpaqueRoot, leaveOpaqueRoot and keepOpaqueRoot leave no global handle behind" {
+    const page = try Page.open();
+    defer page.close();
+    const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(page.agent));
+    try page.eval(
+        \\globalThis.d = new Document();
+        \\globalThis.p = d.createElement('div');
+        \\globalThis.c = p.appendChild(d.createElement('span'));
+        \\globalThis.owner = new Event('holder');
+    );
+    const parent = try page.instance("p");
+    const child = try page.instance("c");
+    const owner = try page.instance("owner");
+    const document = try page.instance("d");
+    const unwrapped = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("i"), .{ .was_passed = false, .value = undefined });
+    _ = try interfaces.Node.call_appendChild(child, unwrapped);
+    const Round = struct {
+        fn run(member: *runtime.Instance, from: *runtime.Instance, holder: *runtime.Instance, deep: *runtime.Instance) void {
+            protocol.leaveOpaqueRoot(member, from);
+            protocol.joinOpaqueRoot(member, from);
+            protocol.keepOpaqueRoot(holder, member, kept_slot);
+            protocol.keepOpaqueRoot(holder, deep, kept_slot);
+            protocol.forgetTracedChild(holder, kept_slot);
+        }
+    };
+    // The first round makes what every later one reuses.
+    Round.run(child, parent, owner, unwrapped);
+    try page.collect();
+    const before = v8.ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    for (0..32) |_| Round.run(child, parent, owner, unwrapped);
+    try page.collect();
+    const after = v8.ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    if (after > before) {
+        std.debug.print("global handles {d} -> {d} bytes over 32 rounds\n", .{ before, after });
+        return error.HandlesLeaked;
+    }
+    try testing.expect(!protocol.hasWrapper(unwrapped));
+}
