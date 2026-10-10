@@ -399,6 +399,31 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // rules, which must never get to call it copied.
         if (T == webidl.BufferSource or T == webidl.ArrayBufferView) break :blk false;
 
+        // AllowSharedBufferSource IS copied in this predicate's sense: nothing
+        // the conversion makes refers to the argument's Global.
+        // `conv.convertAllowSharedBufferSource` reads the bytes through
+        // v8_AllowSharedBufferSource_Bytes and returns `.byte_slice` over the
+        // buffer's backing store. Kept, that Global leaked once per
+        // TextDecoder.decode call (leaks --atExit, lane bufsrc 2026-10-10).
+        // Why releasing it is safe:
+        // - The Global does not own the backing store; the JS object does, and
+        //   V8 roots a callback's arguments until it returns.
+        // - Nothing keeps the slice past the call. TextDecoder.decode copies
+        //   what it keeps (pending bytes into its own array, output duplicated);
+        //   TextDecoderStream converts its chunk itself, with
+        //   getCopyOfAllowSharedBufferSourceBytes. Every other operation taking
+        //   one is a NotImplemented stub: FileSystemSyncAccessHandle.read/write,
+        //   EncodedAudioChunk/EncodedVideoChunk/VideoFrame/AudioData.copyTo,
+        //   GPUQueue.writeBuffer/writeTexture, MLContext.writeTensor and
+        //   createConstantTensor, MLGraphBuilder.constant, WebGL(2) bufferSubData.
+        // - A dictionary member of this type (EncodedAudioChunkInit and
+        //   EncodedVideoChunkInit `data`, Audio/VideoDecoderConfig `description`,
+        //   ImageDecoderInit `data` through ImageBufferSource; all stub consumers)
+        //   now has its Get handle released too. Its slice was never safe past a
+        //   later member's getter, which can transfer the buffer: whoever
+        //   implements one copies the bytes before script runs again.
+        if (T == webidl.AllowSharedBufferSource) break :blk true;
+
         // A wrapped platform object: the conversion returns the Instance from
         // the wrapper's internal field, and the argument's own handle is not
         // referred to again.

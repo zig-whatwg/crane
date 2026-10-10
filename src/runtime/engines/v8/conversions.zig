@@ -817,7 +817,7 @@ const buffer_sources = @import("webidl").buffer_sources;
 /// null and undefined still read as no bytes, as before, rather than WebIDL's
 /// TypeError: an omitted optional argument reaches here as undefined.
 ///
-/// The result is a NON-OWNING byte slice over the backing store, valid only for
+/// The result is a non-owning byte slice over the backing store, valid only for
 /// the synchronous call that converted it - never stored past it.
 fn convertAllowSharedBufferSource(
     allocator: std.mem.Allocator,
