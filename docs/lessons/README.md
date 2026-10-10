@@ -443,6 +443,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A dom unit test that reaches an engine operation cannot link](testing-a-dom-unit-test-that-reaches-an-engine-operation-cannot-link.md) - Keep src/dom unit tests to logic that reaches no `engine.*` operation; split the pure step out and test it, and read "N undefined _v8_ symbols" in a dom test step as "a test reached the engine".
 
 - [Measure the WPT process, not its supervisor](testing-measure-the-wpt-process-not-its-supervisor.md) - Even `--parallel=1` changes the process measured by `leaks --atExit`; compare direct runners.
+- [A red test for a step that has not landed asserts that it is still red](testing-a-red-test-for-an-unlanded-step-asserts-that-it-is-still-red.md) - Wrap the verdict in `knownRed(step_landed, ...)`: it passes while red, fails when it turns green unannounced, and is required once the flag is flipped in the commit that earns it.
 
 ### Debugging
 - [A node's slab generation can outlive its NodeBase - a generation check does not prove a node's storage is there](debugging-a-nodes-slab-generation-can-outlive-its-nodebase.md) - A live generation says the Instance slot is still that object's, not that its node storage exists: anything linked into a NodeBase must be unlinked by the node's own teardown, the way registered observers are.
@@ -481,6 +482,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [The WPT runner's stderr is positional - redirected to a file it overwrites what came before; pipe it](debugging-the-wpt-runners-stderr-is-positional-pipe-it-through-cat.md) - Never redirect the runner straight into a file you will grep: pipe it through cat.
 - [The network library's URL is not the response's URL](debugging-the-network-library-s-url-is-not-the-response-s.md) - Take URLs from the request's URL list, which the URL parser wrote; a transport-provided URL is its re-serialization.
 - [A value that reads back only on the object it was set on is an expando](debugging-a-value-that-reads-back-only-on-the-object-it-was-set-on-is-an-expando.md) - When state set through a property "disappears" across objects, write it with the method form first: if the method survives and the property does not, the binding never called the setter.
+- [A document that only a detached node holds is freed under that node](debugging-a-document-only-a-detached-node-holds-is-freed-under-it.md) - A windowless document's node removed from it is its own tree: nothing keeps the document, and `node.ownerDocument` reads a freed instance; write a design decision's test against the current build first.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.
