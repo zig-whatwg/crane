@@ -873,7 +873,7 @@ fn convertAllowSharedBufferSource(
 fn convertArrayBufferView(value: *v8.Value) ConversionError!typedefs.ArrayBufferView {
     var info: v8.ViewInfo = undefined;
     // Steps 1-2: a typed array or a DataView (Describe answers false for
-    // anything else, and for a kind the FFI does not know - Float16Array).
+    // anything else).
     if (!v8.v8_ArrayBufferView_Describe(value, &info)) return ConversionError.TypeError;
     // Step 3: not [AllowShared].
     if (info.buffer_shared) return ConversionError.TypeError;
@@ -1106,9 +1106,9 @@ pub fn typedArrayNameOf(value: *v8.Value) ?[]const u8 {
     if (v8.v8_Value_IsUint32Array(value)) return "Uint32Array";
     if (v8.v8_Value_IsBigInt64Array(value)) return "BigInt64Array";
     if (v8.v8_Value_IsBigUint64Array(value)) return "BigUint64Array";
+    if (v8.v8_Value_IsFloat16Array(value)) return "Float16Array";
     if (v8.v8_Value_IsFloat32Array(value)) return "Float32Array";
     if (v8.v8_Value_IsFloat64Array(value)) return "Float64Array";
-    // Float16Array: no predicate in the FFI yet.
     return null;
 }
 

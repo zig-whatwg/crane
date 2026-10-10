@@ -2180,11 +2180,12 @@ void v8_Promise_MarkAsHandled(Global<Value>* promise) {
 // ArrayBuffer / ArrayBufferView primitives (Streams § 8.3, WebIDL buffer types)
 // ============================================================================
 
-/// View kinds shared with Zig (streams_js.ViewKind). Order is part of the ABI.
+/// View kinds shared with Zig (ffi.ViewKind). Order is part of the ABI: a new
+/// kind is appended (kCraneFloat16 came after kCraneDataView).
 enum CraneViewKind : int {
     kCraneInt8 = 0, kCraneUint8, kCraneUint8Clamped, kCraneInt16, kCraneUint16,
     kCraneInt32, kCraneUint32, kCraneFloat32, kCraneFloat64, kCraneBigInt64,
-    kCraneBigUint64, kCraneDataView,
+    kCraneBigUint64, kCraneDataView, kCraneFloat16,
 };
 
 struct CraneViewInfo {
@@ -2206,6 +2207,7 @@ static int craneViewKindOf(Local<Value> v) {
     if (v->IsUint16Array()) return kCraneUint16;
     if (v->IsInt32Array()) return kCraneInt32;
     if (v->IsUint32Array()) return kCraneUint32;
+    if (v->IsFloat16Array()) return kCraneFloat16;
     if (v->IsFloat32Array()) return kCraneFloat32;
     if (v->IsFloat64Array()) return kCraneFloat64;
     if (v->IsBigInt64Array()) return kCraneBigInt64;
@@ -2262,8 +2264,8 @@ Global<Value>* v8_ArrayBufferView_New(int kind, Global<Value>* buffer, size_t by
     if (!b->IsArrayBuffer()) return nullptr;
     Local<ArrayBuffer> ab = b.As<ArrayBuffer>();
     if (ab->WasDetached()) return nullptr;
-    static const size_t element_sizes[] = {1, 1, 1, 2, 2, 4, 4, 4, 8, 8, 8, 1};
-    if (kind < 0 || kind > kCraneDataView) return nullptr;
+    static const size_t element_sizes[] = {1, 1, 1, 2, 2, 4, 4, 4, 8, 8, 8, 1, 2};
+    if (kind < 0 || kind > kCraneFloat16) return nullptr;
     size_t element_size = element_sizes[kind];
     if (byte_offset % element_size != 0) return nullptr;
     if (byte_offset > ab->ByteLength() || length > (ab->ByteLength() - byte_offset) / element_size) return nullptr;
@@ -2281,6 +2283,7 @@ Global<Value>* v8_ArrayBufferView_New(int kind, Global<Value>* buffer, size_t by
         case kCraneBigInt64: result = BigInt64Array::New(ab, byte_offset, length); break;
         case kCraneBigUint64: result = BigUint64Array::New(ab, byte_offset, length); break;
         case kCraneDataView: result = DataView::New(ab, byte_offset, length); break;
+        case kCraneFloat16: result = Float16Array::New(ab, byte_offset, length); break;
         default: return nullptr;
     }
     return trackHandle(new Global<Value>(isolate, result));
@@ -8672,6 +8675,15 @@ bool v8_Value_IsInt32Array(Global<Value>* value) {
     HandleScope handle_scope(isolate);
     Local<Value> val = value->Get(isolate);
     return val->IsInt32Array();
+}
+
+/// Check if Value is a Float16Array (ES2025; installed by --js-float16array)
+bool v8_Value_IsFloat16Array(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsFloat16Array();
 }
 
 /// Check if Value is a Float32Array

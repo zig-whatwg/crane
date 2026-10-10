@@ -64,12 +64,14 @@ pub const ViewType = enum {
     bigint64_array,
     biguint64_array,
     data_view,
+    /// ES2025 Float16Array, one of WebIDL's ArrayBufferView types.
+    float16_array,
 
     /// Get element size in bytes for this view type
     pub fn elementSize(self: ViewType) u64 {
         return switch (self) {
             .int8_array, .uint8_array, .uint8_clamped_array => 1,
-            .int16_array, .uint16_array => 2,
+            .int16_array, .uint16_array, .float16_array => 2,
             .int32_array, .uint32_array, .float32_array => 4,
             .float64_array, .bigint64_array, .biguint64_array => 8,
             .data_view => 1, // DataView has no fixed element size
@@ -143,6 +145,7 @@ test "ViewType element sizes" {
     try testing.expectEqual(@as(u64, 8), ViewType.float64_array.elementSize());
     try testing.expectEqual(@as(u64, 8), ViewType.bigint64_array.elementSize());
     try testing.expectEqual(@as(u64, 8), ViewType.biguint64_array.elementSize());
+    try testing.expectEqual(@as(u64, 2), ViewType.float16_array.elementSize());
 }
 
 test "Create test view" {

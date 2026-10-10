@@ -348,12 +348,13 @@ pub const ViewKind = enum {
     bigint64,
     biguint64,
     data_view,
+    float16,
 
     /// Element size from the typed array constructors table (1 for DataView).
     pub fn elementSize(self: ViewKind) usize {
         return switch (self) {
             .int8, .uint8, .uint8_clamped, .data_view => 1,
-            .int16, .uint16 => 2,
+            .int16, .uint16, .float16 => 2,
             .int32, .uint32, .float32 => 4,
             .float64, .bigint64, .biguint64 => 8,
         };
@@ -373,6 +374,7 @@ pub const ViewKind = enum {
             .bigint64 => .bigint64_array,
             .biguint64 => .biguint64_array,
             .data_view => .data_view,
+            .float16 => .float16_array,
         };
     }
 
@@ -390,6 +392,7 @@ pub const ViewKind = enum {
             .bigint64_array => .bigint64,
             .biguint64_array => .biguint64,
             .data_view => .data_view,
+            .float16_array => .float16,
         };
     }
 };
