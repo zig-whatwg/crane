@@ -4,6 +4,3 @@
 # tools/lint_refcount.zig. A ratchet - `zig build lint-refcount`, part of `zig build
 # test`, fails if any count rises or a new pair appears. After paying some off, lower it
 # with `zig build lint-refcount -- --update`. Never raise it by hand.
-src/dom/element_with_base.zig parent-write 2
-src/dom/mutation.zig parent-write 7
-src/dom/tree_teardown.zig parent-write 1
