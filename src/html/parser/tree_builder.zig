@@ -263,6 +263,10 @@ pub const TreeNode = struct {
     dom_node: ?*anyopaque = null,
     dom_generation: u64 = 0,
     dom_revoked: bool = false,
+    /// This node is a declarative shadow root's template and owns
+    /// `declarative_shadow`. Its host only links to it: a host's teardown
+    /// must not read the request, which a template freed first took with it.
+    owns_declarative_shadow: bool = false,
     /// This tree node's place in its adapter's orphan list - DOM nodes the
     /// adapter made, or the parser removed, unwrapped and not taken by an
     /// insertion, which the adapter frees at its end - or `not_an_orphan`.
@@ -469,7 +473,7 @@ pub const TreeNode = struct {
         // Free text content
         self.text_content.deinit();
         // A declarative shadow root's request belongs to its template.
-        if (self.declarative_shadow) |request| if (request.template == self) self.allocator.destroy(request);
+        if (self.owns_declarative_shadow) if (self.declarative_shadow) |request| self.allocator.destroy(request);
         // Free DOCTYPE fields
         if (self.doctype_name) |n| self.allocator.free(n);
         if (self.doctype_public_id) |p| self.allocator.free(p);
@@ -2025,6 +2029,7 @@ pub const TreeBuilder = struct {
         const recorded = try self.allocator.create(DeclarativeShadow);
         recorded.* = request;
         template.declarative_shadow = recorded;
+        template.owns_declarative_shadow = true;
         // Steps 7.10-7.11. The live adapter attaches now; the
         // tree-then-convert path records the request on its host, unless the
         // host already has one (step 7.10, "a shadow host"), and attaches when
@@ -2040,6 +2045,7 @@ pub const TreeBuilder = struct {
         // adjusted insertion location with template and
         // adjustedInsertionLocation" - an ordinary template now.
         template.declarative_shadow = null;
+        template.owns_declarative_shadow = false;
         self.allocator.destroy(recorded);
         self.insertNodeAt(location, template);
     }

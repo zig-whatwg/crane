@@ -220,3 +220,52 @@ fn shadowRootModeReflection() !void {
 test "template.shadowRootMode reflects shadowrootmode, limited to only known values" {
     try onFreshThread(shadowRootModeReflection);
 }
+
+// The tree builder alone (the tree-then-convert path, std.testing.allocator):
+// a host records its declarative shadow root's request, which its template
+// owns and frees; a second template on the same host is an ordinary child;
+// without the opt-in every template is ordinary.
+const parser = @import("html").parser;
+
+fn bodyOf(builder: *parser.TreeBuilder) *parser.TreeNode {
+    const html_node = builder.document.first_child.?;
+    var child = html_node.first_child;
+    while (child) |c| : (child = c.next_sibling) if (c.hasTagName("body")) return c;
+    unreachable;
+}
+
+test "the tree builder records a declarative shadow root on its host, and frees it with its template" {
+    const allocator = testing.allocator;
+    var tokenizer = parser.Tokenizer.init(allocator, "<div><template shadowrootmode=closed shadowrootclonable><p>s</p></template><template shadowrootmode=open>2</template>light</div>");
+    defer tokenizer.deinit();
+    var builder = try parser.TreeBuilder.init(allocator, &tokenizer);
+    defer builder.deinit();
+    builder.allow_declarative_shadow_roots = true;
+    try builder.parse();
+    const host = bodyOf(&builder).first_child.?;
+    try testing.expect(host.hasTagName("div"));
+    const request = host.declarative_shadow orelse return error.NoDeclarativeShadow;
+    try testing.expect(!host.owns_declarative_shadow);
+    try testing.expectEqual(parser.DeclarativeShadow.Mode.closed, request.mode);
+    try testing.expect(request.clonable);
+    try testing.expect(request.template.owns_declarative_shadow);
+    try testing.expect(request.template.first_child.?.hasTagName("p"));
+    try testing.expectEqual(@as(usize, 0), request.host_child_index);
+    // The second template is an ordinary child, then the text.
+    const second = host.first_child.?;
+    try testing.expect(second.hasTagName("template"));
+    try testing.expect(second.declarative_shadow == null);
+    try testing.expectEqual(parser.TreeNode.NodeType.text, second.next_sibling.?.node_type);
+}
+
+test "without the opt-in a shadowrootmode template is an ordinary template" {
+    const allocator = testing.allocator;
+    var tokenizer = parser.Tokenizer.init(allocator, "<div><template shadowrootmode=open>x</template></div>");
+    defer tokenizer.deinit();
+    var builder = try parser.TreeBuilder.init(allocator, &tokenizer);
+    defer builder.deinit();
+    try builder.parse();
+    const host = bodyOf(&builder).first_child.?;
+    try testing.expect(host.declarative_shadow == null);
+    try testing.expect(host.first_child.?.hasTagName("template"));
+}

@@ -582,7 +582,7 @@ fn convertChildrenToDom(
     // contents in it, before the host's children - or, when attaching
     // throws, insert the template where the parser met it.
     var failed: ?*DeclarativeShadow = null;
-    if (tree_node.declarative_shadow) |request| if (request.host == tree_node) {
+    if (tree_node.declarative_shadow) |request| if (!tree_node.owns_declarative_shadow) {
         if (!try attachDeclarativeShadow(allocator, ctx, request, parent_dom, owner_document, conversion)) failed = request;
     };
     // A tree node with no children converts nothing (most of them: text,
