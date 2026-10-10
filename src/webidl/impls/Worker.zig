@@ -70,6 +70,10 @@ pub const ImplError = error{
 /// A Worker's own state, on its owner's thread.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
+    /// The constructor's pending-activity keep is held: released once, by
+    /// whichever of the worker's end, terminate() before a start, the start
+    /// failure task and deinit comes first (the keep is counted).
+    kept_alive: bool = false,
     /// The worker's link - the owner side's reference - while the worker was
     /// started: null when its script could not be fetched or its thread did
     /// not start.
@@ -655,13 +659,19 @@ const StartFailure = struct {
     }
 };
 
-/// Take the engine's pending-activity hold on a Worker.
+/// Take the engine's pending-activity hold on a Worker, once.
 fn keepPendingActivity(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    if (internal.kept_alive) return;
+    internal.kept_alive = true;
     engine.keepPlatformObjectAlive(instance);
 }
 
-/// End it (idempotent).
+/// End it, if it is held (idempotent).
 fn releasePendingActivity(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    if (!internal.kept_alive) return;
+    internal.kept_alive = false;
     engine.releasePlatformObject(instance);
 }
 
