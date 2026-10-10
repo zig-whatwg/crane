@@ -123,11 +123,13 @@ pub const InternalState = struct {
     /// Whether the worker is closing
     /// Spec: HTML Standard § 10.1.5 "Terminating a worker"
     closing: bool = false,
+    reporting: @import("dom").reporting.State = .{},
 
     /// Allocator used for this state
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState) void {
+        self.reporting.deinit(self.allocator);
         if (self.indexed_db) |*factory| factory.edge.release(factory.owner);
         if (self.performance) |*performance| performance.edge.release(performance.owner);
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
@@ -205,7 +207,13 @@ pub fn installHooks() void {
         .indexed_db = &settingsIndexedDB,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
+        .reporting = &settingsReporting,
     });
+}
+
+fn settingsReporting(instance: *runtime.Instance) ?*@import("dom").reporting.State {
+    const internal = instance.getState(State).own._internal orelse return null;
+    return &internal.reporting;
 }
 
 /// The settings object's policy container: the worker global scope's, which

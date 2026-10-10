@@ -55,10 +55,18 @@ pub const Settings = struct {
     /// associated Document's, a WorkerGlobalScope's own. Borrowed; null where
     /// the global has none.
     policy_container: ?*const fn (global: *runtime.Instance) ?*const fetch.internal.PolicyContainer = null,
+    /// The global's native Reporting queues and observer registrations.
+    reporting: ?*const fn (global: *runtime.Instance) ?*@import("reporting.zig").State = null,
     /// Mixed Content 4.3 for this settings object, including embedding
     /// documents. Absence means this kind of global does not prohibit.
     prohibits_mixed_security_contexts: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!bool = null,
 };
+
+pub fn reportingOf(global: *runtime.Instance) ?*@import("reporting.zig").State {
+    const settings = of(global) orelse return null;
+    const get = settings.reporting orelse return null;
+    return get(global);
+}
 
 /// The cookie jar `global`'s settings object reaches, if any.
 pub fn cookieJarOf(global: *runtime.Instance) ?*cookiestore.CookieJar {
