@@ -1255,6 +1255,7 @@ pub fn build(b: *std.Build) void {
         "console",
         "streams",
         "mimesniff",
+        "compression",
         "quirks",
         "css",
         "storage",
@@ -1436,6 +1437,7 @@ pub fn build(b: *std.Build) void {
     const test_urlpattern = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "urlpattern"));
     const test_console = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "console"));
     const test_streams = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "streams"));
+    const test_compression = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "compression"));
     const test_mimesniff = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "mimesniff"));
     const test_quirks = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "quirks"));
     const test_css = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "css"));
@@ -1614,6 +1616,17 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/streams", target, &streams_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add streams test files: {}\n", .{err});
+        };
+    }
+
+    if (test_compression) {
+        const compression_tests = b.addTest(.{ .root_module = testing_graph.compression });
+        test_step.dependOn(&b.addRunArtifact(compression_tests).step);
+        const imports = [_]std.Build.Module.Import{
+            .{ .name = "compression", .module = testing_graph.compression },
+        };
+        addTestFilesFromDir(b, test_step, "tests/compression", target, &imports, false, test_selection) catch |err| {
+            std.debug.print("Warning: Failed to add compression test files: {}\n", .{err});
         };
     }
 
@@ -4328,6 +4341,7 @@ const CraneModules = struct {
     streams_pull_into_descriptor: *std.Build.Module,
     streams: *std.Build.Module,
     mimesniff: *std.Build.Module,
+    compression: *std.Build.Module,
     file: *std.Build.Module,
     fs: *std.Build.Module,
     referrer_policy: *std.Build.Module,
@@ -5258,6 +5272,12 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // ArrayBufferView is part of runtime module, no separate module needed
     // (ReadableStreamBYOBReader accesses it via runtime.arraybuffer_view)
 
+    const compression_mod = graphModule(b, public, "compression", .{
+        .root_source_file = b.path("src/compression/root.zig"),
+        .target = target,
+    });
+    impls_mod.addImport("compression", compression_mod);
+
     const mimesniff_mod = graphModule(b, public, "mimesniff", .{
         .root_source_file = b.path("src/mimesniff/root.zig"),
         .target = target,
@@ -5682,6 +5702,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .streams_pull_into_descriptor = streams_pull_into_descriptor_mod,
         .streams = streams_mod,
         .mimesniff = mimesniff_mod,
+        .compression = compression_mod,
         .file = file_mod,
         .fs = fs_mod,
         .referrer_policy = referrer_policy_mod,
