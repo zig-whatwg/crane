@@ -526,6 +526,8 @@ delegating to impls is their job. `--rebase-for-rule-change` exists for one purp
 baseline when the RULE changes (it was used once, when ancestors started to count); a code change
 never uses it.
 
+**The baseline must reach zero before Crane 0.1** (the user, 2026-10-10; roadmap item `impls-boundary`).
+
 The baseline only goes down. `--update` refuses to record an increase, and
 editing the file by hand to make the check pass defeats the only thing that
 stops this debt growing. The count is whatever the baseline says - **do not
