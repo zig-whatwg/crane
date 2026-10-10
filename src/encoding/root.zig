@@ -5,6 +5,7 @@ const std = @import("std");
 // Core modules
 pub const encoding = @import("encoding.zig");
 pub const streaming = @import("streaming.zig");
+pub const streams = @import("streams.zig");
 pub const error_mode = @import("error_mode.zig");
 pub const bom = @import("bom.zig");
 pub const hooks = @import("hooks.zig");
