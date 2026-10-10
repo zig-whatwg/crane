@@ -297,7 +297,8 @@ pub fn parseJsonInNewGlobal(realm: Context, bytes: []const u8) Error!Owned {
     //      decoding replaces every error with U+FFFD.
     const text = if (std.mem.startsWith(u8, bytes, "\xEF\xBB\xBF")) bytes[3..] else bytes;
     if (text.len > std.math.maxInt(c_int)) return error.OperationFailed;
-    // A new global object.
+    // A new global object: v8_Context_New makes a plain global in a snapshot
+    //    agent too - a page's (tests/v8/new_global_snapshot_test.zig).
     const fresh = ffi.v8_Context_New(entered.isolate) orelse return error.OperationFailed;
     defer ffi.v8_Context_Dispose(fresh);
     if (ffi.v8_Context_GetSecurityToken(entered.context())) |token| {
