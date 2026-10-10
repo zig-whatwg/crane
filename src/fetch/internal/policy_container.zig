@@ -22,6 +22,10 @@ const referrer_policy = @import("referrer_policy");
 const csp = @import("csp");
 const request_mod = @import("request.zig");
 const origins = @import("origins.zig");
+const structured_fields = @import("structured_fields.zig");
+const mixed_content = @import("../mixed_content.zig");
+const basic_parser = @import("basic_parser");
+const url_serializer = @import("url_serializer");
 
 pub const ReferrerPolicy = request_mod.ReferrerPolicy;
 
@@ -31,6 +35,10 @@ pub const PolicyContainer = struct {
 
     /// "A CSP list, which is a CSP list. It is initially empty." Owned.
     csp_list: csp.CSPList,
+
+    /// Reporting §3.3: the response's endpoints, owned by this global's
+    /// container. A request/inherited-document clone does not copy them.
+    endpoints: ?*Endpoints = null,
 
     /// Upgrade Insecure Requests' "insecure requests policy" inherited from
     /// the embedding document (UIR 3.3: a nested browsing context's
@@ -72,6 +80,7 @@ pub const PolicyContainer = struct {
     /// Release what the container owns: its CSP list.
     pub fn deinit(self: *PolicyContainer) void {
         self.csp_list.deinit();
+        if (self.endpoints) |endpoints| endpoints.deinit();
         self.* = undefined;
     }
 
@@ -95,6 +104,7 @@ pub const PolicyContainer = struct {
         // 3. "Set result's CSP list to the result of parsing a response's
         // Content Security Policies given response."
         try parseResponseCsp(allocator, &result.csp_list, response);
+        if (response.reporting_endpoints) |header| result.endpoints = try Endpoints.fromHeader(allocator, response.url, header);
         // 5. Set result's referrer policy to the result of parsing the
         // `Referrer-Policy` header given response: the last token that is a
         // referrer policy, or the empty string when none is.
@@ -124,6 +134,82 @@ pub const ResponseHeaders = struct {
     csp: ?[]const u8 = null,
     csp_report_only: ?[]const u8 = null,
     referrer_policy: ?[]const u8 = null,
+    reporting_endpoints: ?[]const u8 = null,
+};
+
+pub const Endpoint = struct {
+    name: []u8,
+    url: []const u8,
+    failures: u64 = 0,
+};
+
+/// Native data only. Responses to an upload may mutate its endpoint's
+/// failures or remove it while the containing policy remains read-only.
+pub const Endpoints = struct {
+    allocator: Allocator,
+    items: std.ArrayListUnmanaged(Endpoint) = .empty,
+
+    pub fn deinit(self: *Endpoints) void {
+        const allocator = self.allocator;
+        for (self.items.items) |endpoint| {
+            allocator.free(endpoint.name);
+            allocator.free(endpoint.url);
+        }
+        self.items.deinit(allocator);
+        allocator.destroy(self);
+    }
+
+    pub fn find(self: *Endpoints, name: []const u8) ?*Endpoint {
+        for (self.items.items) |*endpoint| if (std.mem.eql(u8, endpoint.name, name)) return endpoint;
+        return null;
+    }
+
+    pub fn remove(self: *Endpoints, name: []const u8, url: []const u8) void {
+        for (self.items.items, 0..) |endpoint, index| {
+            if (!std.mem.eql(u8, endpoint.name, name) or !std.mem.eql(u8, endpoint.url, url)) continue;
+            const removed = self.items.orderedRemove(index);
+            self.allocator.free(removed.name);
+            self.allocator.free(removed.url);
+            return;
+        }
+    }
+
+    fn fromHeader(allocator: Allocator, response_url: []const u8, header: []const u8) error{OutOfMemory}!?*Endpoints {
+        // Reporting §3.3 steps 1-3. Invalid structured fields are ignored
+        // as a whole; allocation failures remain failures.
+        if (!try mixed_content.isOriginAuthenticated(allocator, response_url)) return null;
+        var parsed = structured_fields.parseDictionary(allocator, header) catch |err| switch (err) {
+            error.InvalidField => return null,
+            error.OutOfMemory => return error.OutOfMemory,
+        };
+        defer parsed.deinit(allocator);
+        var base = basic_parser.parse(allocator, response_url, null) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return null,
+        };
+        defer base.deinit();
+        const result = try allocator.create(Endpoints);
+        result.* = .{ .allocator = allocator };
+        errdefer result.deinit();
+        // Steps 4-5: only String values resolve to trustworthy endpoints.
+        for (parsed.members.items) |member| {
+            const value = member.string orelse continue;
+            var record = basic_parser.parse(allocator, value, &base) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => continue,
+            };
+            defer record.deinit();
+            const url = url_serializer.serialize(allocator, &record, false) catch return error.OutOfMemory;
+            var url_owned = true;
+            defer if (url_owned) allocator.free(url);
+            if (!try mixed_content.isOriginAuthenticated(allocator, url)) continue;
+            const name = try allocator.dupe(u8, member.key);
+            errdefer allocator.free(name);
+            try result.items.append(allocator, .{ .name = name, .url = url });
+            url_owned = false;
+        }
+        return result;
+    }
 };
 
 /// CSP 2.2.2 "Parse a response's Content Security Policies", into `list`.

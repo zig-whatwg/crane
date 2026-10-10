@@ -1745,6 +1745,7 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
             .csp = if (headers) |h| h.get("content-security-policy") else null,
             .csp_report_only = if (headers) |h| h.get("content-security-policy-report-only") else null,
             .referrer_policy = if (headers) |h| h.get("referrer-policy") else null,
+            .reporting_endpoints = if (headers) |h| h.get("reporting-endpoints") else null,
         }) catch return null;
     } else PolicyContainer.init(allocator); // 5. "Return a new policy container."
     // Upgrade Insecure Requests 3.3: a nested browsing context whose

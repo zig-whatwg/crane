@@ -147,17 +147,26 @@ fn fetchAndProcess(element: *runtime.Instance) void {
     if (!(interfaces.Node.get_isConnected(element) catch false)) return;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
     if ((interfaces.Document.get_defaultView(document) catch null) == null) return;
-    // "Create link options from element": href, crossorigin and
-    // referrerpolicy. A link with no href, or an empty one, defines no link.
+    // "Create link options from element": snapshot the request metadata.
+    // A link with no href, or an empty one, defines no link.
     const href = attribute(element, "href") orelse return;
     if (href.len == 0) return;
     const options: style_sheet_loading.LinkOptions = .{
         .href = href,
         .cors = style_sheet_loading.CorsSetting.fromAttribute(attribute(element, "crossorigin")),
         .referrer_policy = referrerPolicyState(attribute(element, "referrerpolicy")),
+        .nonce = attribute(element, "nonce") orelse "",
+        .integrity = attribute(element, "integrity") orelse "",
+        .fetch_priority = blk: {
+            const priority = attribute(element, "fetchpriority") orelse break :blk .auto;
+            if (std.ascii.eqlIgnoreCase(priority, "high")) break :blk .high;
+            if (std.ascii.eqlIgnoreCase(priority, "low")) break :blk .low;
+            break :blk .auto;
+        },
     };
     switch (linkType(element)) {
         .none => {},
+        .prefetch => internal.load = style_sheet_loading.startPrefetch(element, options) orelse 0,
         .stylesheet => {
             // 4.2.4.2: "If the UA does not support the given MIME type for
             // the given link relationship, then the UA should not fetch and
@@ -189,7 +198,7 @@ fn fetchAndProcess(element: *runtime.Instance) void {
 
 /// The external resource link the element's rel creates, of those this
 /// engine fetches: a stylesheet link, else a preload link, else a
-/// modulepreload link. (Two at once - `rel="preload stylesheet"` - is
+/// modulepreload link, else a prefetch. (Two at once - `rel="preload stylesheet"` - is
 /// fetched as the first of those.)
 fn linkType(element: *runtime.Instance) LinkType {
     return relLinkType(attribute(element, "rel"));
@@ -217,7 +226,7 @@ fn isAlternate(element: *runtime.Instance, internal: *const InternalState) bool 
     return title.len != 0 and hasToken(rel, "alternate") and !internal.explicitly_enabled;
 }
 
-const LinkType = enum { none, stylesheet, preload, modulepreload };
+const LinkType = enum { none, stylesheet, preload, modulepreload, prefetch };
 
 /// The `as` attribute's state, a potential destination, as a destination;
 /// null when it is in no state. "fetch" is the empty destination, which is
@@ -385,6 +394,7 @@ fn relLinkType(rel: ?[]const u8) LinkType {
     if (hasToken(value, "stylesheet")) return .stylesheet;
     if (hasToken(value, "preload")) return .preload;
     if (hasToken(value, "modulepreload")) return .modulepreload;
+    if (hasToken(value, "prefetch")) return .prefetch;
     return .none;
 }
 
@@ -392,7 +402,7 @@ fn relLinkType(rel: ?[]const u8) LinkType {
 /// fetched.
 fn typeAllows(element: *runtime.Instance, type_attr: ?[]const u8) bool {
     return switch (linkType(element)) {
-        .none, .modulepreload => true,
+        .none, .modulepreload, .prefetch => true,
         .stylesheet => supportedType(type_attr),
         .preload => typeMatches(type_attr, preloadDestination(attribute(element, "as")) orelse return true),
     };
