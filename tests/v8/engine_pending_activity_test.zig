@@ -135,22 +135,38 @@ test "a kept wrapper survives a full GC; released, it is collected and its deini
     try std.testing.expect(wasFreed(worker));
 }
 
-test "releasing twice, or what was never kept, changes nothing" {
+test "pending activity is counted: each keep is ended by its own release" {
     try setup();
-    const never_kept = try wrapped();
-    v8.worker_realm.releasePlatformObject(never_kept.instance);
-    v8.worker_realm.releasePlatformObject(never_kept.instance);
-    try std.testing.expect(!isStrong(never_kept));
-
+    // Two owners keep one object - a script element's queued task and its
+    // fetch (WebKit's m_pendingActivityInstanceCount, design 2.3): the first
+    // owner's release leaves the second's keep.
     const kept = try wrapped();
     v8.worker_realm.keepPlatformObjectAlive(kept.instance);
     v8.worker_realm.keepPlatformObjectAlive(kept.instance);
     v8.worker_realm.releasePlatformObject(kept.instance);
+    try std.testing.expect(isStrong(kept));
+    collect();
+    try std.testing.expect(!wasFreed(kept));
+    try std.testing.expect(isCached(kept));
     v8.worker_realm.releasePlatformObject(kept.instance);
     try std.testing.expect(!isStrong(kept));
     collect();
-    try std.testing.expect(wasFreed(never_kept));
     try std.testing.expect(wasFreed(kept));
+}
+
+test "pending activity kept twice before the wrapper exists is taken whole by the wrapper" {
+    try setup();
+    const early = try unwrapped();
+    v8.worker_realm.keepPlatformObjectAlive(early.instance);
+    v8.worker_realm.keepPlatformObjectAlive(early.instance);
+    v8.worker_realm.releasePlatformObject(early.instance);
+    try wrap(early);
+    try std.testing.expect(isStrong(early));
+    collect();
+    try std.testing.expect(!wasFreed(early));
+    v8.worker_realm.releasePlatformObject(early.instance);
+    collect();
+    try std.testing.expect(wasFreed(early));
 }
 
 test "releasing pending activity leaves a wrapper held for another reason" {

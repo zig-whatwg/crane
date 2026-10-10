@@ -1152,8 +1152,8 @@ pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFu
 /// Owned keeps that Owned (or another hold of its own) until its caller has
 /// the value: between the impl's return and the binding wrapping the result,
 /// a [CEReactions] end can run script, and so a collection.
-/// `keepPlatformObjectAlive` is one per-instance flag shared by every owner
-/// (pending activity), so it cannot carry a second, independent reason.
+/// `keepPlatformObjectAlive` is counted per owner (pending activity), so a
+/// second, independent keep is safe: each owner releases only its own.
 pub inline fn constructCallbackFunction(realm: Context, callback: *const CallbackFunction, args: []const JSValue) Error!Completion {
     return impl.constructCallbackFunction(realm, callback, args);
 }
@@ -1764,12 +1764,21 @@ pub inline fn hasWrapper(instance: *Instance) bool {
 }
 
 /// `instance` has pending activity: its wrapper is kept alive whatever script
-/// holds, until `releasePlatformObject` or its realm ends.
+/// holds, until its realm ends or every keep is released. COUNTED: each call
+/// is one keep, ended by exactly one `releasePlatformObject` - so independent
+/// owners (a script element's queued task and its fetch) keep it each for
+/// their own reason, and one owner's release never ends another's (WebKit's
+/// ActiveDOMObject `m_pendingActivityInstanceCount`; refcount design 2.3). An
+/// owner whose reason toggles keeps once and releases once, with a flag of
+/// its own. A keep taken before the instance has a wrapper is taken by the
+/// wrapper when it is made.
 pub inline fn keepPlatformObjectAlive(instance: *Instance) void {
     impl.keepPlatformObjectAlive(instance);
 }
 
-/// End what `keepPlatformObjectAlive` began.
+/// End ONE keep `keepPlatformObjectAlive` began - the caller's own. A release
+/// with no keep left ends nothing; it is a bug in its caller (V8: an error log
+/// in Debug builds, counted on the realm's wrapper cache).
 pub inline fn releasePlatformObject(instance: *Instance) void {
     impl.releasePlatformObject(instance);
 }

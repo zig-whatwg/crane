@@ -509,6 +509,10 @@ pub fn structuredDeserializeWithTransfer(_: Context, _: []const u8, _: []const [
 pub fn hasWrapper(_: *Instance) bool {
     return false;
 }
+/// Nothing is wrapped, so there is no wrapper to keep. Once the adapter wraps
+/// platform objects, a keep is a `JSValueProtect` of the wrapper, which is
+/// counted as the protocol is ("must be unprotected an equal number of times",
+/// JSValueRef.h; refcount design 2.5 item 4).
 pub fn keepPlatformObjectAlive(_: *Instance) void {}
 pub fn releasePlatformObject(_: *Instance) void {}
 pub fn platformObjectDestroyed(_: *Instance) void {}

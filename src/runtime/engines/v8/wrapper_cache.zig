@@ -63,6 +63,7 @@
 //! Multiple contexts can have separate caches on different threads.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const realm_finalizers = @import("realm_finalizers.zig");
@@ -93,6 +94,14 @@ const CacheEntry = struct {
 
     /// Reasons to hold the wrapper that only a caller can state - see `Holds`.
     holds: Holds = .{},
+
+    /// Pending activity (`holdForPendingActivity`), COUNTED: each owner's
+    /// keep is ended by its own release, and the wrapper is held while any
+    /// remains - WebKit's ActiveDOMObject `m_pendingActivityInstanceCount`,
+    /// `GCReachableRefMap`'s HashCountedSet (refcount design 2.3). A flag
+    /// could not carry a second owner: a script element's queued task and its
+    /// fetch both keep it, and the first release ended both (fix-list D15).
+    pending_activity: u32 = 0,
 
     /// Kept by an edge from its realm's global object instead of a strong
     /// handle, since the realm's navigable was destroyed
@@ -179,9 +188,6 @@ fn forgetCounted(entry: *CacheEntry) void {
 const Holds = packed struct {
     /// A window's document (`holdStrong`): the window aliases the wrapper.
     document: bool = false,
-    /// Pending activity (`holdForPendingActivity`): a running Worker, which
-    /// must outlive whatever script holds of it until it is terminated.
-    pending_activity: bool = false,
 };
 
 /// Whether `entry`'s wrapper must be held strongly: a caller's reason
@@ -194,7 +200,7 @@ const Holds = packed struct {
 fn shouldBeStrong(entry: *const CacheEntry) bool {
     // A torn-down instance's wrapper is never what keeps anything.
     if (entry.instance_already_cleaned) return false;
-    if (entry.holds.document or entry.holds.pending_activity) return true;
+    if (entry.holds.document or entry.pending_activity != 0) return true;
     return engineHoldsWrapper(entry.instance);
 }
 
@@ -582,30 +588,46 @@ pub fn holdStrong(instance: *runtime.Instance) void {
 
 /// Blink's ActiveScriptWrappable: hold `instance`'s wrapper while it has
 /// pending activity - a running Worker, a timeout signal whose timer is
-/// pending - whatever script holds of it. Ended by `releasePendingActivity`.
-/// The activity can begin before script has seen the instance (a signal is
-/// made, and its timer armed, before the binding wraps it): the hold is then
-/// recorded against the instance and taken by its wrapper when it is made.
+/// pending - whatever script holds of it. COUNTED: one keep for each call,
+/// each ended by one `releasePendingActivity`. The activity can begin before
+/// script has seen the instance (a signal is made, and its timer armed,
+/// before the binding wraps it): the keeps are then recorded against the
+/// instance and taken by its wrapper when it is made.
 pub fn holdForPendingActivity(instance: *runtime.Instance) void {
     const cache = cacheOf(instance) orelse return;
     if (cache.cache.get(instance)) |entry| {
-        entry.holds.pending_activity = true;
+        entry.pending_activity +|= 1;
         syncEntry(entry);
         return;
     }
-    cache.pending_before_wrap.put(cache.allocator, instance, runtime.SlabAllocator.generationOf(instance)) catch {};
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    const gop = cache.pending_before_wrap.getOrPut(cache.allocator, instance) catch return;
+    // A dead instance's keeps at a reissued address are not the newcomer's.
+    if (!gop.found_existing or gop.value_ptr.generation != generation) gop.value_ptr.* = .{ .generation = generation, .count = 0 };
+    gop.value_ptr.count +|= 1;
 }
 
-/// `instance` has no pending activity any more (HasPendingActivity() turned
-/// false): its wrapper is collectable again, unless another reason holds it.
-/// Idempotent; a no-op for an instance never held this way.
+/// End one keep `holdForPendingActivity` took: when it was the last, the
+/// wrapper is collectable again, unless another reason holds it. A release
+/// with no keep left - one an owner never took, or took once and releases
+/// twice - would end ANOTHER owner's keep under a count; it changes nothing,
+/// and in Debug it is reported (an error log: fatal in unit tests, counted in
+/// a sweep - decision D9) and counted on the cache (`unmatched_releases`).
 pub fn releasePendingActivity(instance: *runtime.Instance) void {
     const cache = cacheOf(instance) orelse return;
-    _ = cache.pending_before_wrap.remove(instance);
-    const entry = cache.cache.get(instance) orelse return;
-    if (!entry.holds.pending_activity) return;
-    entry.holds.pending_activity = false;
-    syncEntry(entry);
+    if (cache.cache.get(instance)) |entry| {
+        if (entry.pending_activity == 0) return cache.unmatchedRelease(instance);
+        entry.pending_activity -= 1;
+        if (entry.pending_activity == 0) syncEntry(entry);
+        return;
+    }
+    const waiting = cache.pending_before_wrap.getPtr(instance) orelse return cache.unmatchedRelease(instance);
+    if (waiting.generation != runtime.SlabAllocator.generationOf(instance) or waiting.count == 0) {
+        _ = cache.pending_before_wrap.remove(instance);
+        return cache.unmatchedRelease(instance);
+    }
+    waiting.count -= 1;
+    if (waiting.count == 0) _ = cache.pending_before_wrap.remove(instance);
 }
 
 /// `instance`'s realm's cache, or null when it has none or it is being torn
@@ -1018,7 +1040,12 @@ pub const WrapperCache = struct {
     /// Pending-activity holds placed before the instance was wrapped
     /// (`holdForPendingActivity`), by slab generation so a reissued address
     /// does not inherit one. `set` moves a hold onto the new wrapper's entry.
-    pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, u64) = .empty,
+    pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, PendingBeforeWrap) = .empty,
+
+    /// Releases of pending activity with no keep left to end
+    /// (`releasePendingActivity`): an owner that released what it did not
+    /// keep. Zero when every owner balances its keeps.
+    unmatched_releases: usize = 0,
 
     /// Edges `traceChild` drew from an owner script had not seen yet
     /// (protocol_tracing.zig): each child's wrapper held strongly here until
@@ -1063,6 +1090,15 @@ pub const WrapperCache = struct {
     deferred_looked_up: bool = false,
 
     const Self = @This();
+
+    /// Pending activity kept on an instance script has not seen yet.
+    pub const PendingBeforeWrap = struct { generation: u64, count: u32 };
+
+    /// A release of pending activity found no keep to end.
+    fn unmatchedRelease(self: *Self, instance: *runtime.Instance) void {
+        self.unmatched_releases += 1;
+        if (builtin.mode == .Debug) log.err("releasePlatformObject on {s} {*} with no keepPlatformObjectAlive left to end: an owner released what it did not keep", .{ instance.vtable.name, instance });
+    }
 
     /// The queue a collected node of this realm goes to: its agent's - the
     /// isolate collecting, entered in a weak callback.
@@ -1727,7 +1763,7 @@ pub const WrapperCache = struct {
         // otherwise.
         // A pending-activity hold placed before the wrapper existed.
         if (self.pending_before_wrap.fetchRemove(instance)) |held| {
-            if (held.value == entry.original_generation) entry.holds.pending_activity = true;
+            if (held.value.generation == entry.original_generation) entry.pending_activity = held.value.count;
         }
         // Edges traced from the instance before script saw it.
         self.drawDeferredEdges(instance, entry.original_generation, wrapper);
