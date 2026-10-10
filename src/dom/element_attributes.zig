@@ -34,6 +34,7 @@ pub const Implementation = struct {
     append: *const fn (element: *runtime.Instance, attribute: Attribute) Error!void,
     change: *const fn (element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8, value: []const u8) Error!void,
     node_at: *const fn (element: *runtime.Instance, index: usize) Error!?*runtime.Instance,
+    existing_node_at: *const fn (element: *runtime.Instance, index: usize) ?*runtime.Instance,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -77,6 +78,15 @@ pub fn change(element: *runtime.Instance, namespace: ?[]const u8, local_name: []
 pub fn nodeAt(element: *runtime.Instance, index: usize) Error!?*runtime.Instance {
     const impl = implementation orelse return null;
     return impl.node_at(element, index);
+}
+
+/// The Attr node already made for the attribute at `index` - what script was
+/// handed - or null when none was (or past the end). Never makes one: the
+/// adopt steps set the node document of an element's Attr nodes through this,
+/// and adopting a tree must not make an Attr for every attribute in it.
+pub fn existingNodeAt(element: *runtime.Instance, index: usize) ?*runtime.Instance {
+    const impl = implementation orelse return null;
+    return impl.existing_node_at(element, index);
 }
 
 test "without an installed implementation there is nothing to read or append to" {

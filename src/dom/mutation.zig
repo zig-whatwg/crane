@@ -38,6 +38,7 @@ const element_with_base = @import("element_with_base.zig");
 const attr_with_base = @import("attr_with_base.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const node_document = @import("node_document.zig");
+const element_attributes = @import("element_attributes.zig");
 const range_boundaries = @import("range_boundaries.zig");
 const custom_elements = @import("custom_elements.zig");
 
@@ -2576,6 +2577,18 @@ pub fn adopt(
                         if (element.attributes.get(attr_idx)) |attr| {
                             attr.base.owner_document = document;
                         }
+                    }
+                } else if (document_instance) |doc_instance| {
+                    // A platform element keeps its attributes in its own
+                    // state and makes an Attr node only when script asks for
+                    // one: each it made follows it (its document edge with
+                    // it, so the old document is let go), and an attribute
+                    // with none gets none - adopting a tree allocates nothing
+                    // for attributes script never touched.
+                    const element: *runtime.Instance = @ptrCast(@alignCast(desc.owner_instance.?));
+                    for (0..element_attributes.count(element)) |attr_idx| {
+                        const attr = element_attributes.existingNodeAt(element, attr_idx) orelse continue;
+                        node_document.set(attr, doc_instance) catch {};
                     }
                 }
             }
