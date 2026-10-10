@@ -1,0 +1,19 @@
+# Architecture: A back-link script can read must keep what it names - draw the edge where the wrapper is made, and redraw it where the link moves
+
+**Date**: 2026-10-10
+**Lesson**: Every native pointer that script can read back (`node.ownerDocument`, `iterator.root`, `walker.currentNode`, `event.target`, `mouseEvent.relatedTarget`, `range.startContainer`, `attr.ownerElement`) must keep its target alive: an edge from the holder's wrapper to the target's, drawn when the holder's wrapper is made (or held for it until then) and redrawn whenever the link changes.
+
+**Why**: Crane frees a node when its tree's wrappers are collected. A holder that names a node in another tree with a bare pointer does nothing to keep that tree. Script then holds the holder, reads the link and gets a freed object: the reissued slot answers as some other node, or the wrap crashes in the template lookup. Blink traces every one of these members: `Node::Trace` visits `tree_scope_`, `NodeIterator::Trace` `reference_`, `TreeWalker::Trace` `current_`, `Event::Trace` `target_`, `MouseEvent::Trace` `related_target_`, `Range::Trace` `start_`/`end_`, `Attr::Trace` `element_`.
+
+**What Happened**: Lane rc12 found `n.ownerDocument` crashing after a windowless document was dropped (a removed node outlived its document). Lane ownerdoc's audit of the other back-links found the same use-after-free, reachable from script on main, in NodeIterator (root and reference), TreeWalker (root and currentNode), Event.target, MouseEvent.relatedTarget (PointerEvent and WheelEvent wrote the same field raw from copies of MouseEvent's constructor), live Range containers, and Attr.ownerElement (generation-checked, so it read null).
+- **The node document.** `setOwnerDocument` runs inside `createElement`, before the binding wraps the result, and a holder's rescue wraps a root inside the adapter, so the host has no step at wrap time. The edge therefore belongs to node tracing (`WrapperCache.set`), beside the parent edge. The host redraws it under the same traced-slot key when adopt changes a wrapped node's document.
+- **Holders with few nodes** (an iterator, a walker, a range, an Attr) use `engine.traceChild` in fixed slots, redrawn by one setter that every write goes through. An owner script has not seen yet holds the node strongly until its wrapper is made, and its `deinit` lets go with `forgetTracedChild`.
+- **Events.** The engine fires most events, and nobody hears most of those. An unwrapped event keeps nothing, which spares the target's wrapper. The edge is drawn once the event has a wrapper, at the latest when dispatch ends.
+
+**Fix**:
+1. `dom.node_document.traced_slot`, with the edge drawn by `WrapperCache.set` (`drawDocumentEdge`) and redrawn by `Node.setOwnerDocument` (`keepNodeDocument`).
+2. Fixed slots and a single setter per holder: NodeIterator `setReference`, TreeWalker `setCurrent`, Range `keepContainers`, Event `keepTarget`, MouseEvent `setRelatedTarget` (the subclasses reach it through `dom.event_construction`), Attr `keepElement`.
+3. Adopt sets the node document of each Attr node already made (`dom.element_attributes.existingNodeAt`) and makes none. A 1,000-element tree adopts with zero new platform objects (tests/html/od_attr_adopt_test.zig).
+4. A net under the rule: the Node impl records the document's slab generation, and `ownerDocument` on a document freed under its node reads InvalidStateError with a warning, never the freed object (`Node.liveOwnerDocument`). A sweep's warnings measure the holes the edges leave.
+
+**Takeaway**: **A pointer script can read back is a reference, not a cache: give it an edge from its holder's wrapper, drawn where the wrapper is made, and route every write through one setter that redraws it - or the first collection turns it into a use-after-free.**
