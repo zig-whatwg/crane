@@ -619,6 +619,8 @@ pub fn sendLegacy(global: *runtime.Instance, endpoint: []const u8, bytes: []cons
     var client = try global_settings.requestClient(global);
     defer client.deinit();
     const request = try legacyRequest(global.ctx.allocator, endpoint, bytes, client.request);
-    // send takes the request even if starting the fetch fails.
-    _ = try keepalive_fetch.send(global, request, .{});
+    // send takes the request even if starting the fetch fails. A ping
+    // load: exempt from the fetch group's keepalive budget, as WebKit and
+    // Gecko send CSP reports (keepalive_fetch.Load).
+    _ = try keepalive_fetch.send(global, request, .{ .load = .ping });
 }

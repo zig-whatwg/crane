@@ -264,6 +264,9 @@ pub const InternalState = struct {
     /// src/html/user_activation.zig through dom.user_activation_state.
     user_activation: @import("dom").user_activation_state.Timestamps = .{},
     reporting: @import("dom").reporting.State = .{},
+    /// Fetch 2.4: this global's settings object's fetch group - its
+    /// in-flight keepalive bytes (dom.keepalive_fetch). Plain data.
+    fetch_group: @import("dom").document_fetches.FetchGroup = .{},
 
     pub fn init(allocator: Allocator) !InternalState {
         return .{
@@ -473,6 +476,7 @@ pub fn installHooks() void {
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
         .reporting = &settingsReporting,
+        .fetch_group = &settingsFetchGroup,
         .prohibits_mixed_security_contexts = &settingsProhibitsMixedSecurityContexts,
     });
 }
@@ -569,6 +573,11 @@ fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").Cooki
 fn settingsReporting(instance: *runtime.Instance) ?*@import("dom").reporting.State {
     const internal = getInternal(instance) orelse return null;
     return &internal.reporting;
+}
+
+fn settingsFetchGroup(instance: *runtime.Instance) ?*@import("dom").document_fetches.FetchGroup {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.fetch_group;
 }
 
 /// The settings object's policy container: the window's associated

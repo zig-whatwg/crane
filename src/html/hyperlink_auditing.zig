@@ -161,6 +161,8 @@ fn sendPing(window: *runtime.Instance, document: *runtime.Instance, document_url
 
     // 6. "Fetch request." Its response is ignored. The document's abort
     //    cancels it (installDocumentAbort): an audit is no keepalive request.
+    //    A ping load, as in WebKit and Gecko: it holds none of the fetch
+    //    group's keepalive budget (dom.keepalive_fetch.Load).
     const record = try allocator.create(Audit);
     record.* = .{
         .allocator = allocator,
@@ -176,7 +178,7 @@ fn sendPing(window: *runtime.Instance, document: *runtime.Instance, document_url
     }
     owned = false;
     // The dispatch takes the request on every path.
-    const dispatch = dom.keepalive_fetch.start(window, request, .{ .observer = .{ .context = record, .ended = Audit.ended } }) catch |err| {
+    const dispatch = dom.keepalive_fetch.start(window, request, .{ .load = .ping, .observer = .{ .context = record, .ended = Audit.ended } }) catch |err| {
         record.destroy();
         return err;
     };

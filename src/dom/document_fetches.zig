@@ -23,9 +23,50 @@
 //! Spec: https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document
 //!
 //! lint-impls: hook for XMLHttpRequest, WindowOrWorkerGlobalScope, EventSource, HTMLScriptElement, HTMLImageElement, HTMLTrackElement, HTMLMediaElement, HTMLLinkElement, HTMLObjectElement, HTMLAnchorElement
+const std = @import("std");
 const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
+
+/// Fetch 2.4: the part of an environment settings object's fetch group that
+/// is counted - the in-flight keepalive request body bytes HTTP-network-or-
+/// cache fetch step 8.10 bounds at 64 KiB. Owned by each global with its
+/// settings (a Window's, a WorkerGlobalScope's InternalState), and reached
+/// through `dom.global_settings.fetchGroupOf`. Plain data: a request that
+/// outlives its global holds a slab-generation link to it and releases only
+/// while that is live (dom.keepalive_fetch.Reservation).
+///
+/// The spec sums the in-flight records at each HTTP-network-or-cache fetch,
+/// which counts the request being checked twice (its own record is in the
+/// group already). The browsers count a running total instead, reserved
+/// when a request starts and released once when it finishes or fails, and
+/// so a request of exactly 64 KiB is accepted
+/// (fetch/api/request/request-keepalive-quota.html, Chrome and Firefox
+/// 6/6): Blink ResourceFetcher::StartLoad and HandleLoaderFinish /
+/// HandleLoaderError (inflight_keepalive_bytes_), WebKit
+/// KeepaliveRequestTracker::tryRegisterRequest / unregisterRequest, Gecko
+/// FetchUtil::Increment/DecrementPendingKeepaliveRequestSize.
+pub const FetchGroup = struct {
+    inflight_keepalive_bytes: u64 = 0,
+
+    /// "64 kibibytes".
+    pub const keepalive_quota: u64 = 64 * 1024;
+
+    /// Step 8.10.5: false - a network error - when `length` and the bytes
+    /// in flight exceed the quota; otherwise `length` is in flight until
+    /// `releaseKeepalive`.
+    pub fn reserveKeepalive(self: *FetchGroup, length: u64) bool {
+        if (length > keepalive_quota - self.inflight_keepalive_bytes) return false;
+        self.inflight_keepalive_bytes += length;
+        return true;
+    }
+
+    /// A reserved request is done (its done flag is set) or terminated.
+    pub fn releaseKeepalive(self: *FetchGroup, length: u64) void {
+        std.debug.assert(length <= self.inflight_keepalive_bytes);
+        self.inflight_keepalive_bytes -|= length;
+    }
+};
 
 /// One kind of fetch owner's document-abort and destruction steps.
 pub const Owner = struct {
@@ -114,7 +155,6 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) bool {
 }
 
 test "document abort prepares every owner before callbacks and destruction stays silent" {
-    const std = @import("std");
     const saved = cancelers;
     defer cancelers = saved;
     cancelers = .{null} ** slot_count;
@@ -188,7 +228,6 @@ test "document abort prepares every owner before callbacks and destruction stays
 }
 
 test "full owner table rejects a new owner and accepts an already installed owner" {
-    const std = @import("std");
     if (comptime !@hasDecl(@This(), "tryInstall")) {
         try std.testing.expect(false);
         return;
@@ -206,4 +245,30 @@ test "full owner table rejects a new owner and accepts an already installed owne
         try tryInstall(&cancelers, owner);
         try std.testing.expectError(error.OwnerSlotsFull, tryInstall(&cancelers, .{ .discard = Callbacks.second }));
     }
+}
+
+test "a fetch group holds at most 64 KiB of keepalive bodies in flight, released as each ends" {
+    var group: FetchGroup = .{};
+    // Exactly the quota fits; one more byte does not.
+    try std.testing.expect(!group.reserveKeepalive(FetchGroup.keepalive_quota + 1));
+    try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+    try std.testing.expect(group.reserveKeepalive(FetchGroup.keepalive_quota));
+    try std.testing.expect(!group.reserveKeepalive(1));
+    // An empty body fits even when the group is full.
+    try std.testing.expect(group.reserveKeepalive(0));
+    group.releaseKeepalive(FetchGroup.keepalive_quota);
+    try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+
+    // request-keepalive-quota.html "slow-2": only the bytes a request held
+    // come back when it ends.
+    try std.testing.expect(group.reserveKeepalive(FetchGroup.keepalive_quota - 1));
+    try std.testing.expect(group.reserveKeepalive(1));
+    group.releaseKeepalive(1);
+    try std.testing.expect(!group.reserveKeepalive(2));
+    try std.testing.expect(group.reserveKeepalive(1));
+    group.releaseKeepalive(1);
+    group.releaseKeepalive(FetchGroup.keepalive_quota - 1);
+    try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+    // A length past any u64 sum never wraps the check.
+    try std.testing.expect(!group.reserveKeepalive(std.math.maxInt(u64)));
 }

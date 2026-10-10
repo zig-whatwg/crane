@@ -182,3 +182,70 @@ test "a dispatch whose realm retires is terminated, and ends without a response"
         }
     }.body);
 }
+
+/// The page window's fetch group.
+fn groupOf(page: *Page) !*dom.document_fetches.FetchGroup {
+    return dom.global_settings.fetchGroupOf(try page.window()) orelse error.TestUnexpectedResult;
+}
+
+/// Turn the event loop until no fetch is left in flight on this thread.
+fn turnUntilIdle(page: *Page, before: usize) !void {
+    var turns: usize = 0;
+    while (async_fetch.inFlight() != before and turns < 100) : (turns += 1) {
+        _ = try page.browser.runEventLoopBlocking(20);
+    }
+    try std.testing.expectEqual(before, async_fetch.inFlight());
+}
+
+test "a counted dispatch reserves its body in its fetch group, and is rejected past 64 KiB" {
+    try onThread(struct {
+        fn body() !void {
+            var page = try Page.open(std.testing.allocator);
+            defer page.close();
+            const window = try page.window();
+            const group = try groupOf(&page);
+            const quota = dom.document_fetches.FetchGroup.keepalive_quota;
+            try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+            const before = async_fetch.inFlight();
+            // Over the quota alone: rejected, nothing sent, and the request
+            // freed (std.testing.allocator).
+            try std.testing.expect(!try keepalive_fetch.send(window, try page.request(quota + 1), .{}));
+            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+            // Exactly the quota: accepted, and in flight.
+            try std.testing.expect(try keepalive_fetch.send(window, try page.request(quota), .{}));
+            try std.testing.expectEqual(quota, group.inflight_keepalive_bytes);
+            // One byte more is sendBeacon's synchronous false.
+            try std.testing.expect(!try keepalive_fetch.send(window, try page.request(1), .{}));
+            // A ping load is exempt (the browsers' majority), and so is a
+            // request that is not keepalive.
+            try std.testing.expect(try keepalive_fetch.send(window, try page.request(1), .{ .load = .ping }));
+            const plain = try page.request(quota + 1);
+            plain.keepalive = false;
+            try std.testing.expect(try keepalive_fetch.send(window, plain, .{}));
+            try std.testing.expectEqual(quota, group.inflight_keepalive_bytes);
+            try std.testing.expectEqual(before + 3, async_fetch.inFlight());
+            // Every fetch ends (refused): the bytes come back, once.
+            try turnUntilIdle(&page, before);
+            try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+            try std.testing.expect(try keepalive_fetch.send(window, try page.request(quota), .{}));
+            try turnUntilIdle(&page, before);
+            try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+        }
+    }.body);
+}
+
+test "a canceled dispatch's bytes leave its fetch group at once" {
+    try onThread(struct {
+        fn body() !void {
+            var page = try Page.open(std.testing.allocator);
+            defer page.close();
+            const group = try groupOf(&page);
+            const dispatch = (try keepalive_fetch.start(try page.window(), try page.request(1000), .{})) orelse
+                return error.TestUnexpectedResult;
+            try std.testing.expectEqual(@as(u64, 1000), group.inflight_keepalive_bytes);
+            dispatch.cancel();
+            try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
+        }
+    }.body);
+}
