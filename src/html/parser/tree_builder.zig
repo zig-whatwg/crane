@@ -40,7 +40,10 @@ pub const ChangeTheEncoding = struct {
     change: *const fn (context: *anyopaque, requested: encoding_sniffing.Encoding) void,
 };
 
-/// The 24 insertion modes defined in HTML Standard §13.2.6.4
+/// The 21 insertion modes defined in HTML Standard §13.2.6.4. The current
+/// parser has no "in select" or "in select in table" mode: a select's
+/// contents are parsed "in body" (the relaxed select parser), as Chrome,
+/// Firefox and Safari do.
 ///
 /// The insertion mode controls how tokens are processed and which
 /// elements can be created.
@@ -75,10 +78,6 @@ pub const InsertionMode = enum {
     in_row,
     /// Inside <td> or <th>
     in_cell,
-    /// Inside <select> element
-    in_select,
-    /// Inside <select> inside <table>
-    in_select_in_table,
     /// Inside <template> element
     in_template,
     /// After </body>
@@ -1107,8 +1106,6 @@ pub const TreeBuilder = struct {
             .in_table_body => try self.handleInTableBodyMode(token),
             .in_row => try self.handleInRowMode(token),
             .in_cell => try self.handleInCellMode(token),
-            .in_select => try self.handleInSelectMode(token),
-            .in_select_in_table => try self.handleInSelectInTableMode(token),
             .in_template => try self.handleInTemplateMode(token),
             .after_body => try self.handleAfterBodyMode(token),
             .in_frameset => try self.handleInFramesetMode(token),
@@ -3473,187 +3470,6 @@ pub const TreeBuilder = struct {
         }
     }
 
-    /// Handle token in "in select" insertion mode.
-    /// HTML Standard §13.2.6.4.16 (not in main parsing.md, simplified)
-    fn handleInSelectMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
-        switch (token) {
-            .character => |char| {
-                if (char == 0) {
-                    self.reportError(.unexpected_null_character);
-                } else {
-                    try self.insertCharacter(char);
-                }
-            },
-            .comment => |comment| {
-                try self.insertComment(comment);
-            },
-            .doctype => {
-                self.reportError(.missing_doctype_name);
-            },
-            .start_tag => |tag| {
-                const name = tag.getTagName();
-                if (std.mem.eql(u8, name, "html")) {
-                    try self.handleInBodyMode(token);
-                } else if (std.mem.eql(u8, name, "option")) {
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("option")) {
-                            _ = self.popCurrentNode();
-                        }
-                    }
-                    _ = try self.insertHtmlElement(tag);
-                } else if (std.mem.eql(u8, name, "optgroup")) {
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("option")) {
-                            _ = self.popCurrentNode();
-                        }
-                    }
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("optgroup")) {
-                            _ = self.popCurrentNode();
-                        }
-                    }
-                    _ = try self.insertHtmlElement(tag);
-                } else if (std.mem.eql(u8, name, "hr")) {
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("option")) {
-                            _ = self.popCurrentNode();
-                        }
-                    }
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("optgroup")) {
-                            _ = self.popCurrentNode();
-                        }
-                    }
-                    _ = try self.insertHtmlElement(tag);
-                    _ = self.popCurrentNode();
-                } else if (std.mem.eql(u8, name, "select")) {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                    if (!self.hasElementInSelectScope("select")) {
-                        return;
-                    }
-                    self.popUntilTagName("select");
-                    self.resetInsertionModeAppropriately();
-                } else if (std.mem.eql(u8, name, "input") or
-                    std.mem.eql(u8, name, "keygen") or
-                    std.mem.eql(u8, name, "textarea"))
-                {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                    if (!self.hasElementInSelectScope("select")) {
-                        return;
-                    }
-                    self.popUntilTagName("select");
-                    self.resetInsertionModeAppropriately();
-                    try self.processToken(token);
-                } else if (std.mem.eql(u8, name, "script") or std.mem.eql(u8, name, "template")) {
-                    try self.handleInHeadMode(token);
-                } else {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                }
-            },
-            .end_tag => |tag| {
-                const name = tag.getTagName();
-                if (std.mem.eql(u8, name, "optgroup")) {
-                    // Pop optgroup handling
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("option")) {
-                            if (self.open_elements.len > 1) {
-                                const prev = self.open_elements.get(self.open_elements.len - 2);
-                                if (prev) |p| {
-                                    if (p.hasTagName("optgroup")) {
-                                        _ = self.popCurrentNode();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("optgroup")) {
-                            _ = self.popCurrentNode();
-                        } else {
-                            self.reportError(.invalid_first_character_of_tag_name);
-                        }
-                    }
-                } else if (std.mem.eql(u8, name, "option")) {
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("option")) {
-                            _ = self.popCurrentNode();
-                        } else {
-                            self.reportError(.invalid_first_character_of_tag_name);
-                        }
-                    }
-                } else if (std.mem.eql(u8, name, "select")) {
-                    if (!self.hasElementInSelectScope("select")) {
-                        self.reportError(.invalid_first_character_of_tag_name);
-                        return;
-                    }
-                    self.popUntilTagName("select");
-                    self.resetInsertionModeAppropriately();
-                } else if (std.mem.eql(u8, name, "template")) {
-                    try self.handleInHeadMode(token);
-                } else {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                }
-            },
-            .eof => {
-                try self.handleInBodyMode(token);
-            },
-            .text_run => |text_run| {
-                // Insert text run in select element
-                try self.insertTextRun(text_run.data);
-            },
-        }
-    }
-
-    /// Handle token in "in select in table" insertion mode.
-    fn handleInSelectInTableMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
-        switch (token) {
-            .start_tag => |tag| {
-                const name = tag.getTagName();
-                if (std.mem.eql(u8, name, "caption") or
-                    std.mem.eql(u8, name, "table") or
-                    std.mem.eql(u8, name, "tbody") or
-                    std.mem.eql(u8, name, "tfoot") or
-                    std.mem.eql(u8, name, "thead") or
-                    std.mem.eql(u8, name, "tr") or
-                    std.mem.eql(u8, name, "td") or
-                    std.mem.eql(u8, name, "th"))
-                {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                    self.popUntilTagName("select");
-                    self.resetInsertionModeAppropriately();
-                    try self.processToken(token);
-                } else {
-                    try self.handleInSelectMode(token);
-                }
-            },
-            .end_tag => |tag| {
-                const name = tag.getTagName();
-                if (std.mem.eql(u8, name, "caption") or
-                    std.mem.eql(u8, name, "table") or
-                    std.mem.eql(u8, name, "tbody") or
-                    std.mem.eql(u8, name, "tfoot") or
-                    std.mem.eql(u8, name, "thead") or
-                    std.mem.eql(u8, name, "tr") or
-                    std.mem.eql(u8, name, "td") or
-                    std.mem.eql(u8, name, "th"))
-                {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                    if (!self.hasElementInTableScope(name)) {
-                        return;
-                    }
-                    self.popUntilTagName("select");
-                    self.resetInsertionModeAppropriately();
-                    try self.processToken(token);
-                } else {
-                    try self.handleInSelectMode(token);
-                }
-            },
-            else => {
-                try self.handleInSelectMode(token);
-            },
-        }
-    }
-
     /// Handle token in "in template" insertion mode.
     /// HTML Standard §13.2.6.4.16
     fn handleInTemplateMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
@@ -4318,12 +4134,6 @@ pub const TreeBuilder = struct {
         };
     }
 
-    /// Check if element is transparent in select scope (not a boundary).
-    fn isSelectScopeTransparent(name: []const u8) bool {
-        return (name.len == 8 and std.mem.eql(u8, name, "optgroup")) or
-            (name.len == 6 and std.mem.eql(u8, name, "option"));
-    }
-
     /// Check if element is in scope.
     /// Optimized with length-based scope boundary checks.
     fn hasElementInScope(self: *TreeBuilder, tag_name: []const u8) bool {
@@ -4654,7 +4464,8 @@ pub const TreeBuilder = struct {
         }
     }
 
-    /// Reset insertion mode appropriately.
+    /// Reset insertion mode appropriately: steps 3-15. There is no select
+    /// step; a select on the stack falls through to its ancestors.
     pub fn resetInsertionModeAppropriately(self: *TreeBuilder) void {
         var last = false;
         var i = self.open_elements.len;
@@ -4678,10 +4489,6 @@ pub const TreeBuilder = struct {
                 continue;
             }
 
-            if (node.hasTagName("select")) {
-                self.insertion_mode = .in_select;
-                return;
-            }
             if (node.hasTagName("td") or node.hasTagName("th")) {
                 if (!last) {
                     self.insertion_mode = .in_cell;
@@ -4900,23 +4707,6 @@ pub const TreeBuilder = struct {
 
             if (node.local_name) |name| {
                 if (isTableScopeBoundary(name)) return false;
-            }
-        }
-        return false;
-    }
-
-    /// Check if element is in select scope.
-    /// Optimized with length-based scope boundary checks.
-    fn hasElementInSelectScope(self: *TreeBuilder, tag_name: []const u8) bool {
-        var i = self.open_elements.len;
-        while (i > 0) {
-            i -= 1;
-            const node = self.open_elements.get(i) orelse continue;
-            if (node.hasTagName(tag_name)) return true;
-
-            // In select scope, only optgroup and option are transparent
-            if (node.local_name) |name| {
-                if (!isSelectScopeTransparent(name)) return false;
             }
         }
         return false;
@@ -5252,7 +5042,8 @@ test "TreeBuilder - init" {
 }
 
 test "InsertionMode - all modes defined" {
-    // Verify all 24 insertion modes are defined
+    // Verify all 21 insertion modes are defined (the current parser has no
+    // "in select" or "in select in table")
     const modes = [_]InsertionMode{
         .initial,
         .before_html,
@@ -5269,8 +5060,6 @@ test "InsertionMode - all modes defined" {
         .in_table_body,
         .in_row,
         .in_cell,
-        .in_select,
-        .in_select_in_table,
         .in_template,
         .after_body,
         .in_frameset,
@@ -5278,7 +5067,7 @@ test "InsertionMode - all modes defined" {
         .after_after_body,
         .after_after_frameset,
     };
-    try std.testing.expectEqual(@as(usize, 23), modes.len);
+    try std.testing.expectEqual(@as(usize, 21), modes.len);
 }
 
 test "isHtmlWhitespace" {
