@@ -354,6 +354,10 @@ const ViolationTask = struct {
     }
 
     fn sendReports(self: *ViolationTask) !void {
+        // §5.5 steps 3.4-3.5 belong to the queued task. A bare realm's
+        // synchronous event fallback is no network-pump boundary: without
+        // a loop, drop delivery rather than start AsyncFetch in the finder.
+        if (self.global.ctx.getOptionalEventLoop() == null) return;
         if (self.report_to) |destination| {
             // §5.5 step 3.5. Gecko nsCSPContext::SendReports and WebKit
             // ContentSecurityPolicy::reportViolation likewise require
