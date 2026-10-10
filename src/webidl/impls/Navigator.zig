@@ -513,12 +513,71 @@ pub fn call_createAuctionNonce(instance: *runtime.Instance) anyerror!runtime.JSV
     return error.NotImplemented;
 }
 
-/// Operation: sendBeacon
+/// Beacon §3.2: parse in the relevant settings object's base URL, extract
+/// the body with keepalive, then hand the request to the shared fetch owner.
 pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: webidl.Opt(?typedefs.BodyInit)) anyerror!bool {
-    _ = instance;
-    _ = url;
-    _ = data;
-    return error.NotImplemented;
+    const ctx = instance.ctx;
+    const allocator = ctx.allocator;
+    const fetch = @import("fetch");
+    const api_parser = @import("api_parser");
+    const global: ?*runtime.Instance = if (ctx.getRealm()) |realm|
+        if (realm.global_object) |raw| @ptrCast(@alignCast(raw)) else null
+    else
+        null;
+    var base: ?[]const u8 = null;
+    if (global) |g| {
+        if (std.mem.eql(u8, g.vtable.name, "Window")) {
+            if (interfaces.Window.get_document(g) catch null) |document|
+                base = try interfaces.Node.get_baseURI(document);
+        }
+    }
+    defer if (base) |b| allocator.free(b);
+    var parsed_base: ?@import("url_record").URLRecord = null;
+    defer if (parsed_base) |*b| b.deinit();
+    if (base orelse ctx.documentUrl()) |b| parsed_base = api_parser.parseURL(allocator, b, null) catch null;
+    var parsed = api_parser.parseURL(allocator, url, if (parsed_base) |*b| b else null) catch |err| {
+        if (err == error.OutOfMemory) return error.OutOfMemory;
+        return error.TypeError;
+    };
+    defer parsed.deinit();
+    if (!std.mem.eql(u8, parsed.scheme(), "http") and !std.mem.eql(u8, parsed.scheme(), "https")) return error.TypeError;
+    const serialized = try @import("url_serializer").serialize(allocator, &parsed, false);
+    defer allocator.free(serialized);
+    const relevant_global = global orelse return error.InvalidState;
+    const request = try fetch.internal.InternalRequest.init(allocator, serialized);
+    var owns_request = true;
+    defer if (owns_request) request.deinit();
+    try request.setMethod("POST");
+    request.keepalive = true;
+    request.mode = .no_cors;
+    request.credentials_mode = .include;
+    request.initiator_type = .beacon;
+    // Script-supplied non-safelisted Content-Type must take Fetch's CORS
+    // preflight path (Beacon §4); it is not a UA-generated trusted header.
+    request.unsafe_request = true;
+    if (data.wasPassed()) {
+        if (data.getValue()) |body_init| {
+            var extracted = try @import("fetch_body.zig").extract(allocator, body_init, true);
+            defer extracted.deinit();
+            if (extracted.content_type) |content_type| {
+                if (!fetch.internal.isCORSSafelistedRequestHeader("Content-Type", content_type)) request.mode = .cors;
+                try request.header_list.append("Content-Type", content_type);
+            }
+            if (extracted.takeBody()) |body| {
+                // Extracted byte bodies own their storage; their replay source
+                // must point at that storage after the BodyInit call ends.
+                body.source = .{ .bytes = body.data.items };
+                request.body = .{ .body = body };
+            }
+        }
+    }
+    var client = try @import("dom").global_settings.requestClient(relevant_global);
+    defer client.deinit();
+    try fetch.internal.populateRequestFromClient(request, client.request);
+    // Beacon §3.2: Fetch's shared keepalive owner checks the fetch group's
+    // in-flight quota synchronously, and takes the request on every path.
+    owns_request = false;
+    return @import("dom").keepalive_fetch.send(relevant_global, request, .{});
 }
 
 /// Operation: queryHandwritingRecognizer
