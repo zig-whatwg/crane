@@ -397,6 +397,8 @@ pub const Direction = enum { ltr, rtl };
 const DirState = enum { ltr, rtl, auto, undefined };
 
 fn dirState(element: *Instance) DirState {
+    // HTML 3.2.6.4: foreign elements inherit; dir is defined only for HTML.
+    if (element.stateAs(interfaces.HTMLElement.State) == null) return .undefined;
     var buffer: [4]u8 = undefined;
     const value = smallAttribute(element, "dir", &buffer) orelse return .undefined;
     if (std.ascii.eqlIgnoreCase(value, "ltr")) return .ltr;
@@ -432,7 +434,7 @@ pub fn directionality(element: *Instance) Direction {
             .auto => return autoDirectionality(current) orelse .ltr,
             .undefined => {
                 // bdi: its auto directionality, or 'ltr'.
-                if (isElementNamed(current, "bdi")) return autoDirectionality(current) orelse .ltr;
+                if (directionalityElement(current, "bdi")) return autoDirectionality(current) orelse .ltr;
                 // An input in the Telephone state: 'ltr'.
                 if (isInput(current)) {
                     var buffer: [16]u8 = undefined;
@@ -453,8 +455,7 @@ pub fn directionality(element: *Instance) Direction {
     return .ltr;
 }
 
-/// "The auto directionality" of `element` (slots excepted: assigned nodes
-/// are not consulted).
+/// HTML 3.2.6.4: auto directionality of controls, assigned slots and text.
 fn autoDirectionality(element: *Instance) ?Direction {
     // 1. An auto-directionality form-associated element: from its value.
     if (isAutoDirectionalityFormAssociated(element)) {
@@ -470,8 +471,20 @@ fn autoDirectionality(element: *Instance) ?Direction {
         if (value.asSlice().len > 0) return .ltr;
         return null;
     }
-    // 3. The contained text auto directionality, canExcludeRoot false.
-    return containedTextAutoDirectionality(element);
+    // Step 2: a shadow slot with assigned nodes uses those nodes, not fallback.
+    if (element.stateAs(interfaces.HTMLSlotElement.State) != null and shadowRootHost(element) != null) {
+        const assigned = @import("dom").shadow_dom_algorithms.assignedNodes(element.ctx.allocator, element, false, false) catch return null;
+        defer element.ctx.allocator.free(assigned);
+        if (assigned.len != 0) {
+            for (assigned) |child| {
+                const direction = if (isTextNode(child)) textDirectionality(child) else containedTextAutoDirectionality(child, true);
+                if (direction) |d| return d;
+            }
+            return null;
+        }
+    }
+    // Step 3: contained text, canExcludeRoot false.
+    return containedTextAutoDirectionality(element, false);
 }
 
 /// The direction of the first code point of bidirectional type L, AL or R
@@ -490,28 +503,56 @@ pub fn firstStrongDirection(text: []const u8) ?Direction {
     return null;
 }
 
-/// "The contained text auto directionality" of `element`, canExcludeRoot
-/// false: the first Text descendant with a strong character, skipping
-/// every subtree rooted at a bdi, script, style or textarea element or an
-/// element whose dir attribute is not in the Undefined state.
-fn containedTextAutoDirectionality(element: *Instance) ?Direction {
+/// HTML's contained text auto directionality, steps 1–2. Skip entire
+/// excluded subtrees; CDATASection is a Text node too (DOM's Text interface).
+fn containedTextAutoDirectionality(element: *Instance, can_exclude_root: bool) ?Direction {
+    if (can_exclude_root and excludesDirectionality(element)) return null;
     var node = nextInTree(element, element, false);
     while (node) |n| {
         if (isElement(n)) {
-            const skip = isElementNamed(n, "bdi") or isElementNamed(n, "script") or
-                isElementNamed(n, "style") or isElementNamed(n, "textarea") or dirState(n) != .undefined;
-            node = nextInTree(n, element, skip);
-            continue;
-        }
-        const node_type = interfaces.Node.get_nodeType(n) catch 0;
-        if (node_type == interfaces.Node.get_TEXT_NODE()) {
-            var data = interfaces.CharacterData.get_data(n) catch runtime.DOMString.initEmpty();
-            defer data.deinit(n.ctx.allocator);
-            if (firstStrongDirection(data.asSlice())) |d| return d;
+            if (excludesDirectionality(n)) {
+                node = nextInTree(n, element, true);
+                continue;
+            }
+            // Step 1.2: a descendant shadow slot uses its host direction.
+            if (n.stateAs(interfaces.HTMLSlotElement.State) != null) {
+                if (shadowRootHost(n)) |host| return directionality(host);
+            }
+        } else if (isTextNode(n)) {
+            if (textDirectionality(n)) |d| return d;
         }
         node = nextInTree(n, element, false);
     }
     return null;
+}
+
+fn excludesDirectionality(element: *Instance) bool {
+    return directionalityElement(element, "bdi") or directionalityElement(element, "script") or
+        directionalityElement(element, "style") or directionalityElement(element, "textarea") or dirState(element) != .undefined;
+}
+
+fn directionalityElement(element: *Instance, comptime name: []const u8) bool {
+    if (element.stateAs(interfaces.HTMLElement.State) == null) return false;
+    var local = interfaces.Element.get_localName(element) catch return false;
+    defer local.deinit(element.ctx.allocator);
+    return std.mem.eql(u8, local.asSlice(), name);
+}
+
+fn shadowRootHost(element: *Instance) ?*Instance {
+    const root = rootOf(element);
+    if (root.stateAs(interfaces.ShadowRoot.State) == null) return null;
+    return interfaces.ShadowRoot.get_host(root) catch null;
+}
+
+fn isTextNode(node: *Instance) bool {
+    const kind = interfaces.Node.get_nodeType(node) catch return false;
+    return kind == interfaces.Node.get_TEXT_NODE() or kind == interfaces.Node.get_CDATA_SECTION_NODE();
+}
+
+fn textDirectionality(node: *Instance) ?Direction {
+    var data = interfaces.CharacterData.get_data(node) catch return null;
+    defer data.deinit(node.ctx.allocator);
+    return firstStrongDirection(data.asSlice());
 }
 
 // ============================================================================

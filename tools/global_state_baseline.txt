@@ -67,6 +67,7 @@ src/dom/geometry_storage.zig set_rect 1 G P-res decl:fa9748b3bb06b2c1
 src/dom/global_settings.zig installed 1 G H decl:94cef2ba5a7c385b
 src/dom/global_settings.zig test_owned 1 G X decl:e044c0ca53b0050b
 src/dom/history_traversal.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/html_pseudo_classes.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/idle_periods.zig deadlines 1 G P-res decl:f4400852080f8212
 src/dom/idle_periods.zig loop 1 G P-res decl:1bb591d6c33253d3
 src/dom/indexeddb.zig cursors 1 G P-res decl:4c93a28a998354be

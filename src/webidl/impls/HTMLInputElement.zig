@@ -412,7 +412,7 @@ pub fn installHooks() void {
         .legacy_pre_activation = &legacyPreActivation,
         .legacy_canceled_activation = &legacyCanceledActivation,
     });
-    dom.form_controls.install(.{ .is = &isInput, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_edit = &userEdit, .editor_text = &editorText });
+    dom.form_controls.install(.{ .is = &isInput, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_edit = &userEdit, .editor_text = &editorText, .has_range_limitations = &hasRangeLimitations });
     dom.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
         log.warn("input insertion steps not registered: {}", .{err});
     };
@@ -1418,6 +1418,12 @@ fn maximumOf(instance: *runtime.Instance, input_type: InputType) ?f64 {
     if (input_type != .range) return null;
     const minimum = minimumOf(instance, input_type) orelse 0;
     return if (100 < minimum) minimum else 100;
+}
+
+/// HTML 4.10.5.3.7: the owner determines whether either bound is defined.
+fn hasRangeLimitations(instance: *runtime.Instance) bool {
+    const input_type = typeOf(instance);
+    return input_type.numeric() and (minimumOf(instance, input_type) != null or maximumOf(instance, input_type) != null);
 }
 
 /// Each state's default step and step scale factor.
