@@ -143,6 +143,14 @@ test "flags: the i64 address type's modules are enabled where V8 runs and where 
     try std.testing.expect(std.mem.indexOf(u8, loader.SNAPSHOT_V8_FLAGS, "--experimental-wasm-memory64") != null);
 }
 
+test "flags: WebAssembly's exnref exception handling is enabled where V8 runs and where the snapshot is made" {
+    // try_table, throw_ref and the exnref type (Wasm 3.0) are behind
+    // --experimental-wasm-exnref in V8 13.1; without it those modules are
+    // CompileErrors ("invalid value type 'exn'") - wasm/core/exceptions/.
+    try std.testing.expect(std.mem.indexOf(u8, loader.RUNTIME_V8_FLAGS, "--experimental-wasm-exnref") != null);
+    try std.testing.expect(std.mem.indexOf(u8, loader.SNAPSHOT_V8_FLAGS, "--experimental-wasm-exnref") != null);
+}
+
 test "snapshot realm: a Window realm restored from Crane's snapshot takes address i64" {
     noteFirst();
     if (!first_in_process.?) {
