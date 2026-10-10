@@ -1817,54 +1817,6 @@ fn collectElementsByTagNameNS(
     }
 }
 
-/// Collect descendants with all specified class names (tree order traversal)
-fn collectElementsByClassName(
-    root: *runtime.Instance,
-    class_names: []const u8,
-    collection: *runtime.Instance,
-) !void {
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-
-    var child = NodeImpl.getFirstChild(root);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            if (getInternal(c)) |child_internal| {
-                const class_attr = child_internal.class_name.asSlice();
-
-                // Check if element has ALL required classes
-                var all_found = true;
-                var required_iter = std.mem.tokenizeScalar(u8, class_names, ' ');
-                while (required_iter.next()) |required_class| {
-                    if (required_class.len == 0) continue;
-
-                    var found = false;
-                    var elem_iter = std.mem.tokenizeScalar(u8, class_attr, ' ');
-                    while (elem_iter.next()) |elem_class| {
-                        if (std.mem.eql(u8, elem_class, required_class)) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        all_found = false;
-                        break;
-                    }
-                }
-
-                if (all_found and class_names.len > 0) {
-                    try HTMLCollectionImpl.addElement(collection, c);
-                }
-            }
-
-            // Recurse into descendants
-            try collectElementsByClassName(c, class_names, collection);
-        }
-
-        child = NodeImpl.getNextSibling(c);
-    }
-}
-
 /// Setter for onfullscreenchange
 /// Fullscreen API - Sets the event handler for fullscreen changes
 /// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenchange
@@ -2549,8 +2501,11 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
     ) catch return error.OutOfMemory;
     errdefer interfaces.HTMLCollection.deinit(collection);
 
-    // Collect matching descendants
-    collectElementsByClassName(instance, names_slice, collection) catch return error.OutOfMemory;
+    // DOM "list of elements with class names", steps 1–3: an empty
+    // ordered set gives an empty list; otherwise filter live descendants.
+    var classes = std.mem.tokenizeAny(u8, names_slice, "\t\n\x0c\r ");
+    if (classes.next() != null)
+        try @import("dom").live_collections.elementsWithClassNames(collection, instance, names_slice);
 
     return collection;
 }
