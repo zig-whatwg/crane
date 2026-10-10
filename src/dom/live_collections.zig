@@ -15,11 +15,10 @@ const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// A document version covers tree and attribute mutations, including adoption
-/// and teardown. The mutation owner wires this seam; until then every read
-/// recomputes. In particular, null is not a version that can be cached.
+/// and teardown. The refcount owner updates it at those mutation boundaries.
+/// Null means no live document version is available: always recompute.
 pub fn treeVersion(document: *runtime.Instance) ?u64 {
-    _ = document;
-    return null;
+    return @import("refcount.zig").treeVersion(document);
 }
 
 /// A teardown check, not a hold. A mutation invalidates the cache before a

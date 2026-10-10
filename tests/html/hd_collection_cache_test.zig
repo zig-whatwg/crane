@@ -58,8 +58,13 @@ fn cacheInvalidation() !void {
     var cache: live.IndexCache = .{};
     var walk = Walk{ .root = root };
 
-    // The production seam is deliberately unwired until mutation's owner lands.
-    try testing.expectEqual(null, live.treeVersion(doc));
+    // The final integration must supply a real document version. Pure null
+    // injection below still pins the safe always-recompute fallback.
+    const production_version = live.treeVersion(doc);
+    if (production_version == null) {
+        std.debug.print("live tree-version seam remains null: TestUnexpectedResult\n", .{});
+        return error.TestUnexpectedResult;
+    }
     try testing.expect(!cache.begin(root_link, doc, null));
     try testing.expectEqual(@as(u32, 2), cache.count(&walk));
     const old_steps = walk.steps;
