@@ -450,6 +450,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A red test for a step that has not landed asserts that it is still red](testing-a-red-test-for-an-unlanded-step-asserts-that-it-is-still-red.md) - Wrap the verdict in `knownRed(step_landed, ...)`: it passes while red, fails when it turns green unannounced, and is required once the flag is flipped in the commit that earns it.
 
 ### Debugging
+
+- [A Wrapperless Removal Orphans the Node Until Browser End](debugging-a-wrapperless-removal-orphans-the-node-until-browser-end.md) - A feature that starts passing can expose a leak in code merged rounds earlier; any InternalState owning non-arena memory needs a teardown sweep until refcounting.
 - [A node's slab generation can outlive its NodeBase - a generation check does not prove a node's storage is there](debugging-a-nodes-slab-generation-can-outlive-its-nodebase.md) - A live generation says the Instance slot is still that object's, not that its node storage exists: anything linked into a NodeBase must be unlinked by the node's own teardown, the way registered observers are.
 - [Give the objects that reissue a freed slot a voice](debugging-give-the-objects-that-reissue-a-freed-slot-a-voice.md) - Make the impostor talk: churn objects that announce themselves, so a reissued slot fails the assertion with its name instead of passing or crashing elsewhere.
 
