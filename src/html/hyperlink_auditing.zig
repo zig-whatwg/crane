@@ -5,9 +5,9 @@
 //! Called by HTMLAnchorElement and HTMLAreaElement: their activation
 //! behaviour calls `audit` as it follows the hyperlink, before the
 //! navigation starts, as Blink does (HTMLAnchorElement::NavigateToHyperlink
-//! sends the pings, then navigates). The pings are fetched on the event loop
-//! (`fetch.algorithms.AsyncFetch`) and their responses ignored: "User agents
-//! must ignore any entity bodies returned in the responses."
+//! sends the pings, then navigates). The pings are fire-and-forget fetches
+//! (dom.keepalive_fetch) and their responses ignored: "User agents must
+//! ignore any entity bodies returned in the responses."
 //!
 //! Step 2, "Optionally, return", is not taken: every ping is sent.
 //!
@@ -42,9 +42,9 @@ fn prepareDocumentAbort(document: *runtime.Instance) bool {
     const generation = runtime.SlabAllocator.generationOf(document);
     var canceled = false;
     for (registry.entries.toSlice()) |entry| {
-        const pending: *Pending = @ptrCast(@alignCast(entry.instance));
-        if (pending.document != document or pending.document_generation != generation) continue;
-        pending.document_abort_pending = true;
+        const ping: *Audit = @ptrCast(@alignCast(entry.instance));
+        if (ping.document != document or ping.document_generation != generation) continue;
+        ping.document_abort_pending = true;
         canceled = true;
     }
     return canceled;
@@ -53,21 +53,21 @@ fn prepareDocumentAbort(document: *runtime.Instance) bool {
 fn abortDocument(document: *runtime.Instance) void {
     const registry = livePings(document.ctx) orelse return;
     while (true) {
-        const pending = for (registry.entries.toSlice()) |entry| {
-            const candidate: *Pending = @ptrCast(@alignCast(entry.instance));
+        const ping = for (registry.entries.toSlice()) |entry| {
+            const candidate: *Audit = @ptrCast(@alignCast(entry.instance));
             if (candidate.document == document and candidate.document_abort_pending) break candidate;
         } else return;
-        pending.cancel();
+        ping.cancel();
     }
 }
 
 fn discardRealm(realm: runtime.Context) void {
     const registry = livePings(realm) orelse return;
     while (true) {
-        const pending = for (registry.entries.toSlice()) |entry| {
-            if (entry.realm == @as(*anyopaque, @ptrCast(realm))) break @as(*Pending, @ptrCast(@alignCast(entry.instance)));
+        const ping = for (registry.entries.toSlice()) |entry| {
+            if (entry.realm == @as(*anyopaque, @ptrCast(realm))) break @as(*Audit, @ptrCast(@alignCast(entry.instance)));
         } else return;
-        pending.cancel();
+        ping.cancel();
     }
 }
 
@@ -159,82 +159,63 @@ fn sendPing(window: *runtime.Instance, document: *runtime.Instance, document_url
     }
     try request.header_list.set("Ping-To", target_url);
 
-    // 6. "Fetch request." Its response is ignored.
-    const pending = try allocator.create(Pending);
-    pending.* = .{
+    // 6. "Fetch request." Its response is ignored. The document's abort
+    //    cancels it (installDocumentAbort): an audit is no keepalive request.
+    const record = try allocator.create(Audit);
+    record.* = .{
         .allocator = allocator,
-        .ctx = window.ctx,
         .document = document,
         .document_generation = runtime.SlabAllocator.generationOf(document),
     };
     if (livePings(window.ctx)) |registry| {
-        registry.add(pending, window.ctx) catch |err| {
-            allocator.destroy(pending);
+        registry.add(record, window.ctx) catch |err| {
+            allocator.destroy(record);
             return err;
         };
-        pending.registry = registry;
+        record.registry = registry;
     }
     owned = false;
-    pending.fetch = fetch.algorithms.AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), pending.client()) catch |err| {
-        // The fetch owned the request, and freed it.
-        pending.destroy();
+    // The dispatch takes the request on every path.
+    const dispatch = dom.keepalive_fetch.start(window, request, .{ .observer = .{ .context = record, .ended = Audit.ended } }) catch |err| {
+        record.destroy();
         return err;
+    };
+    record.dispatch = dispatch orelse {
+        // Rejected: nothing was sent, and nothing will end it.
+        record.destroy();
+        return;
     };
 }
 
-/// A ping's fetch while it runs: what its client needs to tell whether the
-/// page that sent it is still there. It frees itself when the fetch ends.
-const Pending = struct {
+/// A ping in flight, for its document's abort: the page that sent it and
+/// the dispatch (dom.keepalive_fetch) that fetches it. Freed when the
+/// dispatch ends, or when the document's abort cancels it.
+const Audit = struct {
     allocator: std.mem.Allocator,
-    /// The realm of the Window that sent the ping. A page that ends retires
-    /// its context - `engine_ctx` becomes null - and Fetch terminates the
-    /// fetch group with it.
-    ctx: runtime.Context,
     document: *runtime.Instance,
     document_generation: u64,
     document_abort_pending: bool = false,
     registry: ?*LivePings = null,
-    fetch: ?*fetch.algorithms.AsyncFetch = null,
+    dispatch: ?*dom.keepalive_fetch.Dispatch = null,
 
-    fn cancel(self: *Pending) void {
-        const active = self.fetch;
-        self.fetch = null;
-        // terminate neither calls gone nor finished; this owner releases
-        // its native registry entry and client record itself.
-        if (active) |f| f.terminate();
+    fn cancel(self: *Audit) void {
+        const dispatch = self.dispatch;
+        self.dispatch = null;
+        // cancel does not call ended; this owner releases its native
+        // registry entry and record itself.
+        if (dispatch) |d| d.cancel();
         self.destroy();
     }
 
-    fn destroy(self: *Pending) void {
+    fn destroy(self: *Audit) void {
         if (self.registry) |registry| registry.remove(self);
         self.allocator.destroy(self);
     }
 
-    fn client(self: *Pending) fetch.algorithms.AsyncFetch.Client {
-        return .{ .context = self, .done = done, .alive = alive, .gone = gone, .finished = finished };
-    }
-
-    fn alive(context: *anyopaque) bool {
-        const self: *Pending = @ptrCast(@alignCast(context));
-        return self.ctx.engine_ctx != null;
-    }
-
-    /// The response, which is ignored.
-    fn done(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
-        _ = context;
-        var result = outcome catch return;
-        result.deinit();
-    }
-
-    fn gone(context: *anyopaque) void {
-        const self: *Pending = @ptrCast(@alignCast(context));
-        self.fetch = null;
-        self.destroy();
-    }
-
-    fn finished(context: *anyopaque) void {
-        const self: *Pending = @ptrCast(@alignCast(context));
-        self.fetch = null;
+    /// The dispatch finished, or was terminated with its realm.
+    fn ended(context: *anyopaque) void {
+        const self: *Audit = @ptrCast(@alignCast(context));
+        self.dispatch = null;
         self.destroy();
     }
 };
