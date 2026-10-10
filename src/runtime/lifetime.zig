@@ -19,6 +19,8 @@
 //! collector's. Step 7 lets them decide.
 
 const std = @import("std");
+const builtin = @import("builtin");
+const Instance = @import("instance.zig").Instance;
 
 /// What a counted type's VTable points at. One table for every counted type:
 /// the runtime dispatches through it, and the owner the hooks name decides.
@@ -31,6 +33,57 @@ pub const Counted = struct {
 
 /// The table every node type's VTable shares.
 pub const node: Counted = .{ .kind = .node };
+
+/// What the owner of the counts installs (dom.refcount, from its `install`,
+/// at process start).
+pub const Hooks = struct {
+    /// A wrapper of `instance` was made: take one reference on the counted
+    /// object behind it and return that object (a node's NodeBase), which the
+    /// adapter keeps beside the wrapper and hands back to `release`; null when
+    /// there is nothing behind it to count.
+    acquire: ?*const fn (instance: *Instance) ?*anyopaque = null,
+    /// The wrapper that took a reference on `target` is finalized (or the
+    /// target's own teardown began under it): drop that reference.
+    release: ?*const fn (target: *anyopaque) void = null,
+};
+
+// process-wide: dom.refcount's two functions, installed once while the process starts (refcount.install, from Document's and Node's installHooks) and the same for every Browser and thread; read-only after
+var hooks: Hooks = .{};
+
+/// The owner of the counts installs its hooks: once, while the process starts
+/// (its caller asserts it). A field left null keeps what is installed.
+pub fn install(owned: Hooks) void {
+    if (owned.acquire) |f| hooks.acquire = f;
+    if (owned.release) |f| hooks.release = f;
+}
+
+/// Tests: replace the hooks, returning the ones there were.
+pub fn swapHooksForTest(replacement: Hooks) Hooks {
+    if (!builtin.is_test) @compileError("swapHooksForTest is for tests");
+    const previous = hooks;
+    hooks = replacement;
+    return previous;
+}
+
+/// `instance`'s wrapper was made and cached: it takes its reference. The
+/// counted object it now holds, for the adapter to keep beside the wrapper and
+/// hand to `wrapperReleased` exactly once; null for a type that does not count
+/// (`VTable.counted`), or when no owner is installed.
+pub fn wrapperAcquired(instance: *Instance) ?*anyopaque {
+    _ = instance.vtable.counted orelse return null;
+    const acquire = hooks.acquire orelse return null;
+    return acquire(instance);
+}
+
+/// The wrapper that `wrapperAcquired` answered `target` for lets its
+/// reference go: finalized after a collection (V8's second pass), removed,
+/// replaced, or at its realm's end - or the target's own teardown began while
+/// the wrapper lived (shadow mode: the collector still frees). Never inside a
+/// collection; on the agent's thread.
+pub fn wrapperReleased(target: *anyopaque) void {
+    const release = hooks.release orelse return;
+    release(target);
+}
 
 /// The comptime predicate `buildVTable` fills `VTable.counted` with: `&node`
 /// when some level of `State`'s `base` chain keeps an `_internal` pointer

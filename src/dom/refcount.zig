@@ -475,12 +475,67 @@ pub const Hooks = struct {
 var hooks: Hooks = .{};
 
 /// Called by Document's and Node's installHooks, once each, at process
-/// start; each installs only its own entry.
+/// start; each installs only its own entry. The wrapper link's two hooks
+/// (runtime.lifetime) are this module's own and go in with them.
 pub fn install(owned: Hooks) void {
     process_start.assertInstalling();
     inline for (@typeInfo(Hooks).@"struct".fields) |field| {
         if (@field(owned, field.name)) |accessor| @field(hooks, field.name) = accessor;
     }
+    runtime.lifetime.install(.{ .acquire = wrapperAcquire, .release = wrapperRelease });
+}
+
+// ============================================================================
+// The wrapper link (design 2.1, section 7 step 4): a node's wrapper owns one
+// reference. The adapter takes it when it caches the wrapper and releases it
+// when the wrapper is finalized, through runtime.lifetime, which reaches these
+// two. SHADOW MODE: no ledger and no garbage sink - the count and the holds
+// are kept and checked, and decide nothing until step 7.
+// ============================================================================
+
+/// runtime.lifetime's acquire hook: `instance` (a node: its VTable is
+/// counted) got a wrapper, which takes one reference on its NodeBase - the
+/// target the adapter keeps beside the wrapper.
+pub fn wrapperAcquire(instance: *runtime.Instance) ?*anyopaque {
+    const node = instance_bridge.getNodeBase(instance) orelse return null;
+    wrapperRef(node);
+    return node;
+}
+
+/// runtime.lifetime's release hook: the wrapper that took a reference on
+/// `target` (what `wrapperAcquire` answered) lets it go.
+pub fn wrapperRelease(target: *anyopaque) void {
+    wrapperDeref(@ptrCast(@alignCast(target)));
+}
+
+/// A wrapper's reference on `node` (`ref` without a ledger): a count going
+/// from zero to one makes the node a hold along its host-including chain.
+pub fn wrapperRef(node: *NodeBase) void {
+    if (node.rc_flags.garbage or node.rc_flags.destroying) {
+        violate(null, "a wrapper took a reference on node {*}, {s}", .{ node, if (node.rc_flags.garbage) "the root of a garbage tree" else "during its teardown" });
+        return;
+    }
+    if (node.rc > std.math.maxInt(u32) - NodeBase.rc_one) {
+        violate(null, "the reference count of node {*} overflowed", .{node});
+        return;
+    }
+    const was_held = isHeld(node);
+    node.rc += NodeBase.rc_one;
+    if (!was_held) adjustForeign(walkAdd(null, node, 1), 1);
+}
+
+/// A wrapper's reference on `node` ends (`deref` without a ledger): the count
+/// reaching zero ends the hold along the host-including chain. Shadow mode: a
+/// root whose total reaches zero is not flagged or queued - the collector
+/// still frees (step 7 gives this a sink).
+pub fn wrapperDeref(node: *NodeBase) void {
+    if (!isHeld(node)) {
+        violate(null, "a wrapper released node {*}, whose count is zero", .{node});
+        return;
+    }
+    node.rc -= NodeBase.rc_one;
+    if (isHeld(node)) return;
+    adjustForeign(walkAdd(null, node, -1), -1);
 }
 
 /// `document`'s counts, or null for an instance that is not a live Document
