@@ -305,7 +305,6 @@ src/runtime/engines/v8/window_properties.zig template_cache_generation 1 G I/eng
 src/runtime/engines/v8/window_properties.zig template_cache_isolate 1 G I/engine decl:481c2b765f747506
 src/runtime/engines/v8/worker_realm.zig records 1 TL I/engine decl:07a3f05d79fd67cb
 src/runtime/engines/v8/wrapper_cache.zig live_caches 1 TL I/engine decl:647404af22eb8c78
-src/runtime/engines/v8/wrapper_cache.zig tree_hooks_installed 1 G H decl:de58a3b1f5ff5e75
 src/runtime/engines/v8/wrapper_type_info.zig global_registry 1 G P-const decl:eb2faada9e73e22b
 src/runtime/gc_integration.zig GCStats.global 1 G D decl:c19a53c965c1a883
 src/runtime/instance.zig TypeIdHolder.marker 1 G P-res decl:f33e1c60fc8c8315
