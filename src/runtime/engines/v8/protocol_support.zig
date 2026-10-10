@@ -88,8 +88,10 @@ pub fn relevantWrapper(isolate: *ffi.Isolate, instance: *engine.Instance) Error!
     defer if (home) |h| h.leave();
     // The wrapper cache's Global, BORROWED - or, when the object cannot be
     // wrapped (no template for its interface), a new undefined, OWNED: a
-    // wrapper is never undefined, so that answer is this call's to keep.
-    const wrapper = conversions.instanceToV8(isolate, instance);
+    // wrapper is never undefined, so that answer is this call's to keep. A
+    // wrap whose cache could not take the instance is OutOfMemory: it is not
+    // wrapped, and the caller's error path must run (Codex row 15 Q22).
+    const wrapper = try conversions.instanceToV8Checked(isolate, instance);
     if (ffi.v8_Value_IsUndefined(wrapper)) return wrapper;
     return ffi.v8_Global_Clone(wrapper) orelse error.OperationFailed;
 }

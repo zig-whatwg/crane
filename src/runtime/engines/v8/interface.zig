@@ -4934,9 +4934,20 @@ pub fn V8Interface(comptime Interface: type) type {
                 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
                 const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
 
-                // Cache the wrapper (log but don't fail if caching fails)
+                // The cache owns the instance through `this` from here. When
+                // it cannot take it (OutOfMemory), the construction fails:
+                // returning `this` anyway left an instance nothing owned
+                // (Codex row 15 Q22). The receiver is unbound - nothing reaches
+                // the instance through it - the instance, which nothing else
+                // ever wrapped, is freed, and the error is thrown.
                 cache.set(instance, this_obj, isolate) catch |err| {
-                    debug.print("Failed to cache constructor wrapper: {s}\n", .{@errorName(err)});
+                    unbindReceiver(this_obj);
+                    v8.v8_Object_Dispose(this_obj);
+                    instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+                    const function_ctx_owned = info.getFunctionCreationContext();
+                    defer if (function_ctx_owned) |c| v8.v8_Context_Dispose(c);
+                    conv.throwWebIDLErrorFromContext(isolate, function_ctx_owned orelse current_context, @errorName(err));
+                    return;
                 };
             }
 
@@ -5051,7 +5062,14 @@ pub fn V8Interface(comptime Interface: type) type {
                 //    template's content, PR-M1); WrapperCache.set refuses.
                 .created => |element| {
                     if (adoptExistingWrapper(info, this_obj, element, function_context)) return;
-                    receiver_taken = bindConstructedElement(this_obj, element, isolate);
+                    receiver_taken = bindConstructedElement(this_obj, element, isolate) catch |err| {
+                        // Not cached: the new element is this construction's
+                        // to free (nothing else ever wrapped it), and the
+                        // construction throws (Codex row 15 Q22).
+                        element.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(element));
+                        conv.throwWebIDLErrorFromContext(isolate, function_context, @errorName(err));
+                        return;
+                    };
                 },
                 .upgrading => |element| {
                     // 14. Perform ? element.[[SetPrototypeOf]](prototype). An
@@ -5065,7 +5083,12 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Never wrapped: the receiver becomes its wrapper, with
                     // the prototype already set (step 14) - and is the result
                     // (step 16).
-                    receiver_taken = bindConstructedElement(this_obj, element, isolate);
+                    receiver_taken = bindConstructedElement(this_obj, element, isolate) catch |err| {
+                        // Not cached: the upgrading element stays the
+                        // construction stack's; the construction throws.
+                        conv.throwWebIDLErrorFromContext(isolate, function_context, @errorName(err));
+                        return;
+                    };
                 },
             }
         }
@@ -5126,7 +5149,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// the constructor path binds its instance: its Instance in the
         /// internal fields, and the wrapper cache's entry. Whether the cache
         /// took the receiver's handle.
-        fn bindConstructedElement(receiver: *v8.Object, element: *runtime.Instance, isolate: *v8.Isolate) bool {
+        fn bindConstructedElement(receiver: *v8.Object, element: *runtime.Instance, isolate: *v8.Isolate) anyerror!bool {
             const wrapper_type_info_registry_ctor = @import("wrapper_type_info_registry.zig");
             if (wrapper_type_info_registry_ctor.getWrapperTypeInfoByName(interface_name)) |type_info| {
                 setInstanceWithTypeInfo(runtime.Instance, receiver, element, type_info);
@@ -5135,10 +5158,21 @@ pub fn V8Interface(comptime Interface: type) type {
             }
             const cache = elementWrapperCache(element) orelse return false;
             cache.set(element, receiver, isolate) catch |err| {
-                debug.print("Failed to cache constructed element wrapper: {s}\n", .{@errorName(err)});
-                return false;
+                // Not cached (OutOfMemory): the receiver must not reach the
+                // element, which nothing owns through it (Codex row 15 Q22).
+                log.warn("a constructed {s}'s wrapper was not cached: {s}", .{ interface_name, @errorName(err) });
+                unbindReceiver(receiver);
+                return err;
             };
             return true;
+        }
+
+        /// Clear the internal fields `setInstance` wrote on `receiver`, so a
+        /// receiver the wrapper cache did not take reaches no instance.
+        fn unbindReceiver(receiver: *v8.Object) void {
+            const count = v8.v8_Object_InternalFieldCount(receiver);
+            if (count >= 1) v8.v8_Object_SetAlignedPointerInInternalField(receiver, 0, null);
+            if (count >= 2) v8.v8_Object_SetAlignedPointerInInternalField(receiver, 1, null);
         }
 
         /// Call constructor with arguments parsed using comptime reflection

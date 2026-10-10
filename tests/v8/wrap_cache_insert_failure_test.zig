@@ -87,6 +87,11 @@ const Page = struct {
         return protocol.convertToPlatformObject(self.realm, held.value) orelse error.NotAPlatformObject;
     }
 
+    fn instanceOrString(self: Page, source: []const u8) ![]u8 {
+        var reports: Reports = .{};
+        return protocol.evaluateClassicScriptToString(self.realm, .{ .utf8 = source }, "", null, testing.allocator, reports.reporter());
+    }
+
     fn collect(self: Page) !void {
         const Collect = struct {
             fn steps(data: ?*anyopaque) void {
@@ -149,4 +154,48 @@ test "a wrap whose cache insert runs out of memory fails, and takes nothing" {
     try testing.expect(again.wrapped);
     try testing.expect(protocol.hasWrapper(div));
     try testing.expectEqual(@as(u32, 2), dom.refcount.count(node));
+}
+
+test "the protocol's wrap (retainValue of an instance) reports the failed insert as OutOfMemory, not an undefined value" {
+    const page = try Page.open();
+    defer page.close();
+    const document = try page.instance("globalThis.d = new Document(); d");
+    const div = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("div"), .{ .was_passed = false, .value = undefined });
+    const cache = page.cache();
+    var failing = std.testing.FailingAllocator.init(cache.allocator, .{ .fail_index = 0 });
+    const saved = cache.allocator;
+    cache.allocator = failing.allocator();
+    const result = protocol.retainValue(page.realm, .{ .instance = div });
+    cache.allocator = saved;
+    if (result) |held| {
+        held.release();
+        return error.WrapSucceededWithoutTheCache;
+    } else |err| try testing.expectEqual(error.OutOfMemory, err);
+    try testing.expect(!protocol.hasWrapper(div));
+    // A caller's error path runs: the instance is still the caller's.
+    const held = try protocol.retainValue(page.realm, .{ .instance = div });
+    held.release();
+    try testing.expect(protocol.hasWrapper(div));
+}
+
+test "a constructor whose wrapper cannot be cached throws, and frees the instance it made" {
+    const page = try Page.open();
+    defer page.close();
+    try page.eval("globalThis.outcome = 'none'; 'ok'");
+    const cache = page.cache();
+    var failing = std.testing.FailingAllocator.init(cache.allocator, .{ .fail_index = 0 });
+    const saved = cache.allocator;
+    const before = runtime.SlabAllocator.get().stats().currently_allocated;
+    cache.allocator = failing.allocator();
+    page.eval("try { globalThis.made = new Headers(); outcome = 'constructed'; } catch (e) { outcome = 'threw'; }") catch |err| {
+        cache.allocator = saved;
+        return err;
+    };
+    cache.allocator = saved;
+    const after = runtime.SlabAllocator.get().stats().currently_allocated;
+    const outcome = try page.instanceOrString("outcome");
+    defer testing.allocator.free(outcome);
+    try testing.expectEqualStrings("threw", outcome);
+    // The Headers it made is freed: no instance is left that nothing owns.
+    try testing.expectEqual(before, after);
 }
