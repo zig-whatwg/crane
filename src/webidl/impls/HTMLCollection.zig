@@ -31,8 +31,10 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// The list of elements
-    elements: infra.List(*runtime.Instance),
+    /// Materialized entries carry generations because a valid cache spans reads.
+    elements: infra.List(live_collections.Link),
+    cache: live_collections.IndexCache = .{},
+    cacheable: bool = true,
 
     /// Root node for live collection updates
     root: ?*runtime.Instance = null,
@@ -47,8 +49,8 @@ pub const InternalState = struct {
     selected_options_only: bool = false,
 
     /// How a LIVE collection rebuilds its elements from `root`: set by the
-    /// producer (`makeLive`) and run before every read. Null for a static
-    /// list filled by `addElement`.
+    /// producer (`makeLive`) and run when its version guard misses. Null for
+    /// a static list filled by `addElement`.
     refill: ?Refill = null,
 
     /// Filter function for matching elements (for getElementsByClassName, etc.)
@@ -58,7 +60,7 @@ pub const InternalState = struct {
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
-            .elements = infra.List(*runtime.Instance).init(allocator),
+            .elements = infra.List(live_collections.Link).init(allocator),
         };
     }
 
@@ -75,10 +77,11 @@ pub const InternalState = struct {
 
 /// Rebuild a live collection from its root: add each element, in tree order,
 /// with `addElement`. The collection has been cleared before it is called.
-pub const Refill = *const fn (collection: *runtime.Instance, root: *runtime.Instance) void;
+/// False means an incomplete refill, which must not be cached.
+pub const Refill = *const fn (collection: *runtime.Instance, root: *runtime.Instance) bool;
 
 /// Make `collection` LIVE over `root`: DOM's "a collection ... is live, it
-/// reflects changes to its root". `refill` runs now and before every read.
+/// reflects changes to its root". `refill` runs now and on each cache miss.
 ///
 /// Collections were snapshots, and `children` is [SameObject] - the interface
 /// caches the first one - so `el.children` answered with whatever the element
@@ -101,6 +104,8 @@ fn makeElementChildren(collection: *runtime.Instance, root: *runtime.Instance) v
 fn makeFormControls(collection: *runtime.Instance, root: *runtime.Instance, fieldset: bool) void {
     const internal = getInternal(collection) orelse return;
     internal.fieldset_controls = fieldset;
+    // Form owner association is not covered by a document tree version.
+    internal.cacheable = false;
     if (collection.ctx.hasEngine()) {
         @import("engine").traceChild(collection, root, .{ .name = "formControlsRoot" });
         internal.form_root_traced = true;
@@ -111,6 +116,8 @@ fn makeFormControls(collection: *runtime.Instance, root: *runtime.Instance, fiel
 fn makeSelectOptions(collection: *runtime.Instance, select: *runtime.Instance, selected_only: bool) void {
     const internal = getInternal(collection) orelse return;
     internal.selected_options_only = selected_only;
+    // selectedOptions also depends on IDL selectedness, not just attributes.
+    internal.cacheable = !selected_only;
     if (collection.ctx.hasEngine()) {
         @import("engine").traceChild(collection, select, .{ .name = "optionsRoot" });
         internal.options_root_traced = true;
@@ -123,13 +130,13 @@ fn liveRoot(collection: *runtime.Instance) ?*runtime.Instance {
     return @import("html").forms.liveChild(internal.root, internal.root_generation);
 }
 
-fn refillSelectOptions(collection: *runtime.Instance, select: *runtime.Instance) void {
-    const internal = getInternal(collection) orelse return;
-    if (liveRoot(collection) == null) return;
-    const multiple = interfaces.HTMLSelectElement.get_multiple(select) catch return;
+fn refillSelectOptions(collection: *runtime.Instance, select: *runtime.Instance) bool {
+    const internal = getInternal(collection) orelse return false;
+    if (liveRoot(collection) == null) return false;
+    const multiple = interfaces.HTMLSelectElement.get_multiple(select) catch return false;
     // Resolve single-select selectedness once, not once per option: O(options).
     const selected_index = if (internal.selected_options_only and !multiple)
-        interfaces.HTMLSelectElement.get_selectedIndex(select) catch return
+        interfaces.HTMLSelectElement.get_selectedIndex(select) catch return false
     else
         -1;
     const Visitor = struct {
@@ -150,11 +157,12 @@ fn refillSelectOptions(collection: *runtime.Instance, select: *runtime.Instance)
         }
     };
     var visitor = Visitor{ .collection = collection, .selected_only = internal.selected_options_only, .multiple = multiple, .selected_index = selected_index };
-    @import("html").forms.options.forEach(select, &visitor, Visitor.append) catch return;
+    @import("html").forms.options.forEach(select, &visitor, Visitor.append) catch return false;
+    return true;
 }
 
-fn refillFormControls(collection: *runtime.Instance, owner: *runtime.Instance) void {
-    const internal = getInternal(collection) orelse return;
+fn refillFormControls(collection: *runtime.Instance, owner: *runtime.Instance) bool {
+    const internal = getInternal(collection) orelse return false;
     const forms = @import("html").form_associated;
     const root = if (internal.fieldset_controls) owner else forms.rootOf(owner);
     var node: ?*runtime.Instance = if (internal.fieldset_controls) forms.nextInTree(owner, owner, false) else root;
@@ -165,21 +173,23 @@ fn refillFormControls(collection: *runtime.Instance, owner: *runtime.Instance) v
             var buffer: [16]u8 = undefined;
             if (std.mem.eql(u8, forms.inputType(element, &buffer), "image")) continue;
         }
-        addElement(collection, element) catch return;
+        addElement(collection, element) catch return false;
     }
+    return true;
 }
 
 /// The element children of `root`, in tree order - read through the Node
 /// interface, which is the only way this impl may see another type's state.
-fn refillElementChildren(collection: *runtime.Instance, root: *runtime.Instance) void {
+fn refillElementChildren(collection: *runtime.Instance, root: *runtime.Instance) bool {
     const element_node = interfaces.Node.get_ELEMENT_NODE();
-    var child = interfaces.Node.get_firstChild(root) catch return;
+    var child = interfaces.Node.get_firstChild(root) catch return false;
     while (child) |c| {
         if ((interfaces.Node.get_nodeType(c) catch 0) == element_node) {
-            addElement(collection, c) catch return;
+            addElement(collection, c) catch return false;
         }
-        child = interfaces.Node.get_nextSibling(c) catch return;
+        child = interfaces.Node.get_nextSibling(c) catch return false;
     }
+    return true;
 }
 
 /// `dom.live_collections`' class-names filter: DOM's "list of elements with
@@ -204,20 +214,21 @@ fn makeClassNames(collection: *runtime.Instance, root: *runtime.Instance, class_
 /// done in an ASCII case-insensitive manner if root's node document's mode is
 /// "quirks"; otherwise in an identical to manner" - read at each refill, as
 /// the comparison is made.
-fn refillClassNames(collection: *runtime.Instance, root: *runtime.Instance) void {
-    const internal = getInternal(collection) orelse return;
-    const class_names = if (internal.filter_class) |c| c.asSlice() else return;
+fn refillClassNames(collection: *runtime.Instance, root: *runtime.Instance) bool {
+    const internal = getInternal(collection) orelse return false;
+    const class_names = if (internal.filter_class) |c| c.asSlice() else return false;
     const quirks = isQuirksMode(root);
     const element_node = interfaces.Node.get_ELEMENT_NODE();
 
     // Tree order over root's descendants (root itself is not one).
-    var node = interfaces.Node.get_firstChild(root) catch return;
+    var node = interfaces.Node.get_firstChild(root) catch return false;
     while (node) |n| {
-        if ((interfaces.Node.get_nodeType(n) catch 0) == element_node and hasAllClasses(n, class_names, quirks)) {
-            addElement(collection, n) catch return;
+        if ((interfaces.Node.get_nodeType(n) catch 0) == element_node and (hasAllClasses(n, class_names, quirks) catch return false)) {
+            addElement(collection, n) catch return false;
         }
         node = nextInTreeOrder(n, root);
     }
+    return true;
 }
 
 /// The node after `node` in tree order within `root`'s descendants, or null.
@@ -233,9 +244,9 @@ fn nextInTreeOrder(node: *runtime.Instance, root: *runtime.Instance) ?*runtime.I
 
 /// Whether `element`'s classes - its class attribute's value run through the
 /// ordered set parser - include every token of `class_names`.
-fn hasAllClasses(element: *runtime.Instance, class_names: []const u8, quirks: bool) bool {
+fn hasAllClasses(element: *runtime.Instance, class_names: []const u8, quirks: bool) !bool {
     // A borrowed view of the attribute's value.
-    const value = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("class")) catch return false) orelse return false;
+    const value = (try interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("class"))) orelse return false;
     const classes = value.asSlice();
     var wanted = std.mem.tokenizeAny(u8, class_names, ascii_whitespace);
     while (wanted.next()) |name| {
@@ -272,9 +283,34 @@ fn isQuirksMode(root: *runtime.Instance) bool {
 fn refresh(instance: *runtime.Instance, internal: *InternalState) void {
     const refill = internal.refill orelse return;
     const root = internal.root orelse return;
+    const link = live_collections.Link{ .instance = root, .generation = internal.root_generation };
+    if (link.get() == null) {
+        internal.cache = .{};
+        clear(instance);
+        return;
+    }
+    if (internal.cacheable) {
+        const document = live_collections.nodeDocument(root);
+        const version = if (document) |doc| live_collections.treeVersion(doc) else null;
+        if (internal.cache.begin(link, document, version)) return;
+    }
     clear(instance);
-    if (runtime.SlabAllocator.generationOf(root) != internal.root_generation) return;
-    refill(instance, root);
+    // A failed refill must never become a cached partial result.
+    if (!refill(instance, root)) internal.cache = .{};
+    internal.cache.length = @intCast(internal.elements.size());
+}
+
+/// Named reads already inspect the whole buffer. Validate it before exposing
+/// any element; item() checks just its own entry to keep indexed loops linear.
+fn refreshNamed(instance: *runtime.Instance, internal: *InternalState) void {
+    refresh(instance, internal);
+    for (internal.elements.toSlice()) |link| {
+        if (link.get() == null) {
+            internal.cache = .{};
+            refresh(instance, internal);
+            return;
+        }
+    }
 }
 
 /// Get internal state from instance using shared accessor
@@ -350,7 +386,17 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
     const internal = getInternal(instance) orelse return null;
     refresh(instance, internal);
     // Return null for out of bounds per spec
-    return internal.elements.get(index);
+    const link = internal.elements.get(index) orelse return null;
+    if (link.get()) |element| {
+        internal.cache.remember(index, element);
+        return element;
+    }
+    internal.cache = .{};
+    refresh(instance, internal);
+    const replacement = internal.elements.get(index) orelse return null;
+    const element = replacement.get() orelse return null;
+    internal.cache.remember(index, element);
+    return element;
 }
 
 /// Operation: namedItem(name)
@@ -364,7 +410,7 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
 /// or null if there is no such element.
 pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    refresh(instance, internal);
+    refreshNamed(instance, internal);
     const name_slice = name.asSlice();
 
     // Empty name returns null
@@ -374,7 +420,8 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
     const elements = internal.elements.toSlice();
     const Element = interfaces.Element;
 
-    for (elements) |element| {
+    for (elements) |link| {
+        const element = link.get() orelse continue;
         // Check id attribute first
         var id = try Element.get_id(element);
         defer id.deinit(internal.allocator);
@@ -403,7 +450,7 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
 /// Add an element to the collection
 pub fn addElement(instance: *runtime.Instance, element: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    try internal.elements.append(element);
+    try internal.elements.append(live_collections.Link.to(element));
 
     // Update length in state
     const state = instance.getState(State);
@@ -420,19 +467,6 @@ pub fn clear(instance: *runtime.Instance) void {
     state.own.length = 0;
 }
 
-/// Set the root for live collection updates
-pub fn setRoot(instance: *runtime.Instance, root: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    internal.root = root;
-}
-
-/// Get the elements as a slice (for iteration)
-pub fn getElements(instance: *runtime.Instance) []const *runtime.Instance {
-    const internal = getInternal(instance) orelse return &[_]*runtime.Instance{};
-    refresh(instance, internal);
-    return internal.elements.toSlice();
-}
-
 /// Get supported property names for named property enumeration
 /// Per WebIDL spec §3.9.3, returns the id and name attributes of elements
 ///
@@ -442,7 +476,7 @@ pub fn getElements(instance: *runtime.Instance) []const *runtime.Instance {
 /// with earlier values taking precedence (no duplicates)
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
-    refresh(instance, internal);
+    refreshNamed(instance, internal);
 
     const elements = internal.elements.toSlice();
     if (elements.len == 0) return &[_]runtime.DOMString{};
@@ -457,7 +491,8 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     }
 
     // Collect id and name attributes from elements in tree order
-    for (elements) |element| {
+    for (elements) |link| {
+        const element = link.get() orelse continue;
         // Check id attribute
         var id = Element.get_id(element) catch continue;
         const id_slice = id.asSlice();

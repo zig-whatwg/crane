@@ -14,6 +14,109 @@ const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
+/// A document version covers tree and attribute mutations, including adoption
+/// and teardown. The mutation owner wires this seam; until then every read
+/// recomputes. In particular, null is not a version that can be cached.
+pub fn treeVersion(document: *runtime.Instance) ?u64 {
+    _ = document;
+    return null;
+}
+
+/// A teardown check, not a hold. A mutation invalidates the cache before a
+/// removed node can be reused. Root ownership is the refcount lane's follow-up.
+pub const Link = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+
+    pub fn to(instance: *runtime.Instance) Link {
+        return .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
+    }
+
+    pub fn get(self: Link) ?*runtime.Instance {
+        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation or
+            runtime.instance_lifecycle.isCleanedUp(self.instance)) return null;
+        return self.instance;
+    }
+};
+
+/// The root's CURRENT node document, so adoption cannot reuse the old
+/// document's version even if both documents happen to have the same number.
+pub fn nodeDocument(root: *runtime.Instance) ?*runtime.Instance {
+    const interfaces = @import("interfaces");
+    if ((interfaces.Node.get_nodeType(root) catch 0) == interfaces.Node.get_DOCUMENT_NODE()) return root;
+    return interfaces.Node.get_ownerDocument(root) catch null;
+}
+
+/// DOM's live view, amortized across unchanged reads. As in Blink's
+/// core/dom/collection_index_cache.h (NodeCount/NodeAt), remember a cursor
+/// and the length independently. The walk supplies first() and next(node).
+/// No engine, allocation, mutation observer, or process-global cache state.
+pub const IndexCache = struct {
+    version: ?u64 = null,
+    document: ?Link = null,
+    length: ?u32 = null,
+    last: ?Link = null,
+    last_index: u32 = 0,
+
+    /// Call before EACH read, with the producer's saved root generation.
+    /// Returns true only when all cached information is still usable.
+    pub fn begin(self: *IndexCache, root: Link, document: ?*runtime.Instance, version: ?u64) bool {
+        const root_live = root.get() != null;
+        // Drop invalidated state before inspecting old links. In particular,
+        // adoption must not dereference the previous document just to discard it.
+        if (root_live and version != null and version == self.version and document != null) {
+            if (self.document) |link| {
+                if (link.instance == document.? and link.get() != null) {
+                    const last_live = if (self.last) |last| last.get() != null else true;
+                    if (last_live) return true;
+                }
+            }
+        }
+        self.* = .{};
+        if (root_live and document != null and version != null) {
+            self.document = Link.to(document.?);
+            self.version = version;
+        }
+        return false;
+    }
+
+    pub fn remember(self: *IndexCache, index: u32, node: *runtime.Instance) void {
+        self.last = Link.to(node);
+        self.last_index = index;
+    }
+
+    pub fn item(self: *IndexCache, walk: anytype, index: u32) ?*runtime.Instance {
+        if (self.length) |length| if (index >= length) return null;
+        var offset: u32 = 0;
+        var node: ?*runtime.Instance = null;
+        if (self.last) |link| {
+            if (index >= self.last_index) {
+                node = link.get();
+                if (node != null) offset = self.last_index;
+            }
+        }
+        if (node == null) node = walk.first();
+        var previous: ?*runtime.Instance = null;
+        while (node) |current| : (offset += 1) {
+            if (offset == index) {
+                self.remember(offset, current);
+                return current;
+            }
+            previous = current;
+            node = walk.next(current);
+        }
+        if (previous) |last| self.remember(offset - 1, last);
+        self.length = offset;
+        return null;
+    }
+
+    pub fn count(self: *IndexCache, walk: anytype) u32 {
+        if (self.length) |length| return length;
+        _ = self.item(walk, @import("std").math.maxInt(u32));
+        return self.length.?;
+    }
+};
+
 /// What the HTMLCollection impl supplies.
 pub const Implementation = struct {
     /// Make `collection` live over `root`'s element children, in tree order.
