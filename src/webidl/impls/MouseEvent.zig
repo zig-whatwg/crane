@@ -44,6 +44,13 @@ pub const InternalState = struct {
 
 const related_target_slot: engine.TracedSlot = .{ .name = "relatedTarget" };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md):
+/// PointerEvent and WheelEvent set their relatedTarget through it.
+pub fn installHooks() void {
+    event_construction.installMouseEvent(.{ .set_related_target = &setRelatedTarget });
+}
+
 /// Set the related target the event reports, and keep it: the edge from the
 /// event to it replaces the one to the target it had.
 fn setRelatedTarget(instance: *runtime.Instance, target: ?*runtime.Instance) error{OutOfMemory}!void {
