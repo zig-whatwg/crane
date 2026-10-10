@@ -304,16 +304,26 @@ fn removeContentAttribute(instance: *runtime.Instance, name: []const u8) void {
 
 /// Getter for translate
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-translate
-/// Returns true if translate is "yes" or missing (inherit), false if "no"
+/// HTML 3.2.6.3: the computed translation mode, inherited through parent elements.
 pub fn get_translate(instance: *runtime.Instance) anyerror!bool {
-    if (getContentAttribute(instance, "translate")) |value| {
-        const s = value.asSlice();
-        // "no" means don't translate
-        if (std.mem.eql(u8, s, "no")) return false;
-        // "yes" or any other value means translate
-        return true;
+    var current: ?*runtime.Instance = instance;
+    while (current) |element| : (current = try interfaces.Node.get_parentElement(element)) {
+        // Only HTML elements have a translate content attribute. Foreign
+        // elements still inherit a mode, ignoring an attribute of this name.
+        var namespace = try interfaces.Element.get_namespaceURI(element);
+        defer if (namespace) |*value| value.deinit(element.ctx.allocator);
+        if (namespace == null or !std.mem.eql(u8, namespace.?.asSlice(), "http://www.w3.org/1999/xhtml")) continue;
+        var attribute = try interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("translate"));
+        defer if (attribute) |*value| value.deinit(element.ctx.allocator);
+        if (attribute) |value| {
+            const keyword = value.asSlice();
+            // Enumerated states: empty/yes -> Yes; no -> No. Missing and
+            // invalid values -> Inherit. Keywords are ASCII case-insensitive.
+            if (keyword.len == 0 or std.ascii.eqlIgnoreCase(keyword, "yes")) return true;
+            if (std.ascii.eqlIgnoreCase(keyword, "no")) return false;
+        }
     }
-    // Missing attribute: inherit from parent (default to true)
+    // No parent element (including a DocumentFragment/ShadowRoot): enabled.
     return true;
 }
 
@@ -321,15 +331,14 @@ pub fn get_translate(instance: *runtime.Instance) anyerror!bool {
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-dir
 /// Reflects the dir content attribute (ltr, rtl, auto, or "")
 pub fn get_dir(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    if (getContentAttribute(instance, "dir")) |value| {
+    var attribute = try interfaces.Element.call_getAttributeNS(instance, null, runtime.DOMString.initInterned("dir"));
+    defer if (attribute) |*value| value.deinit(instance.ctx.allocator);
+    if (attribute) |value| {
         const s = value.asSlice();
-        // Only valid values are returned; invalid values return ""
-        if (std.mem.eql(u8, s, "ltr") or
-            std.mem.eql(u8, s, "rtl") or
-            std.mem.eql(u8, s, "auto"))
-        {
-            return value;
-        }
+        // HTML reflection, limited to known values: return the canonical
+        // keyword for the state, rather than the spelling in the attribute.
+        inline for (.{ "ltr", "rtl", "auto" }) |keyword|
+            if (std.ascii.eqlIgnoreCase(s, keyword)) return runtime.DOMString.initInterned(keyword);
     }
     return runtime.DOMString.initEmpty();
 }

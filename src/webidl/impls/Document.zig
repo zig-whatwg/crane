@@ -214,9 +214,6 @@ pub const InternalState = struct {
 
     // === HTML Document Properties ===
 
-    /// Document dir (text direction: "ltr", "rtl", or "")
-    dir: runtime.DOMString,
-
     /// The document's origin's domain (HTML 7.1.1.2), serialized: what the
     /// document.domain setter set. Empty while it is null. Owned.
     domain: []const u8,
@@ -426,7 +423,6 @@ pub const InternalState = struct {
             .ranges = .empty,
             .node_iterators = .empty,
             // HTML properties
-            .dir = runtime.DOMString.initEmpty(),
             .domain = "",
             .referrer = "",
             .design_mode = runtime.DOMString.initInterned("off"),
@@ -542,7 +538,6 @@ pub const InternalState = struct {
         // Free DOMString storage
         self.content_type.deinit(self.allocator);
         self.encoding.deinit(self.allocator);
-        self.dir.deinit(self.allocator);
         self.design_mode.deinit(self.allocator);
         self.fg_color.deinit(self.allocator);
         self.link_color.deinit(self.allocator);
@@ -1133,55 +1128,26 @@ pub fn get_contentType(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for doctype
 /// DOM §4.6 - Returns the DocumentType node or null
 pub fn get_doctype(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // The doctype is the document's first DocumentType CHILD.
-    // https://dom.spec.whatwg.org/#concept-document-doctype
-    //
-    // Computed for the same reason as documentElement above: `internal.doctype`
-    // is a cache the parser paths fill in, so `createHTMLDocument` - which does
-    // create and append a doctype - still reported null, and a doctype removed
-    // from the tree would still have been reported.
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.DOCUMENT_TYPE_NODE) return c;
-        child = NodeImpl.getNextSibling(c);
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    // DOM's getter returns the document's doctype CHILD, or null. A parser
+    // cache can still name a removed child and must not supply a fallback.
+    var child = try interfaces.Node.get_firstChild(instance);
+    while (child) |node| : (child = try interfaces.Node.get_nextSibling(node)) {
+        if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_TYPE_NODE()) return node;
     }
-    return internal.doctype;
+    return null;
 }
 
-/// Getter for documentElement
-/// DOM §4.6 - Returns the document element (root element, e.g., <html>)
-/// The document element: the document's first ELEMENT child.
-///
-/// https://dom.spec.whatwg.org/#document-element
-///
-/// COMPUTED, not remembered. `internal.document_element` is a cache that only
-/// the parser paths ever assigned - HTMLParser, dom_tree_adapter,
-/// scripted_parser and context_manager - so a document built through the DOM
-/// API had none. `createHTMLDocument` correctly created and appended
-/// html/head/body and `documentElement` was still null, and `body` with it.
-///
-/// That was not niche: dom/common.js builds its fixtures inside `setup()` with
-/// `foreignDoc.body.appendChild(...)`, and testharness rethrows out of
-/// `setup()`, so this one null turned whole FILES into a harness ERROR with
-/// zero subtests.
-///
-/// A cache also goes stale: removing or replacing the root left the old
-/// pointer in place. Walking the children costs nothing here - a document has
-/// a doctype and a root, not a list.
-///
-/// The cached field is still consulted as a FALLBACK, so any path that sets it
-/// without linking the tree keeps working.
+/// DOM's document element is its element child, or null. Every construction
+/// path links that child before caching it (hd-document-root-writers.html).
+/// Reading the tree also sees removal and replacement immediately, whereas
+/// the parser's remembered pointer can name a detached element.
+/// Spec: https://dom.spec.whatwg.org/#document-element
 fn documentElementOf(instance: *runtime.Instance) ?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) return c;
-        child = NodeImpl.getNextSibling(c);
+    var child = interfaces.Node.get_firstChild(instance) catch return null;
+    while (child) |node| : (child = interfaces.Node.get_nextSibling(node) catch return null) {
+        if ((interfaces.Node.get_nodeType(node) catch 0) == interfaces.Node.get_ELEMENT_NODE()) return node;
     }
-    if (getInternal(instance)) |internal| return internal.document_element;
     return null;
 }
 
@@ -1691,48 +1657,25 @@ fn stripAndCollapseWhitespace(allocator: std.mem.Allocator, input: []const u8) !
 /// Getter for dir
 /// HTML §3.2.6 - Returns the document's text direction
 pub fn get_dir(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.dir.clone(instance.ctx.allocator);
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    const element = htmlElementOf(instance) orelse return runtime.DOMString.initEmpty();
+    return interfaces.HTMLElement.get_dir(element);
 }
 
 /// Getter for body
 /// HTML §3.1.3 - Returns the body element (the first body or frameset child of html element)
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-body
 pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Get document element (should be <html>)
-    const doc_element = documentElementOf(instance) orelse return null;
-
-    // Find first body or frameset child of the document element
-    const ElementImpl = @import("Element.zig");
-    var child = NodeImpl.getFirstChild(doc_element);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const tag_name = elem_internal.local_name.asSlice();
-                // Check for body or frameset (case-insensitive for HTML)
-                if (internal.doc_type == .html) {
-                    if (std.ascii.eqlIgnoreCase(tag_name, "body") or
-                        std.ascii.eqlIgnoreCase(tag_name, "frameset"))
-                    {
-                        return c;
-                    }
-                } else {
-                    if (std.mem.eql(u8, tag_name, "body") or
-                        std.mem.eql(u8, tag_name, "frameset"))
-                    {
-                        return c;
-                    }
-                }
-            }
-        }
-        child = NodeImpl.getNextSibling(c);
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    // HTML 3.1.7: the first body or frameset CHILD of the html element.
+    // Both the root and candidate must be HTML elements, with exact names.
+    const root = htmlElementOf(instance) orelse return null;
+    var child = try interfaces.Node.get_firstChild(root);
+    while (child) |element| : (child = try interfaces.Node.get_nextSibling(element)) {
+        if (isElementNamed(element, html_namespace, "body") or
+            isElementNamed(element, html_namespace, "frameset")) return element;
     }
-
-    return null; // No body or frameset found
+    return null;
 }
 
 /// HTML `document.head`: the head element - the first head element that is
@@ -2387,10 +2330,10 @@ fn createTitle(document: *runtime.Instance, namespace: []const u8) !*runtime.Ins
 /// HTML §3.2.6 - Sets the document's text direction ("ltr", "rtl", or "")
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-dir
 pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.dir.deinit(internal.allocator);
-    internal.dir = value.clone(internal.allocator) catch return error.OutOfMemory;
-    // TODO: Update the dir attribute on the html element if it exists
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    // HTML 3.2.6.4: without an html element, setting document.dir does nothing.
+    const element = htmlElementOf(instance) orelse return;
+    try interfaces.HTMLElement.set_dir(element, value);
 }
 
 /// Setter for body
