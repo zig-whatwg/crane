@@ -326,26 +326,33 @@ pub fn upgradeRequestToPotentiallyTrustworthyUrl(request: *InternalRequest) !voi
             try request.header_list.append("Upgrade-Insecure-Requests", "1");
         }
     }
-    // 2. A navigation request is upgraded only when it is a form submission
-    // or its client's target browsing context is nested: a frame's
-    // navigation (destination "iframe" or "frame"). A top-level navigation
-    // returns here.
-    if (is_navigation and request.destination == .document) return;
-    // 3-4. "Let upgrade state be the result of executing Should insecure
-    // requests be upgraded for client? upon request's client": its
-    // policy container's (UIR 4.2). Do Not Upgrade returns.
-    const container = switch (request.policy_container) {
-        .client => return,
-        .container => |*c| c,
-    };
-    if (!container.upgradesInsecureRequests()) return;
-    // 5. "If request's URL's scheme is "http", set request's URL's scheme to
-    // "https", and return." The port is left as it is.
-    if (!std.ascii.eqlIgnoreCase(scheme, "http")) return;
+    if (!wouldUpgradeToPotentiallyTrustworthyUrl(request)) return;
     const upgraded = try std.mem.concat(request.allocator, u8, &.{ "https", url[scheme.len..] });
     const last = &request.url_list.items[request.url_list.items.len - 1];
     request.allocator.free(last.*);
     last.* = upgraded;
+}
+
+/// UIR 4.1 steps 2-5 without modifying the request or its headers. Beacon
+/// uses this for immediate acceptance while leaving main fetch step 4's
+/// report-only CSP check ahead of the actual upgrade.
+pub fn wouldUpgradeToPotentiallyTrustworthyUrl(request: *const InternalRequest) bool {
+    // 2. A navigation request is upgraded only when it is a form submission
+    // or its client's target browsing context is nested: a frame's
+    // navigation (destination "iframe" or "frame"). A top-level navigation
+    // returns here.
+    if (request.destination == .document) return false;
+    // 3-4. "Let upgrade state be the result of executing Should insecure
+    // requests be upgraded for client? upon request's client": its
+    // policy container's (UIR 4.2). Do Not Upgrade returns.
+    const container = switch (request.policy_container) {
+        .client => return false,
+        .container => |*c| c,
+    };
+    if (!container.upgradesInsecureRequests()) return false;
+    // 5. "If request's URL's scheme is "http", set request's URL's scheme to
+    // "https", and return." The port is left as it is.
+    return std.ascii.eqlIgnoreCase(extractScheme(request.currentUrl()), "http");
 }
 
 /// Fetch "navigation request": "a request whose destination is "document",
