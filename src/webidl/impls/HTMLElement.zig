@@ -974,7 +974,13 @@ fn ensureInternals(instance: *runtime.Instance) !*runtime.Instance {
 }
 
 pub fn installHooks() void {
+    @import("dom").html_pseudo_classes.install(.{ .matches = &@import("html").pseudo_classes.matches, .popover_showing = &popoverShowing });
     @import("dom").custom_elements.installHTMLElement(.{ .internals = &attachedInternals, .ensure_internals = &ensureInternals });
+}
+
+fn popoverShowing(instance: *runtime.Instance) bool {
+    if (instance.stateAs(State) == null) return false;
+    return (getInternalState(instance) orelse return false).popover_showing;
 }
 
 fn attachedInternals(instance: *runtime.Instance) ?*runtime.Instance {

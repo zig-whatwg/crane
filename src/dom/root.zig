@@ -50,6 +50,8 @@ pub const XPathEvaluator = interfaces.XPathEvaluator;
 
 // DOM implementation algorithms
 pub const tree = @import("tree.zig");
+pub const retarget = @import("retarget.zig");
+pub const html_pseudo_classes = @import("html_pseudo_classes.zig");
 pub const tree_helpers = @import("tree_helpers.zig");
 pub const mutation = @import("mutation.zig");
 pub const abort_algorithms = @import("abort_algorithms.zig");
