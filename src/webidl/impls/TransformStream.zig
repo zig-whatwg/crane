@@ -12,6 +12,7 @@ const webidl = @import("webidl");
 const js = @import("streams_js.zig");
 const sw = @import("streams_writable.zig");
 const st = @import("streams_transform.zig");
+pub const streams_transform = st;
 
 pub const State = interfaces.TransformStream.State;
 pub const InternalState = st.Stream;
