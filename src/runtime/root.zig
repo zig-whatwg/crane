@@ -126,6 +126,9 @@ pub const FlattenedState = @import("field_merger.zig").FlattenedState;
 
 // GC integration
 pub const gc = @import("gc_integration.zig");
+/// The wrapper's counted reference (refcount design 2.1): which types count
+/// (`VTable.counted`) and how the adapter takes and releases the reference.
+pub const lifetime = @import("lifetime.zig");
 pub const onObjectFreed = gc.onObjectFreed;
 pub const onGCSweep = gc.onGCSweep;
 pub const GCStats = gc.GCStats;
@@ -464,6 +467,7 @@ test "runtime exports" {
     _ = FlattenedState;
 
     _ = gc;
+    _ = lifetime;
     _ = onObjectFreed;
     _ = onGCSweep;
     _ = GCStats;

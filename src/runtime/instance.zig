@@ -309,6 +309,14 @@ pub const VTable = struct {
     state_size: usize = 0,
     state_align: usize = 0,
 
+    /// Whether this type's wrapper owns a counted reference (refcount design
+    /// 2.1): `&runtime.lifetime.node` for a node type, null - the default, and
+    /// today's path: the wrapper owns the instance outright, and the
+    /// collector frees it through `gc.onObjectFreed` - for every other type.
+    /// `buildVTable` fills it at comptime (`lifetime.countedOf`); the adapter
+    /// reaches it only through `runtime.lifetime`.
+    counted: ?*const @import("lifetime.zig").Counted = null,
+
     /// Cleanup function (called by GC finalizer)
     /// Points directly to the interface's deinit function
     /// Signature: fn(instance: *Instance) void
