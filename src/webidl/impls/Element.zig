@@ -1304,6 +1304,10 @@ fn handleAttributeChanges(
     old_value: ?[]const u8,
     new_value: ?[]const u8,
 ) void {
+    // Collections filter on any attribute: the node document's DOM tree
+    // version moves (Blink's InvalidateNodeListCaches on attribute change).
+    dom.refcount.attributeChanged(instance);
+
     // Step 1: "Queue a mutation record of "attributes" for element with
     // attribute's local name, attribute's namespace, oldValue, « », « »,
     // null, and null." The record copies what it keeps. A failure to queue
@@ -3327,6 +3331,10 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     // The node's shadow host bit, the slot steps' fast-path guard
     // (NodeBase.is_shadow_host).
     if (dom.instance_bridge.getNodeBase(instance)) |base| base.is_shadow_host = true;
+    // The shadow root's holds count in its host's chain (refcount, step 3).
+    // Here, in the step itself, so every attach - scripted and declarative -
+    // runs it.
+    dom.shadow_hosts.attached(instance, shadow_root);
     internal.shadow_root_kept.made(shadow_root);
     internal.shadow_root_kept.handOut(instance, shadow_root, .{ .name = "shadowRoot" });
     // And the shadow root keeps its host, whose `host` it answers for its

@@ -43,6 +43,11 @@ const std = @import("std");
 const builtin = @import("builtin");
 const runtime = @import("runtime");
 const NodeBase = @import("node_base.zig").NodeBase;
+const interfaces = @import("interfaces");
+const instance_bridge = @import("instance_bridge.zig");
+const process_start = @import("process_start.zig");
+const shadow_hosts = @import("shadow_hosts.zig");
+const template_contents = @import("template_contents.zig");
 
 const log = std.log.scoped(.refcount);
 
@@ -261,15 +266,27 @@ pub fn isHeld(node: *const NodeBase) bool {
 }
 
 /// The host-including parent: the parent, else the host of a shadow root or a
-/// template's contents, else null.
-fn up(ledger: *const Ledger, node: *NodeBase) ?*NodeBase {
+/// template's contents, else null. A ledger's `host_of` (hand-linked trees in
+/// tests) answers first; in the DOM a parentless node with a live host is
+/// flagged `hosted`, and only those pay the host lookup.
+fn up(ledger: ?*const Ledger, node: *NodeBase) ?*NodeBase {
     if (node.parent_node) |parent| return parent;
-    if (ledger.options.host_of) |host_of| return host_of(node);
-    return null;
+    if (ledger) |books| if (books.options.host_of) |host_of| return host_of(node);
+    if (!node.rc_flags.hosted) return null;
+    return hostOf(node);
+}
+
+/// The live host of a `hosted` node, through the hook modules that own the
+/// two links (dom.template_contents answers for shadow roots too).
+fn hostOf(node: *NodeBase) ?*NodeBase {
+    const raw = node.owner_instance orelse return null;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+    const host = template_contents.host(instance) orelse return null;
+    return instance_bridge.getNodeBase(host);
 }
 
 /// The root of `node`'s host-including tree.
-pub fn root(ledger: *const Ledger, node: *NodeBase) *NodeBase {
+pub fn root(ledger: ?*const Ledger, node: *NodeBase) *NodeBase {
     var current = node;
     while (up(ledger, current)) |next| current = next;
     return current;
@@ -279,12 +296,12 @@ pub fn root(ledger: *const Ledger, node: *NodeBase) *NodeBase {
 /// ancestors, and returns the root reached. The walk is O(depth). A total that
 /// would leave 0..u32 max is a violation (and the walk stops: the counts are
 /// already wrong).
-fn walkAdd(ledger: *Ledger, start: *NodeBase, delta: i64) *NodeBase {
+fn walkAdd(ledger: ?*Ledger, start: *NodeBase, delta: i64) *NodeBase {
     var current = start;
     while (true) {
         const next_total = @as(i64, current.subtree_holds) + delta;
         if (next_total < 0 or next_total > std.math.maxInt(u32)) {
-            ledger.violation("subtree_holds of node {*} would become {d}", .{ current, next_total });
+            violate(ledger, "subtree_holds of node {*} would become {d}", .{ current, next_total });
             return current;
         }
         current.subtree_holds = @intCast(next_total);
@@ -292,11 +309,20 @@ fn walkAdd(ledger: *Ledger, start: *NodeBase, delta: i64) *NodeBase {
     }
 }
 
+/// A violation: the ledger's (fatal or logged), or - for the tree links, which
+/// run in production with no ledger yet - an error log, which fails a unit
+/// test and is counted in a WPT run's output.
+fn violate(ledger: ?*Ledger, comptime fmt: []const u8, args: anytype) void {
+    if (ledger) |books| return books.violation(fmt, args);
+    log.err("refcount: " ++ fmt, args);
+}
+
 /// A tree whose root's total is zero is garbage: flag the root and hand it to
 /// the sink, once (a flagged root is queued already).
 fn settleRoot(ledger: *Ledger, tree_root: *NodeBase) void {
     if (tree_root.subtree_holds != 0) return;
     if (tree_root.parent_node != null) return;
+    if (tree_root.rc_flags.hosted) return;
     if (tree_root.rc_flags.garbage) return;
     tree_root.rc_flags.garbage = true;
     if (ledger.options.on_garbage) |sink| sink.push(sink.context, tree_root);
@@ -330,7 +356,7 @@ pub fn ref(ledger: *Ledger, node: *NodeBase) void {
     }
     const was_held = isHeld(node);
     node.rc += NodeBase.rc_one;
-    if (!was_held) _ = walkAdd(ledger, node, 1);
+    if (!was_held) adjustForeign(walkAdd(ledger, node, 1), 1);
 }
 
 /// Drops one reference (WebKit `Node::deref`). Underflow is a violation. The
@@ -345,7 +371,9 @@ pub fn deref(ledger: *Ledger, node: *NodeBase) void {
     }
     node.rc -= NodeBase.rc_one;
     if (isHeld(node)) return;
-    settleRoot(ledger, walkAdd(ledger, node, -1));
+    const tree_root = walkAdd(ledger, node, -1);
+    adjustForeign(tree_root, -1);
+    settleRoot(ledger, tree_root);
 }
 
 /// A subtree moved: its `subtree_holds` leaves `from`'s chain and joins `to`'s
@@ -384,6 +412,379 @@ pub fn recheck(ledger: *Ledger, garbage_root: *NodeBase, allowed: bool) bool {
 /// here on (WebKit `applyRefDuringDestructionCheck`).
 pub fn beginDestroy(node: *NodeBase) void {
     node.rc_flags.destroying = true;
+}
+
+// ============================================================================
+// The Document's two counts (decision D6, design 1.5)
+// ============================================================================
+
+/// What a Document counts beside its own node (design 1.5). They live in the
+/// Document's state, not in NodeBase; the Document impl hands them out
+/// through `installDocument`.
+pub const DocumentCounts = struct {
+    /// The nodes whose node document this is, the document itself excluded:
+    /// up at a node's first node document and at adoption in, down at its
+    /// free and at adoption out (WebKit `Document::m_referencingNodeCount`).
+    /// The document's storage may go only at zero; step 7 makes its free wait
+    /// for it (this step keeps it, and frees nothing differently).
+    referencing_nodes: u32 = 0,
+    /// The holds in this document's detached trees: the sum of the totals of
+    /// every parentless, unhosted node of it other than itself (a node
+    /// flagged `foreign`). A document's tree is garbage only when its own
+    /// total and this are both zero: a held detached node keeps its
+    /// document's tree (Blink; decision D6).
+    foreign_holds: u32 = 0,
+    /// The DOM tree version (Blink `Document::dom_tree_version_`): it moves
+    /// on every insert, remove, replace and move of a node of this document,
+    /// on adoption into and out of it, on every attribute set or removal of
+    /// an element of it, and when a node of it is freed outside a mutation
+    /// (a tree's teardown). A live collection caches its walk under it and
+    /// walks again once it has moved (Blink's InvalidateNodeListCaches).
+    tree_version: u64 = 0,
+};
+
+fn bumpTreeVersion(counts: *DocumentCounts) void {
+    counts.tree_version +%= 1;
+}
+
+/// `document`'s DOM tree version (see `DocumentCounts.tree_version`), or
+/// null for an instance that is not a live Document. A cache keyed on it is
+/// valid while the number is unchanged.
+pub fn treeVersion(document: *runtime.Instance) ?u64 {
+    const counts = documentCounts(document) orelse return null;
+    return counts.tree_version;
+}
+
+/// An attribute of `element` was set, changed or removed (DOM "handle
+/// attribute changes"): its node document's tree version moves.
+pub fn attributeChanged(element: *runtime.Instance) void {
+    const accessor = hooks.node_document_counts orelse return;
+    if (accessor(element)) |counts| bumpTreeVersion(counts);
+}
+
+/// What the owners supply: the Document impl its counts, the Node impl the
+/// counts of a node's live node document (it keeps the document's slab
+/// generation beside the pointer, so a document freed under its node reads
+/// as none, without the ownerDocument getter's warning).
+pub const Hooks = struct {
+    document_counts: ?*const fn (document: *runtime.Instance) ?*DocumentCounts = null,
+    node_document_counts: ?*const fn (node: *runtime.Instance) ?*DocumentCounts = null,
+};
+
+// process-wide: the Document and Node impls' accessors for the counts - the same functions for every Browser, installed only at process start (process_start.zig)
+var hooks: Hooks = .{};
+
+/// Called by Document's and Node's installHooks, once each, at process
+/// start; each installs only its own entry.
+pub fn install(owned: Hooks) void {
+    process_start.assertInstalling();
+    inline for (@typeInfo(Hooks).@"struct".fields) |field| {
+        if (@field(owned, field.name)) |accessor| @field(hooks, field.name) = accessor;
+    }
+}
+
+/// `document`'s counts, or null for an instance that is not a live Document
+/// (or before the Document impl installed its hook).
+pub fn documentCounts(document: *runtime.Instance) ?*DocumentCounts {
+    const accessor = hooks.document_counts orelse return null;
+    return accessor(document);
+}
+
+/// The counts of the Document whose own node `document` is. The caller knows
+/// it is alive: it is a root it just walked to, or a node in its tree.
+fn countsOfDocumentNode(document: *NodeBase) ?*DocumentCounts {
+    const raw = document.owner_instance orelse return null;
+    return documentCounts(@ptrCast(@alignCast(raw)));
+}
+
+/// The counts of `node`'s node document, through the Node impl's accessor,
+/// which answers none for a document freed under its node (the slab
+/// generation it keeps; lane ownerdoc) rather than read freed memory.
+fn countsOfNodeDocument(node: *NodeBase) ?*DocumentCounts {
+    if (node.node_type == NodeBase.DOCUMENT_NODE) return countsOfDocumentNode(node);
+    const raw = node.owner_instance orelse return null;
+    const accessor = hooks.node_document_counts orelse return null;
+    return accessor(@ptrCast(@alignCast(raw)));
+}
+
+fn addTo(field: *u32, delta: i64, what: []const u8) void {
+    const next = @as(i64, field.*) + delta;
+    if (next < 0 or next > std.math.maxInt(u32)) {
+        violate(null, "a document's {s} would become {d}", .{ what, next });
+        return;
+    }
+    field.* = @intCast(next);
+}
+
+/// `tree_root`'s total changed by `delta`: when it is a detached root, its
+/// document's foreign holds change with it.
+fn adjustForeign(tree_root: *NodeBase, delta: i64) void {
+    if (delta == 0 or !tree_root.rc_flags.foreign) return;
+    const document = countsOfNodeDocument(tree_root) orelse return;
+    addTo(&document.foreign_holds, delta, "foreign_holds");
+}
+
+/// Whether `node` may be a detached root that counts in its document: not a
+/// Document, and named by one.
+fn countsAsForeign(node: *const NodeBase) bool {
+    return node.node_type != NodeBase.DOCUMENT_NODE and node.owner_document != null;
+}
+
+// ============================================================================
+// Tree links (design section 7, step 3): every parent and host link, with the
+// holds it moves. SHADOW MODE: no ledger, no garbage sink - the counts are
+// kept and checked, and decide nothing until step 7.
+// ============================================================================
+
+/// Insertion (DOM insert 7, append, the batch inserts): `node`, a root, is
+/// linked under `parent`. Its holds leave its document's foreign holds and
+/// join `parent`'s chain (and that chain's document's foreign holds, when it
+/// ends at a detached root). The caller has linked the sibling and child
+/// lists; this is the parent write.
+pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
+    if (node.parent_node != null) violate(null, "linkChild: node {*} already has a parent", .{node});
+    if (node.rc_flags.hosted) violate(null, "linkChild: node {*} is a shadow root or template contents", .{node});
+    const holds = node.subtree_holds;
+    const was_foreign = node.rc_flags.foreign;
+    node.rc_flags.foreign = false;
+    node.setParent(parent);
+    const delta: i64 = holds;
+    const tree_root = if (holds != 0) walkAdd(null, parent, delta) else root(null, parent);
+    const document = countsAt(parent, tree_root);
+    if (document) |counts| bumpTreeVersion(counts);
+    if (holds == 0) return;
+    // Within one document's detached trees, a move changes nothing there.
+    if (was_foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
+    if (was_foreign) {
+        const own = if (sameNodeDocument(node, parent)) document else countsOfNodeDocument(node);
+        if (own) |counts| addTo(&counts.foreign_holds, -delta, "foreign_holds");
+    }
+    adjustForeign(tree_root, delta);
+}
+
+/// Removal (DOM remove 7): `node` leaves its parent and is the root of a
+/// detached tree of its document from here on. Its holds leave the old
+/// parent's chain and count in its document's foreign holds.
+pub fn unlinkChild(node: *NodeBase) void {
+    const parent = node.parent_node orelse {
+        violate(null, "unlinkChild: node {*} has no parent", .{node});
+        return;
+    };
+    const holds = node.subtree_holds;
+    node.setParent(null);
+    const foreign = countsAsForeign(node);
+    node.rc_flags.foreign = foreign;
+    const delta: i64 = holds;
+    const tree_root = if (holds != 0) walkAdd(null, parent, -delta) else root(null, parent);
+    const document = countsAt(parent, tree_root);
+    if (document) |counts| bumpTreeVersion(counts);
+    if (holds == 0) return;
+    if (foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
+    adjustForeign(tree_root, -delta);
+    if (!foreign) return;
+    const own = if (sameNodeDocument(node, parent)) document else countsOfNodeDocument(node);
+    if (own) |counts| addTo(&counts.foreign_holds, delta, "foreign_holds");
+}
+
+/// Move (DOM move 19-20): `node`, still linked to its old parent, goes under
+/// `new_parent` in the same tree (move requires one shadow-including root).
+/// The new chain gains first, so no total passes through zero on the way.
+pub fn moveChild(node: *NodeBase, new_parent: *NodeBase) void {
+    const old_parent = node.parent_node orelse {
+        violate(null, "moveChild: node {*} has no parent", .{node});
+        return;
+    };
+    node.setParent(new_parent);
+    const holds = node.subtree_holds;
+    const delta: i64 = holds;
+    const moves = holds != 0 and old_parent != new_parent;
+    const new_root = if (moves) walkAdd(null, new_parent, delta) else root(null, new_parent);
+    if (countsAt(new_parent, new_root)) |counts| bumpTreeVersion(counts);
+    if (!moves) return;
+    const old_root = walkAdd(null, old_parent, -delta);
+    if (new_root != old_root) {
+        adjustForeign(new_root, delta);
+        adjustForeign(old_root, -delta);
+    }
+}
+
+/// The counts of `parent`'s node document, where `tree_root` is the root of
+/// `parent`'s host-including tree: one lookup when that root is the document
+/// itself (the common case), else through the Node impl's accessor.
+fn countsAt(parent: *NodeBase, tree_root: *NodeBase) ?*DocumentCounts {
+    if (parent.node_type == NodeBase.DOCUMENT_NODE) return countsOfDocumentNode(parent);
+    if (isNodeDocumentOf(parent, tree_root)) return countsOfDocumentNode(tree_root);
+    return countsOfNodeDocument(parent);
+}
+
+/// Whether `node`'s node document is `parent`'s (pointer compares only).
+fn sameNodeDocument(node: *const NodeBase, parent: *const NodeBase) bool {
+    const parents: usize = if (parent.node_type == NodeBase.DOCUMENT_NODE) @intFromPtr(parent) else @intFromPtr(parent.owner_document);
+    return @intFromPtr(node.owner_document) == parents;
+}
+
+/// A dying tree's teardown unlinks a child (dom.tree_teardown): the pointer
+/// and the bit only. The tree's holds stay on its root, which takes them out
+/// of its document's foreign holds when it is freed itself (`nodeFreed`).
+pub fn unlinkForTeardown(node: *NodeBase) void {
+    node.setParent(null);
+}
+
+/// A shadow root is attached to `host`, or a template's contents get their
+/// template (`root` is parentless): its holds join the host's chain.
+pub fn hostAttached(hosted_root: *NodeBase, host: *NodeBase) void {
+    if (hosted_root.parent_node != null) violate(null, "hostAttached: node {*} has a parent", .{hosted_root});
+    const holds = hosted_root.subtree_holds;
+    const was_foreign = hosted_root.rc_flags.foreign;
+    hosted_root.rc_flags.foreign = false;
+    hosted_root.rc_flags.hosted = true;
+    if (holds == 0) return;
+    const delta: i64 = holds;
+    if (was_foreign) if (countsOfNodeDocument(hosted_root)) |counts| addTo(&counts.foreign_holds, -delta, "foreign_holds");
+    adjustForeign(walkAdd(null, host, delta), delta);
+}
+
+/// The host of a shadow root or of a template's contents is torn down, and
+/// `hosted_root` lives on as a detached root of its document. The host's
+/// dying tree keeps its total until its root is freed (`nodeFreed` takes it
+/// out there, this root's holds included), so nothing walks the host's
+/// chain; this root's holds count in its document from now on.
+pub fn hostGone(hosted_root: *NodeBase) void {
+    if (!hosted_root.rc_flags.hosted) return;
+    hosted_root.rc_flags.hosted = false;
+    const foreign = countsAsForeign(hosted_root);
+    hosted_root.rc_flags.foreign = foreign;
+    if (!foreign or hosted_root.subtree_holds == 0) return;
+    if (countsOfNodeDocument(hosted_root)) |counts| addTo(&counts.foreign_holds, hosted_root.subtree_holds, "foreign_holds");
+}
+
+/// `node`'s node document changes from the one counted by `old` to the one
+/// counted by `new` (a node's first document, and adopt): it moves its
+/// reference, and - a detached root - its holds. Null counts are a document
+/// already freed, or none.
+pub fn nodeDocumentChanged(node: *NodeBase, old: ?*DocumentCounts, new: ?*DocumentCounts) void {
+    if (node.node_type == NodeBase.DOCUMENT_NODE) return;
+    if (old) |counts| {
+        addTo(&counts.referencing_nodes, -1, "referencing_nodes");
+        bumpTreeVersion(counts);
+    }
+    if (new) |counts| {
+        addTo(&counts.referencing_nodes, 1, "referencing_nodes");
+        bumpTreeVersion(counts);
+    }
+    if (node.parent_node != null or node.rc_flags.hosted) return;
+    const holds: i64 = node.subtree_holds;
+    if (node.rc_flags.foreign) if (old) |counts| addTo(&counts.foreign_holds, -holds, "foreign_holds");
+    node.rc_flags.foreign = new != null;
+    if (new) |counts| addTo(&counts.foreign_holds, holds, "foreign_holds");
+}
+
+/// `node` is freed, and `counts` are its node document's (null when that
+/// document is gone): its reference ends, and a detached root's holds - its
+/// whole tree's, which goes with it - leave the foreign holds.
+pub fn nodeFreed(node: *NodeBase, counts: ?*DocumentCounts) void {
+    if (node.node_type == NodeBase.DOCUMENT_NODE) return;
+    const document = counts orelse return;
+    addTo(&document.referencing_nodes, -1, "referencing_nodes");
+    bumpTreeVersion(document);
+    if (node.rc_flags.foreign) addTo(&document.foreign_holds, -@as(i64, node.subtree_holds), "foreign_holds");
+    node.rc_flags.foreign = false;
+}
+
+/// Whether `tree_root` is `node`'s node document (a pointer compare: no read
+/// through `owner_document`).
+fn isNodeDocumentOf(node: *const NodeBase, tree_root: *const NodeBase) bool {
+    return tree_root.node_type == NodeBase.DOCUMENT_NODE and @intFromPtr(node.owner_document) == @intFromPtr(tree_root);
+}
+
+// ============================================================================
+// Shadow-mode checks: the counts' invariants, after every mutation
+// ============================================================================
+
+// process-wide: a diagnostic switch, set once by the WPT runner from CRANE_REFCOUNT_CHECK before any page runs; it changes no behaviour, only whether mutations check the counts
+var tree_checks_requested: bool = false;
+
+/// Turn the after-mutation checks on outside unit tests (the WPT runner's
+/// `CRANE_REFCOUNT_CHECK=1`).
+pub fn enableTreeChecks() void {
+    tree_checks_requested = true;
+    log.warn("tree checks on: every mutation checks the reference counts (CRANE_REFCOUNT_CHECK)", .{});
+}
+
+/// Whether a runner asked for the checks: the counts' diagnostics (a node
+/// that outlives its document's storage, a document's counts at its free)
+/// are logged then, and only then - unit tests free documents before their
+/// nodes on purpose.
+pub fn diagnosticsOn() bool {
+    return tree_checks_requested;
+}
+
+/// Whether mutations check the counts: always in unit tests, and when a
+/// runner asked for it.
+pub inline fn treeChecksOn() bool {
+    return builtin.is_test or tree_checks_requested;
+}
+
+pub const CheckError = error{ ParentBitMismatch, SubtreeHoldsMismatch, FlagMismatch };
+
+/// A node's children are summed only up to this many: the after-mutation
+/// check stays O(depth x fan-out) on a wide tree (verifyTree has no limit).
+const check_fanout = 256;
+
+/// After a mutation at `node`: check `node` and every host-including
+/// ancestor (each against its children's totals). A violation is logged as
+/// an error, which fails a unit test and is counted in a WPT run.
+pub fn checkAround(node: *NodeBase) void {
+    var current: ?*NodeBase = node;
+    while (current) |at| : (current = up(null, at)) {
+        checkNode(at, check_fanout) catch |err| {
+            log.err("refcount: {s} at node {*} ({s}) after a mutation", .{ @errorName(err), at, at.node_name });
+            return;
+        };
+    }
+}
+
+/// Check every node of `tree_root`'s host-including subtree (tests).
+pub fn verifyTree(tree_root: *NodeBase) CheckError!void {
+    try checkNode(tree_root, std.math.maxInt(usize));
+    var child = tree_root.first_child;
+    while (child) |at| : (child = at.next_sibling) try verifyTree(at);
+    var hosted: [2]?*NodeBase = undefined;
+    for (hostedRootsOf(tree_root, &hosted)) |maybe| if (maybe) |hosted_root| try verifyTree(hosted_root);
+}
+
+/// The shadow root and the template contents `node` hosts.
+fn hostedRootsOf(node: *NodeBase, out: *[2]?*NodeBase) []?*NodeBase {
+    out.* = .{ null, null };
+    const raw = node.owner_instance orelse return out[0..0];
+    const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+    if (node.is_shadow_host) {
+        if (shadow_hosts.rootForHost(instance)) |shadow| out[0] = instance_bridge.getNodeBase(shadow);
+    }
+    if (instance.stateAs(interfaces.HTMLTemplateElement.State) != null) {
+        if (template_contents.contentOf(instance)) |content| out[1] = instance_bridge.getNodeBase(content);
+    }
+    return out[0..2];
+}
+
+fn checkNode(node: *NodeBase, fanout: usize) CheckError!void {
+    if (hasParentBit(node) != (node.parent_node != null)) return error.ParentBitMismatch;
+    if (node.rc_flags.hosted and node.parent_node != null) return error.FlagMismatch;
+    if (node.rc_flags.foreign and (node.parent_node != null or node.rc_flags.hosted or !countsAsForeign(node))) return error.FlagMismatch;
+    // A detached root of a document is counted there - for a node made
+    // through the WebIDL layer, whose node document is set through
+    // Node.setOwnerDocument (a NodeBase built outside it has no counts).
+    if (node.owner_instance != null and node.parent_node == null and !node.rc_flags.hosted and countsAsForeign(node) and !node.rc_flags.foreign) return error.FlagMismatch;
+    if (node.child_nodes.size() > fanout) return;
+    var total: u64 = @intFromBool(isHeld(node));
+    var child = node.first_child;
+    while (child) |at| : (child = at.next_sibling) total += at.subtree_holds;
+    var hosted: [2]?*NodeBase = undefined;
+    for (hostedRootsOf(node, &hosted)) |maybe| if (maybe) |hosted_root| {
+        if (!hosted_root.rc_flags.hosted) return error.FlagMismatch;
+        total += hosted_root.subtree_holds;
+    };
+    if (total != node.subtree_holds) return error.SubtreeHoldsMismatch;
 }
 
 // ============================================================================

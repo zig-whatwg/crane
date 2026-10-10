@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const log = std.log.scoped(.document_impl);
+const refcount_log = std.log.scoped(.refcount);
 const runtime = @import("runtime");
 const engine = @import("engine");
 const dom_creation = @import("dom").node_creation;
@@ -106,6 +107,11 @@ pub const InternalState = struct {
     template_owner_document: ?*runtime.Instance = null,
     template_owner_generation: u64 = 0,
     is_template_owner_document: bool = false,
+
+    /// The two counts of refcount design 1.5 (decision D6): the nodes that
+    /// name this document, and the holds in its detached trees. Kept by
+    /// src/dom/refcount.zig, through `countsOf`.
+    refcounts: @import("dom").refcount.DocumentCounts = .{},
 
     /// String interning pool for tag names, attribute names, etc.
     /// Provides memory savings and O(1) string comparison via pointer equality
@@ -653,6 +659,13 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
+/// dom.refcount: `document`'s two counts, or null for an instance that is no
+/// live Document.
+fn countsOf(document: *runtime.Instance) ?*@import("dom").refcount.DocumentCounts {
+    const internal = getInternal(document) orelse return null;
+    return &internal.refcounts;
+}
+
 /// dom.policy_containers: `document`'s policy container.
 fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContainer {
     const internal = getInternal(document) orelse return null;
@@ -669,6 +682,7 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
+    @import("dom").refcount.install(.{ .document_counts = &countsOf });
     @import("dom").custom_elements.installDocument(.{
         .set_registry = &setCustomElementRegistry,
         .ensure_global_registry = &ensureGlobalRegistry,
@@ -957,6 +971,14 @@ pub fn deinit(instance: *runtime.Instance) void {
     @import("html").script_execution.discardDocumentScripts(instance);
     // Clean up internal state from registry
     if (Registry.get(instance)) |internal| {
+        // Shadow mode (refcount step 3): what the counts would have said.
+        // Nodes outside this document's own tree that still name it are
+        // the ones step 7 makes its storage wait for.
+        if (@import("dom").refcount.diagnosticsOn()) refcount_log.warn("document freed: {d} referencing nodes, {d} holds in its tree, {d} foreign holds", .{
+            internal.refcounts.referencing_nodes,
+            if (@import("dom").instance_bridge.getNodeBase(instance)) |document_base| document_base.subtree_holds -| 1 else 0,
+            internal.refcounts.foreign_holds,
+        });
         engine.forgetTracedChild(instance, .{ .name = "template owner document" });
         if (internal.template_owner_document) |owner| {
             if (runtime.SlabAllocator.generationOf(owner) == internal.template_owner_generation and

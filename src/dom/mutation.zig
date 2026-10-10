@@ -37,6 +37,7 @@ const document_internals = @import("document_internals.zig");
 const element_with_base = @import("element_with_base.zig");
 const attr_with_base = @import("attr_with_base.zig");
 const instance_bridge = @import("instance_bridge.zig");
+const refcount = @import("refcount.zig");
 const node_document = @import("node_document.zig");
 const element_attributes = @import("element_attributes.zig");
 const range_boundaries = @import("range_boundaries.zig");
@@ -895,8 +896,8 @@ pub fn insert(
             parent.last_child = n;
         }
 
-        // Cast parent to *NodeBase when assigning (all DOM types have Node fields duplicated)
-        n.parent_node = @ptrCast(parent);
+        // The parent write, and the holds it moves (refcount, step 3).
+        refcount.linkChild(n, @ptrCast(parent));
 
         // Update is_connected for the inserted node and all its descendants
         // A node is connected if its shadow-including root is a Document.
@@ -982,6 +983,11 @@ pub fn insert(
     if (hasPostConnectionStepsCallbacks()) {
         try runPostConnectionStepsForTrees(parent.allocator, nodes);
     }
+
+    if (refcount.treeChecksOn()) {
+        refcount.checkAround(@ptrCast(parent));
+        if (isDocumentFragment(node)) refcount.checkAround(@ptrCast(node));
+    }
 }
 
 /// DOM §4.2.5 - Append
@@ -1063,7 +1069,7 @@ pub fn appendChildren(
     // Phase 2: Maintain sibling pointers during batch append
     var prev_child: ?*NodeBase = previousSibling; // Last child before insertion (or null)
     for (children) |child| {
-        child.parent_node = @ptrCast(parent);
+        refcount.linkChild(child, @ptrCast(parent));
 
         // Update sibling pointers
         child.previous_sibling = prev_child;
@@ -1139,6 +1145,8 @@ pub fn appendChildren(
     if (hasPostConnectionStepsCallbacks()) {
         try runPostConnectionStepsForTrees(parent.allocator, children);
     }
+
+    if (refcount.treeChecksOn()) refcount.checkAround(@ptrCast(parent));
 }
 
 /// Batch Insert Children Before - Performance Optimization
@@ -1209,7 +1217,7 @@ pub fn insertChildrenBefore(
     while (i > 0) {
         i -= 1;
         try parent.child_nodes.insert(insert_idx, children[i]);
-        children[i].parent_node = @ptrCast(parent);
+        refcount.linkChild(children[i], @ptrCast(parent));
     }
 
     // Phase 2: Update sibling pointers for inserted children
@@ -1294,6 +1302,8 @@ pub fn insertChildrenBefore(
     if (hasPostConnectionStepsCallbacks()) {
         try runPostConnectionStepsForTrees(parent.allocator, children);
     }
+
+    if (refcount.treeChecksOn()) refcount.checkAround(@ptrCast(parent));
 }
 
 /// DOM §4.2.5 - Replace
@@ -1590,7 +1600,8 @@ pub fn remove(
     if (node_idx) |idx| {
         _ = parent.child_nodes.remove(idx) catch unreachable; // idx is guaranteed valid by getChildIndex
     }
-    node.parent_node = null;
+    // The parent write, and the holds it moves (refcount, step 3).
+    refcount.unlinkChild(@ptrCast(node));
 
     // Update is_connected for the removed node and all its descendants
     // A removed node is no longer connected to the document tree
@@ -1655,6 +1666,11 @@ pub fn remove(
 
     // Step 17: Run the children changed steps for parent
     runChildrenChangedSteps(parent);
+
+    if (refcount.treeChecksOn()) {
+        refcount.checkAround(@ptrCast(parent));
+        refcount.checkAround(@ptrCast(node));
+    }
 }
 
 /// DOM §4.2.5 - Move
@@ -1840,6 +1856,11 @@ pub fn move(
             new_previous_sibling,
             child,
         );
+    }
+
+    if (refcount.treeChecksOn()) {
+        refcount.checkAround(@ptrCast(old_parent));
+        refcount.checkAround(@ptrCast(new_parent));
     }
 }
 
@@ -2289,7 +2310,7 @@ fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
         const child_idx = getChildIndex(c) orelse {
             // Child not found, append to end
             parent.child_nodes.append(node) catch return;
-            node.parent_node = parent;
+            refcount.moveChild(node, parent);
             node.previous_sibling = tree_helpers.getLastChild(parent);
             node.next_sibling = null;
             if (node.previous_sibling) |prev| {
@@ -2302,7 +2323,7 @@ fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
         parent.child_nodes.insert(child_idx, node) catch return;
 
         // Update pointers
-        node.parent_node = parent;
+        refcount.moveChild(node, parent);
         node.next_sibling = c;
         node.previous_sibling = tree_helpers.getPreviousSibling(c);
 
@@ -2314,7 +2335,7 @@ fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
         // Append to end
         parent.child_nodes.append(node) catch return;
 
-        node.parent_node = parent;
+        refcount.moveChild(node, parent);
         const last = tree_helpers.getLastChild(parent);
         node.previous_sibling = if (last == node) null else last;
         node.next_sibling = null;
@@ -2625,6 +2646,8 @@ pub fn adopt(
             }
         }
     }
+
+    if (refcount.treeChecksOn()) refcount.checkAround(@ptrCast(node));
 }
 
 test "a callback registered twice runs once" {
