@@ -26,7 +26,7 @@
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-3eb0c1e8c2</code>, <span class="nowrap">9 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/3eb0c1e8c2"><code>3eb0c1e8c2</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-cd72de6793</code>, <span class="nowrap">10 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cd72de6793"><code>cd72de6793</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/FileAPI/file/send-file-form-x-user-defined.html"><code>FileAPI/<wbr>file/<wbr>send-<wbr>file-<wbr>form-<wbr>x-<wbr>user-<wbr>defined.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,12 +35,240 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-633a6a7e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form.txt (ASCII) in x-user-defined form</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;add&#39;)&quot;</pre></details><a class="self" href="#s-633a6a7e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b8162da2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-.txt (x-user-defined) in x-user-defined form</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;add&#39;)&quot;</pre></details><a class="self" href="#s-b8162da2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-22ca2788"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-â˜ºðŸ˜‚.txt (windows-1252) in x-user-defined form</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;add&#39;)&quot;</pre></details><a class="self" href="#s-22ca2788" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d559ec00"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-★星★.txt (JIS X 0201 and JIS X 0208) in x-user-defined form</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;add&#39;)&quot;</pre></details><a class="self" href="#s-d559ec00" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5063ede3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-☺😂.txt (Unicode) in x-user-defined form</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;add&#39;)&quot;</pre></details><a class="self" href="#s-5063ede3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ef8520b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ.txt (Unicode) in x-user-defined form</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;add&#39;)&quot;</pre></details><a class="self" href="#s-ef8520b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-633a6a7e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form.txt (ASCII) in x-user-defined form</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
+------formdata-crane-glAgLtSRyfLJfYYbHXW
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-glAgLtSRyfLJfYYbHXW
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form.txt
+------formdata-crane-glAgLtSRyfLJfYYbHXW
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form.txt&quot;
+
+filename
+------formdata-crane-glAgLtSRyfLJfYYbHXW
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;&quot;
+Content-Type: application/octet-stream
+
+
+------formdata-crane-glAgLtSRyfLJfYYbHXW--
+
+Expected:
+------formdata-crane-glAgLtSRyfLJfYYbHXW
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-glAgLtSRyfLJfYYbHXW
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form.txt
+------formdata-crane-glAgLtSRyfLJfYYbHXW
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form.txt&quot;
+
+filename
+------formdata-crane-glAgLtSRyfLJfYYbHXW
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form.txt&quot;
+Content-Type: text/plain
+
+ABC~\xe2\x80\xbe\xc2\xa5\xe2\x89\x88\xc2\xa4\xef\xbd\xa5\xe3\x83\xbb\xe2\x80\xa2\xe2\x88\x99\xc2\xb7\xe2\x98\xbc\xe2\x98\x85\xe6\x98\x9f\xf0\x9f\x8c\x9f\xe6\x98\x9f\xe2\x98\x85\xe2\x98\xbc\xc2\xb7\xe2\x88\x99\xe2\x80\xa2\xe3\x83\xbb\xef\xbd\xa5\xc2\xa4\xe2\x89\x88\xc2\xa5\xe2\x80\xbe~XYZ
+------formdata-crane-glAgLtSRyfLJfYYbHXW-- expected true got false</pre></details><a class="self" href="#s-633a6a7e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b8162da2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-.txt (x-user-defined) in x-user-defined form</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
+------formdata-crane-82Id083LdcpYLWcvrrO
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-82Id083LdcpYLWcvrrO
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form-\xef\x9f\xb0\xef\x9e\x93\xef\x9e\x83\xef\x9e\xa0.txt
+------formdata-crane-82Id083LdcpYLWcvrrO
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form-\xef\x9f\xb0\xef\x9e\x93\xef\x9e\x83\xef\x9e\xa0.txt&quot;
+
+filename
+------formdata-crane-82Id083LdcpYLWcvrrO
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;&quot;
+Content-Type: application/octet-stream
+
+
+------formdata-crane-82Id083LdcpYLWcvrrO--
+
+Expected:
+------formdata-crane-82Id083LdcpYLWcvrrO
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-82Id083LdcpYLWcvrrO
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form-\xf0\x93\x83\xa0.txt
+------formdata-crane-82Id083LdcpYLWcvrrO
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form-\xf0\x93\x83\xa0.txt&quot;
+
+filename
+------formdata-crane-82Id083LdcpYLWcvrrO
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-\xf0\x93\x83\xa0.txt&quot;
+Content-Type: text/plain
+
+ABC~\xe2\x80\xbe\xc2\xa5\xe2\x89\x88\xc2\xa4\xef\xbd\xa5\xe3\x83\xbb\xe2\x80\xa2\xe2\x88\x99\xc2\xb7\xe2\x98\xbc\xe2\x98\x85\xe6\x98\x9f\xf0\x9f\x8c\x9f\xe6\x98\x9f\xe2\x98\x85\xe2\x98\xbc\xc2\xb7\xe2\x88\x99\xe2\x80\xa2\xe3\x83\xbb\xef\xbd\xa5\xc2\xa4\xe2\x89\x88\xc2\xa5\xe2\x80\xbe~XYZ
+------formdata-crane-82Id083LdcpYLWcvrrO-- expected true got false</pre></details><a class="self" href="#s-b8162da2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-22ca2788"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-â˜ºðŸ˜‚.txt (windows-1252) in x-user-defined form</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
+------formdata-crane-wLEo7EYnFHV2vq1nupB
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-wLEo7EYnFHV2vq1nupB
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form-\xc3\xa2\xcb\x9c\xc2\xba\xc3\xb0\xc5\xb8\xcb\x9c\xe2\x80\x9a.txt
+------formdata-crane-wLEo7EYnFHV2vq1nupB
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form-\xc3\xa2\xcb\x9c\xc2\xba\xc3\xb0\xc5\xb8\xcb\x9c\xe2\x80\x9a.txt&quot;
+
+filename
+------formdata-crane-wLEo7EYnFHV2vq1nupB
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;&quot;
+Content-Type: application/octet-stream
+
+
+------formdata-crane-wLEo7EYnFHV2vq1nupB--
+
+Expected:
+------formdata-crane-wLEo7EYnFHV2vq1nupB
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-wLEo7EYnFHV2vq1nupB
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form-&amp;#226;&amp;#732;&amp;#186;&amp;#240;&amp;#376;&amp;#732;&amp;#8218;.txt
+------formdata-crane-wLEo7EYnFHV2vq1nupB
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form-&amp;#226;&amp;#732;&amp;#186;&amp;#240;&amp;#376;&amp;#732;&amp;#8218;.txt&quot;
+
+filename
+------formdata-crane-wLEo7EYnFHV2vq1nupB
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-&amp;#226;&amp;#732;&amp;#186;&amp;#240;&amp;#376;&amp;#732;&amp;#8218;.txt&quot;
+Content-Type: text/plain
+
+ABC~\xe2\x80\xbe\xc2\xa5\xe2\x89\x88\xc2\xa4\xef\xbd\xa5\xe3\x83\xbb\xe2\x80\xa2\xe2\x88\x99\xc2\xb7\xe2\x98\xbc\xe2\x98\x85\xe6\x98\x9f\xf0\x9f\x8c\x9f\xe6\x98\x9f\xe2\x98\x85\xe2\x98\xbc\xc2\xb7\xe2\x88\x99\xe2\x80\xa2\xe3\x83\xbb\xef\xbd\xa5\xc2\xa4\xe2\x89\x88\xc2\xa5\xe2\x80\xbe~XYZ
+------formdata-crane-wLEo7EYnFHV2vq1nupB-- expected true got false</pre></details><a class="self" href="#s-22ca2788" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d559ec00"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-★星★.txt (JIS X 0201 and JIS X 0208) in x-user-defined form</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
+------formdata-crane-MihBMJOy9Cri2b8Z5cT
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-MihBMJOy9Cri2b8Z5cT
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form-\xe2\x98\x85\xe6\x98\x9f\xe2\x98\x85.txt
+------formdata-crane-MihBMJOy9Cri2b8Z5cT
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form-\xe2\x98\x85\xe6\x98\x9f\xe2\x98\x85.txt&quot;
+
+filename
+------formdata-crane-MihBMJOy9Cri2b8Z5cT
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;&quot;
+Content-Type: application/octet-stream
+
+
+------formdata-crane-MihBMJOy9Cri2b8Z5cT--
+
+Expected:
+------formdata-crane-MihBMJOy9Cri2b8Z5cT
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-MihBMJOy9Cri2b8Z5cT
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form-&amp;#9733;&amp;#26143;&amp;#9733;.txt
+------formdata-crane-MihBMJOy9Cri2b8Z5cT
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form-&amp;#9733;&amp;#26143;&amp;#9733;.txt&quot;
+
+filename
+------formdata-crane-MihBMJOy9Cri2b8Z5cT
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-&amp;#9733;&amp;#26143;&amp;#9733;.txt&quot;
+Content-Type: text/plain
+
+ABC~\xe2\x80\xbe\xc2\xa5\xe2\x89\x88\xc2\xa4\xef\xbd\xa5\xe3\x83\xbb\xe2\x80\xa2\xe2\x88\x99\xc2\xb7\xe2\x98\xbc\xe2\x98\x85\xe6\x98\x9f\xf0\x9f\x8c\x9f\xe6\x98\x9f\xe2\x98\x85\xe2\x98\xbc\xc2\xb7\xe2\x88\x99\xe2\x80\xa2\xe3\x83\xbb\xef\xbd\xa5\xc2\xa4\xe2\x89\x88\xc2\xa5\xe2\x80\xbe~XYZ
+------formdata-crane-MihBMJOy9Cri2b8Z5cT-- expected true got false</pre></details><a class="self" href="#s-d559ec00" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5063ede3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-☺😂.txt (Unicode) in x-user-defined form</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
+------formdata-crane-C9NCQWVLElLXffzyr8q
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-C9NCQWVLElLXffzyr8q
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form-\xe2\x98\xba\xf0\x9f\x98\x82.txt
+------formdata-crane-C9NCQWVLElLXffzyr8q
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form-\xe2\x98\xba\xf0\x9f\x98\x82.txt&quot;
+
+filename
+------formdata-crane-C9NCQWVLElLXffzyr8q
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;&quot;
+Content-Type: application/octet-stream
+
+
+------formdata-crane-C9NCQWVLElLXffzyr8q--
+
+Expected:
+------formdata-crane-C9NCQWVLElLXffzyr8q
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-C9NCQWVLElLXffzyr8q
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form-&amp;#9786;&amp;#128514;.txt
+------formdata-crane-C9NCQWVLElLXffzyr8q
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form-&amp;#9786;&amp;#128514;.txt&quot;
+
+filename
+------formdata-crane-C9NCQWVLElLXffzyr8q
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-&amp;#9786;&amp;#128514;.txt&quot;
+Content-Type: text/plain
+
+ABC~\xe2\x80\xbe\xc2\xa5\xe2\x89\x88\xc2\xa4\xef\xbd\xa5\xe3\x83\xbb\xe2\x80\xa2\xe2\x88\x99\xc2\xb7\xe2\x98\xbc\xe2\x98\x85\xe6\x98\x9f\xf0\x9f\x8c\x9f\xe6\x98\x9f\xe2\x98\x85\xe2\x98\xbc\xc2\xb7\xe2\x88\x99\xe2\x80\xa2\xe3\x83\xbb\xef\xbd\xa5\xc2\xa4\xe2\x89\x88\xc2\xa5\xe2\x80\xbe~XYZ
+------formdata-crane-C9NCQWVLElLXffzyr8q-- expected true got false</pre></details><a class="self" href="#s-5063ede3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ef8520b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Upload file-for-upload-in-form-ABC~‾¥≈¤･・•∙·☼★星🌟星★☼·∙•・･¤≈¥‾~XYZ.txt (Unicode) in x-user-defined form</span></summary><pre class="msg">assert_true: Unexpected multipart-shaped form data received:
+------formdata-crane-PSAVCdjT7EP8reTSf1O
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-PSAVCdjT7EP8reTSf1O
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form-ABC~\xe2\x80\xbe\xc2\xa5\xe2\x89\x88\xc2\xa4\xef\xbd\xa5\xe3\x83\xbb\xe2\x80\xa2\xe2\x88\x99\xc2\xb7\xe2\x98\xbc\xe2\x98\x85\xe6\x98\x9f\xf0\x9f\x8c\x9f\xe6\x98\x9f\xe2\x98\x85\xe2\x98\xbc\xc2\xb7\xe2\x88\x99\xe2\x80\xa2\xe3\x83\xbb\xef\xbd\xa5\xc2\xa4\xe2\x89\x88\xc2\xa5\xe2\x80\xbe~XYZ.txt
+------formdata-crane-PSAVCdjT7EP8reTSf1O
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form-ABC~\xe2\x80\xbe\xc2\xa5\xe2\x89\x88\xc2\xa4\xef\xbd\xa5\xe3\x83\xbb\xe2\x80\xa2\xe2\x88\x99\xc2\xb7\xe2\x98\xbc\xe2\x98\x85\xe6\x98\x9f\xf0\x9f\x8c\x9f\xe6\x98\x9f\xe2\x98\x85\xe2\x98\xbc\xc2\xb7\xe2\x88\x99\xe2\x80\xa2\xe3\x83\xbb\xef\xbd\xa5\xc2\xa4\xe2\x89\x88\xc2\xa5\xe2\x80\xbe~XYZ.txt&quot;
+
+filename
+------formdata-crane-PSAVCdjT7EP8reTSf1O
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;&quot;
+Content-Type: application/octet-stream
+
+
+------formdata-crane-PSAVCdjT7EP8reTSf1O--
+
+Expected:
+------formdata-crane-PSAVCdjT7EP8reTSf1O
+Content-Disposition: form-data; name=&quot;_charset_&quot;
+
+x-user-defined
+------formdata-crane-PSAVCdjT7EP8reTSf1O
+Content-Disposition: form-data; name=&quot;filename&quot;
+
+file-for-upload-in-form-ABC~&amp;#8254;&amp;#165;&amp;#8776;&amp;#164;&amp;#65381;&amp;#12539;&amp;#8226;&amp;#8729;&amp;#183;&amp;#9788;&amp;#9733;&amp;#26143;&amp;#127775;&amp;#26143;&amp;#9733;&amp;#9788;&amp;#183;&amp;#8729;&amp;#8226;&amp;#12539;&amp;#65381;&amp;#164;&amp;#8776;&amp;#165;&amp;#8254;~XYZ.txt
+------formdata-crane-PSAVCdjT7EP8reTSf1O
+Content-Disposition: form-data; name=&quot;file-for-upload-in-form-ABC~&amp;#8254;&amp;#165;&amp;#8776;&amp;#164;&amp;#65381;&amp;#12539;&amp;#8226;&amp;#8729;&amp;#183;&amp;#9788;&amp;#9733;&amp;#26143;&amp;#127775;&amp;#26143;&amp;#9733;&amp;#9788;&amp;#183;&amp;#8729;&amp;#8226;&amp;#12539;&amp;#65381;&amp;#164;&amp;#8776;&amp;#165;&amp;#8254;~XYZ.txt&quot;
+
+filename
+------formdata-crane-PSAVCdjT7EP8reTSf1O
+Content-Disposition: form-data; name=&quot;file&quot;; filename=&quot;file-for-upload-in-form-ABC~&amp;#8254;&amp;#165;&amp;#8776;&amp;#164;&amp;#65381;&amp;#12539;&amp;#8226;&amp;#8729;&amp;#183;&amp;#9788;&amp;#9733;&amp;#26143;&amp;#127775;&amp;#26143;&amp;#9733;&amp;#9788;&amp;#183;&amp;#8729;&amp;#8226;&amp;#12539;&amp;#65381;&amp;#164;&amp;#8776;&amp;#165;&amp;#8254;~XYZ.txt&quot;
+Content-Type: text/plain
+
+ABC~\xe2\x80\xbe\xc2\xa5\xe2\x89\x88\xc2\xa4\xef\xbd\xa5\xe3\x83\xbb\xe2\x80\xa2\xe2\x88\x99\xc2\xb7\xe2\x98\xbc\xe2\x98\x85\xe6\x98\x9f\xf0\x9f\x8c\x9f\xe6\x98\x9f\xe2\x98\x85\xe2\x98\xbc\xc2\xb7\xe2\x88\x99\xe2\x80\xa2\xe3\x83\xbb\xef\xbd\xa5\xc2\xa4\xe2\x89\x88\xc2\xa5\xe2\x80\xbe~XYZ
+------formdata-crane-PSAVCdjT7EP8reTSf1O-- expected true got false</pre></details><a class="self" href="#s-ef8520b5" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

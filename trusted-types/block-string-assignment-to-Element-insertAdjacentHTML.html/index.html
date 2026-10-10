@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../trusted-types/"><code>trusted-<wbr>types/</code></a></li><li aria-current="page"><code>block-<wbr>string-<wbr>assignment-<wbr>to-<wbr>Element-<wbr>insertAdjacentHTML.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>block-<wbr>string-<wbr>assignment-<wbr>to-<wbr>Element-<wbr>insertAdjacentHTML.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="trusted-types/block-string-assignment-to-Element-insertAdjacentHTML.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>7</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">7</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-3eb0c1e8c2</code>, <span class="nowrap">9 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/3eb0c1e8c2"><code>3eb0c1e8c2</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-cd72de6793</code>, <span class="nowrap">10 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cd72de6793"><code>cd72de6793</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/trusted-types/block-string-assignment-to-Element-insertAdjacentHTML.html"><code>trusted-<wbr>types/<wbr>block-<wbr>string-<wbr>assignment-<wbr>to-<wbr>Element-<wbr>insertAdjacentHTML.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,15 +35,13 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-c4f78a79"><details><summary><span class="mark">FAIL</span><span class="sub-name">insertAdjacentHTML with html assigned via policy (successful HTML transformation).</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-c4f78a79" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-51b8c501"><details><summary><span class="mark">FAIL</span><span class="sub-name">insertAdjacentHTML(TrustedHTML) throws SyntaxError DOMException when position invalid.</span></summary><pre class="msg">assert_throws_dom: function &quot;_ =&gt; {
-      d.insertAdjacentHTML(&#39;invalid&#39;, p.createHTML(&quot;&lt;p&gt;Fail&lt;/p&gt;&quot;));
-    }&quot; threw object &quot;NotSupportedError: This feature is not yet implemented&quot; that is not a DOMException SyntaxError: property &quot;code&quot; is equal to 9, expected 12</pre></details><a class="self" href="#s-51b8c501" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-88656e62"><details><summary><span class="mark">FAIL</span><span class="sub-name">`insertAdjacentHTML(string)` throws.</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-88656e62" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8a1c437e"><details><summary><span class="mark">FAIL</span><span class="sub-name">`insertAdjacentHTML(string)` still throws TypeError when position invalid.</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-8a1c437e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-85147d6b"><details><summary><span class="mark">FAIL</span><span class="sub-name">`insertAdjacentHTML(null)` throws.</span></summary><pre class="msg">assert_equals: expected null but got Element node &lt;div&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-85147d6b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-32c2f0b4"><details><summary><span class="mark">FAIL</span><span class="sub-name">`insertAdjacentHTML(string)` assigned via default policy (successful HTML transformation).</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-32c2f0b4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1ff171a4"><details><summary><span class="mark">FAIL</span><span class="sub-name">`insertAdjacentHTML(null)` assigned via default policy does not throw.</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-1ff171a4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4f78a79"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentHTML with html assigned via policy (successful HTML transformation).</span></div><a class="self" href="#s-c4f78a79" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-51b8c501"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentHTML(TrustedHTML) throws SyntaxError DOMException when position invalid.</span></div><a class="self" href="#s-51b8c501" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-88656e62"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`insertAdjacentHTML(string)` throws.</span></div><a class="self" href="#s-88656e62" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8a1c437e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`insertAdjacentHTML(string)` still throws TypeError when position invalid.</span></div><a class="self" href="#s-8a1c437e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-85147d6b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`insertAdjacentHTML(null)` throws.</span></div><a class="self" href="#s-85147d6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-32c2f0b4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`insertAdjacentHTML(string)` assigned via default policy (successful HTML transformation).</span></div><a class="self" href="#s-32c2f0b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1ff171a4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">`insertAdjacentHTML(null)` assigned via default policy does not throw.</span></div><a class="self" href="#s-1ff171a4" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
