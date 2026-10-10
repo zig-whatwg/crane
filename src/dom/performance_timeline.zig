@@ -522,6 +522,15 @@ pub const Observer = struct {
     options: std.ArrayListUnmanaged(Options) = .empty,
     /// The Performance whose timeline lists it, while it is listed.
     registered_on: ?Link = null,
+    /// The registration's one pending-activity keep is held: released once,
+    /// by disconnect() or the teardown (the keep is counted).
+    kept_alive: bool = false,
+
+    fn releaseKeep(self: *Observer) void {
+        if (!self.kept_alive) return;
+        self.kept_alive = false;
+        engine.releasePlatformObject(self.instance);
+    }
 
     pub fn init(allocator: std.mem.Allocator, instance: *Instance) Observer {
         return .{ .allocator = allocator, .instance = instance };
@@ -536,7 +545,7 @@ pub const Observer = struct {
         self.callback = null;
         self.buffer.deinit(self.allocator);
         self.options.deinit(self.allocator);
-        engine.releasePlatformObject(self.instance);
+        self.releaseKeep();
     }
 
     /// The options in its list naming `entry_type`, if any.
@@ -578,7 +587,7 @@ pub const Observer = struct {
         self.unregister();
         self.emptyBuffer();
         self.options.clearRetainingCapacity();
-        engine.releasePlatformObject(self.instance);
+        self.releaseKeep();
     }
 };
 
@@ -661,7 +670,8 @@ fn register(timeline: *Timeline, observer: *Observer, options: Options) !void {
     try observer.options.append(observer.allocator, options);
     try timeline.observers.append(timeline.allocator, observer);
     observer.registered_on = Link.to(timeline.owner);
-    engine.keepPlatformObjectAlive(observer.instance);
+    if (!observer.kept_alive) engine.keepPlatformObjectAlive(observer.instance);
+    observer.kept_alive = true;
 }
 
 // ============================================================================
