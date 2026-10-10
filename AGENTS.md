@@ -650,6 +650,39 @@ read it before adding state.
 
 ---
 
+## The platform boundary
+
+**Everything platform-specific goes through the `platform` protocol** (the user, 2026-10-09):
+OS services (clocks, randomness, network, files, threads), page capabilities (permissions, dialogs,
+pickers, media decoding, camera, clipboard...), the storage engine, crypto primitives and layout.
+It is bound at build time like the engine (`-Dplatform=darwin|linux|testing`,
+`-Dplatform-module=<path>` for a third-party platform, `-Dplatform-without=<capability>` to compile
+one out). The contract is [docs/platform-protocol.md](docs/platform-protocol.md); the migration
+steps are [docs/platform-protocol-recipes.md](docs/platform-protocol-recipes.md); the user's
+decisions are in tmp/plans/platform-decisions.md.
+
+- No new OS access outside `src/platform/` (std.fs, std.time clock reads, std.process, curl,
+  sqlite, mbedtls, getenv, randomness). **Checked by `zig build lint-platform`** (part of
+  `zig build test`) against `tools/platform_boundary_baseline.txt`, which only goes down.
+- Old platform code stays until the migration step that replaces it retires it.
+
+---
+
+## DOM lifetime: reference counting
+
+**Crane's DOM is moving to reference counting** (WebKit's model; the user, 2026-10-09): one model
+under V8 and JavaScriptCore. Design: tmp/plans/refcount-design.md; the user's decisions:
+tmp/plans/refcount-decisions.md. Until the switch (design step 7), an object that keeps a node for
+script holds it through `src/dom/node_holds.zig` or a traced edge, never a bare pointer; a
+generation check is only a teardown net. Collected trees are freed in slices from the event loop
+(`runtime.gc.DeferredTeardown`), never inside the collector.
+
+- **Checked by `zig build lint-refcount`** (part of `zig build test`; tools/lint_refcount.zig):
+  no direct `.parent_node =` writes outside NodeBase's setter, and no counted reference stored in
+  node state (back links stay raw). Its baseline only goes down.
+
+---
+
 ## Golden rules
 
 1. **Algorithm precision.** WHATWG specs define web platform behaviour.

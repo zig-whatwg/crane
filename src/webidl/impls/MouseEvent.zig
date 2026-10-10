@@ -11,6 +11,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
+const KeptInstance = @import("dom").custom_elements.KeptInstance;
 const MouseEvent = interfaces.MouseEvent;
 const EventImpl = @import("Event.zig");
 const event_construction = @import("dom").event_construction;
@@ -22,8 +24,55 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-pub const InternalState = struct {};
+/// The event keeps its related target alive: an edge from the event's
+/// wrapper (engine.traceChild, `related_target_slot`), drawn when the target
+/// is set - by the constructor or initMouseEvent - and ended in deinit, as
+/// FocusEvent keeps its own. Blink: MouseEvent::Trace visits
+/// related_target_; WebKit: MouseRelatedEvent's RefPtr<EventTarget>. It was a
+/// bare pointer in the generated state, and a held `new MouseEvent(t,
+/// {relatedTarget})` read a freed or reissued node once the target's tree was
+/// collected (lane ownerdoc, crane/od-event-keeps-its-targets.html).
+///
+/// `related_target` is the native pointer beside the edge, with its slab
+/// generation and realm (KeptInstance): only the teardown net. Made when a
+/// related target is first set, so an event with none - most of the ones the
+/// engine fires - allocates nothing.
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    related_target: ?KeptInstance = null,
+};
+
+const related_target_slot: engine.TracedSlot = .{ .name = "relatedTarget" };
+
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md):
+/// PointerEvent and WheelEvent set their relatedTarget through it.
+pub fn installHooks() void {
+    event_construction.installMouseEvent(.{ .set_related_target = &setRelatedTarget });
+}
+
+/// Set the related target the event reports, and keep it: the edge from the
+/// event to it replaces the one to the target it had.
+fn setRelatedTarget(instance: *runtime.Instance, target: ?*runtime.Instance) error{OutOfMemory}!void {
+    const state = instance.getState(State);
+    state.own.relatedTarget = target;
+    if (target) |t| {
+        const internal = state.own._internal orelse made: {
+            const allocator = instance.ctx.allocator;
+            const internal = try allocator.create(InternalState);
+            internal.* = .{ .allocator = allocator };
+            state.own._internal = internal;
+            break :made internal;
+        };
+        internal.related_target = KeptInstance.of(t);
+        engine.traceChild(instance, t, related_target_slot);
+    } else if (state.own._internal) |internal| {
+        if (internal.related_target != null) {
+            internal.related_target = null;
+            engine.forgetTracedChild(instance, related_target_slot);
+        }
+    }
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -39,6 +88,14 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        // An event freed without ever being wrapped lets the hold waiting for
+        // its wrapper go; a collected one's edge went with the wrapper.
+        if (internal.related_target != null) engine.forgetTracedChild(instance, related_target_slot);
+        internal.allocator.destroy(internal);
+        state.own._internal = null;
+    }
     // Clean up inherited Event state (frees the type DOMString)
     interfaces.Event.deinit(instance);
 }
@@ -128,7 +185,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.metaKey = modifier_init.metaKey orelse false;
     state.own.button = event_init.button orelse 0;
     state.own.buttons = event_init.buttons orelse 0;
-    state.own.relatedTarget = event_init.relatedTarget orelse null;
+    try setRelatedTarget(instance, event_init.relatedTarget orelse null);
 
     // Initialize additional MouseEvent properties from CSSOM View Module
     state.own.movementX = event_init.movementX orelse 0.0;
@@ -219,10 +276,13 @@ pub fn get_buttons(instance: *runtime.Instance) anyerror!u16 {
     return state.own.buttons;
 }
 
-/// Getter for relatedTarget
+/// Getter for relatedTarget: the value it was initialized to. The event's
+/// edge keeps it; null only past its realm's teardown (the net above).
 pub fn get_relatedTarget(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
-    return state.own.relatedTarget;
+    const internal = state.own._internal orelse return state.own.relatedTarget;
+    const kept = internal.related_target orelse return state.own.relatedTarget;
+    return kept.get();
 }
 
 /// Getter for movementX
@@ -274,24 +334,37 @@ pub fn get_offsetY(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Operation: initMouseEvent
+/// UI Events 6.1 (legacy event initializers): "Initializes attributes of a
+/// MouseEvent object. This method has the same behavior as
+/// UIEvent.initUIEvent()" - nothing while the event is being dispatched -
+/// and sets screenX, screenY, clientX, clientY, the four modifier keys,
+/// button and relatedTarget from its arguments (each defaulting to 0, false
+/// or null). Blink's MouseEvent::initMouseEvent and Gecko's do the same; the
+/// coordinates derived from clientX/Y follow them as the constructor's do.
 pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32), screenXArg: webidl.Opt(i32), screenYArg: webidl.Opt(i32), clientXArg: webidl.Opt(i32), clientYArg: webidl.Opt(i32), ctrlKeyArg: webidl.Opt(bool), altKeyArg: webidl.Opt(bool), shiftKeyArg: webidl.Opt(bool), metaKeyArg: webidl.Opt(bool), buttonArg: webidl.Opt(i16), relatedTargetArg: webidl.Opt(?*runtime.Instance)) anyerror!void {
-    _ = instance;
-    _ = typeArg;
-    _ = bubblesArg;
-    _ = cancelableArg;
-    _ = viewArg;
-    _ = detailArg;
-    _ = screenXArg;
-    _ = screenYArg;
-    _ = clientXArg;
-    _ = clientYArg;
-    _ = ctrlKeyArg;
-    _ = altKeyArg;
-    _ = shiftKeyArg;
-    _ = metaKeyArg;
-    _ = buttonArg;
-    _ = relatedTargetArg;
-    return error.NotImplemented;
+    if (event_construction.dispatchFlag(instance)) return;
+    try interfaces.UIEvent.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg);
+    const state = instance.getState(State);
+    const client_x = clientXArg.getOrDefault(0);
+    const client_y = clientYArg.getOrDefault(0);
+    state.own.screenX = screenXArg.getOrDefault(0);
+    state.own.screenY = screenYArg.getOrDefault(0);
+    state.own.clientX = client_x;
+    state.own.clientY = client_y;
+    state.own.pageX = @floatFromInt(client_x);
+    state.own.pageY = @floatFromInt(client_y);
+    state.own.x = @floatFromInt(client_x);
+    state.own.y = @floatFromInt(client_y);
+    state.own.offsetX = @floatFromInt(client_x);
+    state.own.offsetY = @floatFromInt(client_y);
+    state.own.layerX = client_x;
+    state.own.layerY = client_y;
+    state.own.ctrlKey = ctrlKeyArg.getOrDefault(false);
+    state.own.altKey = altKeyArg.getOrDefault(false);
+    state.own.shiftKey = shiftKeyArg.getOrDefault(false);
+    state.own.metaKey = metaKeyArg.getOrDefault(false);
+    state.own.button = buttonArg.getOrDefault(0);
+    try setRelatedTarget(instance, relatedTargetArg.getOrDefault(null));
 }
 
 /// Operation: getModifierState

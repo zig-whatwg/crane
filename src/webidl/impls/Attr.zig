@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -54,6 +55,8 @@ pub const InternalState = struct {
     /// from a freed slot in a teardown sweep.
     owner_element: ?*runtime.Instance,
     owner_generation: u64 = 0,
+    /// Whether `element_slot`'s edge holds `owner_element`.
+    element_traced: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -113,6 +116,30 @@ pub fn init(
     return instance;
 }
 
+/// The member an attribute keeps its element in (engine.traceChild): an Attr
+/// script holds keeps its element, and through it the element's tree and
+/// document, for as long as it is the element's. Blink: Attr::Trace visits
+/// element_ (core/dom/attr.cc); WebKit's Attr holds a WeakPtr and keeps the
+/// element through its wrapper's opaque root. It was a generation-checked
+/// pointer, so `attr.ownerElement` read null once script let the element go
+/// (lane ownerdoc, crane/od-attr-keeps-element-and-document.html). An Attr is
+/// made when script asks for it (Element's ensureAttrNode, which wraps it
+/// through the element's own edge to it); until its wrapper is made the edge
+/// waits, the element held strongly, and `deinit` lets it go.
+const element_slot: engine.TracedSlot = .{ .name = "ownerElement" };
+
+/// Keep `element` as `instance`'s element (`element_slot`), or let the one it
+/// kept go.
+fn keepElement(instance: *runtime.Instance, internal: *InternalState, element: ?*runtime.Instance) void {
+    if (element) |el| {
+        engine.traceChild(instance, el, element_slot);
+        internal.element_traced = true;
+    } else if (internal.element_traced) {
+        internal.element_traced = false;
+        engine.forgetTracedChild(instance, element_slot);
+    }
+}
+
 /// This attribute's element, if it has one that is still alive.
 fn liveElement(internal: *const InternalState) ?*runtime.Instance {
     const element = internal.owner_element orelse return null;
@@ -153,12 +180,16 @@ fn detachHook(instance: *runtime.Instance, value: []const u8) dom.attr_nodes.Err
     internal.value = copy;
     internal.owner_element = null;
     internal.owner_generation = 0;
+    keepElement(instance, internal, null);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // An Attr its wrapper's collection frees has no edge left to end; one
+        // freed unwrapped lets go of the element waiting for its wrapper.
+        if (internal.element_traced) engine.forgetTracedChild(instance, element_slot);
         internal.deinit();
 
         // Return the block itself, not just what it points to.
@@ -338,9 +369,10 @@ pub fn setOwnerElement(instance: *runtime.Instance, element: ?*runtime.Instance)
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.owner_element = element;
     internal.owner_generation = if (element) |el| runtime.SlabAllocator.generationOf(el) else 0;
+    keepElement(instance, internal, element);
     if (element) |el| {
         if (interfaces.Node.get_ownerDocument(el) catch null) |document| {
-            try NodeImpl.setOwnerDocument(instance, document);
+            try dom.node_document.set(instance, document);
         }
     }
 }

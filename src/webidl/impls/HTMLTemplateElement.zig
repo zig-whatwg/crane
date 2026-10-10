@@ -144,15 +144,23 @@ pub fn get_content(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return content;
 }
 
-/// Getter for shadowRootMode
+/// Getter for shadowRootMode: "The shadowRootMode IDL attribute must reflect
+/// the shadowrootmode content attribute, limited to only known values."
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-template-shadowrootmode
+///
+/// The shadowrootmode attribute is enumerated: "open" and "closed" (ASCII
+/// case-insensitively); its missing and invalid value defaults are the None
+/// state, which has no keyword, so reflection answers the empty string.
 pub fn get_shadowRootMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    var value = (try interfaces.Element.call_getAttributeNS(instance, null, runtime.DOMString.initInterned("shadowrootmode"))) orelse return runtime.DOMString.initEmpty();
+    defer value.deinit(instance.ctx.allocator);
+    if (std.ascii.eqlIgnoreCase(value.asSlice(), "open")) return runtime.DOMString.initInterned("open");
+    if (std.ascii.eqlIgnoreCase(value.asSlice(), "closed")) return runtime.DOMString.initInterned("closed");
+    return runtime.DOMString.initEmpty();
 }
 
-/// Setter for shadowRootMode
+/// Setter for shadowRootMode: reflection's setter steps set the content
+/// attribute to the given value.
 pub fn set_shadowRootMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try interfaces.Element.call_setAttributeNS(instance, null, runtime.DOMString.initInterned("shadowrootmode"), .{ .domstring = value });
 }

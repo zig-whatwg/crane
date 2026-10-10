@@ -1,0 +1,6 @@
+# Reference-counting rule breaches in src/: path rule count. Rules: `parent-write` (an
+# assignment to `.parent_node` outside NodeBase's setter) and
+# `ref-in-node-state.<Container>.<field>` (a counted reference inside node state); see
+# tools/lint_refcount.zig. A ratchet - `zig build lint-refcount`, part of `zig build
+# test`, fails if any count rises or a new pair appears. After paying some off, lower it
+# with `zig build lint-refcount -- --update`. Never raise it by hand.

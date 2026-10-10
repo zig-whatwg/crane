@@ -52,6 +52,8 @@ progress = [
   "f62e45fe68 - elements trace only scoped registries; form-owner resets reach only the mutated subtree; registry, FormData File and [SameObject] readers are generation-checked; a destroyed script element leaves the script queues (lifefix2)",
   "560eea1871 - StaticRange keeps its containers, a queued SVG script keeps its element until load (edges)",
   "184e365062, e3b7d0f9e1 - MutationRecord and static NodeList hold their nodes natively through a chain on the node and rescue a detached tree's root with one wrapper; a queued record makes no NodeList; the parser's holds share the facility (nodeholds)",
+  "71b40ef7a1, 3b05ac5527, 817cdd3d79 - refcount steps 1 and 2 (rc12): pins for retention, listener cycles, D1 and D6 (known-red until their step), the Ref/GCReachableRef/WeakRef types with the Debug ledger and count fields in NodeBase (456 B until nodeholds' holds go), lint-refcount; no behaviour change. Found: a windowless document held only through a detached node is freed under it (crash)",
+  "3bfc905d14, 01b5401afb, 61b73e0ee3, a85be6b6a1 - refcount step 3 (rc3): every parent write through NodeBase.setParent (lint-refcount at 0), subtree_holds kept along the host-including chain (shadow roots, template contents), the Document's referencing_nodes and foreign_holds (D6); shadow mode, checked after every mutation in unit tests and under CRANE_REFCOUNT_CHECK; no behaviour change",
 ]
 
   [[infra.items]]

@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const log = std.log.scoped(.document_impl);
+const refcount_log = std.log.scoped(.refcount);
 const runtime = @import("runtime");
 const engine = @import("engine");
 const dom_creation = @import("dom").node_creation;
@@ -106,6 +107,11 @@ pub const InternalState = struct {
     template_owner_document: ?*runtime.Instance = null,
     template_owner_generation: u64 = 0,
     is_template_owner_document: bool = false,
+
+    /// The two counts of refcount design 1.5 (decision D6): the nodes that
+    /// name this document, and the holds in its detached trees. Kept by
+    /// src/dom/refcount.zig, through `countsOf`.
+    refcounts: @import("dom").refcount.DocumentCounts = .{},
 
     /// String interning pool for tag names, attribute names, etc.
     /// Provides memory savings and O(1) string comparison via pointer equality
@@ -396,6 +402,17 @@ pub const InternalState = struct {
     /// Set via setDefaultView() when the document is associated with a window.
     /// Spec: https://html.spec.whatwg.org/multipage/window-object.html#dom-document-defaultview
     default_view: ?*runtime.Instance = null,
+    /// DOM "allow declarative shadow roots", as stored. A navigable's document
+    /// (navigation's and the initial about:blank, created with it true) is
+    /// recognised by its browsing context instead
+    /// (dom.document_internals.allowsDeclarativeShadowRoots); this is set by
+    /// parseHTMLUnsafe and copied by cloning.
+    allow_declarative_shadow_roots: bool = false,
+    /// The HTML parser's form element pointer associations that differ from
+    /// the tree's (a misnested or foster-parented control), kept until
+    /// "reset the form owner" undoes them (html/form_associated.zig). Usually
+    /// empty. Raw links, generation-checked: they keep nothing alive.
+    parser_form_associations: std.ArrayListUnmanaged(@import("dom").document_internals.ParserFormAssociation) = .empty,
     custom_element_registry: @import("dom").custom_elements.RegistryAssociation = .{},
     owns_native_global_registry: bool = false,
 
@@ -510,6 +527,7 @@ pub const InternalState = struct {
 
         // Clean up lists (don't own the items, just the list storage)
         self.ranges.deinit(self.allocator);
+        self.parser_form_associations.deinit(self.allocator);
         self.node_iterators.deinit(self.allocator);
 
         // Free owned strings
@@ -636,6 +654,13 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
+/// dom.refcount: `document`'s two counts, or null for an instance that is no
+/// live Document.
+fn countsOf(document: *runtime.Instance) ?*@import("dom").refcount.DocumentCounts {
+    const internal = getInternal(document) orelse return null;
+    return &internal.refcounts;
+}
+
 /// dom.policy_containers: `document`'s policy container.
 fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContainer {
     const internal = getInternal(document) orelse return null;
@@ -652,6 +677,7 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
+    @import("dom").refcount.install(.{ .document_counts = &countsOf });
     @import("dom").custom_elements.installDocument(.{
         .set_registry = &setCustomElementRegistry,
         .ensure_global_registry = &ensureGlobalRegistry,
@@ -886,10 +912,10 @@ fn updateVisibilityStateFromHook(document: *runtime.Instance, state: @import("do
 }
 
 /// DOM "clone a single node" step 3.1, for a Document: "set copy's encoding,
-/// content type, URL, origin, type, and mode to those of node". This copies
-/// the encoding and the mode; the rest are Node.zig's stated deviation.
-/// (Installed through dom.cloning_steps, as Node's clone algorithm may not
-/// reach Document's state; a no-op for any other node.)
+/// content type, URL, origin, type, and mode to those of node" - and its
+/// allow declarative shadow roots. (Installed through dom.cloning_steps, as
+/// Node's clone algorithm may not reach Document's state; a no-op for any
+/// other node.)
 fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool) anyerror!void {
     _ = subtree;
     const source = getInternal(node) orelse return;
@@ -897,7 +923,18 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool)
     const encoding = try source.encoding.clone(target.allocator);
     target.encoding.deinit(target.allocator);
     target.encoding = encoding;
+    const content_type = try source.content_type.clone(target.allocator);
+    target.content_type.deinit(target.allocator);
+    target.content_type = content_type;
+    const url = try target.allocator.dupe(u8, source.url);
+    if (target.url.len > 0) target.allocator.free(target.url);
+    target.url = url;
+    target.origin = source.origin;
+    target.doc_type = source.doc_type;
     target.mode = source.mode;
+    // DOM clone step 3.1 also copies "allow declarative shadow roots"
+    // (dom/nodes/Node-cloneNode-document-allow-declarative-shadow-roots).
+    target.allow_declarative_shadow_roots = source.allow_declarative_shadow_roots or source.default_view != null;
 }
 
 /// Get Document's internal state from the registry
@@ -929,6 +966,14 @@ pub fn deinit(instance: *runtime.Instance) void {
     @import("html").script_execution.discardDocumentScripts(instance);
     // Clean up internal state from registry
     if (Registry.get(instance)) |internal| {
+        // Shadow mode (refcount step 3): what the counts would have said.
+        // Nodes outside this document's own tree that still name it are
+        // the ones step 7 makes its storage wait for.
+        if (@import("dom").refcount.diagnosticsOn()) refcount_log.warn("document freed: {d} referencing nodes, {d} holds in its tree, {d} foreign holds", .{
+            internal.refcounts.referencing_nodes,
+            if (@import("dom").instance_bridge.getNodeBase(instance)) |document_base| document_base.subtree_holds -| 1 else 0,
+            internal.refcounts.foreign_holds,
+        });
         engine.forgetTracedChild(instance, .{ .name = "template owner document" });
         if (internal.template_owner_document) |owner| {
             if (runtime.SlabAllocator.generationOf(owner) == internal.template_owner_generation and
@@ -2440,11 +2485,32 @@ pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.T
     // type compliant string algorithm with TrustedHTML, the current global
     // object, html, "Document parseHTMLUnsafe", and "script"."
     const allocator = instance.ctx.allocator;
-    const compliant = try @import("dom").trusted_types.compliantStringForRealm(allocator, .html, engine.currentRealm() orelse instance.ctx, html, "Document parseHTMLUnsafe");
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const compliant = try @import("dom").trusted_types.compliantStringForRealm(allocator, .html, realm, html, "Document parseHTMLUnsafe");
     defer allocator.free(compliant);
-    // TODO: steps 2-5 - a new HTML document, parsed from compliantHTML with
-    // declarative shadow roots allowed.
-    return error.NotImplemented;
+    // Steps 2-4: "Let document be a new Document, whose content type is
+    // "text/html" and origin is this's relevant global object's associated
+    // Document's origin" (no browsing context: scripting is disabled); "set
+    // document's allow declarative shadow roots to true"; "parse HTML from a
+    // string given document and compliantHTML" - whose parser takes the
+    // document's allow declarative shadow roots.
+    const document = @import("html").dom_parser.parseHTML(allocator, realm, compliant, .{ .allow_declarative_shadow_roots = true }) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.NotSupportedError,
+    };
+    const document_internals = @import("dom").document_internals;
+    try document_internals.setContentType(document, "text/html");
+    if (associatedDocumentOf(realm)) |associated| try document_internals.copyOrigin(document, associated);
+    // Steps 5-6: the IDL has no options - no sanitizer. Step 7.
+    return document;
+}
+
+/// The associated Document of `realm`'s global object, when it is a Window.
+fn associatedDocumentOf(realm: runtime.Context) ?*runtime.Instance {
+    const engine_realm = realm.realm orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(engine_realm.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(global) catch null;
 }
 
 /// Operation: exitPictureInPicture

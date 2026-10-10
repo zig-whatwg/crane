@@ -40,7 +40,10 @@ pub const ChangeTheEncoding = struct {
     change: *const fn (context: *anyopaque, requested: encoding_sniffing.Encoding) void,
 };
 
-/// The 24 insertion modes defined in HTML Standard §13.2.6.4
+/// The 21 insertion modes defined in HTML Standard §13.2.6.4. The current
+/// parser has no "in select" or "in select in table" mode: a select's
+/// contents are parsed "in body" (the relaxed select parser), as Chrome,
+/// Firefox and Safari do.
 ///
 /// The insertion mode controls how tokens are processed and which
 /// elements can be created.
@@ -75,10 +78,6 @@ pub const InsertionMode = enum {
     in_row,
     /// Inside <td> or <th>
     in_cell,
-    /// Inside <select> element
-    in_select,
-    /// Inside <select> inside <table>
-    in_select_in_table,
     /// Inside <template> element
     in_template,
     /// After </body>
@@ -162,6 +161,72 @@ pub const AttributeNamespace = enum {
     }
 };
 
+/// A declarative shadow root: what a template start tag's shadowroot*
+/// attributes ask for (HTML "in head", a start tag whose tag name is
+/// "template", steps 7.4-7.9 and 7.11.1), and where it went.
+pub const DeclarativeShadow = struct {
+    pub const Mode = enum { open, closed };
+    pub const SlotAssignment = enum { named, manual };
+
+    mode: Mode,
+    delegates_focus: bool = false,
+    serializable: bool = false,
+    slot_assignment: SlotAssignment = .named,
+    clonable: bool = false,
+    /// A shadowrootcustomelementregistry attribute: the root's registry is
+    /// null and kept null.
+    keep_registry_null: bool = false,
+    /// The template the request came from (on the stack of open elements,
+    /// never inserted) and its declarative shadow host element.
+    template: *TreeNode,
+    host: *TreeNode,
+    /// The tree-then-convert path: how many children the host had when the
+    /// template was met. A conversion whose attach throws (step 7.11's
+    /// exception branch) inserts the template there.
+    host_child_index: usize = 0,
+    /// The live DOM adapter: the shadow root it attached - the DOM node,
+    /// typed opaquely, and its slab generation - which the template's
+    /// contents insert into instead of its template contents (step 7.11.6,
+    /// "set template's template contents to shadow").
+    shadow_root: ?*anyopaque = null,
+    shadow_generation: u64 = 0,
+
+    /// Steps 7.4-7.9 from the start tag; null when its shadowrootmode is in
+    /// the None state (absent, or not "open" or "closed").
+    pub fn fromToken(tag: TagToken) ?DeclarativeShadow {
+        var request: DeclarativeShadow = .{ .mode = .open, .template = undefined, .host = undefined };
+        var has_mode = false;
+        for (tag.attributes.toSlice()) |attribute| {
+            const name = attribute.getName();
+            const value = attribute.getValue();
+            if (std.mem.eql(u8, name, "shadowrootmode")) {
+                // An enumerated attribute: "open" and "closed", ASCII
+                // case-insensitively; anything else is the None state.
+                if (std.ascii.eqlIgnoreCase(value, "open")) {
+                    request.mode = .open;
+                    has_mode = true;
+                } else if (std.ascii.eqlIgnoreCase(value, "closed")) {
+                    request.mode = .closed;
+                    has_mode = true;
+                }
+            } else if (std.mem.eql(u8, name, "shadowrootdelegatesfocus")) {
+                request.delegates_focus = true;
+            } else if (std.mem.eql(u8, name, "shadowrootserializable")) {
+                request.serializable = true;
+            } else if (std.mem.eql(u8, name, "shadowrootslotassignment")) {
+                // Its Manual state is "manual"; the missing and invalid
+                // value defaults are Named.
+                if (std.ascii.eqlIgnoreCase(value, "manual")) request.slot_assignment = .manual;
+            } else if (std.mem.eql(u8, name, "shadowrootclonable")) {
+                request.clonable = true;
+            } else if (std.mem.eql(u8, name, "shadowrootcustomelementregistry")) {
+                request.keep_registry_null = true;
+            }
+        }
+        return if (has_mode) request else null;
+    }
+};
+
 /// A node in the DOM tree being constructed.
 ///
 /// This is a simplified node representation for the parser.
@@ -198,10 +263,24 @@ pub const TreeNode = struct {
     dom_node: ?*anyopaque = null,
     dom_generation: u64 = 0,
     dom_revoked: bool = false,
+    /// This node is a declarative shadow root's template and owns
+    /// `declarative_shadow`. Its host only links to it: a host's teardown
+    /// must not read the request, which a template freed first took with it.
+    owns_declarative_shadow: bool = false,
     /// This tree node's place in its adapter's orphan list - DOM nodes the
     /// adapter made, or the parser removed, unwrapped and not taken by an
     /// insertion, which the adapter frees at its end - or `not_an_orphan`.
     dom_orphan_index: u32 = not_an_orphan,
+    /// A declarative shadow root (HTML "in head", template start tag, step
+    /// 7): on its template, which owns it, and - in the tree-then-convert
+    /// path - on its host. Null for every other node.
+    declarative_shadow: ?*DeclarativeShadow = null,
+    /// The form element pointer's form when this element was created, if
+    /// "create an element for a token" step 15's parser conditions held: a
+    /// form-associated element's name, the pointer set, not parsing template
+    /// contents, no fragment context, and not a listed element with a form
+    /// attribute. The DOM side checks the rest and associates.
+    parser_form: ?*TreeNode = null,
     /// Attributes (for elements)
     attributes: infra.List(Attribute),
     /// Text content (for text/comment nodes)
@@ -393,6 +472,8 @@ pub const TreeNode = struct {
         self.attributes.deinit();
         // Free text content
         self.text_content.deinit();
+        // A declarative shadow root's request belongs to its template.
+        if (self.owns_declarative_shadow) if (self.declarative_shadow) |request| self.allocator.destroy(request);
         // Free DOCTYPE fields
         if (self.doctype_name) |n| self.allocator.free(n);
         if (self.doctype_public_id) |p| self.allocator.free(p);
@@ -651,6 +732,17 @@ pub const TreeBuilder = struct {
     /// `dom_adapter_context`; see `finishedParsingChildren`.
     dom_adapter_on_children_finished: ?*const fn (*TreeNode, ?*anyopaque) void = null,
 
+    /// The live DOM adapter's step 7.10-7.11 for a declarative shadow root:
+    /// attach a shadow root to the request's host (DOM attach-a-shadow-root)
+    /// and record it on the request. False when the host is already a shadow
+    /// host or the attach threw - the template is then inserted. Without it
+    /// (the tree-then-convert path), the request is recorded on its host and
+    /// the conversion attaches it.
+    dom_adapter_attach_declarative_shadow: ?*const fn (*DeclarativeShadow, ?*anyopaque) bool = null,
+
+    /// HTML parser "allow declarative shadow roots" (initially false).
+    allow_declarative_shadow_roots: bool = false,
+
     /// Input stream manager for document.write() support.
     ///
     /// HTML Standard §13.2.3: When document.write() is called during parsing,
@@ -793,6 +885,10 @@ pub const TreeBuilder = struct {
 
     /// Set the adapter's finished-parsing-children callback (see
     /// `dom_adapter_on_children_finished`); it shares `dom_adapter_context`.
+    pub fn setDomAdapterDeclarativeShadowCallback(self: *TreeBuilder, attach: ?*const fn (*DeclarativeShadow, ?*anyopaque) bool) void {
+        self.dom_adapter_attach_declarative_shadow = attach;
+    }
+
     pub fn setDomAdapterFinishedCallback(self: *TreeBuilder, on_finished: ?*const fn (*TreeNode, ?*anyopaque) void) void {
         self.dom_adapter_on_children_finished = on_finished;
     }
@@ -1107,8 +1203,6 @@ pub const TreeBuilder = struct {
             .in_table_body => try self.handleInTableBodyMode(token),
             .in_row => try self.handleInRowMode(token),
             .in_cell => try self.handleInCellMode(token),
-            .in_select => try self.handleInSelectMode(token),
-            .in_select_in_table => try self.handleInSelectInTableMode(token),
             .in_template => try self.handleInTemplateMode(token),
             .after_body => try self.handleAfterBodyMode(token),
             .in_frameset => try self.handleInFramesetMode(token),
@@ -1829,11 +1923,7 @@ pub const TreeBuilder = struct {
                 } else if (std.mem.eql(u8, name, "script")) {
                     try self.handleScriptStartTag(tag);
                 } else if (std.mem.eql(u8, name, "template")) {
-                    _ = try self.insertHtmlElement(tag);
-                    try self.active_formatting_elements.append(.marker);
-                    self.frameset_ok = false;
-                    self.insertion_mode = .in_template;
-                    try self.template_insertion_modes.append(.in_template);
+                    try self.handleTemplateStartTag(tag);
                 } else if (std.mem.eql(u8, name, "head")) {
                     self.reportError(.invalid_first_character_of_tag_name);
                 } else {
@@ -1899,6 +1989,90 @@ pub const TreeBuilder = struct {
     fn popTemplateInsertionMode(self: *TreeBuilder) void {
         if (self.template_insertion_modes.len == 0) return;
         _ = self.template_insertion_modes.remove(self.template_insertion_modes.len - 1) catch {};
+    }
+
+    /// "In head", a start tag whose tag name is "template".
+    fn handleTemplateStartTag(self: *TreeBuilder, tag: TagToken) !void {
+        // Step 7's condition first: a template with no shadowrootmode (in
+        // the None state) is step 9's ordinary template - inserted before the
+        // marker and modes are pushed, which nothing observes in between.
+        var request = DeclarativeShadow.fromToken(tag) orelse return self.insertTemplate(tag);
+        // Steps 2-5: a marker, frameset-ok "not ok", "in template", pushed
+        // onto the stack of template insertion modes.
+        try self.active_formatting_elements.append(.marker);
+        self.frameset_ok = false;
+        self.insertion_mode = .in_template;
+        try self.template_insertion_modes.append(.in_template);
+        // Step 6: the adjusted insertion location.
+        const location = self.appropriateLocation(null);
+        // Step 7.1: "If the parser's allow declarative shadow roots is false,
+        // or the adjusted current node is the topmost element in the stack of
+        // open elements, then insert an HTML element for the token and
+        // return." In the fragment case, with only the root on the stack, the
+        // adjusted current node is the context element, which is in no tree
+        // the fragment builds - Blink's HTMLTreeBuilder takes its host from
+        // the current node, the fragment's root there, and so inserts the
+        // template; so does this.
+        const current = self.currentNode() orelse return self.insertHtmlElementAt(tag, location);
+        if (!self.allow_declarative_shadow_roots or current == self.open_elements.get(0).?)
+            return self.insertHtmlElementAt(tag, location);
+        // Step 7.2: the declarative shadow host is the adjusted current node.
+        const host = self.adjustedCurrentNode() orelse current;
+        // Step 7.3: insert a foreign element for the token, HTML namespace,
+        // only adding it to the stack of open elements.
+        const template = try self.createElementForToken(tag, .html, location);
+        try self.open_elements.append(template);
+        // Steps 7.4-7.9 were read from the token.
+        request.template = template;
+        request.host = host;
+        request.host_child_index = childCount(host);
+        const recorded = try self.allocator.create(DeclarativeShadow);
+        recorded.* = request;
+        template.declarative_shadow = recorded;
+        template.owns_declarative_shadow = true;
+        // Steps 7.10-7.11. The live adapter attaches now; the
+        // tree-then-convert path records the request on its host, unless the
+        // host already has one (step 7.10, "a shadow host"), and attaches when
+        // it converts the host.
+        const attached = if (self.dom_adapter_attach_declarative_shadow) |attach|
+            attach(recorded, self.dom_adapter_context)
+        else if (host.declarative_shadow == null) blk: {
+            host.declarative_shadow = recorded;
+            break :blk true;
+        } else false;
+        if (attached) return;
+        // Step 7.10, or 7.11.2's exception: "insert an element at the
+        // adjusted insertion location with template and
+        // adjustedInsertionLocation" - an ordinary template now.
+        template.declarative_shadow = null;
+        template.owns_declarative_shadow = false;
+        self.allocator.destroy(recorded);
+        self.insertNodeAt(location, template);
+    }
+
+    /// Step 9 (and 7.1): insert an HTML element for the template start tag,
+    /// then steps 2-5.
+    fn insertTemplate(self: *TreeBuilder, tag: TagToken) !void {
+        _ = try self.insertHtmlElement(tag);
+        try self.active_formatting_elements.append(.marker);
+        self.frameset_ok = false;
+        self.insertion_mode = .in_template;
+        try self.template_insertion_modes.append(.in_template);
+    }
+
+    /// "Insert an HTML element" for `tag` at `location`, computed before
+    /// steps 2-5 ran (they change nothing it depends on).
+    fn insertHtmlElementAt(self: *TreeBuilder, tag: TagToken, location: InsertionLocation) !void {
+        const element = try self.createElementForToken(tag, .html, location);
+        self.insertNodeAt(location, element);
+        try self.open_elements.append(element);
+    }
+
+    fn childCount(node: *const TreeNode) usize {
+        var count: usize = 0;
+        var child = node.first_child;
+        while (child) |c| : (child = c.next_sibling) count += 1;
+        return count;
     }
 
     fn handleTemplateEndTag(self: *TreeBuilder) !void {
@@ -2442,6 +2616,20 @@ pub const TreeBuilder = struct {
             // "In body", a start tag whose tag name is "iframe".
             self.frameset_ok = false;
             try self.parseGenericRawText(tag);
+        } else if (isHeadingName(name)) {
+            // "In body", a start tag whose tag name is one of: "h1" ... "h6".
+            // 1. If the stack has a p element in button scope, close it.
+            try self.closePElementIfInButtonScope();
+            // 2. If the current node is an HTML element whose tag name is one
+            // of h1..h6, parse error; pop the current node.
+            if (self.currentNode()) |current| {
+                if (current.namespace == .html and current.local_name != null and isHeadingName(current.local_name.?)) {
+                    self.reportError(.invalid_first_character_of_tag_name);
+                    _ = self.popCurrentNode();
+                }
+            }
+            // 3. Insert an HTML element for the token.
+            _ = try self.insertHtmlElement(tag);
         } else if (isSpecialBlockElement(name)) {
             try self.closePElementIfInButtonScope();
             _ = try self.insertHtmlElement(tag);
@@ -2620,6 +2808,25 @@ pub const TreeBuilder = struct {
             }
             // Steps 1-3.
             self.closeListItem(name);
+        } else if (isHeadingName(name)) {
+            // "In body", an end tag whose tag name is one of: "h1", "h2",
+            // "h3", "h4", "h5", "h6". If the stack does not have an HTML
+            // element in scope whose tag name is one of h1..h6, parse error;
+            // ignore the token. Any heading, not only one of this name.
+            if (!self.hasHeadingInScope()) {
+                self.reportError(.invalid_first_character_of_tag_name);
+                return;
+            }
+            // 1. Generate implied end tags.
+            self.generateImpliedEndTags(null);
+            // 2. If the current node is not an HTML element with the same tag
+            // name as that of the token, parse error.
+            if (!self.currentNodeIs(name)) self.reportError(.invalid_first_character_of_tag_name);
+            // 3. Pop elements until an HTML element whose tag name is one of
+            // h1..h6 has been popped.
+            while (self.popCurrentNode()) |popped| {
+                if (popped.namespace == .html and popped.local_name != null and isHeadingName(popped.local_name.?)) break;
+            }
         } else if (isSpecialBlockElement(name) or std.mem.eql(u8, name, "button") or std.mem.eql(u8, name, "select")) {
             // The block end tags: "address" ... "ul", with "button" and
             // "select" (a select start tag no longer leaves "in body").
@@ -3440,187 +3647,6 @@ pub const TreeBuilder = struct {
         }
     }
 
-    /// Handle token in "in select" insertion mode.
-    /// HTML Standard §13.2.6.4.16 (not in main parsing.md, simplified)
-    fn handleInSelectMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
-        switch (token) {
-            .character => |char| {
-                if (char == 0) {
-                    self.reportError(.unexpected_null_character);
-                } else {
-                    try self.insertCharacter(char);
-                }
-            },
-            .comment => |comment| {
-                try self.insertComment(comment);
-            },
-            .doctype => {
-                self.reportError(.missing_doctype_name);
-            },
-            .start_tag => |tag| {
-                const name = tag.getTagName();
-                if (std.mem.eql(u8, name, "html")) {
-                    try self.handleInBodyMode(token);
-                } else if (std.mem.eql(u8, name, "option")) {
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("option")) {
-                            _ = self.popCurrentNode();
-                        }
-                    }
-                    _ = try self.insertHtmlElement(tag);
-                } else if (std.mem.eql(u8, name, "optgroup")) {
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("option")) {
-                            _ = self.popCurrentNode();
-                        }
-                    }
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("optgroup")) {
-                            _ = self.popCurrentNode();
-                        }
-                    }
-                    _ = try self.insertHtmlElement(tag);
-                } else if (std.mem.eql(u8, name, "hr")) {
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("option")) {
-                            _ = self.popCurrentNode();
-                        }
-                    }
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("optgroup")) {
-                            _ = self.popCurrentNode();
-                        }
-                    }
-                    _ = try self.insertHtmlElement(tag);
-                    _ = self.popCurrentNode();
-                } else if (std.mem.eql(u8, name, "select")) {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                    if (!self.hasElementInSelectScope("select")) {
-                        return;
-                    }
-                    self.popUntilTagName("select");
-                    self.resetInsertionModeAppropriately();
-                } else if (std.mem.eql(u8, name, "input") or
-                    std.mem.eql(u8, name, "keygen") or
-                    std.mem.eql(u8, name, "textarea"))
-                {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                    if (!self.hasElementInSelectScope("select")) {
-                        return;
-                    }
-                    self.popUntilTagName("select");
-                    self.resetInsertionModeAppropriately();
-                    try self.processToken(token);
-                } else if (std.mem.eql(u8, name, "script") or std.mem.eql(u8, name, "template")) {
-                    try self.handleInHeadMode(token);
-                } else {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                }
-            },
-            .end_tag => |tag| {
-                const name = tag.getTagName();
-                if (std.mem.eql(u8, name, "optgroup")) {
-                    // Pop optgroup handling
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("option")) {
-                            if (self.open_elements.len > 1) {
-                                const prev = self.open_elements.get(self.open_elements.len - 2);
-                                if (prev) |p| {
-                                    if (p.hasTagName("optgroup")) {
-                                        _ = self.popCurrentNode();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("optgroup")) {
-                            _ = self.popCurrentNode();
-                        } else {
-                            self.reportError(.invalid_first_character_of_tag_name);
-                        }
-                    }
-                } else if (std.mem.eql(u8, name, "option")) {
-                    if (self.currentNode()) |current| {
-                        if (current.hasTagName("option")) {
-                            _ = self.popCurrentNode();
-                        } else {
-                            self.reportError(.invalid_first_character_of_tag_name);
-                        }
-                    }
-                } else if (std.mem.eql(u8, name, "select")) {
-                    if (!self.hasElementInSelectScope("select")) {
-                        self.reportError(.invalid_first_character_of_tag_name);
-                        return;
-                    }
-                    self.popUntilTagName("select");
-                    self.resetInsertionModeAppropriately();
-                } else if (std.mem.eql(u8, name, "template")) {
-                    try self.handleInHeadMode(token);
-                } else {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                }
-            },
-            .eof => {
-                try self.handleInBodyMode(token);
-            },
-            .text_run => |text_run| {
-                // Insert text run in select element
-                try self.insertTextRun(text_run.data);
-            },
-        }
-    }
-
-    /// Handle token in "in select in table" insertion mode.
-    fn handleInSelectInTableMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
-        switch (token) {
-            .start_tag => |tag| {
-                const name = tag.getTagName();
-                if (std.mem.eql(u8, name, "caption") or
-                    std.mem.eql(u8, name, "table") or
-                    std.mem.eql(u8, name, "tbody") or
-                    std.mem.eql(u8, name, "tfoot") or
-                    std.mem.eql(u8, name, "thead") or
-                    std.mem.eql(u8, name, "tr") or
-                    std.mem.eql(u8, name, "td") or
-                    std.mem.eql(u8, name, "th"))
-                {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                    self.popUntilTagName("select");
-                    self.resetInsertionModeAppropriately();
-                    try self.processToken(token);
-                } else {
-                    try self.handleInSelectMode(token);
-                }
-            },
-            .end_tag => |tag| {
-                const name = tag.getTagName();
-                if (std.mem.eql(u8, name, "caption") or
-                    std.mem.eql(u8, name, "table") or
-                    std.mem.eql(u8, name, "tbody") or
-                    std.mem.eql(u8, name, "tfoot") or
-                    std.mem.eql(u8, name, "thead") or
-                    std.mem.eql(u8, name, "tr") or
-                    std.mem.eql(u8, name, "td") or
-                    std.mem.eql(u8, name, "th"))
-                {
-                    self.reportError(.invalid_first_character_of_tag_name);
-                    if (!self.hasElementInTableScope(name)) {
-                        return;
-                    }
-                    self.popUntilTagName("select");
-                    self.resetInsertionModeAppropriately();
-                    try self.processToken(token);
-                } else {
-                    try self.handleInSelectMode(token);
-                }
-            },
-            else => {
-                try self.handleInSelectMode(token);
-            },
-        }
-    }
-
     /// Handle token in "in template" insertion mode.
     /// HTML Standard §13.2.6.4.16
     fn handleInTemplateMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
@@ -3979,6 +4005,12 @@ pub const TreeBuilder = struct {
         for (attrs) |attr| {
             try element.addAttribute(attr.getName(), attr.getValue(), null);
         }
+        // Step 15's parser conditions; the adapter associates.
+        if (self.form_element) |form| {
+            if (namespace == .html and self.fragment_context == null and !self.parsingTemplateContents() and
+                isFormAssociatedName(name) and !(isListedName(name) and tagHasAttribute(tag, "form")))
+                element.parser_form = form;
+        }
         self.keepDetached(element);
 
         // Notify DOM adapter of element creation (for incremental DOM conversion)
@@ -4285,12 +4317,6 @@ pub const TreeBuilder = struct {
         };
     }
 
-    /// Check if element is transparent in select scope (not a boundary).
-    fn isSelectScopeTransparent(name: []const u8) bool {
-        return (name.len == 8 and std.mem.eql(u8, name, "optgroup")) or
-            (name.len == 6 and std.mem.eql(u8, name, "option"));
-    }
-
     /// Check if element is in scope.
     /// Optimized with length-based scope boundary checks.
     fn hasElementInScope(self: *TreeBuilder, tag_name: []const u8) bool {
@@ -4299,6 +4325,19 @@ pub const TreeBuilder = struct {
             i -= 1;
             const node = self.open_elements.get(i) orelse continue;
             if (node.namespace == .html and node.hasTagName(tag_name)) return true;
+            if (isScopeBoundary(node)) return false;
+        }
+        return false;
+    }
+
+    /// "Has an element in scope that is an HTML element and whose tag name is
+    /// one of h1, h2, h3, h4, h5, or h6": the heading end tags' test.
+    fn hasHeadingInScope(self: *TreeBuilder) bool {
+        var i = self.open_elements.len;
+        while (i > 0) {
+            i -= 1;
+            const node = self.open_elements.get(i) orelse continue;
+            if (node.namespace == .html and node.local_name != null and isHeadingName(node.local_name.?)) return true;
             if (isScopeBoundary(node)) return false;
         }
         return false;
@@ -4608,7 +4647,8 @@ pub const TreeBuilder = struct {
         }
     }
 
-    /// Reset insertion mode appropriately.
+    /// Reset insertion mode appropriately: steps 3-15. There is no select
+    /// step; a select on the stack falls through to its ancestors.
     pub fn resetInsertionModeAppropriately(self: *TreeBuilder) void {
         var last = false;
         var i = self.open_elements.len;
@@ -4632,10 +4672,6 @@ pub const TreeBuilder = struct {
                 continue;
             }
 
-            if (node.hasTagName("select")) {
-                self.insertion_mode = .in_select;
-                return;
-            }
             if (node.hasTagName("td") or node.hasTagName("th")) {
                 if (!last) {
                     self.insertion_mode = .in_cell;
@@ -4859,23 +4895,6 @@ pub const TreeBuilder = struct {
         return false;
     }
 
-    /// Check if element is in select scope.
-    /// Optimized with length-based scope boundary checks.
-    fn hasElementInSelectScope(self: *TreeBuilder, tag_name: []const u8) bool {
-        var i = self.open_elements.len;
-        while (i > 0) {
-            i -= 1;
-            const node = self.open_elements.get(i) orelse continue;
-            if (node.hasTagName(tag_name)) return true;
-
-            // In select scope, only optgroup and option are transparent
-            if (node.local_name) |name| {
-                if (!isSelectScopeTransparent(name)) return false;
-            }
-        }
-        return false;
-    }
-
     /// Check if there is a tbody, thead, or tfoot in table scope.
     fn hasTableBodyElementInTableScope(self: *TreeBuilder) bool {
         return self.hasElementInTableScope("tbody") or
@@ -5092,6 +5111,34 @@ fn isSpecialBlockElement(name: []const u8) bool {
     return false;
 }
 
+/// Whether `name` is one of "h1", "h2", "h3", "h4", "h5", "h6".
+fn isHeadingName(name: []const u8) bool {
+    return name.len == 2 and name[0] == 'h' and name[1] >= '1' and name[1] <= '6';
+}
+
+/// HTML's form-associated elements: button, fieldset, img, input, object,
+/// output, select, textarea (and form-associated custom elements, which the
+/// parser never associates).
+fn isFormAssociatedName(name: []const u8) bool {
+    return isListedName(name) or std.mem.eql(u8, name, "img");
+}
+
+/// HTML's listed elements: button, fieldset, input, object, output, select,
+/// textarea.
+fn isListedName(name: []const u8) bool {
+    return std.StaticStringMap(void).initComptime(.{
+        .{ "button", {} }, .{ "fieldset", {} }, .{ "input", {} },    .{ "object", {} },
+        .{ "output", {} }, .{ "select", {} },   .{ "textarea", {} },
+    }).has(name);
+}
+
+fn tagHasAttribute(tag: TagToken, name: []const u8) bool {
+    for (tag.attributes.toSlice()) |attribute| {
+        if (std.mem.eql(u8, attribute.getName(), name)) return true;
+    }
+    return false;
+}
+
 /// Check if tag name is a formatting element.
 fn isFormattingElement(name: []const u8) bool {
     const formatting = [_][]const u8{
@@ -5201,7 +5248,8 @@ test "TreeBuilder - init" {
 }
 
 test "InsertionMode - all modes defined" {
-    // Verify all 24 insertion modes are defined
+    // Verify all 21 insertion modes are defined (the current parser has no
+    // "in select" or "in select in table")
     const modes = [_]InsertionMode{
         .initial,
         .before_html,
@@ -5218,8 +5266,6 @@ test "InsertionMode - all modes defined" {
         .in_table_body,
         .in_row,
         .in_cell,
-        .in_select,
-        .in_select_in_table,
         .in_template,
         .after_body,
         .in_frameset,
@@ -5227,7 +5273,7 @@ test "InsertionMode - all modes defined" {
         .after_after_body,
         .after_after_frameset,
     };
-    try std.testing.expectEqual(@as(usize, 23), modes.len);
+    try std.testing.expectEqual(@as(usize, 21), modes.len);
 }
 
 test "isHtmlWhitespace" {

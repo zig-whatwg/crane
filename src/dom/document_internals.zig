@@ -335,6 +335,50 @@ pub fn isScriptingEnabled(instance: *runtime.Instance) bool {
     return internal.scripting_enabled;
 }
 
+/// DOM "allow declarative shadow roots", the value an HTML parser for the
+/// document takes (HTML "parse HTML from a string", document.open's step 16).
+/// Every navigable's document - navigation's and the initial about:blank -
+/// is created with it true (HTML "create and initialize a Document object",
+/// "create a new browsing context"), so a document with a browsing context
+/// answers true; any other answers its stored flag (parseHTMLUnsafe sets it,
+/// cloning copies it; DOMParser, createHTMLDocument and XHR documents keep
+/// false).
+pub fn allowsDeclarativeShadowRoots(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.allow_declarative_shadow_roots or internal.default_view != null;
+}
+
+/// A listed or form-associated element the HTML parser associated with the
+/// form element pointer's form ("create an element for a token" step 15)
+/// where the tree alone would not: the two instances and their slab
+/// generations when the association was made. A document keeps a list of
+/// them (html/form_associated.zig owns their rules); empty for nearly every
+/// document.
+pub const ParserFormAssociation = struct {
+    control: *runtime.Instance,
+    control_generation: u64,
+    form: *runtime.Instance,
+    form_generation: u64,
+};
+
+/// `document`'s parser form associations, for reading and removing in place.
+pub fn parserFormAssociations(instance: *runtime.Instance) ?*std.ArrayListUnmanaged(ParserFormAssociation) {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.parser_form_associations;
+}
+
+/// Record a parser form association in `document`.
+pub fn addParserFormAssociation(instance: *runtime.Instance, association: ParserFormAssociation) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try internal.parser_form_associations.append(internal.allocator, association);
+}
+
+/// Set the document's stored "allow declarative shadow roots".
+pub fn setAllowDeclarativeShadowRoots(instance: *runtime.Instance, value: bool) void {
+    const internal = getInternal(instance) orelse return;
+    internal.allow_declarative_shadow_roots = value;
+}
+
 /// Set scripting enabled flag.
 pub fn setScriptingEnabled(instance: *runtime.Instance, enabled: bool) void {
     if (getInternal(instance)) |internal| {

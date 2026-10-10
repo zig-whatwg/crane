@@ -132,6 +132,36 @@ pub fn algorithmToString(algorithm: HashAlgorithm) []const u8 {
     };
 }
 
+/// CSP §6.7.1.2: strongest reporting algorithm requested by this source list.
+/// This allocation-free check precedes body hashing and report construction.
+pub fn reportingAlgorithm(source_list: *const types.SourceList) ?HashAlgorithm {
+    var strongest: ?HashAlgorithm = null;
+    for (source_list.expressions.items) |expression| {
+        const value = expression.raw_value;
+        const algorithm: HashAlgorithm = if (std.ascii.eqlIgnoreCase(value, "'report-sha512'"))
+            .sha512
+        else if (std.ascii.eqlIgnoreCase(value, "'report-sha384'"))
+            .sha384
+        else if (std.ascii.eqlIgnoreCase(value, "'report-sha256'"))
+            .sha256
+        else
+            continue;
+        if (strongest == null or @intFromEnum(algorithm) > @intFromEnum(strongest.?)) strongest = algorithm;
+    }
+    return strongest;
+}
+
+/// CSP §4.1.4 steps 4-7. Null means no reporting keyword; a null body means
+/// an opaque response and produces an owned empty string, revealing no bytes.
+/// A readable empty response is hashed normally. Every non-null result is owned.
+pub fn hashForReport(allocator: std.mem.Allocator, source_list: *const types.SourceList, body: ?[]const u8) !?[]const u8 {
+    const algorithm = reportingAlgorithm(source_list) orelse return null;
+    const bytes = body orelse return try allocator.dupe(u8, "");
+    const digest = try computeHash(allocator, algorithm, bytes);
+    defer allocator.free(digest);
+    return try std.fmt.allocPrint(allocator, "{s}-{s}", .{ algorithmToString(algorithm), digest });
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

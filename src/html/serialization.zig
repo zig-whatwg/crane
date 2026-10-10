@@ -17,6 +17,17 @@ pub fn fragment(node: *runtime.Instance, force_html: bool) !runtime.DOMString {
     return serialize(node.ctx.allocator, node, true, force_html or try isHtmlDocument(node), true);
 }
 
+/// HTML fragment serialization with its `serializableShadowRoots` and
+/// `shadowRoots` inputs (getHTML): a shadow host's shadow root is serialized
+/// as a declarative one when it is serializable and serializableShadowRoots
+/// is true, or when shadowRoots names it.
+pub fn fragmentWithShadowRoots(node: *runtime.Instance, serializable_shadow_roots: bool, shadow_roots: []const *runtime.Instance) !runtime.DOMString {
+    var writer = Writer{ .allocator = node.ctx.allocator, .html = true, .well_formed = true, .serializable_shadow_roots = serializable_shadow_roots, .shadow_roots = shadow_roots };
+    defer writer.deinit();
+    try writer.children(node, null);
+    return runtime.DOMString.initOwned(try writer.output.toOwnedSlice(writer.allocator));
+}
+
 pub fn outer(node: *runtime.Instance) !runtime.DOMString {
     return serialize(node.ctx.allocator, node, false, try isHtmlDocument(node), true);
 }
@@ -72,6 +83,10 @@ const Writer = struct {
     bindings: std.ArrayList(Binding) = .empty,
     generated: std.ArrayList([]u8) = .empty,
     prefix_index: usize = 1,
+    /// The HTML fragment serialization algorithm's serializableShadowRoots
+    /// and shadowRoots (getHTML's options; false and empty otherwise).
+    serializable_shadow_roots: bool = false,
+    shadow_roots: []const *runtime.Instance = &.{},
 
     fn deinit(self: *Writer) void {
         self.output.deinit(self.allocator);
@@ -132,10 +147,62 @@ const Writer = struct {
             defer name.deinit(parent.ctx.allocator);
             if (same(optionalString(ns), html_ns) and isVoid(name.asSlice())) return;
         }
+        // HTML fragment step 4: a shadow host's shadow root, when asked for.
+        // innerHTML and outerHTML ask for none, and look nothing up.
+        if (self.html and (self.serializable_shadow_roots or self.shadow_roots.len != 0) and parent.stateAs(interfaces.Element.State) != null) {
+            if (dom.shadow_hosts.rootForHost(parent)) |shadow| try self.shadowRoot(shadow);
+        }
         const target = try dom.template_contents.insertionTarget(parent);
         var child = try interfaces.Node.get_firstChild(target);
         while (child) |current| : (child = try interfaces.Node.get_nextSibling(current))
             try self.node(current, namespace);
+    }
+
+    /// HTML fragment serialization step 4.2: `shadow`, a shadow host's
+    /// shadow root, as a declarative shadow root's template - when
+    /// serializableShadowRoots is true and it is serializable, or shadowRoots
+    /// contains it. The attribute order is the spec's, which Chrome, Firefox
+    /// and Safari emit (shadow-dom/declarative/gethtml.html 6908/6908 in all
+    /// three, wpt.fyi aligned stable runs 6218298311311360, 4877098740350976,
+    /// 5164107446878208).
+    fn shadowRoot(self: *Writer, shadow: *runtime.Instance) anyerror!void {
+        const serializable = try interfaces.ShadowRoot.get_serializable(shadow);
+        const listed = for (self.shadow_roots) |root| {
+            if (root == shadow) break true;
+        } else false;
+        if (!(self.serializable_shadow_roots and serializable) and !listed) return;
+        // 4.2.1-4.2.3.
+        try self.add("<template shadowrootmode=\"");
+        try self.add(if (try interfaces.ShadowRoot.get_mode(shadow) == ._open_) "open" else "closed");
+        try self.add("\"");
+        // 4.2.4-4.2.7.
+        if (try interfaces.ShadowRoot.get_delegatesFocus(shadow)) try self.add(" shadowrootdelegatesfocus=\"\"");
+        if (serializable) try self.add(" shadowrootserializable=\"\"");
+        if (try interfaces.ShadowRoot.get_slotAssignment(shadow) == ._manual_) try self.add(" shadowrootslotassignment=\"manual\"");
+        if (try interfaces.ShadowRoot.get_clonable(shadow)) try self.add(" shadowrootclonable=\"\"");
+        // 4.2.8-4.2.9: shouldAppendRegistryAttribute.
+        if (try appendsRegistryAttribute(shadow)) try self.add(" shadowrootcustomelementregistry=\"\"");
+        // 4.2.10-4.2.12.
+        try self.add(">");
+        try self.children(shadow, null);
+        try self.add("</template>");
+    }
+
+    /// Step 4.2.8: false when the shadow root's node document's registry and
+    /// its own are both null or both global; true otherwise.
+    fn appendsRegistryAttribute(shadow: *runtime.Instance) !bool {
+        const document = (try interfaces.Node.get_ownerDocument(shadow)) orelse return false;
+        const document_registry = try interfaces.Document.get_customElementRegistry(document);
+        const shadow_registry = try interfaces.ShadowRoot.get_customElementRegistry(shadow);
+        if (document_registry == null and shadow_registry == null) return false;
+        if (isGlobalRegistry(document_registry) and isGlobalRegistry(shadow_registry)) return false;
+        return true;
+    }
+
+    /// DOM "is a global custom element registry": non-null and not scoped.
+    fn isGlobalRegistry(registry: ?*runtime.Instance) bool {
+        const value = registry orelse return false;
+        return !dom.custom_elements.isScoped(value);
     }
 
     fn rawText(node_value: *runtime.Instance) !bool {

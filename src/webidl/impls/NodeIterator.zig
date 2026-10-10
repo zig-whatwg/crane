@@ -11,6 +11,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -105,6 +106,12 @@ pub const InternalState = struct {
     document: ?*runtime.Instance = null,
     document_generation: u64 = 0,
 
+    /// Whether the root edge was drawn, and the reference node the reference
+    /// edge holds (null while the reference is the root, which the root's
+    /// edge keeps): see `keepRoot` and `setReference`.
+    root_traced: bool = false,
+    traced_reference: ?*runtime.Instance = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -129,6 +136,36 @@ const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
 fn getInternal(instance: *runtime.Instance) *InternalState {
     return Accessor.getCast(instance);
+}
+
+/// The members an iterator keeps its nodes in (engine.traceChild): its root,
+/// and its reference while that is another node. An iterator script holds
+/// keeps them - and through them their tree and document - for as long as it
+/// lives. Blink: NodeIteratorBase::Trace visits root_, NodeIterator::Trace
+/// visits reference_ (core/dom/node_iterator.cc). They were bare pointers,
+/// and `root` read a freed node once its tree was collected (lane ownerdoc,
+/// crane/od-node-iterator-keeps-its-nodes.html).
+///
+/// The reference is kept on its own: it stays inside the root's subtree
+/// while nothing is removed, but the pre-removing steps move it to the
+/// removed node's parent or preceding node, which is outside the root when
+/// the removed node is the root's ancestor.
+///
+/// An iterator is made only by createNodeIterator(), which the binding wraps
+/// as it returns: until then traceChild holds the nodes strongly for the
+/// wrapper it waits for, and `deinit` lets that hold go if the iterator is
+/// freed unwrapped (an error inside createNodeIterator).
+const root_slot: engine.TracedSlot = .{ .name = "root" };
+const reference_slot: engine.TracedSlot = .{ .name = "reference" };
+
+/// Set `instance`'s reference to `node`, keeping it (`reference_slot`) when it
+/// is not the root.
+fn setReference(instance: *runtime.Instance, internal: *InternalState, node: ?*runtime.Instance) void {
+    internal.reference = node;
+    const kept: ?*runtime.Instance = if (node == internal.root) null else node;
+    if (kept == internal.traced_reference) return;
+    internal.traced_reference = kept;
+    if (kept) |n| engine.traceChild(instance, n, reference_slot) else engine.forgetTracedChild(instance, reference_slot);
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -171,6 +208,10 @@ pub fn deinit(instance: *runtime.Instance) void {
                 document_internals.unregisterNodeIterator(doc, instance);
             }
         }
+        // An iterator its wrapper's collection frees has no edges left to
+        // end; one freed unwrapped lets go of what waits for its wrapper.
+        if (internal.root_traced) engine.forgetTracedChild(instance, root_slot);
+        if (internal.traced_reference != null) engine.forgetTracedChild(instance, reference_slot);
         node_filter.release(internal.filter);
         internal.filter = null;
         internal.deinit();
@@ -191,7 +232,9 @@ fn setUp(
     const internal = getInternal(instance);
     // Step 2: Set iterator's root and iterator's reference to root.
     internal.root = root;
-    internal.reference = root;
+    setReference(instance, internal, root);
+    engine.traceChild(instance, root, root_slot);
+    internal.root_traced = true;
     // Step 3: Set iterator's pointer before reference to true.
     internal.pointer_before_reference = true;
     // Step 4: Set iterator's whatToShow to whatToShow.
@@ -329,7 +372,7 @@ fn traverse(instance: *runtime.Instance, direction: Direction) ImplError!?*runti
     }
 
     // Step 4: Set iterator's reference to node
-    internal.reference = node;
+    setReference(instance, internal, node);
 
     // Step 5: Set iterator's pointer before reference to beforeNode
     internal.pointer_before_reference = before_node;
@@ -479,7 +522,7 @@ pub fn preRemoveSteps(instance: *runtime.Instance, to_be_removed: *runtime.Insta
 
         // Step 2.2: If next is non-null, set reference to next and return
         if (next) |next_node| {
-            internal.reference = next_node;
+            setReference(instance, internal, next_node);
             return;
         }
 
@@ -498,13 +541,13 @@ pub fn preRemoveSteps(instance: *runtime.Instance, to_be_removed: *runtime.Insta
     if (to_be_removed_base.previous_sibling) |prev_sibling| {
         // Get the runtime.Instance for the previous sibling's last inclusive descendant
         const last_desc = getLastInclusiveDescendantBase(prev_sibling);
-        internal.reference = instance_bridge.getInstanceTyped(runtime.Instance, last_desc);
+        setReference(instance, internal, instance_bridge.getInstanceTyped(runtime.Instance, last_desc));
     } else {
         // Use parent if no previous sibling
         if (to_be_removed_base.parent_node) |parent_base| {
-            internal.reference = instance_bridge.getInstanceTyped(runtime.Instance, parent_base);
+            setReference(instance, internal, instance_bridge.getInstanceTyped(runtime.Instance, parent_base));
         } else {
-            internal.reference = null;
+            setReference(instance, internal, null);
         }
     }
 }

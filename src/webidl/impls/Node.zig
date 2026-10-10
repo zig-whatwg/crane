@@ -32,6 +32,7 @@ const CharacterDataImpl = @import("CharacterData.zig");
 pub const State = Node.State;
 
 const log = std.log.scoped(.node);
+const refcount_log = std.log.scoped(.refcount);
 
 pub const ImplError = error{
     NotImplemented,
@@ -101,6 +102,11 @@ pub const InternalState = struct {
     /// The owner document for this node
     /// Document nodes return null from ownerDocument getter
     owner_document: ?*runtime.Instance = null,
+    /// `owner_document`'s slab generation when it was set: the net under the
+    /// rule that a node keeps its document (dom.node_document.traced_slot).
+    /// A document freed under a node that names it - a hole in that rule -
+    /// reads as an error and a log line, never as the freed object.
+    owner_document_generation: u64 = 0,
 
     /// Cached childNodes NodeList (lazily created)
     /// This is a live NodeList that reflects changes to the tree
@@ -155,6 +161,8 @@ pub fn installHooks() void {
     // `dom.node_document`, never through this impl. The hook is installed
     // here, before anything can hold this node to set its document.
     dom_module.node_document.install(.{ .set = &setNodeDocumentHook });
+    // The reference counts reach a node's live node document through here.
+    dom_module.refcount.install(.{ .node_document_counts = &nodeDocumentCounts });
     // And a parser's DOM adapter frees a node it made and never inserted
     // through `dom.node_creation`, as the tree teardown frees a child.
     dom_module.node_creation.installNode(.{
@@ -304,6 +312,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                         node_base.child_nodes.deinit();
                         dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
                         dom_module.node_holds.nodeReleased(node_base);
+                        releaseDocumentCounts(internal, node_base);
                         // Free dynamically allocated node_name if it was allocated
                         if (node_base.node_name_allocated and node_base.node_name.len > 0) {
                             internal.allocator.free(@constCast(node_base.node_name));
@@ -338,6 +347,7 @@ pub fn deinit(instance: *runtime.Instance) void {
             node_base.child_nodes.deinit();
             dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
             dom_module.node_holds.nodeReleased(node_base);
+            releaseDocumentCounts(internal, node_base);
 
             freeNodeName(internal, node_base);
 
@@ -717,7 +727,19 @@ pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!?*runtime.Instanc
         return null;
     }
 
-    return internal.owner_document;
+    return liveOwnerDocument(internal);
+}
+
+/// `internal`'s node document, through the net (`owner_document_generation`):
+/// a document freed under the node that names it is never handed out. A node
+/// keeps its document, so a freed one is a bug, logged.
+fn liveOwnerDocument(internal: *const InternalState) error{InvalidStateError}!?*runtime.Instance {
+    const document = internal.owner_document orelse return null;
+    if (runtime.SlabAllocator.generationOf(document) != internal.owner_document_generation) {
+        log.warn("a node's document was freed while the node named it (node type {d})", .{internal.node_type});
+        return error.InvalidStateError;
+    }
+    return document;
 }
 
 /// Getter for parentNode
@@ -1994,7 +2016,10 @@ fn setNodeDocumentHook(node: *runtime.Instance, document: ?*runtime.Instance) do
 
 pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const previous = internal.owner_document;
+    const previous_counts = liveDocumentCounts(internal);
     internal.owner_document = doc;
+    internal.owner_document_generation = if (doc) |document| runtime.SlabAllocator.generationOf(document) else 0;
 
     // The tree algorithms in src/dom read the node document off the NodeBase,
     // as the document's own NodeBase. Both copies name the same document:
@@ -2008,6 +2033,71 @@ pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !v
                 if (document_internal.node_base) |document_base| base.owner_document = @ptrCast(@alignCast(document_base));
             }
         }
+        if (doc != previous) {
+            keepNodeDocument(instance, internal.node_type, base, doc);
+            // The node's reference - and, a detached root, its holds - move
+            // to the new document's counts (refcount design 1.5, D6).
+            dom_module.refcount.nodeDocumentChanged(base, previous_counts, if (doc) |document| dom_module.refcount.documentCounts(document) else null);
+        }
+    }
+}
+
+/// The counts of the node document `internal` names, or null when it names
+/// none - or one freed under it (its slot's generation moved on), whose
+/// counts went with it.
+fn liveDocumentCounts(internal: *InternalState) ?*dom_module.refcount.DocumentCounts {
+    const document = internal.owner_document orelse return null;
+    if (runtime.SlabAllocator.generationOf(document) != internal.owner_document_generation) return null;
+    return dom_module.refcount.documentCounts(document);
+}
+
+/// dom.refcount: the counts of `node`'s live node document.
+fn nodeDocumentCounts(node: *runtime.Instance) ?*dom_module.refcount.DocumentCounts {
+    const internal = getInternal(node) orelse return null;
+    return liveDocumentCounts(internal);
+}
+
+/// The node is being freed: its node document's counts let it go (refcount
+/// design 1.5). A document freed before its node - the realm-end teardown
+/// order lane ownerdoc found (a template's inert document before its
+/// contents) - has no counts left to update; that is the case step 7's
+/// referencing-node count makes impossible, by keeping the document's
+/// storage until the count is zero.
+fn releaseDocumentCounts(internal: *InternalState, base: *NodeBase) void {
+    const counts = liveDocumentCounts(internal);
+    if (counts == null and internal.owner_document != null and
+        runtime.SlabAllocator.generationOf(internal.owner_document.?) != internal.owner_document_generation)
+    {
+        if (dom_module.refcount.diagnosticsOn()) refcount_log.warn("a node outlived its node document's storage (node type {d})", .{base.node_type});
+    }
+    dom_module.refcount.nodeFreed(base, counts);
+}
+
+/// A node keeps its node document alive for as long as the node lives
+/// (dom.node_document.traced_slot): a wrapped root's upward edge, which the
+/// engine adapter's node tracing points at the document, is redrawn here when
+/// adopt changes the root's document, and REPLACES the old target, so the node
+/// lets its old document go. Adopt removes a node from its parent first, so
+/// the adopted node is a root here; its wrapped descendants keep their
+/// parents, whose chain reaches it. Blink moves the traced tree scope
+/// (TreeScopeAdopter); WebKit moves the node's count from the old document
+/// to the new (Node::moveTreeToNewScope,
+/// Document::decrementReferencingNodeCount).
+///
+/// A node script has not seen draws nothing - never engine.traceChild for an
+/// unwrapped owner, which would hold the document strongly until a wrapper
+/// that may never come (every node a parser makes): its wrapper, when made,
+/// points at the document it has then. The pointer test comes first, so a
+/// node being created pays one field read (refcount design 2.2).
+fn keepNodeDocument(instance: *runtime.Instance, node_type: u16, base: *NodeBase, doc: ?*runtime.Instance) void {
+    // A node in a tree reaches its document through its parent: the slot
+    // holds the parent there (node tracing), and a root's holds its document.
+    if (node_type == NodeType.DOCUMENT_NODE or base.parent_node != null) return;
+    if (base.bound_v8_wrapper == null or !engine.hasWrapper(instance)) return;
+    if (doc) |document| {
+        engine.traceChild(instance, document, dom_module.node_document.traced_slot);
+    } else {
+        engine.forgetTracedChild(instance, dom_module.node_document.traced_slot);
     }
 }
 
@@ -2104,7 +2194,7 @@ pub fn getOwnerDocument(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     // Document nodes have no owner document (they ARE the document)
     if (internal.node_type == NodeType.DOCUMENT_NODE) return null;
-    return internal.owner_document;
+    return liveOwnerDocument(internal) catch null;
 }
 
 /// Append a node as the last child

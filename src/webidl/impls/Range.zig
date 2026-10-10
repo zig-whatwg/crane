@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -71,6 +72,11 @@ pub const InternalState = struct {
     /// only if the document it joined is still the object at that address.
     owner_generation: u64 = 0,
 
+    /// The nodes the boundary edges hold (`keepContainers`): the start
+    /// container, and the end container while it is another node.
+    traced_start: ?*runtime.Instance = null,
+    traced_end: ?*runtime.Instance = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -85,6 +91,39 @@ pub const InternalState = struct {
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
+/// The members a live range keeps its boundary nodes in (engine.traceChild).
+/// A range script holds keeps its start and end nodes - and through them
+/// their trees and their document - for as long as it lives. Blink:
+/// Range::Trace visits start_ and end_, and RangeBoundaryPoint::Trace their
+/// containers (core/dom/range.cc); StaticRange here keeps its containers the
+/// same way. They were bare pointers, so a range whose nodes' tree was
+/// collected answered from freed nodes, or crashed (lane ownerdoc,
+/// crane/od-range-keeps-its-containers.html).
+///
+/// Redrawn whenever a boundary moves: by the range's own methods and by the
+/// live-range steps of the mutation algorithms (`setStartBoundary`,
+/// `setEndBoundary`, the replace-data steps through setStart/setEnd). A range
+/// made by native code - Selection's, cloneRange's, createRange's before the
+/// binding wraps it - holds its nodes strongly through traceChild until its
+/// wrapper is made, and `deinit` lets that hold go if it is freed unwrapped.
+const start_slot: engine.TracedSlot = .{ .name = "startContainer" };
+const end_slot: engine.TracedSlot = .{ .name = "endContainer" };
+
+/// Make the boundary edges hold `range`'s current boundary nodes.
+fn keepContainers(range: *runtime.Instance, internal: *InternalState) void {
+    const start = internal.start_container;
+    if (start != internal.traced_start) {
+        internal.traced_start = start;
+        if (start) |node| engine.traceChild(range, node, start_slot) else engine.forgetTracedChild(range, start_slot);
+    }
+    // A collapsed range - the common case - keeps its one node once.
+    const end: ?*runtime.Instance = if (internal.end_container == start) null else internal.end_container;
+    if (end != internal.traced_end) {
+        internal.traced_end = end;
+        if (end) |node| engine.traceChild(range, node, end_slot) else engine.forgetTracedChild(range, end_slot);
+    }
+}
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
@@ -133,6 +172,10 @@ fn boundariesOf(range: *runtime.Instance) ?range_boundaries.Boundaries {
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // A range its wrapper's collection frees has no edges left to end;
+        // one freed unwrapped lets go of what waits for its wrapper.
+        if (internal.traced_start != null) engine.forgetTracedChild(instance, start_slot);
+        if (internal.traced_end != null) engine.forgetTracedChild(instance, end_slot);
         // Leave the document's live-range list, which mutation.zig walks on
         // every insert and remove. Blink holds that list weakly
         // (HeapHashSet<WeakMember<Range>>); here the range removes itself.
@@ -174,6 +217,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// createRange() reaches this; the constructor uses it directly.
 fn collapseLive(range: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
     const internal = getInternal(range) orelse return error.InvalidStateError;
+    defer keepContainers(range, internal);
     internal.start_container = node;
     internal.start_offset = offset;
     internal.end_container = node;
@@ -351,6 +395,7 @@ fn compareBoundaryPoints(
 /// Sets the start of the range to the given boundary point
 pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    defer keepContainers(instance, internal);
 
     // Step 1: If node is a doctype, throw InvalidNodeTypeError
     if (NodeImpl.getNodeType(node)) |nt| {
@@ -390,6 +435,7 @@ pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offse
 /// Sets the end of the range to the given boundary point
 pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    defer keepContainers(instance, internal);
 
     // Step 1: If node is a doctype, throw InvalidNodeTypeError
     if (NodeImpl.getNodeType(node)) |nt| {
@@ -480,6 +526,7 @@ pub fn call_setEndAfter(instance: *runtime.Instance, node: *runtime.Instance) an
 /// DOM §5.3 - Range.collapse(toStart)
 pub fn call_collapse(instance: *runtime.Instance, toStart: webidl.Opt(bool)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    defer keepContainers(instance, internal);
 
     const collapse_to_start = if (toStart.was_passed) toStart.value else false;
     if (collapse_to_start) {
@@ -512,6 +559,7 @@ pub fn call_selectNode(instance: *runtime.Instance, node: *runtime.Instance) any
 /// DOM §5.3 - Range.selectNodeContents(node)
 pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    defer keepContainers(instance, internal);
 
     // If node is a doctype, throw InvalidNodeTypeError
     if (NodeImpl.getNodeType(node)) |nt| {
@@ -764,6 +812,7 @@ fn collapsePoint(bounds: Bounds) struct { node: *runtime.Instance, offset: u32 }
 /// DOM 5.5 "The deleteContents() method steps".
 pub fn call_deleteContents(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    defer keepContainers(instance, internal);
     // Step 2: "Let originalStartNode, originalStartOffset, originalEndNode,
     // and originalEndOffset be this's start node, start offset, end node, and
     // end offset, respectively."
@@ -955,6 +1004,7 @@ fn extract(allocator: std.mem.Allocator, bounds: Bounds) anyerror!Extracted {
 
 /// Extract `instance` and perform extract's step 21 on it.
 fn extractThis(instance: *runtime.Instance, internal: *InternalState) anyerror!*runtime.Instance {
+    defer keepContainers(instance, internal);
     const bounds = Bounds.of(internal) orelse return error.InvalidStateError;
     const extracted = try extract(instance.ctx.allocator, bounds);
     // Step 21: "Set range's start and end to (newNode, newOffset)."
@@ -1062,6 +1112,7 @@ pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instanc
 /// DOM 5.5 "insert" a node into a live range; insertNode(node)'s steps.
 pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    defer keepContainers(instance, internal);
     const start = internal.start_container orelse return error.InvalidStateError;
     const start_offset = internal.start_offset;
     const start_type = try interfaces.Node.get_nodeType(start);
@@ -1198,6 +1249,7 @@ pub fn call_cloneRange(instance: *runtime.Instance) anyerror!*runtime.Instance {
     newInternal.start_offset = internal.start_offset;
     newInternal.end_container = internal.end_container;
     newInternal.end_offset = internal.end_offset;
+    keepContainers(newRange, newInternal);
 
     // The clone is a live range too, in the same document.
     if (internal.owner_document) |doc| {
@@ -1492,6 +1544,7 @@ pub fn setStartBoundary(instance: *runtime.Instance, container: *runtime.Instanc
     const internal = getInternal(instance) orelse return;
     internal.start_container = container;
     internal.start_offset = offset;
+    keepContainers(instance, internal);
 }
 
 /// Set end boundary point (for live range updates during mutations)
@@ -1500,6 +1553,7 @@ pub fn setEndBoundary(instance: *runtime.Instance, container: *runtime.Instance,
     const internal = getInternal(instance) orelse return;
     internal.end_container = container;
     internal.end_offset = offset;
+    keepContainers(instance, internal);
 }
 
 /// Update start offset (for live range updates during mutations)
