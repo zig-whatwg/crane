@@ -575,27 +575,15 @@ pub fn decodeWith(allocator: std.mem.Allocator, input: []const u8, encoding: Enc
     var pending_high: ?u16 = null;
     var position: usize = 0;
     while (true) {
-        const result = decoder.decode(input[position..], &units, true);
+        const result = decoder.decodeReplacement(input[position..], &units, true);
         position += result.bytes_consumed;
         try appendUtf16(allocator, &out, units[0..result.code_units_written], &pending_high);
         switch (result.status) {
             .input_empty => break,
             .output_full => continue,
-            .malformed => {
-                // "Replacement" error mode: U+FFFD, then carry on after the
-                // error's bytes with a decoder in its initial state (the
-                // decoders that report errors - UTF-8 and single-byte - hold
-                // no state across one).
-                try flushPending(allocator, &out, &pending_high);
-                try out.appendSlice(allocator, "\u{FFFD}");
-                const skip: usize = if (result.error_length > 0) result.error_length else 1;
-                position = @min(position + skip, input.len);
-                decoder = encoding.newDecoder();
-                if (position >= input.len) {
-                    // The end of the queue, to a fresh decoder, emits nothing.
-                    break;
-                }
-            },
+            // Replacement mode retains restored bytes and handler state.
+            // A malformed result here is the shared loop's no-progress guard.
+            .malformed => return error.DecodingError,
         }
     }
     try flushPending(allocator, &out, &pending_high);

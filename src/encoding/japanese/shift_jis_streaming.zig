@@ -65,85 +65,52 @@ pub fn decode(
         .shift_jis_lead = state.shift_jis_lead,
     };
 
+    defer state.shift_jis_lead = byte_decoder.shift_jis_lead;
     var in_pos: usize = 0;
     var out_pos: usize = 0;
-
     while (in_pos < input.len) {
-        // Prefetch next cache line for large buffers (64-byte cache lines)
-        if (in_pos + 64 < input.len) {
-            @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
-        }
-
-        if (out_pos >= output.len) {
-            state.shift_jis_lead = byte_decoder.shift_jis_lead;
+        if (out_pos >= output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
+        const byte = input[in_pos];
+        const before = byte_decoder;
+        const result = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
+            // §12.3.1 step 3.10 restores an ASCII trail byte. The byte
+            // handler has already cleared its lead; preserve that state.
             return .{
-                .status = .output_full,
+                .status = .malformed,
                 .bytes_consumed = in_pos,
                 .code_units_written = out_pos,
+                .error_length = if (before.shift_jis_lead != 0 and byte < 0x80) 0 else 1,
             };
-        }
-
-        const byte = input[in_pos];
-
-        const result = byte_decoder.decode(byte) catch {
-            @branchHint(.unlikely); // Decode errors are rare in valid Shift_JIS
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            in_pos += 1;
-
-            byte_decoder.shift_jis_lead = 0x00;
-            continue;
         };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            if (code_point <= 0xFFFF) {
-                output[out_pos] = @intCast(code_point);
+        if (result) |point| {
+            if (point <= 0xffff) {
+                output[out_pos] = @intCast(point);
                 out_pos += 1;
             } else {
-                if (out_pos + 1 >= output.len) {
-                    in_pos -= 1;
-                    state.shift_jis_lead = byte_decoder.shift_jis_lead;
-                    return .{
-                        .status = .output_full,
-                        .bytes_consumed = in_pos,
-                        .code_units_written = out_pos,
-                    };
+                if (output.len - out_pos < 2) {
+                    byte_decoder = before;
+                    return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
                 }
-
-                const adjusted = code_point - 0x10000;
-                const high: u16 = @intCast(0xD800 + (adjusted >> 10));
-                const low: u16 = @intCast(0xDC00 + (adjusted & 0x3FF));
-                output[out_pos] = high;
-                output[out_pos + 1] = low;
+                const adjusted = point - 0x10000;
+                output[out_pos] = @intCast(0xd800 + (adjusted >> 10));
+                output[out_pos + 1] = @intCast(0xdc00 + (adjusted & 0x3ff));
                 out_pos += 2;
             }
         }
+        in_pos += 1;
     }
-
-    state.shift_jis_lead = byte_decoder.shift_jis_lead;
-
-    if (is_last and state.shift_jis_lead != 0x00) {
-        @branchHint(.unlikely); // Incomplete sequences at EOF are rare
-        if (out_pos < output.len) {
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            state.shift_jis_lead = 0x00;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
-        }
+    if (is_last and byte_decoder.shift_jis_lead != 0) {
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .code_units_written = out_pos };
+        // §12.3.1 step 1: clear the pending lead and report its EOF error.
+        _ = byte_decoder.decode(null) catch return .{
+            .status = .malformed,
+            .bytes_consumed = in_pos,
+            .code_units_written = out_pos,
+            .error_length = 0,
+        };
     }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .code_units_written = out_pos,
-    };
+    return .{ .status = .input_empty, .bytes_consumed = in_pos, .code_units_written = out_pos };
 }
 
 pub fn encode(
@@ -287,78 +254,39 @@ pub fn decodeToUtf8(
         .shift_jis_lead = state.shift_jis_lead,
     };
 
+    defer state.shift_jis_lead = byte_decoder.shift_jis_lead;
     var in_pos: usize = 0;
     var out_pos: usize = 0;
-
     while (in_pos < input.len) {
-        // Prefetch next cache line for large buffers (64-byte cache lines)
-        if (in_pos + 64 < input.len) {
-            @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
-        }
-
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
         const byte = input[in_pos];
-
-        const result = byte_decoder.decode(byte) catch {
-            @branchHint(.unlikely); // Decode errors are rare in valid Shift_JIS
-            // Write replacement character (U+FFFD = 0xEF 0xBF 0xBD in UTF-8)
-            if (out_pos + 2 >= output.len) {
-                state.shift_jis_lead = byte_decoder.shift_jis_lead;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
-            }
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            in_pos += 1;
-            byte_decoder.shift_jis_lead = 0x00;
-            continue;
-        };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            if (writeUtf8CodePoint(output, out_pos, code_point)) |bytes_written| {
-                out_pos += bytes_written;
-            } else {
-                // Output buffer full - back up
-                in_pos -= 1;
-                state.shift_jis_lead = byte_decoder.shift_jis_lead;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
-            }
-        }
-    }
-
-    state.shift_jis_lead = byte_decoder.shift_jis_lead;
-
-    if (is_last and state.shift_jis_lead != 0x00) {
-        @branchHint(.unlikely); // Incomplete sequences at EOF are rare
-        // Write replacement character for incomplete sequence
-        if (out_pos + 2 < output.len) {
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            state.shift_jis_lead = 0x00;
-        } else {
+        const before = byte_decoder;
+        const point = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
             return .{
-                .status = .output_full,
+                .status = .malformed,
                 .bytes_consumed = in_pos,
                 .bytes_written = out_pos,
+                .error_length = if (before.shift_jis_lead != 0 and byte < 0x80) 0 else 1,
             };
+        };
+        if (point) |value| {
+            const count = writeUtf8CodePoint(output, out_pos, value) orelse {
+                byte_decoder = before;
+                return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
+            };
+            out_pos += count;
         }
+        in_pos += 1;
     }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .bytes_written = out_pos,
-    };
+    if (is_last and byte_decoder.shift_jis_lead != 0) {
+        if (out_pos == output.len) return .{ .status = .output_full, .bytes_consumed = in_pos, .bytes_written = out_pos };
+        _ = byte_decoder.decode(null) catch return .{
+            .status = .malformed,
+            .bytes_consumed = in_pos,
+            .bytes_written = out_pos,
+            .error_length = 0,
+        };
+    }
+    return .{ .status = .input_empty, .bytes_consumed = in_pos, .bytes_written = out_pos };
 }

@@ -36,143 +36,115 @@ pub const DecoderState = enum {
     escape,
 };
 
+/// Encoding §12.2.1. Restored bytes are drained before the next input byte.
+/// Blink's Iso2022JpDecoder likewise keeps two prepended-byte slots:
+/// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/platform/wtf/text/text_codec_cjk.cc
 pub const Decoder = struct {
     state: DecoderState = .ascii,
     output_state: DecoderState = .ascii,
-    iso2022jp_lead: u8 = 0x00,
+    iso2022jp_lead: u8 = 0,
     iso2022jp_output_flag: bool = false,
+    prepended_bytes: [2]u8 = .{ 0, 0 },
+    prepended_len: u2 = 0,
+
+    pub fn takePrepended(self: *Decoder) ?u8 {
+        if (self.prepended_len == 0) return null;
+        const byte = self.prepended_bytes[0];
+        self.prepended_bytes[0] = self.prepended_bytes[1];
+        self.prepended_len -= 1;
+        return byte;
+    }
+
+    fn restore(self: *Decoder, first: u8, second: ?u8) void {
+        std.debug.assert(self.prepended_len == 0);
+        self.prepended_bytes = .{ first, second orelse 0 };
+        self.prepended_len = if (second != null) 2 else 1;
+    }
 
     pub fn decode(self: *Decoder, byte: ?u8) !?u21 {
-        if (byte == null) {
-            if (self.state != .ascii and self.state != .roman and self.state != .katakana) {
-                return error.InvalidSequence;
-            }
-            return null;
-        }
-
-        const b = byte.?;
-
         switch (self.state) {
-            .ascii, .roman => {
-                if (b == 0x1B) {
+            .ascii, .roman, .katakana, .lead_byte => {
+                // Each state's ESC and end-of-queue branches come before its
+                // output-flag reset. Leading-byte EOF is finished, not error.
+                const b = byte orelse return null;
+                if (b == 0x1b) {
                     self.state = .escape_start;
                     return null;
                 }
-
-                if (b == 0x0E or b == 0x0F or b == 0x1B) {
-                    return error.InvalidSequence;
-                }
-
-                if (b <= 0x7F and self.state == .ascii) {
-                    return @as(u21, b);
-                }
-
-                if (b <= 0x7F and self.state == .roman) {
-                    if (b == 0x5C) {
-                        return 0x00A5;
-                    }
-                    if (b == 0x7E) {
-                        return 0x203E;
-                    }
-                    return @as(u21, b);
-                }
-
-                return error.InvalidSequence;
-            },
-
-            .katakana => {
-                if (b == 0x1B) {
-                    self.state = .escape_start;
-                    return null;
-                }
-
-                if (b >= 0x21 and b <= 0x5F) {
-                    return 0xFF61 + @as(u21, b - 0x21);
-                }
-
-                return error.InvalidSequence;
-            },
-
-            .lead_byte => {
-                if (b == 0x1B) {
-                    self.state = .escape_start;
-                    return error.InvalidSequence;
-                }
-
-                if (b >= 0x21 and b <= 0x7E) {
-                    self.iso2022jp_lead = b;
-                    self.state = .trail_byte;
-                    return null;
-                }
-
-                return error.InvalidSequence;
-            },
-
-            .trail_byte => {
-                if (b == 0x1B) {
-                    self.state = .escape_start;
-                    return error.InvalidSequence;
-                }
-
-                self.state = .lead_byte;
-
-                if (b >= 0x21 and b <= 0x7E) {
-                    const pointer: u32 = (@as(u32, self.iso2022jp_lead - 0x21) * 94) + (b - 0x21);
-
-                    if (pointer < jis0208_index.INDEX.len) {
-                        const code_point = jis0208_index.INDEX[pointer];
-                        if (code_point != 0) {
-                            return code_point;
+                self.iso2022jp_output_flag = false;
+                switch (self.state) {
+                    .ascii, .roman => {
+                        if (b > 0x7f or b == 0x0e or b == 0x0f) return error.InvalidSequence;
+                        if (self.state == .roman) {
+                            if (b == 0x5c) return 0x00a5;
+                            if (b == 0x7e) return 0x203e;
                         }
-                    }
-
+                        return b;
+                    },
+                    .katakana => {
+                        if (b >= 0x21 and b <= 0x5f) return 0xff61 + @as(u21, b - 0x21);
+                        return error.InvalidSequence;
+                    },
+                    .lead_byte => {
+                        if (b < 0x21 or b > 0x7e) return error.InvalidSequence;
+                        self.iso2022jp_lead = b;
+                        self.state = .trail_byte;
+                        return null;
+                    },
+                    else => unreachable,
+                }
+            },
+            .trail_byte => {
+                // Trailing-byte ESC reports the abandoned leading byte;
+                // trailing-byte EOF returns to leading-byte state and errors.
+                self.state = .lead_byte;
+                const b = byte orelse return error.InvalidSequence;
+                if (b == 0x1b) {
+                    self.state = .escape_start;
                     return error.InvalidSequence;
                 }
-
-                return error.InvalidSequence;
+                if (b < 0x21 or b > 0x7e) return error.InvalidSequence;
+                const pointer = @as(usize, self.iso2022jp_lead - 0x21) * 94 + b - 0x21;
+                const point = jis0208_index.INDEX[pointer];
+                return if (point != 0) point else error.InvalidSequence;
             },
-
             .escape_start => {
-                if (b == 0x24 or b == 0x28) {
-                    self.iso2022jp_lead = b;
+                // Escape-start steps 1–3: otherwise restore the byte (not EOF)
+                // and return to the output state before reporting the error.
+                if (byte == 0x24 or byte == 0x28) {
+                    self.iso2022jp_lead = byte.?;
                     self.state = .escape;
                     return null;
                 }
-
+                if (byte) |b| self.restore(b, null);
+                self.iso2022jp_output_flag = false;
                 self.state = self.output_state;
                 return error.InvalidSequence;
             },
-
             .escape => {
-                const lead = self.iso2022jp_lead;
-                self.iso2022jp_lead = 0x00;
-
-                if (lead == 0x28) {
-                    if (b == 0x42) {
-                        self.state = .ascii;
-                        self.output_state = .ascii;
-                        return null;
-                    }
-                    if (b == 0x4A) {
-                        self.state = .roman;
-                        self.output_state = .roman;
-                        return null;
-                    }
-                    if (b == 0x49) {
-                        self.state = .katakana;
-                        self.output_state = .katakana;
-                        return null;
-                    }
+                // Escape steps 1–6: resolve the designation.
+                const leading = self.iso2022jp_lead;
+                self.iso2022jp_lead = 0;
+                const next: ?DecoderState = if (leading == 0x28)
+                    (if (byte == 0x42) .ascii else if (byte == 0x4a) .roman else if (byte == 0x49) .katakana else null)
+                else if (leading == 0x24 and (byte == 0x40 or byte == 0x42))
+                    .lead_byte
+                else
+                    null;
+                if (next) |state| {
+                    // Step 7: consecutive designations are an error, but the
+                    // new designation still determines the decoder's state.
+                    self.state = state;
+                    self.output_state = state;
+                    const previous_output = self.iso2022jp_output_flag;
+                    self.iso2022jp_output_flag = true;
+                    if (previous_output) return error.InvalidSequence;
+                    return null;
                 }
-
-                if (lead == 0x24) {
-                    if (b == 0x40 or b == 0x42) {
-                        self.state = .lead_byte;
-                        self.output_state = .lead_byte;
-                        return null;
-                    }
-                }
-
+                // Steps 8–9 restore one byte at EOF, two otherwise. They may
+                // have arrived in different pushes; keep both in the decoder.
+                self.restore(leading, byte);
+                self.iso2022jp_output_flag = false;
                 self.state = self.output_state;
                 return error.InvalidSequence;
             },

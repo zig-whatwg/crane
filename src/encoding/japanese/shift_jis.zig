@@ -55,7 +55,8 @@ pub const Decoder = struct {
             return error.InvalidSequence;
         }
 
-        if (b < 0x80) {
+        // Encoding §12.3.1 step 4 includes the single byte 0x80.
+        if (b <= 0x80) {
             return @as(u21, b);
         }
 
