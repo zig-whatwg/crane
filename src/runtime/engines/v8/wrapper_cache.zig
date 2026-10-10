@@ -136,7 +136,38 @@ const CacheEntry = struct {
     /// The cache's list of collected entries awaiting their finalizer.
     pending_prev: ?*CacheEntry = null,
     pending_next: ?*CacheEntry = null,
+
+    /// The counted object this wrapper holds a reference on - a node's
+    /// NodeBase - as runtime.lifetime.wrapperAcquired answered it in `set`;
+    /// null for a type that does not count, and once the reference is let go
+    /// (`releaseCounted`). The second pass hands it back without looking the
+    /// node up again (refcount design 2.1, 5.1).
+    counted: ?*anyopaque = null,
 };
+
+/// Let `entry`'s counted reference go (runtime.lifetime), once - only while
+/// its node is alive. A node whose teardown began under its wrapper had it let
+/// go then (`markAsCleanedUp`); one freed some other way - its slot reissued,
+/// or a teardown this cache did not hear because the entry was waiting for
+/// its second pass - is forgotten, never read. Shadow mode (refcount step 4):
+/// the reference decides nothing yet; the collector still frees.
+fn releaseCounted(entry: *CacheEntry) void {
+    const target = entry.counted orelse return;
+    entry.counted = null;
+    if (slotReissued(entry) or runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
+        runtime.lifetime.wrapperForgotten();
+        return;
+    }
+    runtime.lifetime.wrapperReleased(target);
+}
+
+/// Forget `entry`'s counted reference without letting it go: its node goes
+/// with a batch free (`deinitWithoutCallbacks`) and must not be read.
+fn forgetCounted(entry: *CacheEntry) void {
+    if (entry.counted == null) return;
+    entry.counted = null;
+    runtime.lifetime.wrapperForgotten();
+}
 
 /// Why a wrapper is held strongly, beyond what `engineOwns` reads off the
 /// instance itself. Orthogonal reasons: each is set and cleared by its own
@@ -746,6 +777,11 @@ fn finalizeEntry(entry: *CacheEntry) void {
     }
     entry.cache.unlinkPending(entry);
 
+    // The wrapper's reference goes first, while its node is certainly still
+    // there: everything below may free it (refcount design 2.1, "dispose the
+    // handle; deref").
+    releaseCounted(entry);
+
     // Replaced or removed before it was collected: nothing of the instance
     // is this entry's.
     if (entry.stale) {
@@ -1058,6 +1094,16 @@ pub const WrapperCache = struct {
         return count;
     }
 
+    /// Let every wrapper's counted reference go - the live entries' and the
+    /// collected ones waiting for their second pass - at the realm's end,
+    /// before its sweep frees anything.
+    fn releaseAllCounted(self: *Self) void {
+        var it = self.cache.valueIterator();
+        while (it.next()) |entry_ptr| releaseCounted(entry_ptr.*);
+        var at = self.pending_head;
+        while (at) |entry| : (at = entry.pending_next) releaseCounted(entry);
+    }
+
     fn linkPending(self: *Self, entry: *CacheEntry) void {
         entry.pending_prev = null;
         entry.pending_next = self.pending_head;
@@ -1298,6 +1344,11 @@ pub const WrapperCache = struct {
     /// type-specific deinit is called (since weak callbacks may not fire
     /// during shutdown).
     pub fn deinit(self: *Self) void {
+        // Every wrapper's counted reference goes before anything of the realm
+        // is freed: once the sweep below starts, a node's teardown can no
+        // longer tell its entry (`markAsCleanedUp` is off while tearing down).
+        self.releaseAllCounted();
+
         // The nodes this realm queued for deferred teardown go first, while
         // the cache can still answer whether one was wrapped again. Its end
         // (context_manager.removeContextByKey) drained them already, unless it
@@ -1481,6 +1532,15 @@ pub const WrapperCache = struct {
         // data freed, exactly once, as at any realm end.
         self.finalizers.drain();
 
+        // Nothing of the realm's nodes is read again: their counted
+        // references are forgotten, not let go (they go with the batch free).
+        {
+            var it = self.cache.valueIterator();
+            while (it.next()) |entry_ptr| forgetCounted(entry_ptr.*);
+            var at = self.pending_head;
+            while (at) |entry| : (at = entry.pending_next) forgetCounted(entry);
+        }
+
         // Collected entries waiting for their finalizer: nothing of theirs
         // runs now either; their handles and storage go.
         self.orphanPending();
@@ -1648,10 +1708,16 @@ pub const WrapperCache = struct {
                 .{ instance, old_entry, entry },
             );
             v8.v8_Global_ClearWeak(@ptrCast(old_entry.wrapper));
+            releaseCounted(old_entry);
             disposeEntryWrapper(old_entry);
             self.allocator.destroy(old_entry);
         }
         try self.cache.put(instance, entry);
+
+        // The wrapper owns one reference to a counted instance (a node:
+        // runtime.lifetime, refcount design 2.1) - not one made while the
+        // realm's sweep runs, which no longer lets references go.
+        if (!self.is_tearing_down) entry.counted = runtime.lifetime.wrapperAcquired(instance);
 
         // Set weak callback for GC cleanup
         // The wrapper of a node in a tree - or of a window's document - is
@@ -1715,6 +1781,9 @@ pub const WrapperCache = struct {
         while (iter.next()) |entry_ptr| {
             const entry = entry_ptr.*;
 
+            // The wrapper's reference, before anything is freed.
+            releaseCounted(entry);
+
             // Call GC integration to invoke type-specific deinit
             // This is essential for cleanup since weak callbacks were disabled
             if (!wrappedElsewhere(entry.instance, self)) runtime.gc.onObjectFreed(entry.instance);
@@ -1764,6 +1833,14 @@ pub const WrapperCache = struct {
         if (self.cache.get(instance)) |entry| {
             // Mark as already cleaned - deinit will skip onObjectFreed
             entry.instance_already_cleaned = true;
+            // The node's teardown has begun under its live wrapper: the
+            // wrapper's reference goes now, while the node is still there
+            // (its cleanup is marked started, so `releaseCounted`'s guard
+            // would forget it instead).
+            if (entry.counted) |target| {
+                entry.counted = null;
+                runtime.lifetime.wrapperReleased(target);
+            }
             // The instance is gone, its wrapper not: script may still hold
             // it. Weak from here, whatever held it before (a node's tree did,
             // while it had a parent) - its weak callback, which skips an
@@ -1799,6 +1876,9 @@ pub const WrapperCache = struct {
 
             // Clear weak callback first to prevent it from firing
             v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
+
+            // The wrapper's reference goes with it.
+            releaseCounted(entry);
 
             // Dispose the Global<Object>* handle
             disposeEntryWrapper(entry);

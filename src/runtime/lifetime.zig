@@ -45,6 +45,10 @@ pub const Hooks = struct {
     /// The wrapper that took a reference on `target` is finalized (or the
     /// target's own teardown began under it): drop that reference.
     release: ?*const fn (target: *anyopaque) void = null,
+    /// A wrapper's reference whose target was freed under it, not through a
+    /// teardown the adapter heard (`wrapperForgotten`): diagnostics and tests
+    /// only - the count went with the node.
+    forget: ?*const fn () void = null,
 };
 
 // process-wide: dom.refcount's two functions, installed once while the process starts (refcount.install, from Document's and Node's installHooks) and the same for every Browser and thread; read-only after
@@ -55,6 +59,7 @@ var hooks: Hooks = .{};
 pub fn install(owned: Hooks) void {
     if (owned.acquire) |f| hooks.acquire = f;
     if (owned.release) |f| hooks.release = f;
+    if (owned.forget) |f| hooks.forget = f;
 }
 
 /// Tests: replace the hooks, returning the ones there were.
@@ -83,6 +88,17 @@ pub fn wrapperAcquired(instance: *Instance) ?*anyopaque {
 pub fn wrapperReleased(target: *anyopaque) void {
     const release = hooks.release orelse return;
     release(target);
+}
+
+/// A wrapper's reference is dropped without `wrapperReleased`, because its
+/// target is gone: the collector freed the node while the wrapper waited for
+/// its finalizer (a collected root's teardown frees its subtree, whose
+/// wrappers died in the same collection), or the realm's objects go with a
+/// batch free. SHADOW MODE only: once counts decide (step 7) a node with a
+/// wrapper is held, and is never freed under it.
+pub fn wrapperForgotten() void {
+    const forget = hooks.forget orelse return;
+    forget();
 }
 
 /// The comptime predicate `buildVTable` fills `VTable.counted` with: `&node`
