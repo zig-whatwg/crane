@@ -279,11 +279,11 @@ pub const DocumentParser = struct {
     /// container until `release` clears it (5.2, 5.3).
     rescues: std.ArrayListUnmanaged(Rescue) = .empty,
     /// One past the highest kept-roots index this parser reserved
-    /// (`ParserRegistry.reserveSlot`).
+    /// (`node_holds.Registry.reserveIndex`).
     kept_slot_end: usize = 0,
-    /// The Browser's live parsers, which the removing steps consult; null in
-    /// a realm without an engine or a Browser scope.
-    registry: ?*holds.ParserRegistry = null,
+    /// The Browser's scanning holders, which the removing steps consult;
+    /// null in a realm without an engine or a Browser scope.
+    registry: ?*holds.Registry = null,
     /// Only active native calls root the Document; a suspended parser keeps
     /// no independent root, so an unreachable Document/parser graph collects.
     active_calls: usize = 0,
@@ -440,8 +440,8 @@ pub const DocumentParser = struct {
         // A realm with an engine but no Browser scope (a bare test realm) has
         // no registry: its parser rescues only failed insertions.
         if (self.had_engine) {
-            if (holds.ParserRegistry.of(ctx)) |registry| {
-                try registry.register(self);
+            if (holds.Registry.of(ctx)) |registry| {
+                try registry.register(holds.scanner(self));
                 self.registry = registry;
             } else log.debug("parser in a realm without a Browser scope: removals are not rescued", .{});
         }
@@ -620,24 +620,14 @@ pub const DocumentParser = struct {
         if (!self.documentEngineUsable() or !root.ctx.hasEngine()) return;
         self.rescues.ensureUnusedCapacity(self.allocator, 1) catch |err| return self.failRescue(err);
         // Step 5, first half: the index, before any engine allocation.
-        const index = if (self.registry) |registry| registry.reserveSlot(self) else blk: {
+        const index = (if (self.registry) |registry| registry.reserveIndex(self) else null) orelse blk: {
             self.kept_slot_end += 1;
             break :blk self.kept_slot_end - 1;
         };
-        // Step 3: the root's wrapper, made if it has none, held from here on.
-        const wrapper = engine.retainValue(self.ctx, .{ .instance = root }) catch |err| return self.failRescue(err);
-        defer wrapper.release();
-        // Step 4: the Document's container.
-        const container = self.keptRootsContainer() catch |err| return self.failRescue(err);
-        defer container.release();
-        // Step 5: a dense numeric own property - no prototype setter runs.
-        var index_buffer: [32]u8 = undefined;
-        const key = std.fmt.bufPrint(&index_buffer, "{d}", .{index}) catch unreachable;
-        engine.defineOwnProperty(self.ctx, container.borrow(), key, wrapper.borrow(), .{
-            .writable = true,
-            .enumerable = true,
-            .configurable = true,
-        }) catch |err| return self.failRescue(err);
+        // Steps 3-5: the root's wrapper, made if it has none, stored at that
+        // index of the Document's container (made on first use) as a dense
+        // numeric own property - no prototype setter runs - in one step.
+        holds.putRoot(self.document, kept_roots_slot, index, root) catch |err| return self.failRescue(err);
         // Step 6.
         self.rescues.appendAssumeCapacity(.{ .node = root, .generation = generation, .index = index });
     }
@@ -658,26 +648,6 @@ pub const DocumentParser = struct {
         self.rescue(root);
     }
 
-    /// The Document's kept-roots container, OWNED: made on first use and
-    /// published under the fixed member, verified by reading it back while
-    /// the constructor's hold still roots it (traceValue reports no error).
-    fn keptRootsContainer(self: *DocumentParser) !engine.Owned {
-        if (engine.tracedValue(self.document, kept_roots_slot)) |existing| return existing;
-        const made = try engine.createSequenceOfValues(self.ctx, &.{});
-        errdefer made.release();
-        engine.traceValue(self.document, made.borrow(), kept_roots_slot);
-        const published = engine.tracedValue(self.document, kept_roots_slot) orelse {
-            engine.forgetTracedChild(self.document, kept_roots_slot);
-            return error.OutOfMemory;
-        };
-        defer published.release();
-        if (!engine.sameValue(self.ctx, made.borrow(), published.borrow())) {
-            engine.forgetTracedChild(self.document, kept_roots_slot);
-            return error.InvalidStateError;
-        }
-        return made;
-    }
-
     /// At release: clear this parser's slots, so its rescued trees live only
     /// as long as script reaches them. Only while the Document and its realm
     /// are usable; otherwise the container is gone with the Document's
@@ -685,17 +655,7 @@ pub const DocumentParser = struct {
     fn releaseRescues(self: *DocumentParser) void {
         defer self.rescues.clearAndFree(self.allocator);
         if (self.rescues.items.len == 0 or !self.documentEngineUsable()) return;
-        const container = engine.tracedValue(self.document, kept_roots_slot) orelse return;
-        defer container.release();
-        for (self.rescues.items) |kept| {
-            var index_buffer: [32]u8 = undefined;
-            const key = std.fmt.bufPrint(&index_buffer, "{d}", .{kept.index}) catch unreachable;
-            engine.defineOwnProperty(self.ctx, container.borrow(), key, .undefined, .{
-                .writable = true,
-                .enumerable = true,
-                .configurable = true,
-            }) catch {};
-        }
+        for (self.rescues.items) |kept| holds.clearRoot(self.document, kept_roots_slot, kept.index);
     }
 
     fn retainProcessor(context: *anyopaque) void {

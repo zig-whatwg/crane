@@ -18,6 +18,8 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const MutationRecord = interfaces.MutationRecord;
+const dom = @import("dom");
+const node_holds = dom.node_holds;
 
 pub const State = MutationRecord.State;
 
@@ -33,28 +35,39 @@ pub const TYPE_CHILD_LIST: []const u8 = "childList";
 
 /// Internal state for MutationRecord
 /// Spec: https://dom.spec.whatwg.org/#mutationrecord
+///
+/// The record HOLDS every node it names - its target, its two siblings, its
+/// added and removed nodes - for as long as it lives: queued in an
+/// observer's record queue, delivered, or taken. Blink's MutationRecord
+/// holds them natively (core/dom/mutation_record.cc: ChildListRecord traces
+/// target_, added_nodes_, removed_nodes_, previous_sibling_, next_sibling_)
+/// and makes no wrapper until script reads one; so does this one
+/// (src/dom/node_holds.zig): a hold per node, and one rescued wrapper - an
+/// edge from the record's - for the root of a tree that is not a document
+/// with a window. A record is unwrapped while it waits in a record queue, so
+/// such an edge waits, holding its root strongly, in its realm's wrapper
+/// cache until the record is wrapped (delivery, takeRecords()), or until the
+/// record is freed unwrapped (disconnect(), the observer's teardown).
+/// Held as bare pointers, a removed node script let go was freed by the next
+/// collection and the record answered from its freed or reissued slot
+/// (crane/ed-mutation-record-nodes-gc.html).
+///
+/// Its NodeLists are made when script first reads one - Blink's
+/// RecordWithEmptyNodeLists makes its empty ones lazily; here every record
+/// does - each a static list of the nodes the record holds, which holds them
+/// too and belongs to its wrapper from then on. A record script never reads
+/// makes none.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     /// Type of mutation: "attributes", "characterData", or "childList"
     mutation_type: []const u8,
 
-    /// The node that was mutated
-    target: ?*runtime.Instance,
-
-    /// Nodes added (for childList mutations)
-    /// This is a NodeList instance
-    added_nodes: ?*runtime.Instance,
-
-    /// Nodes removed (for childList mutations)
-    /// This is a NodeList instance
-    removed_nodes: ?*runtime.Instance,
-
-    /// Previous sibling of added/removed nodes
-    previous_sibling: ?*runtime.Instance,
-
-    /// Next sibling of added/removed nodes
-    next_sibling: ?*runtime.Instance,
+    /// The held nodes: target, previousSibling, nextSibling (null holds
+    /// nothing), then the added nodes, then the removed nodes.
+    held: node_holds.Holder,
+    added_count: usize = 0,
+    removed_count: usize = 0,
 
     /// Name of changed attribute (for attribute mutations)
     attribute_name: ?[]const u8,
@@ -65,15 +78,11 @@ pub const InternalState = struct {
     /// Old value (for attribute or characterData mutations, if requested)
     old_value: ?[]const u8,
 
-    pub fn init(allocator: std.mem.Allocator) InternalState {
+    pub fn init(allocator: std.mem.Allocator, record: *runtime.Instance) InternalState {
         return .{
             .allocator = allocator,
             .mutation_type = "",
-            .target = null,
-            .added_nodes = null,
-            .removed_nodes = null,
-            .previous_sibling = null,
-            .next_sibling = null,
+            .held = node_holds.Holder.init(allocator, record),
             .attribute_name = null,
             .attribute_namespace = null,
             .old_value = null,
@@ -81,14 +90,26 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // NodeLists and Nodes are owned elsewhere, we don't free them.
-        // `mutation_type` is a literal. The attribute strings are this
-        // record's own copies: `create` took them.
+        // The nodes go with the holds; a NodeList script read is its
+        // wrapper's. `mutation_type` is a literal. The attribute strings are
+        // this record's own copies: `create` took them.
+        self.held.release();
         if (self.attribute_name) |name| self.allocator.free(name);
         if (self.attribute_namespace) |ns| self.allocator.free(ns);
         if (self.old_value) |value| self.allocator.free(value);
     }
+
+    const target_index = 0;
+    const previous_index = 1;
+    const next_index = 2;
+    const nodes_from = 3;
 };
+
+/// A record holds its nodes; the removing steps rescue a held tree. Installed
+/// once, at process start (docs/instances.md "Hooks").
+pub fn installHooks() void {
+    node_holds.installHooks();
+}
 
 /// Helper to access internal state from instance
 /// Get internal state from instance using shared accessor (pointer cast variant)
@@ -110,7 +131,7 @@ pub fn init(
 
     // Initialize internal state
     const internal = try allocator.create(InternalState);
-    internal.* = InternalState.init(allocator);
+    internal.* = InternalState.init(allocator, instance);
 
     // Store internal state in instance
     const state = instance.getState(State);
@@ -134,15 +155,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 // Factory function for creating MutationRecords
 // ============================================================================
 
-/// Create a new MutationRecord with all fields set
-/// Used by mutation observation algorithms
+/// Create a new MutationRecord with all fields set, holding every node it
+/// names. Used by mutation observation algorithms ("queue a mutation record"
+/// step 4.1).
 pub fn create(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
     mutation_type: []const u8,
     target: *runtime.Instance,
-    added_nodes: ?*runtime.Instance,
-    removed_nodes: ?*runtime.Instance,
+    added_nodes: []const *runtime.Instance,
+    removed_nodes: []const *runtime.Instance,
     previous_sibling: ?*runtime.Instance,
     next_sibling: ?*runtime.Instance,
     attribute_name: ?[]const u8,
@@ -161,13 +183,27 @@ pub fn create(
     errdefer if (namespace_copy) |ns| allocator.free(ns);
     const old_value_copy: ?[]const u8 = if (old_value) |v| try allocator.dupe(u8, v) else null;
 
+    errdefer if (old_value_copy) |v| allocator.free(v);
+
     const internal = getInternal(instance);
     internal.mutation_type = mutation_type;
-    internal.target = target;
-    internal.added_nodes = added_nodes;
-    internal.removed_nodes = removed_nodes;
-    internal.previous_sibling = previous_sibling;
-    internal.next_sibling = next_sibling;
+
+    // Everything it names is held from now: the record is queued
+    // unwrapped, and script may let every node in it go before it is
+    // delivered.
+    const count = InternalState.nodes_from + added_nodes.len + removed_nodes.len;
+    var fixed: [16]?*runtime.Instance = undefined;
+    const nodes = if (count <= fixed.len) fixed[0..count] else try allocator.alloc(?*runtime.Instance, count);
+    defer if (count > fixed.len) allocator.free(nodes);
+    nodes[InternalState.target_index] = target;
+    nodes[InternalState.previous_index] = previous_sibling;
+    nodes[InternalState.next_index] = next_sibling;
+    for (added_nodes, 0..) |node, i| nodes[InternalState.nodes_from + i] = node;
+    for (removed_nodes, 0..) |node, i| nodes[InternalState.nodes_from + added_nodes.len + i] = node;
+    try internal.held.hold(?*runtime.Instance, nodes, null);
+    internal.added_count = added_nodes.len;
+    internal.removed_count = removed_nodes.len;
+
     internal.attribute_name = name_copy;
     internal.attribute_namespace = namespace_copy;
     internal.old_value = old_value_copy;
@@ -191,21 +227,45 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Returns the node that was mutated
 pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.target orelse return error.NotImplemented;
+    // Null only once a realm's end freed the node: a teardown net.
+    return internal.held.get(InternalState.target_index) orelse error.InvalidStateError;
 }
 
 /// DOM §7.2 - MutationRecord.addedNodes
-/// Returns the list of added nodes
+/// Returns the list of added nodes: made on this first read ([SameObject]:
+/// the generated interface caches it) from the nodes the record holds.
 pub fn get_addedNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.added_nodes orelse return error.NotImplemented;
+    return makeList(instance, InternalState.nodes_from, internal.added_count);
 }
 
 /// DOM §7.2 - MutationRecord.removedNodes
-/// Returns the list of removed nodes
+/// Returns the list of removed nodes, made as `addedNodes` is.
 pub fn get_removedNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.removed_nodes orelse return error.NotImplemented;
+    return makeList(instance, InternalState.nodes_from + internal.added_count, internal.removed_count);
+}
+
+/// A static NodeList of the `count` held nodes from hold `from`, which
+/// holds them itself: the binding wraps it at once and ties it to this
+/// record both ways ([SameObject]), and it belongs to its wrapper from then
+/// on.
+fn makeList(record: *runtime.Instance, from: usize, count: usize) !*runtime.Instance {
+    const internal = getInternal(record);
+    const allocator = internal.allocator;
+    var fixed: [8]*runtime.Instance = undefined;
+    const buffer = if (count <= fixed.len) fixed[0..count] else try allocator.alloc(*runtime.Instance, count);
+    defer if (count > fixed.len) allocator.free(buffer);
+    var len: usize = 0;
+    for (from..from + count) |index| {
+        // A node a realm's end freed is left out (a teardown net).
+        buffer[len] = internal.held.get(index) orelse continue;
+        len += 1;
+    }
+    const list = try interfaces.NodeList.init(record.ctx.allocator, record.ctx);
+    errdefer runtime.Instance.deinit(list);
+    try dom.node_lists.setStatic(list, buffer[0..len]);
+    return list;
 }
 
 /// DOM §7.2 - MutationRecord.previousSibling
@@ -213,7 +273,7 @@ pub fn get_removedNodes(instance: *runtime.Instance) anyerror!*runtime.Instance 
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
 pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.previous_sibling;
+    return internal.held.get(InternalState.previous_index);
 }
 
 /// DOM §7.2 - MutationRecord.nextSibling
@@ -221,7 +281,7 @@ pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Insta
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
 pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
-    return internal.next_sibling;
+    return internal.held.get(InternalState.next_index);
 }
 
 /// DOM §7.2 - MutationRecord.attributeName

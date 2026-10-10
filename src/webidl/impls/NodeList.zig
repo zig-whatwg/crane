@@ -38,6 +38,7 @@ const callbacks = @import("callbacks");
 const infra = @import("infra");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const NodeList = interfaces.NodeList;
+const node_holds = @import("dom").node_holds;
 
 pub const State = NodeList.State;
 
@@ -66,9 +67,16 @@ pub const LiveCollectionType = enum {
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// The list of nodes (for static NodeLists only)
-    /// Live NodeLists query on-demand and don't populate this
-    nodes: infra.List(*runtime.Instance),
+    /// A static list's nodes, which it HOLDS for as long as it lives,
+    /// whatever happens to the trees they came from: Blink's StaticNodeList
+    /// holds HeapVector<Member<Node>> (core/dom/static_node_list.h), WebKit's
+    /// Vector<Ref<Node>>. Native holds, no wrapper per node: the list roots
+    /// only the root of a tree holding one of them that is not a document
+    /// with a window (src/dom/node_holds.zig). Held as bare pointers, a node
+    /// whose detached tree was collected was freed under the list
+    /// (crane/ed-static-nodelist-gc.html). Live lists query on demand and
+    /// hold nothing here.
+    held: node_holds.Holder,
 
     /// Whether this is a live NodeList (reflects DOM changes) or static
     is_live: bool = false,
@@ -90,15 +98,15 @@ pub const InternalState = struct {
     /// Namespace URI for elements_by_ns filter
     filter_namespace: ?[]const u8 = null,
 
-    pub fn init(allocator: std.mem.Allocator) InternalState {
+    pub fn init(allocator: std.mem.Allocator, list: *runtime.Instance) InternalState {
         return .{
             .allocator = allocator,
-            .nodes = infra.List(*runtime.Instance).init(allocator),
+            .held = node_holds.Holder.init(allocator, list),
         };
     }
 
     pub fn deinit(self: *InternalState) void {
-        self.nodes.deinit();
+        self.held.release();
         if (self.control_name) |name| self.allocator.free(name);
         // Note: filter_name and filter_namespace are slices into
         // other owned memory, don't free them here
@@ -116,7 +124,9 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls fill a static list they created (an element's labels).
-    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .labels = &makeLabels, .named_controls = &makeNamedControls });
+    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls });
+    // A static list holds its nodes; the removing steps rescue a held tree.
+    node_holds.installHooks();
 }
 
 fn makeNamedControls(list: *runtime.Instance, collection: *runtime.Instance, name: []const u8) !void {
@@ -168,7 +178,7 @@ pub fn init(
     const state = instance.getState(State);
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
-    internal.* = InternalState.init(allocator);
+    internal.* = InternalState.init(allocator, instance);
     state.own._internal = internal;
 
     // Initialize length to 0
@@ -177,10 +187,26 @@ pub fn init(
     return instance;
 }
 
-/// dom.node_lists: make an empty list the static list of `nodes`.
-fn setStaticNodes(list: *runtime.Instance, nodes: []const *runtime.Instance) anyerror!void {
+/// dom.node_lists: make an empty list the static list of `nodes`, held.
+/// `within`: a node they all descend from, whose root they share.
+fn setStaticNodes(list: *runtime.Instance, nodes: []const *runtime.Instance, within: ?*runtime.Instance) anyerror!void {
     clear(list);
-    for (nodes) |node| try addNode(list, node);
+    const internal = getInternal(list) orelse return error.InvalidState;
+    const root_hint: ?*@import("dom").NodeBase = if (within) |node|
+        if (@import("dom").instance_bridge.getNodeBase(@ptrCast(node))) |base| node_holds.hostIncludingRoot(base) else null
+    else
+        null;
+    try internal.held.hold(*runtime.Instance, nodes, root_hint);
+    list.getState(State).own.length = @intCast(internal.held.holds.len);
+}
+
+/// dom.node_lists: `setStaticNodes`, given the tree nodes, all descendants
+/// of `within`.
+fn setStaticBases(list: *runtime.Instance, nodes: []const *@import("dom").NodeBase, within: *@import("dom").NodeBase) anyerror!void {
+    clear(list);
+    const internal = getInternal(list) orelse return error.InvalidState;
+    try internal.held.hold(*@import("dom").NodeBase, nodes, node_holds.hostIncludingRoot(within));
+    list.getState(State).own.length = @intCast(internal.held.holds.len);
 }
 
 /// Deinitialize instance
@@ -214,8 +240,8 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return getLiveLength(internal);
     }
 
-    // For static collections, use stored nodes
-    return @intCast(internal.nodes.size());
+    // For static collections, the held nodes
+    return @intCast(internal.held.holds.len);
 }
 
 /// Operation: item(index)
@@ -230,60 +256,22 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
         return getLiveItem(internal, index);
     }
 
-    // For static collections, use stored nodes
-    // Return null for out of bounds per spec
-    const node = internal.nodes.get(index);
-    if (node) |n| {
-        std.log.debug("[NodeList.call_item] Returning index={} Instance={*}", .{ index, n });
-    }
-    return node;
+    // For static collections, the held node; null out of bounds, per spec.
+    return internal.held.get(index);
 }
 
 // ============================================================================
 // Internal helper functions (for DOM implementation)
 // ============================================================================
 
-/// Add a node to the list
-pub fn addNode(instance: *runtime.Instance, node: *runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    try internal.nodes.append(node);
-
-    // Update length in state
-    const state = instance.getState(State);
-    state.own.length = @intCast(internal.nodes.size());
-}
-
-/// Clear all nodes from the list
+/// Clear all nodes from the list, letting go of its holds.
 pub fn clear(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
-    internal.nodes.clear();
+    internal.held.release();
 
     // Update length in state
     const state = instance.getState(State);
     state.own.length = 0;
-}
-
-/// Create a static NodeList from a slice of nodes
-pub fn createFromSlice(allocator: std.mem.Allocator, ctx: runtime.Context, nodes: []const *runtime.Instance) !*runtime.Instance {
-    const instance = try init(allocator, State, &NodeList.vtable, ctx);
-    errdefer deinit(instance);
-
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    for (nodes) |node| {
-        try internal.nodes.append(node);
-    }
-
-    // Update length
-    const state = instance.getState(State);
-    state.own.length = @intCast(internal.nodes.size());
-
-    return instance;
-}
-
-/// Get the nodes as a slice (for iteration)
-pub fn getNodes(instance: *runtime.Instance) []const *runtime.Instance {
-    const internal = getInternal(instance) orelse return &[_]*runtime.Instance{};
-    return internal.nodes.toSlice();
 }
 
 // ============================================================================

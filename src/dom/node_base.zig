@@ -82,6 +82,14 @@ pub const NodeBase = struct {
     /// truth (dom.shadow_hosts.rootForHost).
     is_shadow_host: bool = false,
 
+    /// The holds on this node (src/dom/node_holds.zig): the head of a chain
+    /// of every holder's hold on it - a MutationRecord's, a static
+    /// NodeList's - or null when nothing holds it. The removing steps test it
+    /// for each node a removal visits, so a removal of a subtree nothing in
+    /// which is held pays one field test per node; when something is, the
+    /// chain names exactly the holders that must rescue the subtree's root.
+    holds: ?*@import("node_holds.zig").Hold = null,
+
     /// V8 wrapper for cross-context identity
     /// When set, this wrapper is returned for ALL contexts to ensure `===` identity works.
     /// Solves the problem where MutationObserver addedNodes[0] !== original element

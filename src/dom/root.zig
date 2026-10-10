@@ -82,6 +82,9 @@ pub const activation = @import("activation.zig");
 pub const form_controls = @import("form_controls.zig");
 pub const form_submission = @import("form_submission.zig");
 pub const node_lists = @import("node_lists.zig");
+/// Node holds: native references that keep nodes alive without a wrapper
+/// per node, and the removing steps that rescue a held tree's root.
+pub const node_holds = @import("node_holds.zig");
 pub const teardown_sweeps = @import("teardown_sweeps.zig");
 pub const unloading_cleanup = @import("unloading_cleanup.zig");
 pub const idle_periods = @import("idle_periods.zig");
