@@ -1,0 +1,17 @@
+# Architecture: A bare Context::New in a snapshot agent deserializes Crane's Window context
+
+**Date**: 2026-10-10
+**Lesson**: In an isolate restored from Crane's snapshot, `Context::New(isolate)` with no global template crashes inside V8's bootstrapper. Any operation that makes a context of its own must be tested in a snapshot agent too.
+
+**Why**: `Context::New` with no global template makes context index 0, the snapshot's DEFAULT context. In V8's built-in snapshot, which every agent made with `.from_snapshot = false` uses, that context is a plain JavaScript global. In Crane's snapshot it is the generator's Window global, an instance of Window's instance template that has internal fields (snapshot_generator.zig, steps 5b-5d). For index 0, Genesis sizes the new global proxy from the template passed in, which here is none (bootstrapper.cc, Genesis::Genesis). Contexts added with AddContext use the serialized proxy size instead. The size mismatch is the likely mechanism; what was verified is the symptom and the fix below. In the template-less case, InitializeExperimentalGlobal then faults while installing `Math.f16round`: EXC_BAD_ACCESS / `V8_Fatal` in `String::WriteToFlat`, reached through `MessageFormatter::Format` <- `AddDataProperty` <- `InitializeGlobal_js_float16array`.
+
+**What Happened**: engine.matchesPatternAttribute (lane cxsupport) makes its utility context with a bare `Context::New(isolate)`. Its tests (tests/v8/pattern_attribute_test.zig) passed, because they make their agents without a snapshot. As soon as HTMLInputElement called it (lane smallfix), every page that read `input.validity.patternMismatch` crashed in the WPT runner, whose page agents are restored from the snapshot: crane/fm-pattern-validation.html went from OK to CRASH. `parseJsonInNewGlobal` (WebCrypto "parse a JWK") makes its new global the same way, through `v8_Context_New`. A probe in a snapshot agent crashed with the same stack (2026-10-10, not fixed there yet).
+
+**Fix**: Pass a global template. Genesis then recreates the global object from it and copies the deserialized global's properties onto it. That is the `v8_Context_NewFromSnapshotDefault` path:
+```cpp
+Context::New(isolate, nullptr, ObjectTemplate::New(isolate), MaybeLocal<Value>(),
+             DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr));
+```
+In an isolate made without Crane's snapshot, the same call is an ordinary new context with a plain global. Test it in both kinds of agent. tests/v8/pattern_attribute_snapshot_test.zig loads zig-out/bin/whatwg_snapshot.bin, gives it to initializeEngine for its own tests (deinitializeEngine after), and asserts that the agent really was restored (embedder slot 2 holds the StartupData). It runs only when it is the first file in its process to start V8, which is how a host gives the engine its snapshot. In tests/v8's shared executable, restoring the snapshot after other files had started V8 crashed in V8's isolate deserialization (StringTable::InsertForIsolateDeserialization), before any pattern code; the cause is not established. So the test skips there, says so, and runs under `-Dtest-file=` and `-Dtest-isolation=file`.
+
+**Takeaway**: **A test agent made without a snapshot is not the agent pages get. Any engine operation that makes a context, or depends on what a new context contains, needs a `.from_snapshot = true` test against the real snapshot.**

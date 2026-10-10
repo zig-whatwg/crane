@@ -119,6 +119,9 @@ pub const IndexCache = struct {
 /// HTML document collections, restricted to HTML-namespace descendants.
 pub const DocumentFilter = enum { images, embeds, links, forms, scripts, anchors };
 
+/// HTML 4.9 table collections, each rooted in its owning table/section/row.
+pub const TableFilter = enum { bodies, table_rows, section_rows, row_cells };
+
 /// What the HTMLCollection impl supplies.
 pub const Implementation = struct {
     /// Make `collection` live over `root`'s element children, in tree order.
@@ -129,6 +132,7 @@ pub const Implementation = struct {
     document_elements: *const fn (collection: *runtime.Instance, document: *runtime.Instance, filter: DocumentFilter) void,
     form_controls: *const fn (*runtime.Instance, *runtime.Instance, bool) void,
     select_options: *const fn (*runtime.Instance, *runtime.Instance, bool) void,
+    table: *const fn (*runtime.Instance, *runtime.Instance, TableFilter) void,
     root: *const fn (*runtime.Instance) ?*runtime.Instance,
 };
 
@@ -170,6 +174,10 @@ pub fn formControls(collection: *runtime.Instance, root: *runtime.Instance, fiel
 /// HTML 4.10.7: the select's live options, optionally only selected options.
 pub fn selectOptions(collection: *runtime.Instance, select: *runtime.Instance, selected_only: bool) !void {
     (implementation orelse return error.NotSupported).select_options(collection, select, selected_only);
+}
+
+pub fn table(collection: *runtime.Instance, root: *runtime.Instance, filter: TableFilter) !void {
+    (implementation orelse return error.NotSupported).table(collection, root, filter);
 }
 
 /// The owner-checked live root, or null after its native lifetime ends.

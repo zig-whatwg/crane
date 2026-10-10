@@ -32,6 +32,7 @@ pub const Control = struct {
     user_edit: ?*const fn (element: *runtime.Instance, edit: UserEdit) anyerror!void = null,
     /// Owned with element.ctx.allocator; the caller must deinit the result.
     editor_text: ?*const fn (element: *runtime.Instance) anyerror!runtime.DOMString = null,
+    has_range_limitations: ?*const fn (element: *runtime.Instance) bool = null,
     selected_index: ?*const fn (select: *runtime.Instance) anyerror!?usize = null,
     set_selected_index: ?*const fn (select: *runtime.Instance, index: ?usize) anyerror!void = null,
 };
@@ -89,6 +90,14 @@ pub fn editorText(element: *runtime.Instance) anyerror!?runtime.DOMString {
         if (control.editor_text) |read| if (control.is(element)) return try read(element);
     }
     return null;
+}
+
+/// HTML: whether the owner defines a minimum or maximum for this control.
+pub fn hasRangeLimitations(element: *runtime.Instance) bool {
+    for (controls[0..count]) |control| {
+        if (control.has_range_limitations) |read| if (control.is(element)) return read(element);
+    }
+    return false;
 }
 
 pub fn selectedIndex(select: *runtime.Instance) anyerror!?usize {

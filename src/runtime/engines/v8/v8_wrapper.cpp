@@ -13712,6 +13712,36 @@ static int CompilePatternAttribute(Isolate* isolate, Local<Context> context, Try
     return 1;
 }
 
+/// The utility context engine.matchesPatternAttribute matches in, in
+/// either kind of isolate the adapter makes.
+///
+/// Not a bare Context::New(isolate). In an isolate restored from Crane's
+/// snapshot that deserializes the snapshot's DEFAULT context - the snapshot
+/// generator's Window global, an instance of Window's instance template with
+/// its internal fields - and hooks it to a new global proxy sized for no
+/// template at all (bootstrapper.cc, Genesis: for context index 0 the proxy's
+/// size comes from the template passed in; the likely mechanism). The
+/// bootstrapper's InitializeExperimentalGlobal then faulted installing
+/// Math.f16round
+/// (EXC_BAD_ACCESS in MessageFormatter::Format), so every page that read
+/// `input.validity.patternMismatch` crashed
+/// (tests/v8/pattern_attribute_snapshot_test.zig; pattern_attribute_test.zig's
+/// agents have no snapshot, so it never saw that).
+///
+/// With a global template, Genesis recreates the global object from that
+/// template and copies the deserialized global's properties onto it ("If a
+/// global proxy template was passed in it's used to recreate the global
+/// object and its prototype chain") - v8_Context_NewFromSnapshotDefault's
+/// path, with DeserializeInternalFields for any internal field the default
+/// context carries. Its intrinsics are still the context's own, untouched by
+/// any script. In an isolate made without Crane's snapshot (V8's built-in
+/// one) the same call is an ordinary new context with a plain global.
+static Local<Context> NewPatternAttributeContext(Isolate* isolate) {
+    Local<ObjectTemplate> global_template = ObjectTemplate::New(isolate);
+    return Context::New(isolate, nullptr, global_template, MaybeLocal<Value>(),
+                        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr));
+}
+
 extern "C" {
 
 PatternMatcher* v8_PatternMatcher_New() {
@@ -13760,13 +13790,13 @@ int v8_MatchesPatternAttribute(Isolate* isolate, PatternMatcher* matcher, const 
     Local<Context> context;
     if (matcher) {
         if (matcher->context.IsEmpty()) {
-            Local<Context> made = Context::New(isolate);
+            Local<Context> made = NewPatternAttributeContext(isolate);
             if (made.IsEmpty()) return -2;
             matcher->context.Reset(isolate, made);
         }
         context = matcher->context.Get(isolate);
     } else {
-        context = Context::New(isolate);
+        context = NewPatternAttributeContext(isolate);
         if (context.IsEmpty()) return -2;
     }
     Context::Scope context_scope(context);

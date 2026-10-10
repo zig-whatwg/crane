@@ -10,8 +10,9 @@
 //! fallbacks, labels, and the activation behaviour - a submit button submits
 //! its form owner, a reset button resets it.
 //!
-//! Stated: the command and commandfor attributes' behaviour (command
-//! events, popover and dialog commands) are not implemented.
+//! Invoker commands keep their target only across synchronous dispatch;
+//! commandForElement itself is the weak reference HTML 2.6.1 requires.
+//! Dialog commands await the dialog owner's command algorithms.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -24,6 +25,7 @@ const callbacks = @import("callbacks");
 const reflection = @import("reflection.zig");
 const form_associated = @import("html").form_associated;
 const dom = @import("dom");
+const engine = @import("engine");
 const HTMLButtonElement = interfaces.HTMLButtonElement;
 const log = std.log.scoped(.forms);
 
@@ -36,6 +38,9 @@ pub const ImplError = error{
 /// Custom validity is independent of the button's type and attributes.
 pub const InternalState = struct {
     validation: forms.Validation = .{},
+    // HTML's explicitly set attr-element is WEAK. Generation is the weak
+    // reference's liveness test, not a substitute for a missing traced hold.
+    command_target: ?dom.custom_elements.KeptInstance = null,
 };
 
 /// Constraint state is allocated only when script first uses the API.
@@ -63,6 +68,13 @@ pub fn installHooks() void {
     dom.form_controls.install(.{ .is = &isValidationControl, .validity_flags = &constraintFlags });
     // Installed before any button exists (idempotent).
     dom.activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
+    dom.attribute_change_steps.install("button", &attributeChangeSteps);
+}
+
+fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, _: ?[]const u8, _: ?[]const u8, namespace: ?[]const u8) void {
+    // HTML 2.6.1: even setting the same attribute value clears the override.
+    if (namespace != null or !std.mem.eql(u8, local_name, "commandfor")) return;
+    if (element.getState(State).own._internal) |internal| internal.command_target = null;
 }
 
 /// Initialize instance (creates the instance)
@@ -133,8 +145,59 @@ fn runActivationBehavior(element: *runtime.Instance, event: *runtime.Instance) v
             else => {},
         }
     }
-    // 4-6. The commandfor-associated element's command, or the popover
-    // target attribute activation behavior: not implemented.
+    // 4-5. Resolve commandfor and run the command. Step 6's separate
+    // popovertarget activation remains with that unimplemented owner API.
+    runCommand(element) catch |err| log.warn("command not run: {}", .{err});
+}
+
+fn runCommand(element: *runtime.Instance) !void {
+    const document = (try interfaces.Node.get_ownerDocument(element)) orelse return;
+    if (!dom.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document))) return;
+    const target = (try get_commandForElement(element)) orelse return;
+    // Step 5.1 uses the CONTENT attribute, preserving its case in the event.
+    const command = attribute(element, "command") orelse return;
+    defer element.ctx.allocator.free(command);
+    const custom = std.mem.startsWith(u8, command, "--");
+    const show = std.ascii.eqlIgnoreCase(command, "show-popover");
+    const hide = std.ascii.eqlIgnoreCase(command, "hide-popover");
+    const toggle = std.ascii.eqlIgnoreCase(command, "toggle-popover");
+    // "Determine if a command is valid", steps 1-6. Dialog commands need
+    // the dialog owner's algorithms; no state is fabricated here.
+    if (!custom and (!(show or hide or toggle) or target.stateAs(interfaces.HTMLElement.State) == null)) return;
+
+    // A listener can remove target and collect wrappers. Hold it through
+    // synchronous dispatch (WebKit HTMLButtonElement::handleCommand uses
+    // a Ref too); KeptInstance separately guards realm teardown.
+    const kept = dom.custom_elements.KeptInstance.of(target);
+    var hold: ?engine.Owned = if (target.ctx.hasEngine()) try engine.retainValue(target.ctx, .{ .instance = target }) else null;
+    defer if (hold) |*owned| owned.release();
+    // HTML step 5.3 leaves composed false, matching the browser majority:
+    // wpt.fyi cc74d2669f (2026-10-06), button-event-dispatch.html:
+    // Chrome 57/57, Firefox 38/57, Safari 38/57 (all harness OK); the latter
+    // two fail precisely the 19 composed=true expectations. WebKit's
+    // HTMLButtonElement::handleCommand supplies {false, true, false} and
+    // CommandEvent passes EventInit unchanged; Blink's UA CommandEvent
+    // constructor uses ComposedMode::kScoped. Keep the 19 WPT failures.
+    const command_event = try interfaces.CommandEvent.call_constructor(element.ctx, runtime.DOMString.initInterned("command"), .passed(.{
+        .base = .{ .cancelable = true },
+        .command = runtime.DOMString.initInterned(command),
+        .source = element,
+    }));
+    const generation = runtime.SlabAllocator.generationOf(command_event);
+    defer command_event.releaseIfUnwrapped(generation);
+    // Steps 5.3-6: dispatch, cancellation, connectedness, custom commands.
+    if (!try dom.fire_event.dispatchTrusted(target, command_event)) return;
+    const after = kept.get() orelse return;
+    if (!(try interfaces.Node.get_isConnected(after)) or custom) return;
+    // Steps 5.7-9. Owner interfaces perform popover validity checks. The
+    // owner's show/hide algorithms still lack beforetoggle/toggle/source
+    // propagation; this passes source for when the owner implements them.
+    const showing = dom.html_pseudo_classes.popoverShowing(after);
+    if (hide or (toggle and showing)) {
+        if (showing) interfaces.HTMLElement.call_hidePopover(after) catch {};
+    } else if (!showing) {
+        interfaces.HTMLElement.call_showPopover(after, .passed(.{ .source = element })) catch {};
+    }
 }
 
 /// An event's "user navigation involvement": "activation" when it is
@@ -184,15 +247,43 @@ pub fn get_command(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 /// Getter for commandForElement
 pub fn get_commandForElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    if (instance.getState(State).own._internal) |internal| {
+        if (internal.command_target) |kept| {
+            if (kept.get()) |target| {
+                // HTML 2.6.1 step 3: target must be a descendant of one
+                // of this element's shadow-including ancestors.
+                var current: ?*runtime.Instance = instance;
+                while (current) |node| {
+                    if (node != instance and target != node and try interfaces.Node.call_contains(node, target)) return target;
+                    current = form_associated.parentOf(node) orelse blk: {
+                        if (node.stateAs(interfaces.ShadowRoot.State) == null) break :blk null;
+                        break :blk try interfaces.ShadowRoot.get_host(node);
+                    };
+                }
+                return null;
+            }
+            internal.command_target = null;
+        }
+    }
+    // Steps 4-5: the content attribute resolves only within this tree.
+    const id = attribute(instance, "commandfor") orelse return null;
+    defer instance.ctx.allocator.free(id);
+    return form_associated.firstElementWithId(form_associated.rootOf(instance), id);
 }
 
 /// Setter for commandForElement
 pub fn set_commandForElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // Temporary brand guard until interface argument conversion checks it.
+    if (value) |target| if (target.stateAs(interfaces.Element.State) == null) return error.TypeError;
+    if (value == null) {
+        if (instance.getState(State).own._internal) |internal| internal.command_target = null;
+        try interfaces.Element.call_removeAttribute(instance, runtime.DOMString.initInterned("commandfor"));
+        return;
+    }
+    // Attribute change steps clear the old explicit value before step 3.
+    _ = try validationState(instance);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("commandfor"), .{ .domstring = runtime.DOMString.initEmpty() });
+    instance.getState(State).own._internal.?.command_target = dom.custom_elements.KeptInstance.of(value.?);
 }
 
 /// Getter for form: the element's form owner.
