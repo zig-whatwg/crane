@@ -3308,6 +3308,10 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     // The node's shadow host bit, the slot steps' fast-path guard
     // (NodeBase.is_shadow_host).
     if (dom.instance_bridge.getNodeBase(instance)) |base| base.is_shadow_host = true;
+    // The shadow root's holds count in its host's chain (refcount, step 3).
+    // Here, in the step itself, so every attach - scripted and declarative -
+    // runs it.
+    dom.shadow_hosts.attached(instance, shadow_root);
     internal.shadow_root_kept.made(shadow_root);
     internal.shadow_root_kept.handOut(instance, shadow_root, .{ .name = "shadowRoot" });
     // And the shadow root keeps its host, whose `host` it answers for its

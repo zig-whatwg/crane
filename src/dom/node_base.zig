@@ -132,8 +132,26 @@ pub const NodeBase = struct {
         /// The node is being torn down (WebKit
         /// `applyRefDuringDestructionCheck`): a `Ref` taken on it is a bug.
         destroying: bool = false,
-        _unused: u6 = 0,
+        /// A parentless shadow root or template contents whose host is
+        /// alive: its holds count in its host's chain (design 1.4, the
+        /// host-including chain). Set and cleared only by refcount.zig.
+        hosted: bool = false,
+        /// A parentless, unhosted node that is not a Document and has a
+        /// node document: the root of a detached tree, whose
+        /// `subtree_holds` count in its document's `foreign_holds`
+        /// (decision D6). Set and cleared only by refcount.zig.
+        foreign: bool = false,
+        _unused: u4 = 0,
     };
+
+    /// The one write of `parent_node` (WebKit `Node::setParentNode`): the
+    /// pointer and the parent bit of `rc` together. The holds a link moves
+    /// are refcount.zig's (`linkChild`, `unlinkChild`, `moveChild`); this is
+    /// only the write, which `zig build lint-refcount` allows nowhere else.
+    pub fn setParent(self: *NodeBase, parent: ?*NodeBase) void {
+        self.parent_node = parent;
+        self.rc = (self.rc & ~rc_parent_bit) | @intFromBool(parent != null);
+    }
 
     // ========================================================================
     // Node Type Constants (DOM Spec §5.1)
