@@ -292,6 +292,12 @@ pub fn send(global: *runtime.Instance, request: *fetch.internal.InternalRequest,
         // report-only CSP must still see the original URL. Mixed Content's
         // step 6 upgrade only touches image/audio/video, never this empty
         // destination. Reuse the same predicates as the mutating fetch path.
+        // Beacon §3.2's final true differs from the browsers' synchronous
+        // mixed-content rejection: at WPT revision 521d168d63, Chrome,
+        // Firefox and Safari each pass all 8 HTTP/HTTPS cases in the four
+        // beacon/headers/header-referrer-*.https.html files (run IDs
+        // 5071749074124800, 5195569390944256, 5823052670828544). Blink's
+        // SendBeaconCommon LoadError check above is the implementation model.
         const allocator = request.allocator;
         const upgraded: ?[]const u8 = if (fetch.algorithms.main_fetch.wouldUpgradeToPotentiallyTrustworthyUrl(request))
             try std.mem.concat(allocator, u8, &.{ "https", request.currentUrl()[4..] })
