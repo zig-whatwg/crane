@@ -367,13 +367,17 @@ fn dropFiles(instance: *runtime.Instance, internal: *InternalState) void {
     if (native_child) |child| runtime.Instance.deinit(child);
 }
 
-fn emptySelectedFiles(_: *runtime.Instance) void {
+fn emptySelectedFiles(instance: *runtime.Instance) void {
     // HTML filename value setter and reset: Chrome/Safari KEEP the FileList
     // and clear it in place (Blink FileInputType::SetValue; WebKit
     // FileInputType::setValue). Gecko HTMLInputElement::AfterSetFilesOrDirectories
     // drops its list instead; follow the browser majority, including when
-    // inputs share a list. Every list is currently empty.
-    // TODO(FileList/DataTransfer lane): clear the list's contents in place through FileList's hook.
+    // inputs share a list.
+    const internal = getInternal(instance) orelse return;
+    const files = liveFiles(internal) orelse return;
+    // NotSupported: no FileList hook installed (an engine-free test build);
+    // the list then stays as it is.
+    dom.file_lists.clear(files) catch {};
 }
 
 fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void {
