@@ -1,213 +1,125 @@
-//! Implementation for CompressionStream interface
-//!
-//! Spec: https://compression.spec.whatwg.org/#compressionstream
-//!
-//! CompressionStream compresses data using the specified format.
-//! Supported formats: deflate, deflate-raw, gzip
-//!
-//! TODO: Implement actual compression when Zig std.compress matures or link zlib
-//! - deflate: ZLIB format (RFC 1950) with 2-byte header and adler32 checksum
-//! - deflate-raw: raw DEFLATE (RFC 1951) with no header/footer
-//! - gzip: GZIP format (RFC 1952) with 10-byte header and crc32/size footer
-
+//! Compression §§4–5 over the native Streams §9.3 transformer seam.
+//! DEFLATE and container validation live in the engine-free compression module.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
 const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const webidl = @import("webidl");
-const infra = @import("infra");
-const CompressionStream = interfaces.CompressionStream;
+const engine = @import("engine");
+const compression = @import("compression");
+const js = @import("streams_js.zig");
+const st = @import("streams_transform.zig");
+const Interface = interfaces.CompressionStream;
+const Codec = compression.Encoder;
+pub const State = Interface.State;
+pub const ImplError = error{ TypeError, InvalidState, OutOfMemory };
 
-pub const State = CompressionStream.State;
-
-pub const ImplError = error{
-    TypeError,
-    InvalidState,
-    OutOfMemory,
-    CompressionError,
-    NotImplemented,
-};
-
-/// Compression format enumeration
-pub const Format = enum {
-    deflate, // zlib container (RFC 1950)
-    deflate_raw, // raw deflate (RFC 1951)
-    gzip, // gzip container (RFC 1952)
-};
-
-/// Internal state for CompressionStream
-///
-/// Spec: https://compression.spec.whatwg.org/#compressionstream
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-
-    /// The underlying transform stream
-    transform: *runtime.Instance,
-
-    /// The compression format
-    format: Format,
-
-    /// Accumulated input data - chunks are buffered until flush
-    input_buffer: infra.List(u8),
-
-    /// Whether compression has been finalized
-    finalized: bool,
-
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        _ = allocator;
-        self.input_buffer.deinit();
-    }
+    transform: ?*runtime.Instance = null,
 };
 
-/// Initialize instance
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
+pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
-
-    const state = instance.getState(StateType);
-    state.own._internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(state.own._internal.?);
-
-    const internal = state.own._internal.?;
-    internal.allocator = allocator;
-    internal.format = .deflate;
-    internal.input_buffer = infra.List(u8).init(allocator);
-    internal.finalized = false;
-
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(StateType).own._internal = internal;
     return instance;
 }
 
-/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit(internal.allocator);
+        // Only the controller owns the codec. Script may retain the stream
+        // sides after this API object has been collected.
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Constructor implementation
-///
-/// Spec: § 3.1 "The CompressionStream(format) constructor steps are:"
-/// 1. If format is unsupported, throw TypeError
-/// 2. Set this's format to format
-/// 3. Let transformAlgorithm be an algorithm which takes chunk and compresses it
-/// 4. Let flushAlgorithm be an algorithm which finishes compression
-/// 5. Set this's transform to a new TransformStream
 pub fn call_constructor(ctx: runtime.Context, format: enums.CompressionFormat) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &CompressionStream.vtable, ctx);
-    errdefer deinit(instance);
-
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Step 1-2: Set format
-    internal.format = switch (format) {
+    const instance = try init(ctx.allocator, State, &Interface.vtable, ctx);
+    errdefer runtime.Instance.deinit(instance);
+    const realm = try js.Realm.ofContext(ctx);
+    const codec = try Codec.create(ctx.allocator, switch (format) {
         ._deflate_ => .deflate,
         ._deflate_raw_ => .deflate_raw,
         ._gzip_ => .gzip,
-    };
-
-    // Step 3-5: Create transform stream
-    //
-    // Per spec, CompressionStream uses internal Zig-based transform/flush algorithms,
-    // not a JavaScript transformer object. We pass notPassed() to indicate no
-    // JavaScript transformer is needed.
-    //
-    // IMPORTANT: Do NOT pass a Zig stack pointer as the transformer - that would
-    // cause TransformStream to try to use it as a V8 Object handle, resulting in
-    // misaligned pointer segfaults. See whatwg-lbw51 for details.
-    const transform = try interfaces.TransformStream.call_constructor(
-        ctx,
-        webidl.Opt(runtime.JSValue).notPassed(),
-        webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
-        webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
-    );
-    errdefer interfaces.TransformStream.deinit(transform);
-
-    internal.transform = transform;
-
+    });
+    // setUp takes ownership at the call, including on failure.
+    instance.getState(State).own._internal.?.transform = try st.setUp(realm, ctx, .{ .ctx = codec, .vtable = &transformer });
     return instance;
 }
 
-/// Getter for readable (use interface per Golden Rule #13)
-///
-/// Spec: "The readable getter steps are to return this's transform.[[readable]]"
 pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    return interfaces.TransformStream.get_readable(internal.transform) catch error.InvalidState;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidState;
+    return interfaces.TransformStream.get_readable(internal.transform orelse return error.InvalidState);
 }
 
-/// Getter for writable (use interface per Golden Rule #13)
-///
-/// Spec: "The writable getter steps are to return this's transform.[[writable]]"
 pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    return interfaces.TransformStream.get_writable(internal.transform) catch error.InvalidState;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidState;
+    return interfaces.TransformStream.get_writable(internal.transform orelse return error.InvalidState);
 }
 
-// ============================================================================
-// Internal Transform Algorithm (Stubs)
-// ============================================================================
-
-/// Compress and enqueue a chunk algorithm
-///
-/// Spec: § 3.1 "compress and enqueue a chunk"
-/// 1. If chunk is not a BufferSource type, throw TypeError
-/// 2. Let buffer be the result of compressing chunk with cs's format and context
-/// 3. If buffer is empty, return
-/// 4. Split buffer into Uint8Arrays and enqueue each
-///
-/// TODO: Implement actual compression using zlib or mature Zig stdlib
-pub fn compressChunk(internal: *InternalState, input: []const u8) ImplError![]u8 {
-    if (internal.finalized) {
-        return error.InvalidState;
+fn transform(raw: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance, chunk: js.Value) js.Error!js.Value {
+    const codec: *Codec = @ptrCast(@alignCast(raw.?));
+    const Copy = struct {
+        realm: runtime.Context,
+        chunk: runtime.JSValue,
+        bytes: ?[]u8 = null,
+        fn run(data: ?*anyopaque) engine.Error!void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.bytes = (try engine.getCopyOfBufferSourceBytes(self.realm, self.chunk, self.realm.allocator)) orelse return error.TypeError;
+        }
+    };
+    var copy: Copy = .{ .realm = realm.ctx, .chunk = chunk.value };
+    if (engine.completionOf(realm.ctx, Copy.run, &copy) catch |err| return js.fromEngineError(err)) |thrown| {
+        defer thrown.release();
+        return realm.promiseRejectedWith(.{ .realm = realm.ctx, .value = thrown.value });
     }
-
-    // Buffer the input chunk for compression on flush
-    try internal.input_buffer.appendSlice(input);
-
-    // TODO: When compression is implemented, compress incrementally here
-    // For now, return empty - actual compressed output comes from flush()
-    return internal.allocator.alloc(u8, 0) catch return error.OutOfMemory;
+    defer realm.ctx.allocator.free(copy.bytes.?);
+    return push(codec, realm, controller, copy.bytes.?, false);
 }
 
-/// Compress flush and enqueue algorithm
-///
-/// Spec: § 3.1 "compress flush and enqueue"
-/// 1. Let buffer be the result of compressing empty input with finish flag
-/// 2. If buffer is empty, return
-/// 3. Split buffer into Uint8Arrays and enqueue each
-///
-/// TODO: Implement actual compression using zlib or mature Zig stdlib
-pub fn flush(internal: *InternalState) ImplError!?[]u8 {
-    if (internal.finalized) {
-        return null;
-    }
-
-    internal.finalized = true;
-
-    const input_data = internal.input_buffer.slice();
-    if (input_data.len == 0) {
-        return null;
-    }
-
-    // TODO: Implement actual compression
-    // For now, return the data uncompressed as a placeholder
-    // This allows the API to function for testing while compression is pending
-    return internal.allocator.dupe(u8, input_data) catch return error.OutOfMemory;
+fn flush(raw: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance) js.Error!js.Value {
+    const codec: *Codec = @ptrCast(@alignCast(raw.?));
+    return push(codec, realm, controller, &.{}, true);
 }
+
+fn push(codec: *Codec, realm: js.Realm, controller: *runtime.Instance, input: []const u8, final: bool) js.Error!js.Value {
+    const allocator = codec.allocator;
+    const bytes = codec.push(input, final) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.InvalidData => return realm.promiseRejectedWithTypeError("Invalid or incomplete compressed data"),
+    };
+    defer allocator.free(bytes);
+    // Finish reading the input before enqueue can run author code. The
+    // returned Uint8Array owns a copy, independently of the codec buffers.
+    if (bytes.len != 0) {
+        const buffer = engine.createArrayBuffer(realm.ctx, bytes) catch |err| return js.fromEngineError(err);
+        defer buffer.release();
+        const view = engine.createArrayBufferView(realm.ctx, .uint8_array, buffer.value, 0, bytes.len) catch |err| return js.fromEngineError(err);
+        defer view.release();
+        if (try st.controllerEnqueueCompletion(realm, controller, .{ .realm = realm.ctx, .value = view.value })) |thrown| {
+            defer js.dispose(thrown);
+            return realm.promiseRejectedWith(thrown);
+        }
+    }
+    return realm.promiseResolvedWithUndefined();
+}
+
+fn cancel(_: ?*anyopaque, realm: js.Realm, _: *runtime.Instance, _: js.Value) js.Error!js.Value {
+    return realm.promiseResolvedWithUndefined();
+}
+
+fn destroyCodec(raw: ?*anyopaque, _: std.mem.Allocator) void {
+    const codec: *Codec = @ptrCast(@alignCast(raw.?));
+    codec.destroy();
+}
+
+const transformer: st.Transformer.VTable = .{
+    .transform = transform,
+    .flush = flush,
+    .cancel = cancel,
+    .deinit = destroyCodec,
+};
