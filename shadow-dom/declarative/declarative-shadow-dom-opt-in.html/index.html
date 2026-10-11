@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../shadow-dom/"><code>shadow-<wbr>dom/</code></a></li><li><a href="../../../shadow-dom/declarative/"><code>declarative/</code></a></li><li aria-current="page"><code>declarative-<wbr>shadow-<wbr>dom-<wbr>opt-<wbr>in.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>declarative-<wbr>shadow-<wbr>dom-<wbr>opt-<wbr>in.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="shadow-dom/declarative/declarative-shadow-dom-opt-in.html">
-<p class="figures-main"><span class="fg-pass">109</span><span class="fg-of"> / 120</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>11</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">116</span><span class="fg-of"> / 120</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>4</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-cd72de6793</code>, <span class="nowrap">10 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cd72de6793"><code>cd72de6793</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f8e7187788</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f8e7187788"><code>f8e7187788</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/declarative/declarative-shadow-dom-opt-in.html"><code>shadow-<wbr>dom/<wbr>declarative/<wbr>declarative-<wbr>shadow-<wbr>dom-<wbr>opt-<wbr>in.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,7 +35,7 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-ab8dc759"><details><summary><span class="mark">FAIL</span><span class="sub-name">Non-fragment parsing needs no opt-in</span></summary><pre class="msg">assert_true: Shadow root NOT FOUND. expected true got false</pre></details><a class="self" href="#s-ab8dc759" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ab8dc759"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Non-fragment parsing needs no opt-in</span></div><a class="self" href="#s-ab8dc759" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2b2af71c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">innerHTML on a &lt;a&gt;</span></div><a class="self" href="#s-2b2af71c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-44353ac9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">innerHTML on a &lt;abbr&gt;</span></div><a class="self" href="#s-44353ac9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-9413b5c1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">innerHTML on a &lt;address&gt;</span></div><a class="self" href="#s-9413b5c1" aria-label="Link to this subtest">&para;</a></li>
@@ -147,14 +147,14 @@
 <li class="sub s-fail" id="s-4214b3a5"><details><summary><span class="mark">FAIL</span><span class="sub-name">XMLHttpRequest - not supported</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-4214b3a5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-763a9554"><details><summary><span class="mark">FAIL</span><span class="sub-name">XMLHttpRequest document.open() does not enable declarative shadow DOM when it is previously disabled</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-763a9554" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-21ab6913"><details><summary><span class="mark">FAIL</span><span class="sub-name">XMLHttpRequest cloned document document.open() does not enable declarative shadow DOM when it is previously disabled</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-21ab6913" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e539e6f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open() of a document created with parseHTMLUnsafe keeps declarative shadow DOM opt-in</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-e539e6f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e539e6f2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">document.open() of a document created with parseHTMLUnsafe keeps declarative shadow DOM opt-in</span></div><a class="self" href="#s-e539e6f2" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-8d1625b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">insertAdjacentHTML on element - not supported</span></div><a class="self" href="#s-8d1625b7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-17bcbb7b"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.write allowed from synchronous script loaded from main document</span></summary><pre class="msg">assert_true: Shadow root NOT FOUND. expected true got false</pre></details><a class="self" href="#s-17bcbb7b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-17bcbb7b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">document.write allowed from synchronous script loaded from main document</span></div><a class="self" href="#s-17bcbb7b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-8ee4dbdf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">document.write disallowed on fresh document</span></div><a class="self" href="#s-8ee4dbdf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-97374c58"><details><summary><span class="mark">FAIL</span><span class="sub-name">iframe</span></summary><pre class="msg">assert_true: Shadow root NOT FOUND. expected true got false</pre></details><a class="self" href="#s-97374c58" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-71bc9484"><details><summary><span class="mark">FAIL</span><span class="sub-name">iframe, no sandbox</span></summary><pre class="msg">assert_true: Shadow root NOT FOUND. expected true got false</pre></details><a class="self" href="#s-71bc9484" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2b91ec0e"><details><summary><span class="mark">FAIL</span><span class="sub-name">sandboxed iframe allows declarative Shadow DOM</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-2b91ec0e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-90d15fec"><details><summary><span class="mark">FAIL</span><span class="sub-name">iframe with no sandbox allows declarative Shadow DOM</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-90d15fec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-97374c58"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">iframe</span></div><a class="self" href="#s-97374c58" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-71bc9484"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">iframe, no sandbox</span></div><a class="self" href="#s-71bc9484" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2b91ec0e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">sandboxed iframe allows declarative Shadow DOM</span></div><a class="self" href="#s-2b91ec0e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-90d15fec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">iframe with no sandbox allows declarative Shadow DOM</span></div><a class="self" href="#s-90d15fec" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

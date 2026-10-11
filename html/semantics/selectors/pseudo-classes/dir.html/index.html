@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../../">Crane WPT results</a></li><li><a href="../../../../../html/"><code>html/</code></a></li><li><a href="../../../../../html/semantics/"><code>semantics/</code></a></li><li><a href="../../../../../html/semantics/selectors/"><code>selectors/</code></a></li><li><a href="../../../../../html/semantics/selectors/pseudo-classes/"><code>pseudo-<wbr>classes/</code></a></li><li aria-current="page"><code>dir.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>dir.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="html/semantics/selectors/pseudo-classes/dir.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-cd72de6793</code>, <span class="nowrap">10 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cd72de6793"><code>cd72de6793</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f8e7187788</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f8e7187788"><code>f8e7187788</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/selectors/pseudo-classes/dir.html"><code>html/<wbr>semantics/<wbr>selectors/<wbr>pseudo-<wbr>classes/<wbr>dir.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,24 +35,9 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-732b37c0"><details><summary><span class="mark">FAIL</span><span class="sub-name">&#39;:dir(rtl)&#39; matches all elements whose directionality is &#39;rtl&#39;.</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [Element node &lt;bdo dir=&quot;rtl&quot; id=&quot;bdo1&quot;&gt;WERBEH&lt;/bdo&gt;, Element node &lt;bdi dir=&quot;rtl&quot; id=&quot;bdi2&quot;&gt;WERBEH&lt;/bdi&gt;, Element node &lt;bdi id=&quot;bdi4&quot;&gt;إيان&lt;/bdi&gt;, Element node &lt;span dir=&quot;rtl&quot; id=&quot;span2&quot;&gt;WERBEH&lt;/span&gt;, Element node &lt;span dir=&quot;rtl&quot; id=&quot;span5&quot;&gt;WERBEH&lt;/span&gt;, Element node &lt;span dir=&quot;rtl&quot; id=&quot;span7&quot;&gt;
-     &lt;input type=&quot;tel&quot; id=&quot;in..., Element node &lt;input type=&quot;tel&quot; id=&quot;input-tel3&quot; dir=&quot;rtl&quot;&gt;&lt;/input&gt;, Element node &lt;bdo dir=&quot;auto&quot; id=&quot;bdo4&quot;&gt;إيان&lt;/bdo&gt;, Element node &lt;textarea dir=&quot;auto&quot; id=&quot;ta1&quot;&gt;إيان&lt;/textarea&gt;, Element node &lt;pre dir=&quot;auto&quot; id=&quot;pre1&quot;&gt;إيان&lt;/pre&gt;] length 10, got [] length 0</pre></details><a class="self" href="#s-732b37c0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c37cc477"><details><summary><span class="mark">FAIL</span><span class="sub-name">&#39;:dir(ltr)&#39; matches all elements whose directionality is &#39;ltr&#39;.</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array […, Element node &lt;script src=&quot;/resources/testharnessreport.js&quot; id=&quot;script2..., Element node &lt;script src=&quot;utils.js&quot; id=&quot;script3&quot;&gt;&lt;/script&gt;, Element node &lt;style id=&quot;style&quot;&gt;
-      #span1 {direction: rtl;}
-      #..., Element node &lt;body id=&quot;body&quot;&gt;
-    &lt;div id=&quot;log&quot;&gt;&lt;/div&gt;
-    &lt;bdo dir=&quot;r..., Element node &lt;div id=&quot;log&quot;&gt;&lt;/div&gt;, Element node &lt;bdo dir=&quot;ltr&quot; id=&quot;bdo2&quot;&gt;HEBREW&lt;/bdo&gt;, Element node &lt;bdi id=&quot;bdi1&quot;&gt;HEBREW&lt;/bdi&gt;, Element node &lt;bdi dir=&quot;ltr&quot; id=&quot;bdi3&quot;&gt;HEBREW&lt;/bdi&gt;, Element node &lt;span id=&quot;span1&quot;&gt;WERBEH&lt;/span&gt;, Element node &lt;span dir=&quot;ltr&quot; id=&quot;span3&quot;&gt;HEBREW&lt;/span&gt;, Element node &lt;span id=&quot;span4&quot;&gt;WERBEH&lt;/span&gt;, Element node &lt;span dir=&quot;ltr&quot; id=&quot;span6&quot;&gt;HEBREW&lt;/span&gt;, Element node &lt;input type=&quot;tel&quot; id=&quot;input-tel1&quot;&gt;&lt;/input&gt;, Element node &lt;input type=&quot;tel&quot; id=&quot;input-tel2&quot; dir=&quot;invalid&quot;&gt;&lt;/input&gt;, Element node &lt;bdo dir=&quot;auto&quot; id=&quot;bdo3&quot;&gt;HEBREW&lt;/bdo&gt;, Element node &lt;bdo dir=&quot;ltr&quot; id=&quot;bdo5&quot;&gt;עברית&lt;/bdo&gt;, Element node &lt;textarea dir=&quot;auto&quot; id=&quot;ta2&quot;&gt;HEBREWإيان&lt;/textarea&gt;, Element node &lt;textarea dir=&quot;auto&quot; id=&quot;ta3&quot;&gt;إيان&lt;/textarea&gt;, Element node &lt;pre dir=&quot;auto&quot; id=&quot;pre2&quot;&gt;HEBREWإيان&lt;/pre&gt;, Element node &lt;script id=&quot;script4&quot;&gt;
-      ta3.value = &quot;HEBREW&quot;;
-
-      ...] length 27, got [] length 0</pre></details><a class="self" href="#s-c37cc477" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-23d5ccd1"><details><summary><span class="mark">FAIL</span><span class="sub-name">&#39;:dir(ltr)&#39; doesn&#39;t match elements not in the document.</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array […, Element node &lt;script src=&quot;/resources/testharnessreport.js&quot; id=&quot;script2..., Element node &lt;script src=&quot;utils.js&quot; id=&quot;script3&quot;&gt;&lt;/script&gt;, Element node &lt;style id=&quot;style&quot;&gt;
-      #span1 {direction: rtl;}
-      #..., Element node &lt;body id=&quot;body&quot;&gt;
-    &lt;div id=&quot;log&quot;&gt;&lt;/div&gt;
-    &lt;bdo dir=&quot;r..., Element node &lt;div id=&quot;log&quot;&gt;&lt;/div&gt;, Element node &lt;bdo dir=&quot;ltr&quot; id=&quot;bdo2&quot;&gt;HEBREW&lt;/bdo&gt;, Element node &lt;bdi id=&quot;bdi1&quot;&gt;HEBREW&lt;/bdi&gt;, Element node &lt;bdi dir=&quot;ltr&quot; id=&quot;bdi3&quot;&gt;HEBREW&lt;/bdi&gt;, Element node &lt;span id=&quot;span1&quot;&gt;WERBEH&lt;/span&gt;, Element node &lt;span dir=&quot;ltr&quot; id=&quot;span3&quot;&gt;HEBREW&lt;/span&gt;, Element node &lt;span id=&quot;span4&quot;&gt;WERBEH&lt;/span&gt;, Element node &lt;span dir=&quot;ltr&quot; id=&quot;span6&quot;&gt;HEBREW&lt;/span&gt;, Element node &lt;input type=&quot;tel&quot; id=&quot;input-tel1&quot;&gt;&lt;/input&gt;, Element node &lt;input type=&quot;tel&quot; id=&quot;input-tel2&quot; dir=&quot;invalid&quot;&gt;&lt;/input&gt;, Element node &lt;bdo dir=&quot;auto&quot; id=&quot;bdo3&quot;&gt;HEBREW&lt;/bdo&gt;, Element node &lt;bdo dir=&quot;ltr&quot; id=&quot;bdo5&quot;&gt;עברית&lt;/bdo&gt;, Element node &lt;textarea dir=&quot;auto&quot; id=&quot;ta2&quot;&gt;HEBREWإيان&lt;/textarea&gt;, Element node &lt;textarea dir=&quot;auto&quot; id=&quot;ta3&quot;&gt;إيان&lt;/textarea&gt;, Element node &lt;pre dir=&quot;auto&quot; id=&quot;pre2&quot;&gt;HEBREWإيان&lt;/pre&gt;, Element node &lt;script id=&quot;script4&quot;&gt;
-      ta3.value = &quot;HEBREW&quot;;
-
-      ...] length 27, got [] length 0</pre></details><a class="self" href="#s-23d5ccd1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-732b37c0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;:dir(rtl)&#39; matches all elements whose directionality is &#39;rtl&#39;.</span></div><a class="self" href="#s-732b37c0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c37cc477"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;:dir(ltr)&#39; matches all elements whose directionality is &#39;ltr&#39;.</span></div><a class="self" href="#s-c37cc477" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-23d5ccd1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;:dir(ltr)&#39; doesn&#39;t match elements not in the document.</span></div><a class="self" href="#s-23d5ccd1" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

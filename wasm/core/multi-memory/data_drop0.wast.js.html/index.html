@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../wasm/"><code>wasm/</code></a></li><li><a href="../../../../wasm/core/"><code>core/</code></a></li><li><a href="../../../../wasm/core/multi-memory/"><code>multi-<wbr>memory/</code></a></li><li aria-current="page"><code>data_<wbr>drop0.<wbr>wast.<wbr>js.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>data_<wbr>drop0.<wbr>wast.<wbr>js.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="wasm/core/multi-memory/data_drop0.wast.js.html">
-<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 15</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>14</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">15</span><span class="fg-of"> / 15</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-cd72de6793</code>, <span class="nowrap">10 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cd72de6793"><code>cd72de6793</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f8e7187788</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f8e7187788"><code>f8e7187788</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/core/multi-memory/data_drop0.wast.js.html"><code>wasm/<wbr>core/<wbr>multi-<wbr>memory/<wbr>data_<wbr>drop0.<wbr>wast.<wbr>js.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,54 +35,21 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-4b409e59"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-4b409e59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4b409e59"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#1 Reinitialize the default imports</span></div><a class="self" href="#s-4b409e59" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3fd70fd9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (data_drop0.wast:2)</span></div><a class="self" href="#s-3fd70fd9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2881d0f8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#3 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-2881d0f8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-40472787"><details><summary><span class="mark">FAIL</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (data_drop0.wast:2)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-40472787" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1cde33b0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#5 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:7:10)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-1cde33b0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8aa77fd3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#6 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;init_passive&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:10:1)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-8aa77fd3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-903aa74d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#7 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;drop_passive&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:13:1)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-903aa74d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-150125af"><details><summary><span class="mark">FAIL</span><span class="sub-name">#8 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;drop_passive&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:16:1)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-150125af" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-56d9878d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#9 Test that a WebAssembly code returns a specific result (data_drop0.wast:21)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;init_passive&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:19:1)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-56d9878d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c2649761"><details><summary><span class="mark">FAIL</span><span class="sub-name">#10 Test that a WebAssembly code traps (data_drop0.wast:22)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;init_passive&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:22:1)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-c2649761" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-976e0103"><details><summary><span class="mark">FAIL</span><span class="sub-name">#11 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;init_passive&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:25:1)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-976e0103" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7d9b571c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#12 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;drop_active&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:28:1)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-7d9b571c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-702fc216"><details><summary><span class="mark">FAIL</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (data_drop0.wast:25)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;init_active&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:31:1)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-702fc216" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-11380b54"><details><summary><span class="mark">FAIL</span><span class="sub-name">#14 Test that a WebAssembly code traps (data_drop0.wast:26)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;init_active&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:34:1)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-11380b54" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fb9a19f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#15 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;init_active&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at data_drop0_wast_js (http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:37:1)
-    at http://web-platform.test:8000/wasm/core/js/multi-memory/data_drop0.wast.js:39:3 expected true got false</pre></details><a class="self" href="#s-fb9a19f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2881d0f8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Reinitialize the default imports</span></div><a class="self" href="#s-2881d0f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-40472787"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (data_drop0.wast:2)</span></div><a class="self" href="#s-40472787" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eb4d4b37"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#5 Test that WebAssembly instantiation succeeds (data_drop0.wast:2)</span></div><a class="self" href="#s-eb4d4b37" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b32728c0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#6 Run a WebAssembly test without special assertions (data_drop0.wast:18)</span></div><a class="self" href="#s-b32728c0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-852b6cd8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#7 Run a WebAssembly test without special assertions (data_drop0.wast:19)</span></div><a class="self" href="#s-852b6cd8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6d18b700"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#8 Run a WebAssembly test without special assertions (data_drop0.wast:20)</span></div><a class="self" href="#s-6d18b700" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-56d9878d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#9 Test that a WebAssembly code returns a specific result (data_drop0.wast:21)</span></div><a class="self" href="#s-56d9878d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c2649761"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#10 Test that a WebAssembly code traps (data_drop0.wast:22)</span></div><a class="self" href="#s-c2649761" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d2a58d66"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#11 Run a WebAssembly test without special assertions (data_drop0.wast:23)</span></div><a class="self" href="#s-d2a58d66" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-25109c8b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#12 Run a WebAssembly test without special assertions (data_drop0.wast:24)</span></div><a class="self" href="#s-25109c8b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-702fc216"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#13 Test that a WebAssembly code returns a specific result (data_drop0.wast:25)</span></div><a class="self" href="#s-702fc216" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-11380b54"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#14 Test that a WebAssembly code traps (data_drop0.wast:26)</span></div><a class="self" href="#s-11380b54" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1e0c6d89"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#15 Run a WebAssembly test without special assertions (data_drop0.wast:27)</span></div><a class="self" href="#s-1e0c6d89" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

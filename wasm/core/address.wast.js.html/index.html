@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../wasm/"><code>wasm/</code></a></li><li><a href="../../../wasm/core/"><code>core/</code></a></li><li aria-current="page"><code>address.<wbr>wast.<wbr>js.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>address.<wbr>wast.<wbr>js.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="wasm/core/address.wast.js.html">
-<p class="figures-main"><span class="fg-pass">210</span><span class="fg-of"> / 373</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>163</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">373</span><span class="fg-of"> / 373</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-cd72de6793</code>, <span class="nowrap">10 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cd72de6793"><code>cd72de6793</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f8e7187788</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f8e7187788"><code>f8e7187788</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/core/address.wast.js.html"><code>wasm/<wbr>core/<wbr>address.<wbr>wast.<wbr>js.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,7 +35,7 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-7b97ef03"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-7b97ef03" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7b97ef03"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#1 Reinitialize the default imports</span></div><a class="self" href="#s-7b97ef03" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-77b14bca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (address.wast:3)</span></div><a class="self" href="#s-77b14bca" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-fd74cdc1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation fails (address.wast:213)</span></div><a class="self" href="#s-fd74cdc1" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-78b03193"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (address.wast:223)</span></div><a class="self" href="#s-78b03193" aria-label="Link to this subtest">&para;</a></li>
@@ -75,376 +75,100 @@
 <li class="sub s-pass" id="s-0d9b69e5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#38 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-0d9b69e5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-de228453"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#39 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-de228453" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-61bc2340"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#40 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-61bc2340" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6a5a8cd7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#41 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-6a5a8cd7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a3f3a54d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#42 Test that WebAssembly compilation succeeds (address.wast:3)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-a3f3a54d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9c615fe0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#43 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:7:10)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-9c615fe0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-90c4483a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#44 Test that a WebAssembly code returns a specific result (address.wast:104)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:10:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-90c4483a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f9441bc2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#45 Test that a WebAssembly code returns a specific result (address.wast:105)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:13:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-f9441bc2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0f94e8bc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#46 Test that a WebAssembly code returns a specific result (address.wast:106)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:16:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-0f94e8bc" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-352774e1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#47 Test that a WebAssembly code returns a specific result (address.wast:107)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:19:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-352774e1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ebbad76f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#48 Test that a WebAssembly code returns a specific result (address.wast:108)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:22:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-ebbad76f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a40596fc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#49 Test that a WebAssembly code returns a specific result (address.wast:110)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:25:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-a40596fc" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-29a13007"><details><summary><span class="mark">FAIL</span><span class="sub-name">#50 Test that a WebAssembly code returns a specific result (address.wast:111)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:28:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-29a13007" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f8558811"><details><summary><span class="mark">FAIL</span><span class="sub-name">#51 Test that a WebAssembly code returns a specific result (address.wast:112)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:31:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-f8558811" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7de69ecf"><details><summary><span class="mark">FAIL</span><span class="sub-name">#52 Test that a WebAssembly code returns a specific result (address.wast:113)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:34:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-7de69ecf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8c94c6ec"><details><summary><span class="mark">FAIL</span><span class="sub-name">#53 Test that a WebAssembly code returns a specific result (address.wast:114)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:37:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-8c94c6ec" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4f349ecb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#54 Test that a WebAssembly code returns a specific result (address.wast:116)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:40:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-4f349ecb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ea1c5948"><details><summary><span class="mark">FAIL</span><span class="sub-name">#55 Test that a WebAssembly code returns a specific result (address.wast:117)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:43:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-ea1c5948" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-009c89ff"><details><summary><span class="mark">FAIL</span><span class="sub-name">#56 Test that a WebAssembly code returns a specific result (address.wast:118)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:46:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-009c89ff" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3e30cad2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#57 Test that a WebAssembly code returns a specific result (address.wast:119)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:49:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-3e30cad2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-17a472d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#58 Test that a WebAssembly code returns a specific result (address.wast:120)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:52:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-17a472d5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0d175dd0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#59 Test that a WebAssembly code returns a specific result (address.wast:122)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:55:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-0d175dd0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1e3a355f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#60 Test that a WebAssembly code returns a specific result (address.wast:123)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:58:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-1e3a355f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-76376a7f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#61 Test that a WebAssembly code returns a specific result (address.wast:124)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:61:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-76376a7f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-473abe7a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#62 Test that a WebAssembly code returns a specific result (address.wast:125)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:64:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-473abe7a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b8cf9f6b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#63 Test that a WebAssembly code returns a specific result (address.wast:126)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:67:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-b8cf9f6b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3f619f92"><details><summary><span class="mark">FAIL</span><span class="sub-name">#64 Test that a WebAssembly code returns a specific result (address.wast:128)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:70:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-3f619f92" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ae8c1cec"><details><summary><span class="mark">FAIL</span><span class="sub-name">#65 Test that a WebAssembly code returns a specific result (address.wast:129)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:73:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-ae8c1cec" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6f3a40d2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#66 Test that a WebAssembly code returns a specific result (address.wast:130)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:76:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-6f3a40d2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8fa3d9cd"><details><summary><span class="mark">FAIL</span><span class="sub-name">#67 Test that a WebAssembly code returns a specific result (address.wast:131)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:79:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-8fa3d9cd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-20a5e2ff"><details><summary><span class="mark">FAIL</span><span class="sub-name">#68 Test that a WebAssembly code returns a specific result (address.wast:132)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:82:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-20a5e2ff" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9476073f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#69 Test that a WebAssembly code returns a specific result (address.wast:134)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:85:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-9476073f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7af762d3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#70 Test that a WebAssembly code returns a specific result (address.wast:135)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:88:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-7af762d3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-75fb6628"><details><summary><span class="mark">FAIL</span><span class="sub-name">#71 Test that a WebAssembly code returns a specific result (address.wast:136)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:91:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-75fb6628" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1353c17b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#72 Test that a WebAssembly code returns a specific result (address.wast:137)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:94:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-1353c17b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1038a6db"><details><summary><span class="mark">FAIL</span><span class="sub-name">#73 Test that a WebAssembly code returns a specific result (address.wast:138)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:97:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-1038a6db" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d0bcb8e3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#74 Test that a WebAssembly code returns a specific result (address.wast:140)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:100:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-d0bcb8e3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bc6733a0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#75 Test that a WebAssembly code returns a specific result (address.wast:141)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:103:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-bc6733a0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-071a711f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#76 Test that a WebAssembly code returns a specific result (address.wast:142)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:106:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-071a711f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ff032961"><details><summary><span class="mark">FAIL</span><span class="sub-name">#77 Test that a WebAssembly code returns a specific result (address.wast:143)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:109:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-ff032961" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3cdbd601"><details><summary><span class="mark">FAIL</span><span class="sub-name">#78 Test that a WebAssembly code returns a specific result (address.wast:144)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:112:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-3cdbd601" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-35117f75"><details><summary><span class="mark">FAIL</span><span class="sub-name">#79 Test that a WebAssembly code returns a specific result (address.wast:146)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:115:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-35117f75" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f0b847a1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#80 Test that a WebAssembly code returns a specific result (address.wast:147)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:118:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-f0b847a1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-88d0b082"><details><summary><span class="mark">FAIL</span><span class="sub-name">#81 Test that a WebAssembly code returns a specific result (address.wast:148)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:121:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-88d0b082" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-de3f3856"><details><summary><span class="mark">FAIL</span><span class="sub-name">#82 Test that a WebAssembly code returns a specific result (address.wast:149)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:124:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-de3f3856" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e81b1c7b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#83 Test that a WebAssembly code returns a specific result (address.wast:150)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:127:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-e81b1c7b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6844b72d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#84 Test that a WebAssembly code returns a specific result (address.wast:152)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:130:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-6844b72d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fa68d7ff"><details><summary><span class="mark">FAIL</span><span class="sub-name">#85 Test that a WebAssembly code returns a specific result (address.wast:153)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:133:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-fa68d7ff" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-89efbdbc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#86 Test that a WebAssembly code returns a specific result (address.wast:154)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:136:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-89efbdbc" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6a6b2292"><details><summary><span class="mark">FAIL</span><span class="sub-name">#87 Test that a WebAssembly code returns a specific result (address.wast:155)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:139:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-6a6b2292" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fcf40462"><details><summary><span class="mark">FAIL</span><span class="sub-name">#88 Test that a WebAssembly code returns a specific result (address.wast:156)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:142:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-fcf40462" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e591b2c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#89 Test that a WebAssembly code returns a specific result (address.wast:158)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:145:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-e591b2c1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-78cda80a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#90 Test that a WebAssembly code returns a specific result (address.wast:159)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:148:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-78cda80a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-816e8085"><details><summary><span class="mark">FAIL</span><span class="sub-name">#91 Test that a WebAssembly code returns a specific result (address.wast:160)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:151:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-816e8085" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-56a91072"><details><summary><span class="mark">FAIL</span><span class="sub-name">#92 Test that a WebAssembly code returns a specific result (address.wast:161)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:154:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-56a91072" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-53f5bc2c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#93 Test that a WebAssembly code returns a specific result (address.wast:162)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:157:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-53f5bc2c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a457fd38"><details><summary><span class="mark">FAIL</span><span class="sub-name">#94 Test that a WebAssembly code returns a specific result (address.wast:164)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:160:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-a457fd38" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a9f9d558"><details><summary><span class="mark">FAIL</span><span class="sub-name">#95 Test that a WebAssembly code returns a specific result (address.wast:165)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:163:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-a9f9d558" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b5efe858"><details><summary><span class="mark">FAIL</span><span class="sub-name">#96 Test that a WebAssembly code returns a specific result (address.wast:166)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:166:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-b5efe858" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ceabb7fa"><details><summary><span class="mark">FAIL</span><span class="sub-name">#97 Test that a WebAssembly code returns a specific result (address.wast:167)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:169:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-ceabb7fa" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-202312f8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#98 Test that a WebAssembly code returns a specific result (address.wast:168)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:172:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-202312f8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cd5b1d46"><details><summary><span class="mark">FAIL</span><span class="sub-name">#99 Test that a WebAssembly code returns a specific result (address.wast:170)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:175:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-cd5b1d46" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7deff326"><details><summary><span class="mark">FAIL</span><span class="sub-name">#100 Test that a WebAssembly code returns a specific result (address.wast:171)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:178:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-7deff326" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c93027ee"><details><summary><span class="mark">FAIL</span><span class="sub-name">#101 Test that a WebAssembly code returns a specific result (address.wast:172)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:181:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-c93027ee" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9cc77a98"><details><summary><span class="mark">FAIL</span><span class="sub-name">#102 Test that a WebAssembly code returns a specific result (address.wast:173)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:184:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-9cc77a98" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-09d3841a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#103 Test that a WebAssembly code returns a specific result (address.wast:174)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:187:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-09d3841a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9c522fd2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#104 Test that a WebAssembly code returns a specific result (address.wast:176)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:190:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-9c522fd2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2fecf32c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#105 Test that a WebAssembly code returns a specific result (address.wast:177)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:193:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-2fecf32c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-28ee3f24"><details><summary><span class="mark">FAIL</span><span class="sub-name">#106 Test that a WebAssembly code returns a specific result (address.wast:178)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:196:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-28ee3f24" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-87ed8246"><details><summary><span class="mark">FAIL</span><span class="sub-name">#107 Test that a WebAssembly code returns a specific result (address.wast:179)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:199:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-87ed8246" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3ad278f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#108 Test that a WebAssembly code returns a specific result (address.wast:180)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:202:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-3ad278f3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b5151bcd"><details><summary><span class="mark">FAIL</span><span class="sub-name">#109 Test that a WebAssembly code returns a specific result (address.wast:182)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:205:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-b5151bcd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-139bb400"><details><summary><span class="mark">FAIL</span><span class="sub-name">#110 Test that a WebAssembly code returns a specific result (address.wast:183)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:208:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-139bb400" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2c29c695"><details><summary><span class="mark">FAIL</span><span class="sub-name">#111 Test that a WebAssembly code returns a specific result (address.wast:184)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:211:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-2c29c695" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c5081815"><details><summary><span class="mark">FAIL</span><span class="sub-name">#112 Test that a WebAssembly code returns a specific result (address.wast:185)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:214:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-c5081815" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d24c4a97"><details><summary><span class="mark">FAIL</span><span class="sub-name">#113 Test that a WebAssembly code returns a specific result (address.wast:186)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good5&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:217:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-d24c4a97" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6e328bec"><details><summary><span class="mark">FAIL</span><span class="sub-name">#114 Test that a WebAssembly code returns a specific result (address.wast:188)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good1&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:220:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-6e328bec" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c4ad586d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#115 Test that a WebAssembly code returns a specific result (address.wast:189)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good2&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:223:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-c4ad586d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6422e75c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#116 Test that a WebAssembly code returns a specific result (address.wast:190)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good3&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:226:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-6422e75c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f0233638"><details><summary><span class="mark">FAIL</span><span class="sub-name">#117 Test that a WebAssembly code returns a specific result (address.wast:191)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good4&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:229:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-f0233638" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-31358a9f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#118 Test that a WebAssembly code traps (address.wast:192)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good5&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:232:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-31358a9f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-61d88472"><details><summary><span class="mark">FAIL</span><span class="sub-name">#119 Test that a WebAssembly code traps (address.wast:194)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_good3&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:235:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-61d88472" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4362df5d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#120 Test that a WebAssembly code traps (address.wast:195)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_good3&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:238:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-4362df5d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-dce9dead"><details><summary><span class="mark">FAIL</span><span class="sub-name">#121 Test that a WebAssembly code traps (address.wast:196)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_good3&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:241:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-dce9dead" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7dc6756f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#122 Test that a WebAssembly code traps (address.wast:197)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_good3&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:244:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-7dc6756f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5aa7bb4d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#123 Test that a WebAssembly code traps (address.wast:198)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good3&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:247:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-5aa7bb4d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-82dd1cad"><details><summary><span class="mark">FAIL</span><span class="sub-name">#124 Test that a WebAssembly code traps (address.wast:199)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_good3&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:250:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-82dd1cad" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-06b4866d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#125 Test that a WebAssembly code traps (address.wast:201)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_bad&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:253:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-06b4866d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ff61bf74"><details><summary><span class="mark">FAIL</span><span class="sub-name">#126 Test that a WebAssembly code traps (address.wast:202)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_bad&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:256:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-ff61bf74" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-eaa42ee7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#127 Test that a WebAssembly code traps (address.wast:203)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_bad&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:259:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-eaa42ee7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-58b5a88a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#128 Test that a WebAssembly code traps (address.wast:204)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_bad&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:262:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-58b5a88a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-55325dc7"><details><summary><span class="mark">FAIL</span><span class="sub-name">#129 Test that a WebAssembly code traps (address.wast:205)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_bad&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:265:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-55325dc7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7e498a3b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#130 Test that a WebAssembly code traps (address.wast:207)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8u_bad&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:268:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-7e498a3b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5374e404"><details><summary><span class="mark">FAIL</span><span class="sub-name">#131 Test that a WebAssembly code traps (address.wast:208)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;8s_bad&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:271:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-5374e404" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-79038eba"><details><summary><span class="mark">FAIL</span><span class="sub-name">#132 Test that a WebAssembly code traps (address.wast:209)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16u_bad&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:274:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-79038eba" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b38239be"><details><summary><span class="mark">FAIL</span><span class="sub-name">#133 Test that a WebAssembly code traps (address.wast:210)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;16s_bad&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:277:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-b38239be" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c168a47a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#134 Test that a WebAssembly code traps (address.wast:211)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;32_bad&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:280:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-c168a47a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6a5a8cd7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#41 Reinitialize the default imports</span></div><a class="self" href="#s-6a5a8cd7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a3f3a54d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#42 Test that WebAssembly compilation succeeds (address.wast:3)</span></div><a class="self" href="#s-a3f3a54d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a7a05928"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#43 Test that WebAssembly instantiation succeeds (address.wast:3)</span></div><a class="self" href="#s-a7a05928" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-90c4483a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#44 Test that a WebAssembly code returns a specific result (address.wast:104)</span></div><a class="self" href="#s-90c4483a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f9441bc2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#45 Test that a WebAssembly code returns a specific result (address.wast:105)</span></div><a class="self" href="#s-f9441bc2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0f94e8bc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#46 Test that a WebAssembly code returns a specific result (address.wast:106)</span></div><a class="self" href="#s-0f94e8bc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-352774e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#47 Test that a WebAssembly code returns a specific result (address.wast:107)</span></div><a class="self" href="#s-352774e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ebbad76f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#48 Test that a WebAssembly code returns a specific result (address.wast:108)</span></div><a class="self" href="#s-ebbad76f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a40596fc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#49 Test that a WebAssembly code returns a specific result (address.wast:110)</span></div><a class="self" href="#s-a40596fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-29a13007"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#50 Test that a WebAssembly code returns a specific result (address.wast:111)</span></div><a class="self" href="#s-29a13007" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f8558811"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#51 Test that a WebAssembly code returns a specific result (address.wast:112)</span></div><a class="self" href="#s-f8558811" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7de69ecf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#52 Test that a WebAssembly code returns a specific result (address.wast:113)</span></div><a class="self" href="#s-7de69ecf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8c94c6ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#53 Test that a WebAssembly code returns a specific result (address.wast:114)</span></div><a class="self" href="#s-8c94c6ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4f349ecb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#54 Test that a WebAssembly code returns a specific result (address.wast:116)</span></div><a class="self" href="#s-4f349ecb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ea1c5948"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#55 Test that a WebAssembly code returns a specific result (address.wast:117)</span></div><a class="self" href="#s-ea1c5948" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-009c89ff"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#56 Test that a WebAssembly code returns a specific result (address.wast:118)</span></div><a class="self" href="#s-009c89ff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3e30cad2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#57 Test that a WebAssembly code returns a specific result (address.wast:119)</span></div><a class="self" href="#s-3e30cad2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-17a472d5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#58 Test that a WebAssembly code returns a specific result (address.wast:120)</span></div><a class="self" href="#s-17a472d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0d175dd0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#59 Test that a WebAssembly code returns a specific result (address.wast:122)</span></div><a class="self" href="#s-0d175dd0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1e3a355f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#60 Test that a WebAssembly code returns a specific result (address.wast:123)</span></div><a class="self" href="#s-1e3a355f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-76376a7f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#61 Test that a WebAssembly code returns a specific result (address.wast:124)</span></div><a class="self" href="#s-76376a7f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-473abe7a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#62 Test that a WebAssembly code returns a specific result (address.wast:125)</span></div><a class="self" href="#s-473abe7a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b8cf9f6b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#63 Test that a WebAssembly code returns a specific result (address.wast:126)</span></div><a class="self" href="#s-b8cf9f6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3f619f92"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#64 Test that a WebAssembly code returns a specific result (address.wast:128)</span></div><a class="self" href="#s-3f619f92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ae8c1cec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#65 Test that a WebAssembly code returns a specific result (address.wast:129)</span></div><a class="self" href="#s-ae8c1cec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6f3a40d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#66 Test that a WebAssembly code returns a specific result (address.wast:130)</span></div><a class="self" href="#s-6f3a40d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8fa3d9cd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#67 Test that a WebAssembly code returns a specific result (address.wast:131)</span></div><a class="self" href="#s-8fa3d9cd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-20a5e2ff"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#68 Test that a WebAssembly code returns a specific result (address.wast:132)</span></div><a class="self" href="#s-20a5e2ff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9476073f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#69 Test that a WebAssembly code returns a specific result (address.wast:134)</span></div><a class="self" href="#s-9476073f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7af762d3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#70 Test that a WebAssembly code returns a specific result (address.wast:135)</span></div><a class="self" href="#s-7af762d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-75fb6628"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#71 Test that a WebAssembly code returns a specific result (address.wast:136)</span></div><a class="self" href="#s-75fb6628" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1353c17b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#72 Test that a WebAssembly code returns a specific result (address.wast:137)</span></div><a class="self" href="#s-1353c17b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1038a6db"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#73 Test that a WebAssembly code returns a specific result (address.wast:138)</span></div><a class="self" href="#s-1038a6db" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d0bcb8e3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#74 Test that a WebAssembly code returns a specific result (address.wast:140)</span></div><a class="self" href="#s-d0bcb8e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bc6733a0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#75 Test that a WebAssembly code returns a specific result (address.wast:141)</span></div><a class="self" href="#s-bc6733a0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-071a711f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#76 Test that a WebAssembly code returns a specific result (address.wast:142)</span></div><a class="self" href="#s-071a711f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ff032961"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#77 Test that a WebAssembly code returns a specific result (address.wast:143)</span></div><a class="self" href="#s-ff032961" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cdbd601"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#78 Test that a WebAssembly code returns a specific result (address.wast:144)</span></div><a class="self" href="#s-3cdbd601" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-35117f75"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#79 Test that a WebAssembly code returns a specific result (address.wast:146)</span></div><a class="self" href="#s-35117f75" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f0b847a1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#80 Test that a WebAssembly code returns a specific result (address.wast:147)</span></div><a class="self" href="#s-f0b847a1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-88d0b082"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#81 Test that a WebAssembly code returns a specific result (address.wast:148)</span></div><a class="self" href="#s-88d0b082" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-de3f3856"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#82 Test that a WebAssembly code returns a specific result (address.wast:149)</span></div><a class="self" href="#s-de3f3856" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e81b1c7b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#83 Test that a WebAssembly code returns a specific result (address.wast:150)</span></div><a class="self" href="#s-e81b1c7b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6844b72d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#84 Test that a WebAssembly code returns a specific result (address.wast:152)</span></div><a class="self" href="#s-6844b72d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fa68d7ff"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#85 Test that a WebAssembly code returns a specific result (address.wast:153)</span></div><a class="self" href="#s-fa68d7ff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-89efbdbc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#86 Test that a WebAssembly code returns a specific result (address.wast:154)</span></div><a class="self" href="#s-89efbdbc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6a6b2292"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#87 Test that a WebAssembly code returns a specific result (address.wast:155)</span></div><a class="self" href="#s-6a6b2292" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fcf40462"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#88 Test that a WebAssembly code returns a specific result (address.wast:156)</span></div><a class="self" href="#s-fcf40462" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e591b2c1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#89 Test that a WebAssembly code returns a specific result (address.wast:158)</span></div><a class="self" href="#s-e591b2c1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-78cda80a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#90 Test that a WebAssembly code returns a specific result (address.wast:159)</span></div><a class="self" href="#s-78cda80a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-816e8085"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#91 Test that a WebAssembly code returns a specific result (address.wast:160)</span></div><a class="self" href="#s-816e8085" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-56a91072"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#92 Test that a WebAssembly code returns a specific result (address.wast:161)</span></div><a class="self" href="#s-56a91072" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-53f5bc2c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#93 Test that a WebAssembly code returns a specific result (address.wast:162)</span></div><a class="self" href="#s-53f5bc2c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a457fd38"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#94 Test that a WebAssembly code returns a specific result (address.wast:164)</span></div><a class="self" href="#s-a457fd38" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a9f9d558"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#95 Test that a WebAssembly code returns a specific result (address.wast:165)</span></div><a class="self" href="#s-a9f9d558" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b5efe858"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#96 Test that a WebAssembly code returns a specific result (address.wast:166)</span></div><a class="self" href="#s-b5efe858" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ceabb7fa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#97 Test that a WebAssembly code returns a specific result (address.wast:167)</span></div><a class="self" href="#s-ceabb7fa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-202312f8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#98 Test that a WebAssembly code returns a specific result (address.wast:168)</span></div><a class="self" href="#s-202312f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cd5b1d46"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#99 Test that a WebAssembly code returns a specific result (address.wast:170)</span></div><a class="self" href="#s-cd5b1d46" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7deff326"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#100 Test that a WebAssembly code returns a specific result (address.wast:171)</span></div><a class="self" href="#s-7deff326" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c93027ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#101 Test that a WebAssembly code returns a specific result (address.wast:172)</span></div><a class="self" href="#s-c93027ee" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9cc77a98"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#102 Test that a WebAssembly code returns a specific result (address.wast:173)</span></div><a class="self" href="#s-9cc77a98" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-09d3841a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#103 Test that a WebAssembly code returns a specific result (address.wast:174)</span></div><a class="self" href="#s-09d3841a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9c522fd2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#104 Test that a WebAssembly code returns a specific result (address.wast:176)</span></div><a class="self" href="#s-9c522fd2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2fecf32c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#105 Test that a WebAssembly code returns a specific result (address.wast:177)</span></div><a class="self" href="#s-2fecf32c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-28ee3f24"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#106 Test that a WebAssembly code returns a specific result (address.wast:178)</span></div><a class="self" href="#s-28ee3f24" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-87ed8246"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#107 Test that a WebAssembly code returns a specific result (address.wast:179)</span></div><a class="self" href="#s-87ed8246" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3ad278f3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#108 Test that a WebAssembly code returns a specific result (address.wast:180)</span></div><a class="self" href="#s-3ad278f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b5151bcd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#109 Test that a WebAssembly code returns a specific result (address.wast:182)</span></div><a class="self" href="#s-b5151bcd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-139bb400"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#110 Test that a WebAssembly code returns a specific result (address.wast:183)</span></div><a class="self" href="#s-139bb400" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2c29c695"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#111 Test that a WebAssembly code returns a specific result (address.wast:184)</span></div><a class="self" href="#s-2c29c695" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c5081815"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#112 Test that a WebAssembly code returns a specific result (address.wast:185)</span></div><a class="self" href="#s-c5081815" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d24c4a97"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#113 Test that a WebAssembly code returns a specific result (address.wast:186)</span></div><a class="self" href="#s-d24c4a97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6e328bec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#114 Test that a WebAssembly code returns a specific result (address.wast:188)</span></div><a class="self" href="#s-6e328bec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4ad586d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#115 Test that a WebAssembly code returns a specific result (address.wast:189)</span></div><a class="self" href="#s-c4ad586d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6422e75c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#116 Test that a WebAssembly code returns a specific result (address.wast:190)</span></div><a class="self" href="#s-6422e75c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f0233638"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#117 Test that a WebAssembly code returns a specific result (address.wast:191)</span></div><a class="self" href="#s-f0233638" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-31358a9f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#118 Test that a WebAssembly code traps (address.wast:192)</span></div><a class="self" href="#s-31358a9f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-61d88472"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#119 Test that a WebAssembly code traps (address.wast:194)</span></div><a class="self" href="#s-61d88472" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4362df5d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#120 Test that a WebAssembly code traps (address.wast:195)</span></div><a class="self" href="#s-4362df5d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dce9dead"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#121 Test that a WebAssembly code traps (address.wast:196)</span></div><a class="self" href="#s-dce9dead" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7dc6756f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#122 Test that a WebAssembly code traps (address.wast:197)</span></div><a class="self" href="#s-7dc6756f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5aa7bb4d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#123 Test that a WebAssembly code traps (address.wast:198)</span></div><a class="self" href="#s-5aa7bb4d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-82dd1cad"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#124 Test that a WebAssembly code traps (address.wast:199)</span></div><a class="self" href="#s-82dd1cad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-06b4866d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#125 Test that a WebAssembly code traps (address.wast:201)</span></div><a class="self" href="#s-06b4866d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ff61bf74"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#126 Test that a WebAssembly code traps (address.wast:202)</span></div><a class="self" href="#s-ff61bf74" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eaa42ee7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#127 Test that a WebAssembly code traps (address.wast:203)</span></div><a class="self" href="#s-eaa42ee7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-58b5a88a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#128 Test that a WebAssembly code traps (address.wast:204)</span></div><a class="self" href="#s-58b5a88a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-55325dc7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#129 Test that a WebAssembly code traps (address.wast:205)</span></div><a class="self" href="#s-55325dc7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7e498a3b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#130 Test that a WebAssembly code traps (address.wast:207)</span></div><a class="self" href="#s-7e498a3b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5374e404"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#131 Test that a WebAssembly code traps (address.wast:208)</span></div><a class="self" href="#s-5374e404" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-79038eba"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#132 Test that a WebAssembly code traps (address.wast:209)</span></div><a class="self" href="#s-79038eba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b38239be"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#133 Test that a WebAssembly code traps (address.wast:210)</span></div><a class="self" href="#s-b38239be" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c168a47a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#134 Test that a WebAssembly code traps (address.wast:211)</span></div><a class="self" href="#s-c168a47a" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a06423b9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#135 Test that WebAssembly compilation fails (address.wast:213)</span></div><a class="self" href="#s-a06423b9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-8fab17d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#136 Test that WebAssembly compilation succeeds (address.wast:223)</span></div><a class="self" href="#s-8fab17d2" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-9989c653"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#137 Test that WebAssembly instantiation succeeds (address.wast:223)</span></div><a class="self" href="#s-9989c653" aria-label="Link to this subtest">&para;</a></li>
@@ -577,383 +301,111 @@
 <li class="sub s-pass" id="s-70ab0756"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#264 Test that WebAssembly compilation succeeds (address.wast:514)</span></div><a class="self" href="#s-70ab0756" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-877c1ddd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#265 Test that WebAssembly instantiation succeeds (address.wast:514)</span></div><a class="self" href="#s-877c1ddd" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ff48b380"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#266 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-ff48b380" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-796ef44c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#267 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:676:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:676:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-796ef44c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ce3b50af"><details><summary><span class="mark">FAIL</span><span class="sub-name">#268 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:676:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-ce3b50af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-796ef44c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#267 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-796ef44c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e779f74d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#268 Run a WebAssembly test without special assertions (address.wast:538)</span></div><a class="self" href="#s-e779f74d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7ba45784"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#269 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-7ba45784" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-53d030f5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#270 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:679:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:679:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-53d030f5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4ca5ed8c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#271 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:679:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-4ca5ed8c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-53d030f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#270 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-53d030f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-58846872"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#271 Run a WebAssembly test without special assertions (address.wast:539)</span></div><a class="self" href="#s-58846872" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-85aabdb6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#272 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-85aabdb6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b88a3a0d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#273 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:682:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:682:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-b88a3a0d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ac4f643a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#274 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:682:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-ac4f643a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b88a3a0d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#273 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-b88a3a0d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3607dd75"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#274 Run a WebAssembly test without special assertions (address.wast:540)</span></div><a class="self" href="#s-3607dd75" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-77bf5b17"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#275 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-77bf5b17" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-259f425a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#276 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:685:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:685:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-259f425a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1f0a78fc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#277 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:685:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-1f0a78fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-259f425a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#276 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-259f425a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-db01ec90"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#277 Run a WebAssembly test without special assertions (address.wast:541)</span></div><a class="self" href="#s-db01ec90" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-40a1dd3f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#278 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-40a1dd3f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-61b8c465"><details><summary><span class="mark">FAIL</span><span class="sub-name">#279 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:688:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:688:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-61b8c465" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-dde83933"><details><summary><span class="mark">FAIL</span><span class="sub-name">#280 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:688:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-dde83933" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-61b8c465"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#279 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-61b8c465" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bac826f8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#280 Run a WebAssembly test without special assertions (address.wast:542)</span></div><a class="self" href="#s-bac826f8" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-efd987cb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#281 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-efd987cb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-00880b75"><details><summary><span class="mark">FAIL</span><span class="sub-name">#282 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:691:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:691:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-00880b75" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6b27bc40"><details><summary><span class="mark">FAIL</span><span class="sub-name">#283 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:691:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-6b27bc40" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-00880b75"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#282 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-00880b75" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1a4134cb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#283 Run a WebAssembly test without special assertions (address.wast:544)</span></div><a class="self" href="#s-1a4134cb" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-495dd80e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#284 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-495dd80e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-831b1ea3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#285 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:694:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:694:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-831b1ea3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4c402109"><details><summary><span class="mark">FAIL</span><span class="sub-name">#286 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:694:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-4c402109" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-831b1ea3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#285 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-831b1ea3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4063cd45"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#286 Run a WebAssembly test without special assertions (address.wast:545)</span></div><a class="self" href="#s-4063cd45" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-227468d8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#287 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-227468d8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bd51af92"><details><summary><span class="mark">FAIL</span><span class="sub-name">#288 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:697:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:697:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-bd51af92" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2bb8abc3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#289 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:697:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-2bb8abc3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bd51af92"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#288 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-bd51af92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-65c4dc71"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#289 Run a WebAssembly test without special assertions (address.wast:546)</span></div><a class="self" href="#s-65c4dc71" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c2e3cbfd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#290 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-c2e3cbfd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-dd33b517"><details><summary><span class="mark">FAIL</span><span class="sub-name">#291 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:700:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:700:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-dd33b517" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-87299b3d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#292 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:700:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-87299b3d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dd33b517"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#291 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-dd33b517" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0472c83c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#292 Run a WebAssembly test without special assertions (address.wast:547)</span></div><a class="self" href="#s-0472c83c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-25b85940"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#293 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-25b85940" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-88ac01f0"><details><summary><span class="mark">FAIL</span><span class="sub-name">#294 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:703:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:703:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-88ac01f0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-efe4812d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#295 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:703:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-efe4812d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-88ac01f0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#294 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-88ac01f0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-69707bf0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#295 Run a WebAssembly test without special assertions (address.wast:548)</span></div><a class="self" href="#s-69707bf0" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ea483775"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#296 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-ea483775" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9eb3d1ca"><details><summary><span class="mark">FAIL</span><span class="sub-name">#297 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:706:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:706:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-9eb3d1ca" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7a00f285"><details><summary><span class="mark">FAIL</span><span class="sub-name">#298 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:706:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-7a00f285" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9eb3d1ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#297 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-9eb3d1ca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6e804049"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#298 Run a WebAssembly test without special assertions (address.wast:550)</span></div><a class="self" href="#s-6e804049" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-77675cf1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#299 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-77675cf1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-126e6215"><details><summary><span class="mark">FAIL</span><span class="sub-name">#300 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:709:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:709:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-126e6215" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-69b6a4dc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#301 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:709:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-69b6a4dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-126e6215"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#300 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-126e6215" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-be68f519"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#301 Run a WebAssembly test without special assertions (address.wast:551)</span></div><a class="self" href="#s-be68f519" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-1a4b33fa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#302 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-1a4b33fa" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6621ce5f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#303 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:712:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:712:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-6621ce5f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c8b06948"><details><summary><span class="mark">FAIL</span><span class="sub-name">#304 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:712:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-c8b06948" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6621ce5f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#303 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-6621ce5f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-66300e9c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#304 Run a WebAssembly test without special assertions (address.wast:552)</span></div><a class="self" href="#s-66300e9c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-26a1a3c6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#305 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-26a1a3c6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3840d853"><details><summary><span class="mark">FAIL</span><span class="sub-name">#306 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:715:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:715:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-3840d853" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-dfc481d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#307 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:715:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-dfc481d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3840d853"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#306 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-3840d853" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-95a36710"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#307 Run a WebAssembly test without special assertions (address.wast:553)</span></div><a class="self" href="#s-95a36710" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-afaf14ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#308 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-afaf14ca" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1c73eb07"><details><summary><span class="mark">FAIL</span><span class="sub-name">#309 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:718:24
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:270:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:718:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-1c73eb07" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-74af09d4"><details><summary><span class="mark">FAIL</span><span class="sub-name">#310 Test that a WebAssembly code traps (address.wast:554)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:718:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-74af09d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1c73eb07"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#309 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-1c73eb07" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-74af09d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#310 Test that a WebAssembly code traps (address.wast:554)</span></div><a class="self" href="#s-74af09d4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7bcb2217"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#311 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-7bcb2217" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5b911993"><details><summary><span class="mark">FAIL</span><span class="sub-name">#312 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:721:24
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:270:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:721:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-5b911993" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7faf3707"><details><summary><span class="mark">FAIL</span><span class="sub-name">#313 Test that a WebAssembly code traps (address.wast:556)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:721:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-7faf3707" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5b911993"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#312 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-5b911993" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7faf3707"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#313 Test that a WebAssembly code traps (address.wast:556)</span></div><a class="self" href="#s-7faf3707" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-952263d5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#314 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-952263d5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3e68daeb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#315 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:724:24
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:270:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:724:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-3e68daeb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-24713845"><details><summary><span class="mark">FAIL</span><span class="sub-name">#316 Test that a WebAssembly code traps (address.wast:557)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:724:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-24713845" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3e68daeb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#315 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-3e68daeb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-24713845"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#316 Test that a WebAssembly code traps (address.wast:557)</span></div><a class="self" href="#s-24713845" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-5c6f05cc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#317 Test that a WebAssembly code traps (address.wast:559)</span></div><a class="self" href="#s-5c6f05cc" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c3e944ad"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#318 Test that a WebAssembly code traps (address.wast:560)</span></div><a class="self" href="#s-c3e944ad" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-eb099cda"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#319 Test that WebAssembly compilation succeeds (address.wast:564)</span></div><a class="self" href="#s-eb099cda" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b3af9699"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#320 Test that WebAssembly instantiation succeeds (address.wast:564)</span></div><a class="self" href="#s-b3af9699" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3e96c7d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#321 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-3e96c7d2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2f0ce6db"><details><summary><span class="mark">FAIL</span><span class="sub-name">#322 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:739:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:739:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-2f0ce6db" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-964417bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">#323 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:739:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-964417bb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2f0ce6db"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#322 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-2f0ce6db" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e0526f8b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#323 Run a WebAssembly test without special assertions (address.wast:588)</span></div><a class="self" href="#s-e0526f8b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ab1fef67"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#324 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-ab1fef67" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-92d6c54e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#325 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:742:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:742:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-92d6c54e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1e07a929"><details><summary><span class="mark">FAIL</span><span class="sub-name">#326 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:742:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-1e07a929" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-92d6c54e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#325 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-92d6c54e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0634cb5f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#326 Run a WebAssembly test without special assertions (address.wast:589)</span></div><a class="self" href="#s-0634cb5f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-84aa70cd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#327 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-84aa70cd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-41b4c365"><details><summary><span class="mark">FAIL</span><span class="sub-name">#328 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:745:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:745:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-41b4c365" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1a4443a9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#329 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:745:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-1a4443a9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-41b4c365"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#328 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-41b4c365" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a15b9878"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#329 Run a WebAssembly test without special assertions (address.wast:590)</span></div><a class="self" href="#s-a15b9878" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c1f442f0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#330 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-c1f442f0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-46b9b9f8"><details><summary><span class="mark">FAIL</span><span class="sub-name">#331 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:748:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:748:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-46b9b9f8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b151b0de"><details><summary><span class="mark">FAIL</span><span class="sub-name">#332 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:748:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-b151b0de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-46b9b9f8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#331 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-46b9b9f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-74b533f9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#332 Run a WebAssembly test without special assertions (address.wast:591)</span></div><a class="self" href="#s-74b533f9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-902f0ff5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#333 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-902f0ff5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6e31b054"><details><summary><span class="mark">FAIL</span><span class="sub-name">#334 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:751:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:751:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-6e31b054" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7332c003"><details><summary><span class="mark">FAIL</span><span class="sub-name">#335 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:751:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-7332c003" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6e31b054"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#334 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-6e31b054" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-02fef9e6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#335 Run a WebAssembly test without special assertions (address.wast:592)</span></div><a class="self" href="#s-02fef9e6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ac1d6b29"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#336 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-ac1d6b29" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3bcbdd42"><details><summary><span class="mark">FAIL</span><span class="sub-name">#337 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:754:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:754:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-3bcbdd42" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1966085f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#338 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:754:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-1966085f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3bcbdd42"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#337 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-3bcbdd42" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4124bcb9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#338 Run a WebAssembly test without special assertions (address.wast:594)</span></div><a class="self" href="#s-4124bcb9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-83fb15af"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#339 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-83fb15af" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fd341cf5"><details><summary><span class="mark">FAIL</span><span class="sub-name">#340 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:757:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:757:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-fd341cf5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-55410701"><details><summary><span class="mark">FAIL</span><span class="sub-name">#341 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:757:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-55410701" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fd341cf5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#340 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-fd341cf5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-31b60e72"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#341 Run a WebAssembly test without special assertions (address.wast:595)</span></div><a class="self" href="#s-31b60e72" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2e723233"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#342 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-2e723233" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2782adc9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#343 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:760:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:760:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-2782adc9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-282d7890"><details><summary><span class="mark">FAIL</span><span class="sub-name">#344 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:760:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-282d7890" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2782adc9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#343 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-2782adc9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-13820737"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#344 Run a WebAssembly test without special assertions (address.wast:596)</span></div><a class="self" href="#s-13820737" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ebea0495"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#345 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-ebea0495" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-20406b35"><details><summary><span class="mark">FAIL</span><span class="sub-name">#346 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:763:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:763:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-20406b35" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ac165d1e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#347 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:763:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-ac165d1e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-20406b35"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#346 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-20406b35" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2bb21dab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#347 Run a WebAssembly test without special assertions (address.wast:597)</span></div><a class="self" href="#s-2bb21dab" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-9d17c48f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#348 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-9d17c48f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-54448239"><details><summary><span class="mark">FAIL</span><span class="sub-name">#349 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:766:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:766:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-54448239" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0763a984"><details><summary><span class="mark">FAIL</span><span class="sub-name">#350 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:766:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-0763a984" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-54448239"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#349 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-54448239" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-34090911"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#350 Run a WebAssembly test without special assertions (address.wast:598)</span></div><a class="self" href="#s-34090911" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ce0b9d6b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#351 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-ce0b9d6b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a0fa26c9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#352 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:769:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:769:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-a0fa26c9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e97bcd56"><details><summary><span class="mark">FAIL</span><span class="sub-name">#353 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:769:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-e97bcd56" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a0fa26c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#352 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-a0fa26c9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c2bc2ee3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#353 Run a WebAssembly test without special assertions (address.wast:600)</span></div><a class="self" href="#s-c2bc2ee3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-44b208a6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#354 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-44b208a6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c46579d3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#355 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:772:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:772:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-c46579d3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-89c807ad"><details><summary><span class="mark">FAIL</span><span class="sub-name">#356 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:772:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-89c807ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c46579d3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#355 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-c46579d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-24ce1815"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#356 Run a WebAssembly test without special assertions (address.wast:601)</span></div><a class="self" href="#s-24ce1815" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a430a054"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#357 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-a430a054" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-979f9117"><details><summary><span class="mark">FAIL</span><span class="sub-name">#358 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:775:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:775:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-979f9117" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8d80a199"><details><summary><span class="mark">FAIL</span><span class="sub-name">#359 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:775:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-8d80a199" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-979f9117"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#358 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-979f9117" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-64fa1476"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#359 Run a WebAssembly test without special assertions (address.wast:602)</span></div><a class="self" href="#s-64fa1476" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-fbb8ec8d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#360 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-fbb8ec8d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-51eb01b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#361 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:778:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:778:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-51eb01b6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-dc851c59"><details><summary><span class="mark">FAIL</span><span class="sub-name">#362 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:778:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-dc851c59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-51eb01b6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#361 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-51eb01b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3f0d6f19"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#362 Run a WebAssembly test without special assertions (address.wast:603)</span></div><a class="self" href="#s-3f0d6f19" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7f3e4279"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#363 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-7f3e4279" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5c0cd58a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#364 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:781:24
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:270:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:781:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-5c0cd58a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bc271e4a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#365 Test that a WebAssembly code traps (address.wast:604)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:781:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-bc271e4a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5c0cd58a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#364 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-5c0cd58a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bc271e4a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#365 Test that a WebAssembly code traps (address.wast:604)</span></div><a class="self" href="#s-bc271e4a" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-8b2d40f3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#366 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-8b2d40f3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b30c7bf3"><details><summary><span class="mark">FAIL</span><span class="sub-name">#367 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:784:24
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:270:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:784:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-b30c7bf3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-accc6d3f"><details><summary><span class="mark">FAIL</span><span class="sub-name">#368 Test that a WebAssembly code traps (address.wast:606)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:784:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-accc6d3f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b30c7bf3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#367 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-b30c7bf3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-accc6d3f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#368 Test that a WebAssembly code traps (address.wast:606)</span></div><a class="self" href="#s-accc6d3f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-173a49d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#369 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-173a49d4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c7da13d1"><details><summary><span class="mark">FAIL</span><span class="sub-name">#370 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:787:24
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:270:31)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:787:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-c7da13d1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0499cb9d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#371 Test that a WebAssembly code traps (address.wast:607)</span></summary><pre class="msg">assert_true: expected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at assert_trap (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:269:15)
-    at address_wast_js (http://web-platform.test:8000/wasm/core/js/address.wast.js:787:1)
-    at http://web-platform.test:8000/wasm/core/js/address.wast.js:795:3 expected true got false</pre></details><a class="self" href="#s-0499cb9d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c7da13d1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#370 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-c7da13d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0499cb9d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#371 Test that a WebAssembly code traps (address.wast:607)</span></div><a class="self" href="#s-0499cb9d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-04a6dfb3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#372 Test that a WebAssembly code traps (address.wast:609)</span></div><a class="self" href="#s-04a6dfb3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-73d07f43"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#373 Test that a WebAssembly code traps (address.wast:610)</span></div><a class="self" href="#s-73d07f43" aria-label="Link to this subtest">&para;</a></li>
 </ol>

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../wasm/"><code>wasm/</code></a></li><li><a href="../../../wasm/core/"><code>core/</code></a></li><li aria-current="page"><code>int_<wbr>exprs.<wbr>wast.<wbr>js.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>int_<wbr>exprs.<wbr>wast.<wbr>js.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="wasm/core/int_exprs.wast.js.html">
-<p class="figures-main"><span class="fg-pass">140</span><span class="fg-of"> / 148</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">148</span><span class="fg-of"> / 148</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-cd72de6793</code>, <span class="nowrap">10 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cd72de6793"><code>cd72de6793</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f8e7187788</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f8e7187788"><code>f8e7187788</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/core/int_exprs.wast.js.html"><code>wasm/<wbr>core/<wbr>int_<wbr>exprs.<wbr>wast.<wbr>js.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,7 +35,7 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-9a68a5fc"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-9a68a5fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9a68a5fc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#1 Reinitialize the default imports</span></div><a class="self" href="#s-9a68a5fc" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-65d68ff6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (int_exprs.wast:6)</span></div><a class="self" href="#s-65d68ff6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a8afaa80"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation succeeds (int_exprs.wast:25)</span></div><a class="self" href="#s-a8afaa80" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-425712c4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (int_exprs.wast:35)</span></div><a class="self" href="#s-425712c4" aria-label="Link to this subtest">&para;</a></li>
@@ -55,28 +55,13 @@
 <li class="sub s-pass" id="s-6198f1d6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#18 Test that WebAssembly compilation succeeds (int_exprs.wast:295)</span></div><a class="self" href="#s-6198f1d6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-9ac787d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#19 Test that WebAssembly compilation succeeds (int_exprs.wast:318)</span></div><a class="self" href="#s-9ac787d4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-933fb281"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#20 Test that WebAssembly compilation succeeds (int_exprs.wast:341)</span></div><a class="self" href="#s-933fb281" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-67b9aefa"><details><summary><span class="mark">FAIL</span><span class="sub-name">#21 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-67b9aefa" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-be15e27b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#22 Test that WebAssembly compilation succeeds (int_exprs.wast:6)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-be15e27b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-010965fa"><details><summary><span class="mark">FAIL</span><span class="sub-name">#23 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at int_exprs_wast_js (http://web-platform.test:8000/wasm/core/js/int_exprs.wast.js:7:10)
-    at http://web-platform.test:8000/wasm/core/js/int_exprs.wast.js:384:3 expected true got false</pre></details><a class="self" href="#s-010965fa" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-070a5e74"><details><summary><span class="mark">FAIL</span><span class="sub-name">#24 Test that a WebAssembly code returns a specific result (int_exprs.wast:18)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32.no_fold_cmp_s_offset&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at int_exprs_wast_js (http://web-platform.test:8000/wasm/core/js/int_exprs.wast.js:10:1)
-    at http://web-platform.test:8000/wasm/core/js/int_exprs.wast.js:384:3 expected true got false</pre></details><a class="self" href="#s-070a5e74" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-95e486be"><details><summary><span class="mark">FAIL</span><span class="sub-name">#25 Test that a WebAssembly code returns a specific result (int_exprs.wast:19)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i32.no_fold_cmp_u_offset&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at int_exprs_wast_js (http://web-platform.test:8000/wasm/core/js/int_exprs.wast.js:13:1)
-    at http://web-platform.test:8000/wasm/core/js/int_exprs.wast.js:384:3 expected true got false</pre></details><a class="self" href="#s-95e486be" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b95a179e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#26 Test that a WebAssembly code returns a specific result (int_exprs.wast:20)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64.no_fold_cmp_s_offset&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at int_exprs_wast_js (http://web-platform.test:8000/wasm/core/js/int_exprs.wast.js:16:1)
-    at http://web-platform.test:8000/wasm/core/js/int_exprs.wast.js:384:3 expected true got false</pre></details><a class="self" href="#s-b95a179e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2f4a7f8a"><details><summary><span class="mark">FAIL</span><span class="sub-name">#27 Test that a WebAssembly code returns a specific result (int_exprs.wast:21)</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;i64.no_fold_cmp_u_offset&#39;) 
-    at assert_return (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:312:15)
-    at int_exprs_wast_js (http://web-platform.test:8000/wasm/core/js/int_exprs.wast.js:19:1)
-    at http://web-platform.test:8000/wasm/core/js/int_exprs.wast.js:384:3 expected true got false</pre></details><a class="self" href="#s-2f4a7f8a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-67b9aefa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#21 Reinitialize the default imports</span></div><a class="self" href="#s-67b9aefa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-be15e27b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#22 Test that WebAssembly compilation succeeds (int_exprs.wast:6)</span></div><a class="self" href="#s-be15e27b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c631f524"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#23 Test that WebAssembly instantiation succeeds (int_exprs.wast:6)</span></div><a class="self" href="#s-c631f524" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-070a5e74"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#24 Test that a WebAssembly code returns a specific result (int_exprs.wast:18)</span></div><a class="self" href="#s-070a5e74" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-95e486be"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#25 Test that a WebAssembly code returns a specific result (int_exprs.wast:19)</span></div><a class="self" href="#s-95e486be" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b95a179e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#26 Test that a WebAssembly code returns a specific result (int_exprs.wast:20)</span></div><a class="self" href="#s-b95a179e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2f4a7f8a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#27 Test that a WebAssembly code returns a specific result (int_exprs.wast:21)</span></div><a class="self" href="#s-2f4a7f8a" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e90b2b43"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#28 Test that WebAssembly compilation succeeds (int_exprs.wast:25)</span></div><a class="self" href="#s-e90b2b43" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-cda0e724"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#29 Test that WebAssembly instantiation succeeds (int_exprs.wast:25)</span></div><a class="self" href="#s-cda0e724" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-aed73529"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#30 Test that a WebAssembly code returns a specific result (int_exprs.wast:30)</span></div><a class="self" href="#s-aed73529" aria-label="Link to this subtest">&para;</a></li>

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../wasm/"><code>wasm/</code></a></li><li><a href="../../../../wasm/core/"><code>core/</code></a></li><li><a href="../../../../wasm/core/simd/"><code>simd/</code></a></li><li aria-current="page"><code>simd_<wbr>align.<wbr>wast.<wbr>js.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>simd_<wbr>align.<wbr>wast.<wbr>js.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="wasm/core/simd/simd_align.wast.js.html">
-<p class="figures-main"><span class="fg-pass">244</span><span class="fg-of"> / 264</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>20</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">264</span><span class="fg-of"> / 264</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-cd72de6793</code>, <span class="nowrap">10 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cd72de6793"><code>cd72de6793</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f8e7187788</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f8e7187788"><code>f8e7187788</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/core/simd/simd_align.wast.js.html"><code>wasm/<wbr>core/<wbr>simd/<wbr>simd_<wbr>align.<wbr>wast.<wbr>js.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,7 +35,7 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-49920966"><details><summary><span class="mark">FAIL</span><span class="sub-name">#1 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-49920966" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-49920966"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#1 Reinitialize the default imports</span></div><a class="self" href="#s-49920966" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-191be8de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#2 Test that WebAssembly compilation succeeds (simd_align.wast:3)</span></div><a class="self" href="#s-191be8de" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-6b2e11f6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#3 Test that WebAssembly compilation succeeds (simd_align.wast:4)</span></div><a class="self" href="#s-6b2e11f6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-54bd8fef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#4 Test that WebAssembly compilation succeeds (simd_align.wast:5)</span></div><a class="self" href="#s-54bd8fef" aria-label="Link to this subtest">&para;</a></li>
@@ -136,12 +136,9 @@
 <li class="sub s-pass" id="s-438ca6ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#99 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-438ca6ae" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-cb06fe2f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#100 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-cb06fe2f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-f65aac60"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#101 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-f65aac60" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ef3a6939"><details><summary><span class="mark">FAIL</span><span class="sub-name">#102 Reinitialize the default imports</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot convert a BigInt value to a number&quot;</pre></details><a class="self" href="#s-ef3a6939" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7b593681"><details><summary><span class="mark">FAIL</span><span class="sub-name">#103 Test that WebAssembly compilation succeeds (simd_align.wast:3)</span></summary><pre class="msg">assert_true: WebAssembly.compile failed unexpectedly with TypeError: Cannot convert a BigInt value to a number at {loc} expected true got false</pre></details><a class="self" href="#s-7b593681" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-76ef54c2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#104 Test that WebAssembly instantiation succeeds</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: Cannot read properties of undefined (reading &#39;source&#39;) 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:7:10)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-76ef54c2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ef3a6939"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#102 Reinitialize the default imports</span></div><a class="self" href="#s-ef3a6939" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7b593681"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#103 Test that WebAssembly compilation succeeds (simd_align.wast:3)</span></div><a class="self" href="#s-7b593681" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f820703c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#104 Test that WebAssembly instantiation succeeds (simd_align.wast:3)</span></div><a class="self" href="#s-f820703c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ba333357"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#105 Test that WebAssembly compilation succeeds (simd_align.wast:4)</span></div><a class="self" href="#s-ba333357" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-4ead5b6f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#106 Test that WebAssembly instantiation succeeds (simd_align.wast:4)</span></div><a class="self" href="#s-4ead5b6f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-5da6422d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#107 Test that WebAssembly compilation succeeds (simd_align.wast:5)</span></div><a class="self" href="#s-5da6422d" aria-label="Link to this subtest">&para;</a></li>
@@ -277,95 +274,31 @@
 <li class="sub s-pass" id="s-15ce7062"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#237 Test that WebAssembly compilation succeeds (simd_align.wast:311)</span></div><a class="self" href="#s-15ce7062" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-48545eb2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#238 Test that WebAssembly instantiation succeeds (simd_align.wast:311)</span></div><a class="self" href="#s-48545eb2" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-0c65ebb2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#239 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-0c65ebb2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-45f72986"><details><summary><span class="mark">FAIL</span><span class="sub-name">#240 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:412:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:412:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-45f72986" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b4affae9"><details><summary><span class="mark">FAIL</span><span class="sub-name">#241 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:412:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-b4affae9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-45f72986"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#240 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-45f72986" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f344ff63"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#241 Run a WebAssembly test without special assertions (simd_align.wast:321)</span></div><a class="self" href="#s-f344ff63" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-79bdf728"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#242 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-79bdf728" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-39258d47"><details><summary><span class="mark">FAIL</span><span class="sub-name">#243 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:415:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:415:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-39258d47" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-83d01040"><details><summary><span class="mark">FAIL</span><span class="sub-name">#244 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:415:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-83d01040" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-39258d47"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#243 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-39258d47" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-12e1e814"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#244 Run a WebAssembly test without special assertions (simd_align.wast:322)</span></div><a class="self" href="#s-12e1e814" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-8e390614"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#245 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-8e390614" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b7a7b41e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#246 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:418:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:418:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-b7a7b41e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f8b83d4b"><details><summary><span class="mark">FAIL</span><span class="sub-name">#247 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:418:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-f8b83d4b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b7a7b41e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#246 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-b7a7b41e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cf7ca021"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#247 Run a WebAssembly test without special assertions (simd_align.wast:323)</span></div><a class="self" href="#s-cf7ca021" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-bf04d155"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#248 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-bf04d155" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1a4cf8ee"><details><summary><span class="mark">FAIL</span><span class="sub-name">#249 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:421:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:421:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-1a4cf8ee" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6d749c49"><details><summary><span class="mark">FAIL</span><span class="sub-name">#250 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:421:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-6d749c49" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1a4cf8ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#249 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-1a4cf8ee" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f90ce09f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#250 Run a WebAssembly test without special assertions (simd_align.wast:324)</span></div><a class="self" href="#s-f90ce09f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-cc272dd1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#251 Test that WebAssembly compilation succeeds (simd_align.wast:328)</span></div><a class="self" href="#s-cc272dd1" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-9b371c0b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#252 Test that WebAssembly instantiation succeeds (simd_align.wast:328)</span></div><a class="self" href="#s-9b371c0b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-f3141588"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#253 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-f3141588" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-48ec3895"><details><summary><span class="mark">FAIL</span><span class="sub-name">#254 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:430:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:430:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-48ec3895" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a5a096bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">#255 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:430:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-a5a096bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-48ec3895"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#254 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-48ec3895" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b2fc1a3b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#255 Run a WebAssembly test without special assertions (simd_align.wast:352)</span></div><a class="self" href="#s-b2fc1a3b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-4e67b0b2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#256 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-4e67b0b2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1c2e0179"><details><summary><span class="mark">FAIL</span><span class="sub-name">#257 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:433:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:433:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-1c2e0179" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-03106f85"><details><summary><span class="mark">FAIL</span><span class="sub-name">#258 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:433:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-03106f85" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1c2e0179"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#257 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-1c2e0179" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eb86fa4b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#258 Run a WebAssembly test without special assertions (simd_align.wast:353)</span></div><a class="self" href="#s-eb86fa4b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-99bdb448"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#259 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-99bdb448" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-60bc727c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#260 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:436:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:436:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-60bc727c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e0baf311"><details><summary><span class="mark">FAIL</span><span class="sub-name">#261 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:436:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-e0baf311" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-60bc727c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#260 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-60bc727c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fc9d72af"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#261 Run a WebAssembly test without special assertions (simd_align.wast:354)</span></div><a class="self" href="#s-fc9d72af" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d644434e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#262 Test that WebAssembly compilation succeeds (wrapper)</span></div><a class="self" href="#s-d644434e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8c64aea2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#263 Test that WebAssembly instantiation succeeds (wrapper)</span></summary><pre class="msg">assert_true: unexpected instantiation error, observed TypeError: WebAssembly.instantiate(): Import #1 &quot;spectest&quot;: module is not an object or function 
-    at instance (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:207:15)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:439:16
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:249:31)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:439:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-8c64aea2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-030955ca"><details><summary><span class="mark">FAIL</span><span class="sub-name">#264 run</span></summary><pre class="msg">assert_true: unexpected runtime error, observed TypeError: Cannot read properties of undefined (reading &#39;run&#39;) 
-    at run (http://web-platform.test:8000/wasm/core/js/harness/async_index.js:248:15)
-    at simd_align_wast_js (http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:439:1)
-    at http://web-platform.test:8000/wasm/core/js/simd/simd_align.wast.js:441:3 expected true got false</pre></details><a class="self" href="#s-030955ca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8c64aea2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#263 Test that WebAssembly instantiation succeeds (wrapper)</span></div><a class="self" href="#s-8c64aea2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c47f287d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">#264 Run a WebAssembly test without special assertions (simd_align.wast:355)</span></div><a class="self" href="#s-c47f287d" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

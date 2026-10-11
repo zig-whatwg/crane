@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../shadow-dom/"><code>shadow-<wbr>dom/</code></a></li><li><a href="../../../shadow-dom/declarative/"><code>declarative/</code></a></li><li aria-current="page"><code>declarative-<wbr>shadow-<wbr>dom-<wbr>slot-<wbr>assignment.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>declarative-<wbr>shadow-<wbr>dom-<wbr>slot-<wbr>assignment.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="shadow-dom/declarative/declarative-shadow-dom-slot-assignment.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-cd72de6793</code>, <span class="nowrap">10 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/cd72de6793"><code>cd72de6793</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-f8e7187788</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/f8e7187788"><code>f8e7187788</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/declarative/declarative-shadow-dom-slot-assignment.html"><code>shadow-<wbr>dom/<wbr>declarative/<wbr>declarative-<wbr>shadow-<wbr>dom-<wbr>slot-<wbr>assignment.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -37,12 +37,12 @@
 <ol class="subtests">
 <li class="sub s-fail" id="s-0c507ed8"><details><summary><span class="mark">FAIL</span><span class="sub-name">shadowrootslotassignment reflection</span></summary><pre class="msg">assert_equals: Missing attribute should map to named expected (string) &quot;named&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-0c507ed8" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-31c775c2"><details><summary><span class="mark">FAIL</span><span class="sub-name">shadowrootslotassignment reflection, setter</span></summary><pre class="msg">assert_equals: expected (string) &quot;manual&quot; but got (object) null</pre></details><a class="self" href="#s-31c775c2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ce23a44e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Declarative Shadow DOM: shadowrootslotassignment=manual</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-ce23a44e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3891c81b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Declarative Shadow DOM: shadowrootslotassignment=named</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-3891c81b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2b66b920"><details><summary><span class="mark">FAIL</span><span class="sub-name">Declarative Shadow DOM: shadowrootslotassignment is case insensitive</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-2b66b920" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e716dfd6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Declarative Shadow DOM: shadowrootslotassignment invalid value defaults to named</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-e716dfd6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-09434aef"><details><summary><span class="mark">FAIL</span><span class="sub-name">Declarative Shadow DOM: shadowrootslotassignment on closed shadows can be set to manual</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-09434aef" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5bf8d095"><details><summary><span class="mark">FAIL</span><span class="sub-name">Declarative Shadow DOM: missing shadowrootslotassignment defaults to named</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-5bf8d095" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ce23a44e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Declarative Shadow DOM: shadowrootslotassignment=manual</span></div><a class="self" href="#s-ce23a44e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3891c81b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Declarative Shadow DOM: shadowrootslotassignment=named</span></div><a class="self" href="#s-3891c81b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2b66b920"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Declarative Shadow DOM: shadowrootslotassignment is case insensitive</span></div><a class="self" href="#s-2b66b920" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e716dfd6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Declarative Shadow DOM: shadowrootslotassignment invalid value defaults to named</span></div><a class="self" href="#s-e716dfd6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-09434aef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Declarative Shadow DOM: shadowrootslotassignment on closed shadows can be set to manual</span></div><a class="self" href="#s-09434aef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5bf8d095"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Declarative Shadow DOM: missing shadowrootslotassignment defaults to named</span></div><a class="self" href="#s-5bf8d095" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
