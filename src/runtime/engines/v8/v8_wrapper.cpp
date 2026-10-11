@@ -7243,6 +7243,7 @@ void v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
     IndexedPropertyGetterCallbackV2 getter,
     InterceptedIndexedSetterCallback setter,
     InterceptedIndexedQueryCallback query,
+    IndexedPropertyDeleterCallbackV2 deleter,
     IndexedPropertyEnumeratorCallbackV2 enumerator,
     InterceptedIndexedDefinerCallback definer,
     InterceptedIndexedDescriptorCallback descriptor
@@ -7256,7 +7257,7 @@ void v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
         getter,
         setter,      // setter callback for obj[index] = value
         query,       // query callback (returns Intercepted)
-        nullptr,     // deleter callback (not needed)
+        deleter,     // deleter callback: WebIDL 3.9.4 [[Delete]]
         enumerator,  // enumerator callback for Reflect.ownKeys
         definer,     // definer callback for Object.defineProperty()
         descriptor,  // descriptor callback (returns Intercepted)
@@ -7322,6 +7323,46 @@ void* v8_PropertyCallbackInfo_HolderAlignedPointer(const PropertyCallbackInfo<Va
     // The isolate overload: the one without it finds the isolate from the
     // object's page (GetIsolateForSandbox) on every read.
     return holder->GetAlignedPointerFromInternalField(info->GetIsolate(), index);
+}
+
+// A deleter interceptor's answer, the value `delete` evaluates to (WebIDL
+// 3.9.4 [[Delete]]): set in the return slot, no handle. V8 throws nothing for
+// false; a strict-mode caller's TypeError is the interceptor's to throw
+// (v8-template.h, NamedPropertyDeleterCallback).
+void v8_PropertyCallbackInfo_SetReturnValueBool(const PropertyCallbackInfo<Boolean>* info, bool value) {
+    info->GetReturnValue().Set(value);
+}
+
+// A definer or setter interceptor's "return false" (WebIDL 3.9.3
+// [[DefineOwnProperty]]): V8 makes it Object.defineProperty's TypeError, or
+// Reflect.defineProperty's false (js-objects.cc OrdinaryDefineOwnProperty:
+// InterceptorResult::kFalse -> CannotCreateProperty with should_throw).
+void v8_PropertyCallbackInfo_Void_SetFalse(const PropertyCallbackInfo<void>* info) {
+    info->GetReturnValue().SetFalse();
+}
+
+// WebIDL 3.9.7 "named property visibility algorithm", the questions about O
+// - the legacy platform object an interceptor runs for, its holder - for the
+// name `units` (UTF-16: a DOMString's lone surrogates kept):
+//   bit 0, step 2: "If O has an own property named P";
+//   bit 1, steps 4-5: whether a prototype on O's chain has an own property
+//   named P (never a named properties object here: a [Global]'s named
+//   properties have no such interceptors).
+// "Real" properties skip interceptors, so O's named properties count for
+// neither. Blink asks the prototype chain the same way
+// (bind_gen/interface.py, the named setter with [LegacyOverrideBuiltIns]:
+// GetRealNamedPropertyAttributesInPrototypeChain).
+uint8_t v8_LegacyPlatformObject_NamedPropertyState(const PropertyCallbackInfo<Value>* info, const uint16_t* units, int count) {
+    Isolate* isolate = info->GetIsolate();
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Object> holder = info->HolderV2();
+    Local<String> name;
+    if (!String::NewFromTwoByte(isolate, units, NewStringType::kNormal, count).ToLocal(&name)) return 0;
+    uint8_t bits = 0;
+    if (holder->HasRealNamedProperty(context, name).FromMaybe(false)) bits |= 1;
+    if (holder->GetRealNamedPropertyAttributesInPrototypeChain(context, name).IsJust()) bits |= 2;
+    return bits;
 }
 
 // PropertyCallbackInfo - whether the return value set so far is undefined.
@@ -7672,9 +7713,10 @@ bool v8_PropertyDescriptor_IsAccessorDescriptor(const PropertyDescriptor* desc) 
     return desc->has_get() || desc->has_set();
 }
 
-// Check if a PropertyDescriptor is a data descriptor (has value)
+// ES 6.2.6.2 IsDataDescriptor: a descriptor with a [[Value]] or a
+// [[Writable]] field ({writable: true} is one; {} and an accessor are not).
 bool v8_PropertyDescriptor_IsDataDescriptor(const PropertyDescriptor* desc) {
-    return desc->has_value();
+    return desc->has_value() || desc->has_writable();
 }
 
 // Get the value from a data PropertyDescriptor
@@ -11384,29 +11426,26 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
     }
 
     // Step 1's setters, and step 3's "create or update an own data property
-    // on Receiver" with Receiver the proxy (ES 10.1.9.2 steps 2.c-e): define
-    // it on the target through Object.defineProperty, which runs the target's
+    // on Receiver" with Receiver the proxy (ES 10.1.9.2 steps 2.c-e,
+    // CreateDataProperty): define it on the target, which runs the target's
     // definer and setter interceptors rather than bypassing them the way a
-    // plain store to an object with a named property handler would.
-    Local<Object> object_ctor = context->Global()
-        ->Get(context, String::NewFromUtf8Literal(isolate, "Object"))
-        .ToLocalChecked().As<Object>();
-
-    Local<Function> define_prop = object_ctor
-        ->Get(context, String::NewFromUtf8Literal(isolate, "defineProperty"))
-        .ToLocalChecked().As<Function>();
-
-    // Create property descriptor: { value, writable: true, enumerable: true, configurable: true }
-    Local<Object> descriptor = Object::New(isolate);
-    descriptor->Set(context, String::NewFromUtf8Literal(isolate, "value"), value).Check();
-    descriptor->Set(context, String::NewFromUtf8Literal(isolate, "writable"), Boolean::New(isolate, true)).Check();
-    descriptor->Set(context, String::NewFromUtf8Literal(isolate, "enumerable"), Boolean::New(isolate, true)).Check();
-    descriptor->Set(context, String::NewFromUtf8Literal(isolate, "configurable"), Boolean::New(isolate, true)).Check();
-
-    Local<Value> args[] = { target, property, descriptor };
-    MaybeLocal<Value> result = define_prop->Call(context, object_ctor, 3, args);
-
-    info.GetReturnValue().Set(!result.IsEmpty());
+    // plain store to an object with a named property handler would. Its
+    // false - a supported name with no named setter (WebIDL 3.9.3 step
+    // 2.2.1) - is the trap's false, a TypeError only in strict code (ES
+    // 10.5.9 step 9); Object.defineProperty threw it in sloppy code too.
+    // Object::DefineProperty, not DefineOwnProperty: a named setter converts
+    // its value, which can run script (toString), and DefineOwnProperty
+    // enters V8 with script disallowed.
+    if (!property->IsName()) {
+        info.GetReturnValue().Set(false);
+        return;
+    }
+    PropertyDescriptor descriptor(value, true);
+    descriptor.set_enumerable(true);
+    descriptor.set_configurable(true);
+    Maybe<bool> defined = target->DefineProperty(context, property.As<Name>(), descriptor);
+    if (defined.IsNothing()) return;  // an exception is pending
+    info.GetReturnValue().Set(defined.FromJust());
 }
 void TrapHas(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "has"); }
 void TrapDeleteProperty(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "deleteProperty"); }

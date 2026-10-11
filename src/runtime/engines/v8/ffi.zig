@@ -230,6 +230,10 @@ pub const PropertyCallbackInfo = opaque {
     /// return slot, no handle.
     pub extern fn v8_PropertyCallbackInfo_SetReturnValueInt32(self: *const PropertyCallbackInfo, value: i32) void;
 
+    /// A deleter interceptor's answer, what `delete` evaluates to: a
+    /// boolean in the return slot, no handle.
+    pub extern fn v8_PropertyCallbackInfo_SetReturnValueBool(self: *const PropertyCallbackInfo, value: bool) void;
+
     /// Set the return value for the getter
     pub extern fn v8_PropertyCallbackInfo_SetReturnValue(self: *const PropertyCallbackInfo, value: *Value) void;
 
@@ -265,6 +269,10 @@ pub const PropertyCallbackInfo = opaque {
 
     pub inline fn setReturnValueInt32(self: *const PropertyCallbackInfo, value: i32) void {
         v8_PropertyCallbackInfo_SetReturnValueInt32(self, value);
+    }
+
+    pub inline fn setReturnValueBool(self: *const PropertyCallbackInfo, value: bool) void {
+        v8_PropertyCallbackInfo_SetReturnValueBool(self, value);
     }
 
     pub inline fn setReturnValue(self: *const PropertyCallbackInfo, value: *Value) void {
@@ -316,6 +324,10 @@ pub const PropertyCallbackInfoVoid = opaque {
     /// Get the holder object
     pub extern fn v8_PropertyCallbackInfo_Void_Holder(self: *const PropertyCallbackInfoVoid) ?*Object;
 
+    /// A definer or setter interceptor's "return false" (WebIDL 3.9.3):
+    /// Object.defineProperty's TypeError, Reflect.defineProperty's false.
+    pub extern fn v8_PropertyCallbackInfo_Void_SetFalse(self: *const PropertyCallbackInfoVoid) void;
+
     pub inline fn getIsolate(self: *const PropertyCallbackInfoVoid) *Isolate {
         return v8_PropertyCallbackInfo_Void_GetIsolate(self);
     }
@@ -326,6 +338,10 @@ pub const PropertyCallbackInfoVoid = opaque {
 
     pub inline fn getHolder(self: *const PropertyCallbackInfoVoid) ?*Object {
         return v8_PropertyCallbackInfo_Void_Holder(self);
+    }
+
+    pub inline fn setFalse(self: *const PropertyCallbackInfoVoid) void {
+        v8_PropertyCallbackInfo_Void_SetFalse(self);
     }
 
     /// Check if errors should throw (indicates strict mode)
@@ -670,10 +686,25 @@ pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
     getter: IndexedPropertyGetterCallback,
     setter: ?IndexedPropertySetterCallbackIntercepted,
     query: ?IndexedPropertyQueryCallback,
+    deleter: ?IndexedPropertyDeleterCallback,
     enumerator: ?IndexedPropertyEnumeratorCallback,
     definer: ?IndexedPropertyDefinerCallback,
     descriptor: ?IndexedPropertyDescriptorCallback,
 ) void;
+
+/// Called for `delete obj[index]` (WebIDL 3.9.4 [[Delete]] step 1): sets a
+/// boolean return value (setReturnValueBool) and answers kYes, or kNo for an
+/// ordinary delete.
+pub const IndexedPropertyDeleterCallback = *const fn (
+    index: u32,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) Intercepted;
+
+/// WebIDL 3.9.7 named property visibility algorithm steps 2 and 4-5, for an
+/// interceptor's holder (O): bit 0 - O has a real own property named
+/// `units` (UTF-16, `count` code units); bit 1 - a prototype on its chain
+/// does. Interceptors' properties count for neither.
+pub extern fn v8_LegacyPlatformObject_NamedPropertyState(info: *const anyopaque, units: [*]const u16, count: c_int) u8;
 
 // ============================================================================
 // OLD API REMOVED - See unified API below

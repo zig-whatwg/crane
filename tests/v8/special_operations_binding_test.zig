@@ -3,7 +3,15 @@
 //! Meta.special_operations - not from function names:
 //!
 //! - which interfaces get which handlers (the table, pinned at comptime);
-//! - an HTMLOptionsCollection has the named properties it inherits.
+//! - NamedNodeMap's named properties are read-only: its regular
+//!   `setNamedItem(Attr)` is no named setter (3.9.3 step 2.2.1);
+//! - an HTMLOptionsCollection has the named properties it inherits;
+//! - a named setter takes every string (3.9.2 [[Set]] step 1.2), a definer
+//!   runs it (3.9.3 step 2.2.2), a deleter deletes (3.9.4), and a named
+//!   property's descriptor is enumerable unless
+//!   [LegacyUnenumerableNamedProperties] (3.9.1 step 2.1.8);
+//! - an interface with named properties and no indexed ones takes an array
+//!   index as a name (Blink's bind_gen forwards the same way).
 //!
 //! Values are made the way the binding makes them: by script, in a Window
 //! realm. Storage, which needs a Browser's storage shed, is
@@ -156,6 +164,32 @@ const fixture =
     \\
 ;
 
+test "NamedNodeMap: named properties are read-only - setNamedItem is a regular operation, no setter" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { body } = html();
+        \\  body.setAttribute('title', 't');
+        \\  const attrs = body.attributes;
+        \\  const attr = attrs.getNamedItem('title');
+        \\  check('attrs.title', attrs.title, attr);
+        \\  const desc = Object.getOwnPropertyDescriptor(attrs, 'title');
+        \\  check('desc', desc !== undefined, true);
+        \\  if (desc) {
+        \\    check('desc.value', desc.value, attr);
+        \\    check('desc.writable', desc.writable, false);
+        \\    check('desc.enumerable', desc.enumerable, false);
+        \\    check('desc.configurable', desc.configurable, true);
+        \\  }
+        \\  check('strict set throws', throwsTypeError(() => { 'use strict'; attrs.title = 1; }), true);
+        \\  attrs.title = 1;
+        \\  check('sloppy set changes nothing', attrs.title, attr);
+        \\  check('defineProperty throws', throwsTypeError(() => Object.defineProperty(attrs, 'title', { value: 1 })), true);
+        \\  check('still the attr', attrs.title, attr);
+        \\  check('no own expando', Object.getOwnPropertyNames(attrs).filter(k => k === 'title').length, 1);
+    );
+}
+
 test "HTMLOptionsCollection: the named properties it inherits from HTMLCollection" {
     const page = try Page.open();
     defer page.close();
@@ -170,5 +204,99 @@ test "HTMLOptionsCollection: the named properties it inherits from HTMLCollectio
         \\  check('in', 'pick' in select.options, true);
         \\  check('namedItem', select.options.namedItem('pick'), option);
         \\  check('missing', select.options.nothing, undefined);
+    );
+}
+
+test "DOMStringMap: the named setter takes every string, not only the names it has" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { body } = html();
+        \\  const ds = body.dataset;
+        \\  ds.fooBar = 'x';
+        \\  check('attribute', body.getAttribute('data-foo-bar'), 'x');
+        \\  check('read back', ds.fooBar, 'x');
+        \\  ds.fooBar = 'y';
+        \\  check('replaced', body.getAttribute('data-foo-bar'), 'y');
+        \\  const desc = Object.getOwnPropertyDescriptor(ds, 'fooBar');
+        \\  check('enumerable', desc && desc.enumerable, true);
+        \\  check('writable', desc && desc.writable, true);
+        \\  Object.defineProperty(ds, 'viaDefine', { value: 'z' });
+        \\  check('defined', body.getAttribute('data-via-define'), 'z');
+        \\  check('accessor throws', throwsTypeError(() => Object.defineProperty(ds, 'acc', { get() { return 1; } })), true);
+        \\  check('no accessor attribute', body.hasAttribute('data-acc'), false);
+    );
+}
+
+test "[[Delete]]: a named deleter deletes; a visible named property or a supported index without one is not deletable" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { doc, body } = html();
+        \\  body.setAttribute('data-gone', '1');
+        \\  check('delete dataset.gone', delete body.dataset.gone, true);
+        \\  check('attribute removed', body.hasAttribute('data-gone'), false);
+        \\  check('delete of nothing', delete body.dataset.never, true);
+        \\  const a = doc.createElement('a');
+        \\  a.id = 'named';
+        \\  body.appendChild(a);
+        \\  const children = body.children;
+        \\  check('delete children.named', delete children.named, false);
+        \\  check('still there', children.named, a);
+        \\  check('strict delete throws', throwsTypeError(() => { 'use strict'; delete children.named; }), true);
+        \\  check('delete children[0]', delete children[0], false);
+        \\  check('delete children[5]', delete children[5], true);
+        \\  check('strict delete [0] throws', throwsTypeError(() => { 'use strict'; delete children[0]; }), true);
+        \\  check('delete attributes.id', delete a.attributes.id, false);
+    );
+}
+
+test "a named property's descriptor is enumerable unless [LegacyUnenumerableNamedProperties]" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { doc, body } = html();
+        \\  const a = doc.createElement('a');
+        \\  a.id = 'n';
+        \\  body.appendChild(a);
+        \\  const desc = Object.getOwnPropertyDescriptor(body.children, 'n');
+        \\  check('HTMLCollection enumerable', desc && desc.enumerable, false);
+        \\  check('HTMLCollection writable', desc && desc.writable, false);
+        \\  body.dataset.k = 'v';
+        \\  const ddesc = Object.getOwnPropertyDescriptor(body.dataset, 'k');
+        \\  check('DOMStringMap enumerable', ddesc && ddesc.enumerable, true);
+        \\  check('Object.keys', Object.keys(body.dataset).join(), 'k');
+    );
+}
+
+test "named properties and no indexed ones: an array index is a name" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { body } = html();
+        \\  const ds = body.dataset;
+        \\  ds[0] = 'zero';
+        \\  check('attribute', body.getAttribute('data-0'), 'zero');
+        \\  check('read', ds[0], 'zero');
+        \\  check('in', 0 in ds, true);
+        \\  check('keys', Object.keys(ds).join(), '0');
+        \\  check('delete', delete ds[0], true);
+        \\  check('deleted', body.hasAttribute('data-0'), false);
+    );
+}
+
+test "a named property's name may be long, and keeps its lone surrogates" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { body } = html();
+        \\  const ds = body.dataset;
+        \\  const long = 'a'.repeat(300);
+        \\  ds[long] = 'v';
+        \\  check('long attribute', body.getAttribute('data-' + long), 'v');
+        \\  check('long read', ds[long], 'v');
+        \\  check('long in', long in ds, true);
+        \\  check('long delete', delete ds[long], true);
+        \\  check('long gone', body.hasAttribute('data-' + long), false);
     );
 }
