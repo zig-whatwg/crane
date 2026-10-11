@@ -1659,7 +1659,12 @@ pub fn windowNamedPropertyGetter(
     const conv = @import("conversions.zig");
 
     const isolate = info.getIsolate();
+    // Owned, as every v8_* pointer is (a Global per call): the context and
+    // the global are released on every path - kept, each named lookup that
+    // got this far leaked both (lane rc5 named them; the indexed getter's
+    // same leak was 7a929a0b53).
     const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+    defer v8.v8_Context_Dispose(v8_context);
 
     // Convert property name to Zig string
     var name_buf: [256]u8 = undefined;
@@ -1678,8 +1683,8 @@ pub fn windowNamedPropertyGetter(
 
     // If this_obj doesn't have internal fields, try the global object
     if (instance_ptr == null) {
-        const global_obj = v8.v8_Context_Global(v8_context);
-        if (global_obj) |global| {
+        if (v8.v8_Context_Global(v8_context)) |global| {
+            defer v8.v8_Object_Dispose(global);
             instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0);
         }
     }
@@ -1724,7 +1729,9 @@ pub fn windowNamedPropertyQuery(
     const WindowImpl = @import("impls").Window;
 
     const isolate = info.getIsolate();
+    // Owned, and released on every path, as in the getter above.
     const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+    defer v8.v8_Context_Dispose(v8_context);
 
     // Convert property name to Zig string
     var name_buf: [256]u8 = undefined;
@@ -1741,8 +1748,8 @@ pub fn windowNamedPropertyQuery(
     var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
     if (instance_ptr == null) {
-        const global_obj = v8.v8_Context_Global(v8_context);
-        if (global_obj) |global| {
+        if (v8.v8_Context_Global(v8_context)) |global| {
+            defer v8.v8_Object_Dispose(global);
             instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0);
         }
     }
@@ -1757,6 +1764,8 @@ pub fn windowNamedPropertyQuery(
     if (WindowImpl.hasNamedProperty(instance, name)) {
         // Property exists - return attributes (ReadOnly | DontEnum)
         const attrs = v8.v8_Integer_New(isolate, 3); // 3 = ReadOnly | DontEnum
+        // SetReturnValue copies; the Global is ours.
+        defer v8.v8_Value_Dispose(@ptrCast(attrs));
         info.setReturnValue(@ptrCast(attrs));
         return .kYes;
     }
