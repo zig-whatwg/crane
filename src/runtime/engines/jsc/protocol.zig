@@ -509,6 +509,10 @@ pub fn structuredDeserializeWithTransfer(_: Context, _: []const u8, _: []const [
 pub fn hasWrapper(_: *Instance) bool {
     return false;
 }
+/// Nothing is wrapped, so there is no wrapper to keep. Once the adapter wraps
+/// platform objects, a keep is a `JSValueProtect` of the wrapper, which is
+/// counted as the protocol is ("must be unprotected an equal number of times",
+/// JSValueRef.h; refcount design 2.5 item 4).
 pub fn keepPlatformObjectAlive(_: *Instance) void {}
 pub fn releasePlatformObject(_: *Instance) void {}
 pub fn platformObjectDestroyed(_: *Instance) void {}
@@ -524,6 +528,13 @@ pub fn traceValue(_: *Instance, _: JSValue, _: engine.TracedSlot) void {}
 pub fn tracedValue(_: *Instance, _: engine.TracedSlot) ?Owned {
     return null;
 }
+/// No node is wrapped yet, so there is no opaque root to keep. Designed
+/// (refcount design 2.5 item 3, decision D5): a per-realm WeakMap from the
+/// pristine intrinsics maps each wrapper to an edge record holding its
+/// parent's wrapper and its children's - an ephemeron, invisible to script.
+pub fn joinOpaqueRoot(_: *Instance, _: *Instance) void {}
+pub fn leaveOpaqueRoot(_: *Instance, _: *Instance) void {}
+pub fn keepOpaqueRoot(_: *Instance, _: *Instance, _: engine.TracedSlot) void {}
 
 // 4.13 Diagnostics tier
 pub fn heapStatistics(_: *Agent) engine.HeapStatistics {

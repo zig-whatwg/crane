@@ -744,10 +744,15 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
         // A slot its realm's end freed meanwhile (generation), is skipped.
         if (runtime.SlabAllocator.generationOf(entry.slot) != entry.generation) continue;
         fireSlotChange(entry.slot);
-        // Its pending activity ends with its event - unless a listener
-        // signaled it again, into the agent's new signal slots.
+        // Its pending activity ends with its event. The keep is counted, one
+        // per membership of the signal slots: a listener that signaled the
+        // slot again put it back in the (emptied) set with a keep of its own,
+        // which forgetSlot or the next notify ends - so this membership's
+        // ends here either way. (forgetSlot releases only a slot in the set,
+        // and step 5 took every slot here out of it: the two never end the
+        // same keep.)
         if (runtime.SlabAllocator.generationOf(entry.slot) != entry.generation) continue;
-        if (!agent.isSignaled(entry.slot)) engine.releasePlatformObject(entry.slot);
+        engine.releasePlatformObject(entry.slot);
     }
 }
 

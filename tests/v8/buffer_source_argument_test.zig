@@ -184,6 +184,31 @@ test "an argument that is not a BufferSource leaves no handle either" {
     );
 }
 
+test "an AllowSharedBufferSource argument leaves no handle once the call returns" {
+    _ = try realm();
+    // TextDecoder.decode([AllowSharedBufferSource] input): the conversion is a
+    // slice over the backing store and keeps no reference to the argument's
+    // Global, which leaked once per call until argHandleIsCopied named the
+    // type. Every member type, and an optional argument passed. The control
+    // is the same decoder's attribute getter.
+    _ = try evalInt("globalThis.testDecoder = new TextDecoder(); globalThis.decodeBytes = new Uint8Array([104, 105]); 0");
+    try expectNoMoreThanControl(
+        "testDecoder.decode(a typed array)",
+        "testDecoder.decode(decodeBytes);",
+        "testDecoder.encoding;",
+    );
+    try expectNoMoreThanControl(
+        "testDecoder.decode(an ArrayBuffer)",
+        "testDecoder.decode(decodeBytes.buffer);",
+        "testDecoder.encoding;",
+    );
+    try expectNoMoreThanControl(
+        "testDecoder.decode(a DataView, options)",
+        "testDecoder.decode(new DataView(decodeBytes.buffer), { stream: false });",
+        "testDecoder.encoding;",
+    );
+}
+
 test "an object argument for (object or DOMString) leaves no handle once the call returns" {
     try subtleObject();
     try expectNoMoreThanControl(

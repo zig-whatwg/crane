@@ -70,9 +70,14 @@ pub fn init(
     internal.manager = try allocator.create(BackendStorageManager);
     errdefer allocator.destroy(internal.manager);
 
+    // Its shelves are in the user agent's storage shed: the Browser's this
+    // realm belongs to (a supplement of its scope). A realm no Browser made
+    // has none.
+    const user_agent_storage = @import("dom").browser_state.userAgentStorageOf(ctx) orelse return error.InvalidState;
+
     // Initialize with default origin
     // TODO: Get origin from runtime context
-    internal.manager.* = try BackendStorageManager.init(allocator, "default-origin");
+    internal.manager.* = try BackendStorageManager.init(allocator, user_agent_storage, "default-origin");
 
     return instance;
 }

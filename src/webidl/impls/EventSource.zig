@@ -47,14 +47,16 @@ pub const InternalState = struct {
     document: ?same_object.Link = null,
     generation: u64 = 0,
     document_abort_pending: ?u64 = null,
+    /// The one pending-activity keep is held (while the connection needs it):
+    /// the keep is counted, so a sync keeps once and releases once.
+    kept_alive: bool = false,
 
     fn syncPendingActivity(self: *InternalState) void {
         const instance = self.instance orelse return;
-        if (self.connection.needsHold()) {
-            engine.keepPlatformObjectAlive(instance);
-        } else {
-            engine.releasePlatformObject(instance);
-        }
+        const needed = self.connection.needsHold();
+        if (needed == self.kept_alive) return;
+        self.kept_alive = needed;
+        if (needed) engine.keepPlatformObjectAlive(instance) else engine.releasePlatformObject(instance);
     }
 
     /// 9.2.2 close(), and 9.2.9 forcible close. No event is fired.
@@ -434,8 +436,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         state.own._internal = null;
         internal.close();
+        // close() synced the hold away; one still held goes now.
+        if (internal.kept_alive) engine.releasePlatformObject(instance);
+        internal.kept_alive = false;
         internal.instance = null;
-        engine.releasePlatformObject(instance);
         internal.maybeFree();
     }
     interfaces.EventTarget.deinit(instance);

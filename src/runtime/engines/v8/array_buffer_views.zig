@@ -34,6 +34,7 @@ fn viewTypeOf(kind: ffi.ViewKind) ViewType {
         .bigint64 => .bigint64_array,
         .biguint64 => .biguint64_array,
         .data_view => .data_view,
+        .float16 => .float16_array,
     };
 }
 

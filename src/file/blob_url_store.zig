@@ -20,8 +20,9 @@
 //!
 //! ## Thread Safety
 //!
-//! The store is designed for single-threaded access within an origin.
-//! Cross-origin access is blocked by URL resolution.
+//! One store per Browser, reached from its window thread and its workers'
+//! threads: every method locks it (see `BlobURLStore`). Cross-origin access
+//! is blocked by URL resolution.
 
 const std = @import("std");
 const clock = @import("clock");
@@ -53,11 +54,18 @@ pub const BlobURLEntry = struct {
     valid: bool,
 };
 
-/// Global blob URL store.
+/// The user agent's blob URL store (File API 8.1: "The user agent must
+/// maintain a blob URL store").
 ///
 /// Maps blob URLs to their associated Blob objects.
 /// Per spec, each origin should have its own store, but for simplicity
 /// we use a single store with origin validation.
+///
+/// One per Browser: a supplement of its scope (runtime.BrowserScope - `init`
+/// and `deinit` are the supplement's), which every realm of the Browser
+/// reaches (dom.browser_state.blobURLStoreOf), and which ends with the
+/// Browser, releasing every entry still in it. A blob URL made in one Browser
+/// resolves in no other Browser of the process.
 ///
 /// Every thread of a Browser reaches it (a page makes a URL, its worker
 /// fetches it - docs/instances.md), so every method takes `mutex`, and

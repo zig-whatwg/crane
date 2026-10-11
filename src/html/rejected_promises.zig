@@ -63,10 +63,6 @@ const Tracked = struct {
     /// Window's slot, and a stale entry must not be mistaken for the new one.
     global: *runtime.Instance,
     generation: u64,
-    /// The agent of the global's realm, recorded when the entry is made: the
-    /// entry belongs to that agent's thread, which alone reads or changes
-    /// its lists and destroys it (its promises are that agent's handles).
-    agent: ?*engine.Agent,
     /// "about-to-be-notified rejected promises list".
     about_to_be_notified: std.ArrayListUnmanaged(Rejected) = .empty,
     /// "outstanding rejected promises weak set".
@@ -74,13 +70,6 @@ const Tracked = struct {
 
     fn isAlive(self: *const Tracked) bool {
         return runtime.SlabAllocator.generationOf(self.global) == self.generation;
-    }
-
-    /// Whether the global's realm is one of `agent`'s.
-    fn inAgent(self: *const Tracked, agent: ?*engine.Agent) bool {
-        const own = self.agent orelse return false;
-        const other = agent orelse return false;
-        return @intFromPtr(own) == @intFromPtr(other);
     }
 
     fn destroy(self: *Tracked) void {
@@ -92,38 +81,38 @@ const Tracked = struct {
     }
 };
 
-/// Every global's bookkeeping. Each Browser thread and worker thread
-/// (docs/instances.md) tracks its own globals here: the list is reached only
-/// under `mutex`, and an entry is read, changed or destroyed only by its own
-/// agent's thread (`Tracked.agent`) - its promises are that agent's handles.
-const Tracking = struct {
-    /// Protects `list` (the container, not the entries' own lists); held for
-    /// a scan or one insert or removal, never across a call into the engine.
-    mutex: std.Io.Mutex = .init,
-    list: std.ArrayListUnmanaged(*Tracked) = .empty,
+/// The bookkeeping of every global of `agent`'s realms: a list on the
+/// agent's host (html_core AgentHost.rejections - agent state lives with
+/// the agent, docs/instances.md), each entry a `*Tracked` it OWNS. Every
+/// promise in it is one of the agent's handles, so the list is read,
+/// changed and released only on the agent's thread, and released before the
+/// agent ends (`releaseAgent`). (It was one process-wide list, and a
+/// Browser's end released every Browser's entries - another Browser's
+/// handles, into another isolate.) Null for an agent with no host (a unit
+/// test's bare agent): nothing is tracked.
+fn listOf(agent: ?*engine.Agent) ?*std.ArrayListUnmanaged(*anyopaque) {
+    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent orelse return null) orelse return null));
+    return &host.rejections;
+}
 
-    fn lock(self: *Tracking) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-    }
-
-    fn unlock(self: *Tracking) void {
-        std.Io.Threaded.mutexUnlock(&self.mutex);
-    }
-};
-var tracked: Tracking = .{};
+fn trackedAt(list: *std.ArrayListUnmanaged(*anyopaque), i: usize) *Tracked {
+    return @ptrCast(@alignCast(list.items[i]));
+}
 
 fn releaseAll(list: []const Rejected) void {
     for (list) |rejected| rejected.release();
 }
 
-/// Release every promise held, before the agent is destroyed. The Browser
-/// ends its workers first, so every entry left is its own thread's.
-pub fn releaseTracked() void {
-    tracked.lock();
-    var taken = tracked.list;
-    tracked.list = .empty;
-    tracked.unlock();
-    for (taken.items) |t| t.destroy();
+/// Release every promise `agent`'s globals hold, before the agent is
+/// destroyed: the Browser's end for its window agent, a worker's for its.
+pub fn releaseAgent(agent: *engine.Agent) void {
+    const list = listOf(agent) orelse return;
+    var taken = list.*;
+    list.* = .empty;
+    for (taken.items) |entry| {
+        const t: *Tracked = @ptrCast(@alignCast(entry));
+        t.destroy();
+    }
     taken.deinit(allocator);
 }
 
@@ -136,51 +125,38 @@ pub fn releaseTracked() void {
 /// find everything the process keeps for it
 /// (docs/lessons/architecture-before-disposing-an-isolate-find-everything-the.md).
 pub fn forgetGlobal(global: *runtime.Instance) void {
-    const found: ?*Tracked = blk: {
-        tracked.lock();
-        defer tracked.unlock();
-        for (tracked.list.items, 0..) |t, i| {
-            if (t.global != global) continue;
-            _ = tracked.list.swapRemove(i);
-            break :blk t;
-        }
-        break :blk null;
-    };
-    if (found) |t| t.destroy();
+    const list = listOf(global.ctx.agent) orelse return;
+    for (list.items, 0..) |_, i| {
+        const t = trackedAt(list, i);
+        if (t.global != global) continue;
+        _ = list.swapRemove(i);
+        t.destroy();
+        break;
+    }
+    if (list.items.len == 0) list.clearAndFree(allocator);
 }
 
-/// The bookkeeping for `global`, created on first use. Entries of the same
-/// agent whose global has gone are released on the way - only the same
-/// agent's: another thread's entries are its own to release.
+/// The bookkeeping for `global`, created on first use. Entries of the agent
+/// whose global has gone are released on the way.
 fn trackedFor(global: *runtime.Instance, create: bool) ?*Tracked {
-    const agent = global.ctx.agent;
-    var doomed: std.ArrayListUnmanaged(*Tracked) = .empty;
-    defer {
-        for (doomed.items) |t| t.destroy();
-        doomed.deinit(allocator);
-    }
-    tracked.lock();
-    defer tracked.unlock();
+    const list = listOf(global.ctx.agent) orelse return null;
     var i: usize = 0;
     var found: ?*Tracked = null;
-    while (i < tracked.list.items.len) {
-        const t = tracked.list.items[i];
-        if (t.inAgent(agent) and !t.isAlive()) {
-            doomed.append(allocator, t) catch {
-                i += 1;
-                continue;
-            };
-            _ = tracked.list.swapRemove(i);
+    while (i < list.items.len) {
+        const t = trackedAt(list, i);
+        if (!t.isAlive()) {
+            _ = list.swapRemove(i);
+            t.destroy();
             continue;
         }
-        if (t.global == global and t.isAlive()) found = t;
+        if (t.global == global) found = t;
         i += 1;
     }
     if (found != null or !create) return found;
 
     const t = allocator.create(Tracked) catch return null;
-    t.* = .{ .global = global, .generation = runtime.SlabAllocator.generationOf(global), .agent = agent };
-    tracked.list.append(allocator, t) catch {
+    t.* = .{ .global = global, .generation = runtime.SlabAllocator.generationOf(global) };
+    list.append(allocator, t) catch {
         allocator.destroy(t);
         return null;
     };
@@ -245,46 +221,31 @@ fn promiseRejectionTracker(host: ?*anyopaque, realm: runtime.Context, promise: e
 /// would notify the page's at a worker's.
 pub fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
     _ = host;
-    // This agent's entries, taken under the lock; their lists are this
-    // thread's, and no other thread removes them, so they are notified after
-    // it - queueNotification reaches the engine.
+    const list = listOf(agent) orelse return;
+    // This agent's live entries, taken first: notifying queues tasks, and
+    // the list must not move under the walk. Gone globals' entries are
+    // released on the way.
     var mine: std.ArrayListUnmanaged(*Tracked) = .empty;
     defer mine.deinit(allocator);
-    var doomed: std.ArrayListUnmanaged(*Tracked) = .empty;
-    defer {
-        for (doomed.items) |t| t.destroy();
-        doomed.deinit(allocator);
-    }
-    {
-        tracked.lock();
-        defer tracked.unlock();
-        var i: usize = 0;
-        while (i < tracked.list.items.len) {
-            const t = tracked.list.items[i];
-            if (!t.inAgent(agent)) {
-                i += 1;
-                continue;
-            }
-            if (!t.isAlive()) {
-                doomed.append(allocator, t) catch {
-                    i += 1;
-                    continue;
-                };
-                _ = tracked.list.swapRemove(i);
-                continue;
-            }
-            i += 1;
-            mine.append(allocator, t) catch continue;
+    var i: usize = 0;
+    while (i < list.items.len) {
+        const t = trackedAt(list, i);
+        if (!t.isAlive()) {
+            _ = list.swapRemove(i);
+            t.destroy();
+            continue;
         }
+        i += 1;
+        mine.append(allocator, t) catch continue;
     }
     for (mine.items) |t| {
         // Steps 1-3: take the list, leaving it empty; nothing to do when it
         // is empty.
         if (t.about_to_be_notified.items.len == 0) continue;
-        const list = t.about_to_be_notified.toOwnedSlice(allocator) catch continue;
-        defer allocator.free(list);
+        const taken = t.about_to_be_notified.toOwnedSlice(allocator) catch continue;
+        defer allocator.free(taken);
         // Step 4: queue a global task.
-        queueNotification(t.global, .unhandled_rejection, list);
+        queueNotification(t.global, .unhandled_rejection, taken);
     }
 }
 

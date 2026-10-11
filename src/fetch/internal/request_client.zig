@@ -35,6 +35,9 @@ pub const RequestClient = struct {
     /// The user agent's cookie jar, as the settings object reaches it.
     /// BORROWED: the Browser that owns it outlives every fetch.
     cookie_jar: ?*CookieJar = null,
+    /// The user agent's blob URL store (a `file.BlobURLStore`), as the
+    /// settings object reaches it: its Browser's. BORROWED, as the jar is.
+    blob_url_store: ?*anyopaque = null,
     /// The settings object's policy container: a Window's associated
     /// Document's, a WorkerGlobalScope's own. BORROWED for the call; the
     /// request takes a clone. Null for a global that has none.
@@ -101,6 +104,10 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // HTTP-network fetch stores a response's in, when the request includes
     // credentials.
     if (request.cookie_jar == null) request.cookie_jar = client.cookie_jar;
+
+    // The blob URL store scheme fetch "blob" obtains a blob from: the
+    // client's Browser's, never another Browser's.
+    if (request.blob_url_store == null) request.blob_url_store = client.blob_url_store;
 
     // CSP §2.4.2: a violation the request causes is its client's global's.
     if (request.csp_violation_reporter == null) request.csp_violation_reporter = client.csp_violation_reporter;

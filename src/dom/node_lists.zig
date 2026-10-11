@@ -24,6 +24,7 @@ pub const Implementation = struct {
     /// descendant of `within` - so no node is looked up.
     set_static_bases: *const fn (list: *runtime.Instance, nodes: []const *NodeBase, within: *NodeBase) anyerror!void,
     labels: *const fn (list: *runtime.Instance, element: *runtime.Instance) anyerror!void,
+    elements_by_name: *const fn (list: *runtime.Instance, document: *runtime.Instance, name: []const u8) anyerror!void,
     named_controls: *const fn (*runtime.Instance, *runtime.Instance, []const u8) anyerror!void,
 };
 
@@ -63,6 +64,11 @@ pub fn namedControls(list: *runtime.Instance, collection: *runtime.Instance, nam
     try (implementation orelse return error.NotSupported).named_controls(list, collection, name);
 }
 
+/// HTML getElementsByName: a live NodeList over the document's descendants.
+pub fn elementsByName(list: *runtime.Instance, document: *runtime.Instance, name: []const u8) !void {
+    try (implementation orelse return error.NotSupported).elements_by_name(list, document, name);
+}
+
 test "setStatic without an installed implementation reports NotSupported" {
     const std = @import("std");
     const saved = implementation;
@@ -70,5 +76,6 @@ test "setStatic without an installed implementation reports NotSupported" {
     implementation = null;
     // Never dereferenced: with no implementation the call does not reach it.
     var list: runtime.Instance = undefined;
+    try std.testing.expectError(error.NotSupported, elementsByName(&list, &list, ""));
     try std.testing.expectError(error.NotSupported, setStatic(&list, &.{}));
 }

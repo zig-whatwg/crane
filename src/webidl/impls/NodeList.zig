@@ -24,9 +24,9 @@
 //!
 //! ## Implementation
 //!
-//! Live NodeLists don't store nodes directly. Instead, they store a reference
-//! to the root node and query children on-demand. This ensures the collection
-//! always reflects the current DOM state without requiring invalidation.
+//! Live NodeLists query their root on demand. Tree-only filters
+//! may reuse an indexed cursor when the node document and its mutation version
+//! still match. Association-dependent lists are recomputed on every read.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -39,6 +39,7 @@ const infra = @import("infra");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const NodeList = interfaces.NodeList;
 const node_holds = @import("dom").node_holds;
+const live_collections = @import("dom").live_collections;
 
 pub const State = NodeList.State;
 
@@ -52,6 +53,7 @@ pub const ImplError = error{
 pub const LiveCollectionType = enum {
     labels,
     named_controls,
+    elements_by_name,
     /// Match all direct children (for Node.childNodes)
     children,
     /// Match elements by tag name (for getElementsByTagName)
@@ -83,8 +85,9 @@ pub const InternalState = struct {
 
     /// For live NodeLists, the root node to query from
     root: ?*runtime.Instance = null,
-    labels_root_generation: u64 = 0,
+    root_generation: u64 = 0,
     labels_root_traced: bool = false,
+    cache: live_collections.IndexCache = .{},
     control_name: ?[]const u8 = null,
 
     /// Type of live collection (determines what nodes match)
@@ -124,9 +127,18 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls fill a static list they created (an element's labels).
-    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls });
+    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls, .elements_by_name = &makeElementsByName });
     // A static list holds its nodes; the removing steps rescue a held tree.
     node_holds.installHooks();
+}
+
+fn makeElementsByName(list: *runtime.Instance, document: *runtime.Instance, name: []const u8) !void {
+    const internal = getInternal(list) orelse return error.InvalidState;
+    internal.control_name = try internal.allocator.dupe(u8, name);
+    internal.is_live = true;
+    internal.root = document;
+    internal.root_generation = runtime.SlabAllocator.generationOf(document);
+    internal.live_type = .elements_by_name;
 }
 
 fn makeNamedControls(list: *runtime.Instance, collection: *runtime.Instance, name: []const u8) !void {
@@ -139,7 +151,7 @@ fn makeNamedControls(list: *runtime.Instance, collection: *runtime.Instance, nam
 
 fn namedControlAt(internal: *InternalState, wanted: ?u32, count: *u32) ?*runtime.Instance {
     const collection = internal.root orelse return null;
-    if (runtime.SlabAllocator.generationOf(collection) != internal.labels_root_generation or runtime.instance_lifecycle.isCleanedUp(collection)) return null;
+    if (runtime.SlabAllocator.generationOf(collection) != internal.root_generation or runtime.instance_lifecycle.isCleanedUp(collection)) return null;
     const name = internal.control_name orelse return null;
     const length = interfaces.HTMLCollection.get_length(collection) catch return null;
     var index: u32 = 0;
@@ -157,7 +169,7 @@ fn makeLabels(list: *runtime.Instance, element: *runtime.Instance) !void {
     internal.is_live = true;
     internal.live_type = .labels;
     internal.root = element;
-    internal.labels_root_generation = runtime.SlabAllocator.generationOf(element);
+    internal.root_generation = runtime.SlabAllocator.generationOf(element);
     if (list.ctx.hasEngine()) {
         @import("engine").traceChild(list, element, .{ .name = "labelsTarget" });
         internal.labels_root_traced = true;
@@ -290,6 +302,7 @@ pub fn createLiveChildNodes(allocator: std.mem.Allocator, ctx: runtime.Context, 
     // Configure as a live collection
     internal.is_live = true;
     internal.root = root;
+    internal.root_generation = runtime.SlabAllocator.generationOf(root);
     internal.live_type = .children;
 
     return instance;
@@ -304,18 +317,33 @@ fn getLiveLength(internal: *InternalState) u32 {
     const NodeImpl = @import("Node.zig");
 
     switch (internal.live_type) {
+        .elements_by_name => {
+            if (!prepareCache(internal)) return 0;
+            var walk = NameWalk{ .root = root, .name = internal.control_name orelse return 0 };
+            const length = internal.cache.count(&walk);
+            if (walk.failed) internal.cache = .{};
+            return length;
+        },
         .named_controls => {
+            // Form-owner association needs invalidation beyond tree versions.
             var count: u32 = 0;
             _ = namedControlAt(internal, null, &count);
             return count;
         },
         .labels => {
-            if (runtime.SlabAllocator.generationOf(root) != internal.labels_root_generation or runtime.instance_lifecycle.isCleanedUp(root)) return 0;
+            // Label association needs invalidation beyond tree versions.
+            if (runtime.SlabAllocator.generationOf(root) != internal.root_generation or runtime.instance_lifecycle.isCleanedUp(root)) return 0;
             const labels = @import("html").form_associated.labelsOf(internal.allocator, root) catch return 0;
             defer internal.allocator.free(labels);
             return @intCast(labels.len);
         },
         .children => {
+            if (!prepareCache(internal)) return 0;
+            if (internal.cache.version != null) {
+                var walk = ChildrenWalk{ .root = root };
+                return internal.cache.count(&walk);
+            }
+            // Keep the existing null-version traversal until the counter is wired.
             // Count direct children using Node's helper
             return NodeImpl.getChildCount(root);
         },
@@ -333,17 +361,32 @@ fn getLiveItem(internal: *InternalState, index: u32) ?*runtime.Instance {
     const NodeImpl = @import("Node.zig");
 
     switch (internal.live_type) {
+        .elements_by_name => {
+            if (!prepareCache(internal)) return null;
+            var walk = NameWalk{ .root = root, .name = internal.control_name orelse return null };
+            const node = internal.cache.item(&walk, index);
+            if (walk.failed) internal.cache = .{};
+            return node;
+        },
         .named_controls => {
+            // Form-owner association needs invalidation beyond tree versions.
             var count: u32 = 0;
             return namedControlAt(internal, index, &count);
         },
         .labels => {
-            if (runtime.SlabAllocator.generationOf(root) != internal.labels_root_generation or runtime.instance_lifecycle.isCleanedUp(root)) return null;
+            // Label association needs invalidation beyond tree versions.
+            if (runtime.SlabAllocator.generationOf(root) != internal.root_generation or runtime.instance_lifecycle.isCleanedUp(root)) return null;
             const labels = @import("html").form_associated.labelsOf(internal.allocator, root) catch return null;
             defer internal.allocator.free(labels);
             return if (index < labels.len) labels[index] else null;
         },
         .children => {
+            if (!prepareCache(internal)) return null;
+            if (internal.cache.version != null) {
+                var walk = ChildrenWalk{ .root = root };
+                return internal.cache.item(&walk, index);
+            }
+            // Keep the existing null-version traversal until the counter is wired.
             // Walk children to find the nth one
             var child = NodeImpl.getFirstChild(root);
             var current_index: u32 = 0;
@@ -361,3 +404,71 @@ fn getLiveItem(internal: *InternalState, index: u32) ?*runtime.Instance {
         else => return null,
     }
 }
+
+fn prepareCache(internal: *InternalState) bool {
+    const root = internal.root orelse return false;
+    const link = live_collections.Link{ .instance = root, .generation = internal.root_generation };
+    if (link.get() == null) {
+        internal.cache = .{};
+        return false;
+    }
+    const document = live_collections.nodeDocument(root);
+    const version = if (document) |doc| live_collections.treeVersion(doc) else null;
+    _ = internal.cache.begin(link, document, version);
+    return true;
+}
+
+const ChildrenWalk = struct {
+    root: *runtime.Instance,
+
+    pub fn first(self: *@This()) ?*runtime.Instance {
+        return interfaces.Node.get_firstChild(self.root) catch null;
+    }
+    pub fn next(_: *@This(), node: *runtime.Instance) ?*runtime.Instance {
+        return interfaces.Node.get_nextSibling(node) catch null;
+    }
+};
+
+/// HTML getElementsByName steps: all HTML descendants whose null-namespace
+/// name attribute is identical to the query, in tree order. Empty matches a
+/// present name="", never a missing name. Blink NameNodeList uses this filter.
+const NameWalk = struct {
+    root: *runtime.Instance,
+    name: []const u8,
+    failed: bool = false,
+
+    pub fn first(self: *@This()) ?*runtime.Instance {
+        return self.seek(interfaces.Node.get_firstChild(self.root) catch null);
+    }
+    pub fn next(self: *@This(), node: *runtime.Instance) ?*runtime.Instance {
+        return self.seek(self.nextInTree(node));
+    }
+    fn seek(self: *@This(), start: ?*runtime.Instance) ?*runtime.Instance {
+        var current = start;
+        while (current) |node| : (current = self.nextInTree(node)) {
+            if (self.matches(node) catch {
+                self.failed = true;
+                return null;
+            }) return node;
+        }
+        return null;
+    }
+    fn nextInTree(self: *@This(), node: *runtime.Instance) ?*runtime.Instance {
+        if (interfaces.Node.get_firstChild(node) catch null) |child| return child;
+        var current = node;
+        while (current != self.root) {
+            if (interfaces.Node.get_nextSibling(current) catch null) |sibling| return sibling;
+            current = (interfaces.Node.get_parentNode(current) catch null) orelse return null;
+        }
+        return null;
+    }
+    fn matches(self: *@This(), node: *runtime.Instance) !bool {
+        if ((try interfaces.Node.get_nodeType(node)) != interfaces.Node.get_ELEMENT_NODE()) return false;
+        var namespace = (try interfaces.Element.get_namespaceURI(node)) orelse return false;
+        defer namespace.deinit(node.ctx.allocator);
+        if (!std.mem.eql(u8, namespace.asSlice(), "http://www.w3.org/1999/xhtml")) return false;
+        var value = (try interfaces.Element.call_getAttributeNS(node, null, runtime.DOMString.initInterned("name"))) orelse return false;
+        defer value.deinit(node.ctx.allocator);
+        return std.mem.eql(u8, value.asSlice(), self.name);
+    }
+};

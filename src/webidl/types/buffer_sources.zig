@@ -41,6 +41,7 @@ pub const BufferSourceType = enum {
     uint64_array,
     bigint64_array,
     biguint64_array,
+    float16_array,
     float32_array,
     float64_array,
     data_view,
@@ -355,6 +356,7 @@ pub const TypedArrayName = enum {
     Uint8ClampedArray,
     BigInt64Array,
     BigUint64Array,
+    Float16Array,
     Float32Array,
     Float64Array,
     // Note: DataView is not included - represented by null in getTypedArrayName()
@@ -366,7 +368,7 @@ pub const TypedArrayName = enum {
 pub fn getElementSizeForType(name: TypedArrayName) u8 {
     return switch (name) {
         .Int8Array, .Uint8Array, .Uint8ClampedArray => 1,
-        .Int16Array, .Uint16Array => 2,
+        .Int16Array, .Uint16Array, .Float16Array => 2,
         .Int32Array, .Uint32Array, .Float32Array => 4,
         .BigInt64Array, .BigUint64Array, .Float64Array => 8,
     };
@@ -391,6 +393,7 @@ pub const ArrayBufferView = union(enum) {
     uint64_array: TypedArray(u64),
     bigint64_array: BigInt64Array,
     biguint64_array: BigUint64Array,
+    float16_array: TypedArray(f16),
     float32_array: TypedArray(f32),
     float64_array: TypedArray(f64),
     data_view: DataView,
@@ -438,7 +441,8 @@ pub const ArrayBufferView = union(enum) {
     /// A view referring to the JavaScript object `js` (see `jsHandle` for who
     /// releases it), with the kind, offset and element count the engine reported.
     /// `kind` is the ffi.ViewKind order: int8, uint8, uint8_clamped, int16,
-    /// uint16, int32, uint32, float32, float64, bigint64, biguint64, data_view.
+    /// uint16, int32, uint32, float32, float64, bigint64, biguint64, data_view,
+    /// float16 (appended).
     pub fn fromEngine(kind: u8, byte_offset: usize, length: usize, js: *anyopaque) ?ArrayBufferView {
         const b = &engine_buffer;
         return switch (kind) {
@@ -454,6 +458,7 @@ pub const ArrayBufferView = union(enum) {
             9 => .{ .bigint64_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
             10 => .{ .biguint64_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
             11 => .{ .data_view = .{ .buffer = b, .byte_offset = byte_offset, .byte_length = length, .js = js } },
+            12 => .{ .float16_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
             else => null,
         };
     }
@@ -493,6 +498,7 @@ pub const ArrayBufferView = union(enum) {
             .uint32_array => |arr| arr.length * 4,
             .int64_array => |arr| arr.length * 8,
             .uint64_array => |arr| arr.length * 8,
+            .float16_array => |arr| arr.length * 2,
             .float32_array => |arr| arr.length * 4,
             .float64_array => |arr| arr.length * 8,
         };
@@ -513,6 +519,7 @@ pub const ArrayBufferView = union(enum) {
             .uint8_clamped_array => .Uint8ClampedArray,
             .bigint64_array => .BigInt64Array,
             .biguint64_array => .BigUint64Array,
+            .float16_array => .Float16Array,
             .float32_array => .Float32Array,
             .float64_array => .Float64Array,
             .int64_array => null, // Note: int64_array/uint64_array don't map to standard TypedArrays
@@ -528,7 +535,7 @@ pub const ArrayBufferView = union(enum) {
     pub fn getElementSize(self: ArrayBufferView) u8 {
         return switch (self) {
             .int8_array, .uint8_array, .uint8_clamped_array => 1,
-            .int16_array, .uint16_array => 2,
+            .int16_array, .uint16_array, .float16_array => 2,
             .int32_array, .uint32_array, .float32_array => 4,
             .int64_array, .uint64_array, .bigint64_array, .biguint64_array, .float64_array => 8,
             .data_view => 1,
@@ -608,6 +615,10 @@ pub const ArrayBufferView = union(enum) {
             },
             .bigint64_array => |arr| arr.buffer.data[arr.byte_offset .. arr.byte_offset + (arr.length * 8)],
             .biguint64_array => |arr| arr.buffer.data[arr.byte_offset .. arr.byte_offset + (arr.length * 8)],
+            .float16_array => |arr| blk: {
+                const slice = try arr.asConstSlice();
+                break :blk std.mem.sliceAsBytes(slice);
+            },
             .float32_array => |arr| blk: {
                 const slice = try arr.asConstSlice();
                 break :blk std.mem.sliceAsBytes(slice);
@@ -660,6 +671,7 @@ pub fn constructTypedArrayView(
         .Uint8ClampedArray => .{ .uint8_clamped_array = TypedArray(u8){ .buffer = buffer, .byte_offset = byte_offset, .length = element_count } },
         .BigInt64Array => .{ .bigint64_array = BigInt64Array{ .buffer = buffer, .byte_offset = byte_offset, .length = element_count } },
         .BigUint64Array => .{ .biguint64_array = BigUint64Array{ .buffer = buffer, .byte_offset = byte_offset, .length = element_count } },
+        .Float16Array => .{ .float16_array = TypedArray(f16){ .buffer = buffer, .byte_offset = byte_offset, .length = element_count } },
         .Float32Array => .{ .float32_array = TypedArray(f32){ .buffer = buffer, .byte_offset = byte_offset, .length = element_count } },
         .Float64Array => .{ .float64_array = TypedArray(f64){ .buffer = buffer, .byte_offset = byte_offset, .length = element_count } },
     };

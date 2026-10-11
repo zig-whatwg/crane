@@ -14,6 +14,12 @@ pub const AgentHost = struct {
     /// deferred_teardown) - freed a slice at a time by the agent's event
     /// loop, and fully at the ends of their realms and of the agent.
     deferred_teardown: dom.tree_teardown.DeferredTeardown,
+    /// The rejected-promise bookkeeping of every global of the agent's
+    /// realms (html.rejected_promises; each entry its `*Tracked`, OWNED by
+    /// it): the agent's handles, read and released only on the agent's
+    /// thread, and released before the agent ends
+    /// (`rejected_promises.releaseAgent`) - so empty here at `deinit`.
+    rejections: std.ArrayListUnmanaged(*anyopaque) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) AgentHost {
         return .{
@@ -28,6 +34,8 @@ pub const AgentHost = struct {
     }
     /// After the agent's end, which emptied and closed the queue.
     pub fn deinit(self: *AgentHost) void {
+        // Released while the agent lived: its promises were its handles.
+        std.debug.assert(self.rejections.items.len == 0);
         self.deferred_teardown.deinit();
         self.indexeddb_cleanup.deinit();
         self.event_sources.deinit();

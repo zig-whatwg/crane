@@ -64,6 +64,12 @@ pub const InternalState = struct {
     /// wrapper (`thresholds_slot`, engine.traceValue), never a root.
     has_thresholds_array: bool = false,
 
+    /// The observer keeps its own wrapper (engine.keepPlatformObjectAlive)
+    /// while it observes anything: ONE keep, taken when its first target is
+    /// observed and released when its last goes - the keep is counted, so a
+    /// keep per observe() would hold the observer until its realm ended.
+    kept_alive: bool = false,
+
     /// Root margin values [top, right, bottom, left] in pixels
     root_margin: [4]f64 = .{ 0, 0, 0, 0 },
 
@@ -414,10 +420,12 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// has observations - and lets it go when it observes nothing.
 fn holdWhileObserving(instance: *runtime.Instance, internal: *InternalState) void {
     if (internal.observations.items.len > 0) {
-        engine.keepPlatformObjectAlive(instance);
+        if (!internal.kept_alive) engine.keepPlatformObjectAlive(instance);
+        internal.kept_alive = true;
         joinObserving(instance);
     } else {
-        engine.releasePlatformObject(instance);
+        if (internal.kept_alive) engine.releasePlatformObject(instance);
+        internal.kept_alive = false;
         leaveObserving(instance);
     }
 }

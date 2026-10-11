@@ -699,6 +699,7 @@ pub fn createArrayBufferView(realm: Context, view_type: engine.ViewType, buffer:
         .bigint64_array => .bigint64,
         .biguint64_array => .biguint64,
         .data_view => .data_view,
+        .float16_array => .float16,
     };
     const entered = try enter(realm);
     defer entered.leave();
@@ -804,6 +805,9 @@ pub const traceChild = protocol_tracing.traceChild;
 pub const forgetTracedChild = protocol_tracing.forgetTracedChild;
 pub const traceValue = protocol_tracing.traceValue;
 pub const tracedValue = protocol_tracing.tracedValue;
+pub const joinOpaqueRoot = @import("wrapper_cache.zig").joinOpaqueRoot;
+pub const leaveOpaqueRoot = @import("wrapper_cache.zig").leaveOpaqueRoot;
+pub const keepOpaqueRoot = @import("wrapper_cache.zig").keepOpaqueRoot;
 
 // ============================================================================
 // 4.13 Diagnostics tier

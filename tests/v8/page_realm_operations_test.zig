@@ -2100,13 +2100,13 @@ test "protocol: traceValue and tracedValue leave no global handle behind" {
 // so a tree lives exactly as long as script reaches any wrapper in it.
 // ============================================================================
 
-/// The tree hooks crane.Process installs at start-up (initializeEngine): the
-/// insertion, removing and moving steps that keep node tracing's edges.
+/// The owners' hooks crane.Process installs at start-up. Node tracing's
+/// edges need none of the adapter's own: dom.mutation calls
+/// engine.joinOpaqueRoot / leaveOpaqueRoot itself (refcount step 4).
 fn withTreeHooks() void {
     // These tests create DOM elements without starting crane.Process. Install
     // the owners' hooks even when this file runs in its own test process.
     interfaces.process_hooks.startHooksForTest();
-    v8.wrapper_cache_mod.installTreeHooks();
 }
 
 test "protocol: a node script holds keeps its detached tree's root, and the tree goes once script drops it" {

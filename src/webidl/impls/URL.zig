@@ -873,16 +873,14 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Creates a blob URL for the given Blob object.
 /// The URL can be used to reference the Blob in contexts like img.src, a.href, etc.
 pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
-    const allocator = instance.ctx.allocator;
+    // The current settings object (FileAPI "generate a new blob URL" step 1,
+    // "add an entry to the blob URL store" step 4): its realm.
+    const realm = engine.currentRealm() orelse instance.ctx;
 
-    // Get the global blob URL store
-    const store = file_mod.getGlobalBlobURLStore() orelse {
-        // If no store exists, create one and set it as global
-        const new_store = try allocator.create(BlobURLStore);
-        new_store.* = BlobURLStore.init(allocator);
-        file_mod.setGlobalBlobURLStore(new_store);
-        return call_static_createObjectURL(instance, obj);
-    };
+    // "The user agent's blob URL store": the Browser's the current settings
+    // object belongs to - a supplement of its scope, so a blob URL one
+    // Browser made resolves in no other. A realm no Browser made has none.
+    const store = blobURLStoreOf(realm) orelse return error.InvalidStateError;
 
     // `obj` is (Blob or MediaSource) - a union argument, which reaches the
     // impl unconverted. WebIDL 3.2.24: a platform object implementing Blob
@@ -908,7 +906,6 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
     // settings object, and the URL (and the entry's origin) carry the ASCII
     // serialization of its origin - "null" only when it is opaque, or its
     // global has no settings to ask.
-    const realm = engine.currentRealm() orelse instance.ctx;
     const origin = currentSettingsOrigin(realm);
     defer if (origin.owned) |o| origin.allocator.free(o);
 
@@ -928,8 +925,15 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
 /// it every URL a page made and never revoked kept its data for the life of
 /// the process.
 fn removeBlobURLEntries(environment: runtime.Context) void {
-    const store = file_mod.getGlobalBlobURLStore() orelse return;
+    // The environment's Browser's store - if it ever made one.
+    const store = @import("dom").browser_state.existingBlobURLStoreOf(environment) orelse return;
     store.removeEntriesFor(@ptrCast(environment));
+}
+
+/// The user agent's blob URL store, as `realm` reaches it: its Browser's
+/// (dom.browser_state), made on first use; null for a realm no Browser made.
+fn blobURLStoreOf(realm: runtime.Context) ?*BlobURLStore {
+    return @import("dom").browser_state.blobURLStoreOf(realm);
 }
 
 /// The current settings object's origin, serialized: `realm`'s global
@@ -956,13 +960,10 @@ fn currentSettingsOrigin(realm: runtime.Context) SettingsOrigin {
 ///
 /// Revokes a previously created blob URL, making it no longer usable.
 pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
-    _ = instance;
-
-    // Get the global blob URL store
-    const store = file_mod.getGlobalBlobURLStore() orelse {
-        // No store means no URLs to revoke
-        return;
-    };
+    // The user agent's blob URL store: the current settings object's
+    // Browser's. One whose Browser made no store yet has no URL to revoke.
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const store = @import("dom").browser_state.existingBlobURLStoreOf(realm) orelse return;
 
     // Revoke the URL
     store.revokeObjectURL(url.asSlice());

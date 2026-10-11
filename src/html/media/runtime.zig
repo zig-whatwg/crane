@@ -257,13 +257,17 @@ pub const Activity = struct {
     /// all references to them have been removed" (HTML 4.8.11.20) - the clock
     /// keeps the element while it plays.
     playing: bool = false,
+    /// The element's one keep (engine.keepPlatformObjectAlive), taken when
+    /// its activity begins and released when it ends: the keep is counted,
+    /// so a keep per `sync` would hold the element until its realm ended.
+    kept_alive: bool = false,
 
     pub fn sync(self: *Activity) void {
         const instance = self.instance orelse return;
-        if (self.fetching or self.playing or self.head != null or self.microtasks.items.len != 0 or self.running_stable != 0)
-            engine.keepPlatformObjectAlive(instance)
-        else
-            engine.releasePlatformObject(instance);
+        const active = self.fetching or self.playing or self.head != null or self.microtasks.items.len != 0 or self.running_stable != 0;
+        if (active == self.kept_alive) return;
+        self.kept_alive = active;
+        if (active) engine.keepPlatformObjectAlive(instance) else engine.releasePlatformObject(instance);
     }
     /// HTML await-a-stable-state steps 1–2: enqueue one synchronous section.
     /// The fulfilled reaction uses the engine's FIFO microtask queue and its
@@ -359,7 +363,8 @@ pub const Activity = struct {
     pub fn detach(self: *Activity) void {
         const instance = self.instance;
         self.instance = null;
-        if (instance) |object| engine.releasePlatformObject(object);
+        if (instance) |object| if (self.kept_alive) engine.releasePlatformObject(object);
+        self.kept_alive = false;
     }
     pub fn maybeFree(self: *Activity) void {
         if (self.instance == null and self.head == null and self.microtasks.items.len == 0 and self.running_stable == 0) self.free(self.owner);

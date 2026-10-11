@@ -49,9 +49,6 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     // A host that already started the platform set the runtime flags then
     // too.
     if (!ffi.v8_Platform_IsInitialized()) snapshot_loader.initializePlatformForRuntime();
-    // Node wrappers' strength follows their tree (dom.mutation's insertion and
-    // removing steps), installed once while the process starts.
-    @import("wrapper_cache.zig").installTreeHooks();
     // The teardown handlers of the adapter's per-isolate modules, once, while
     // the process starts: agents are made on every Browser and worker thread
     // (docs/instances.md), and the handler table is read-only after this.

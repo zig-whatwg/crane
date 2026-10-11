@@ -282,6 +282,22 @@ test "argHandleIsCopied - BodyInit is copied: its converter only ever makes stri
     try std.testing.expect(copied(v8.interface_mod.copied_arg_types.BodyInit));
 }
 
+test "argHandleIsCopied - AllowSharedBufferSource is copied: a slice over the backing store, not the handle" {
+    // conv.convertAllowSharedBufferSource reads the bytes through
+    // v8_AllowSharedBufferSource_Bytes and returns `.byte_slice` - nothing
+    // that refers to the argument's Global. The JS argument keeps the buffer
+    // alive for the call; kept, the Global leaked once per
+    // TextDecoder.decode call.
+    const webidl = @import("webidl");
+    try std.testing.expect(copied(webidl.AllowSharedBufferSource));
+    try std.testing.expect(copied(?webidl.AllowSharedBufferSource));
+    try std.testing.expect(copied(webidl.Opt(webidl.AllowSharedBufferSource)));
+    // Its neighbours are references to their objects, released with the
+    // value instead (bufferHandleIsKeptInValue): never "copied".
+    try std.testing.expect(!copied(webidl.BufferSource));
+    try std.testing.expect(!copied(webidl.ArrayBufferView));
+}
+
 test "argHandleIsCopied - wrappers follow their payload" {
     try std.testing.expect(copied(?runtime.DOMString));
     try std.testing.expect(copied(?i32));

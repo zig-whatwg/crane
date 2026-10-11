@@ -1152,8 +1152,8 @@ pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFu
 /// Owned keeps that Owned (or another hold of its own) until its caller has
 /// the value: between the impl's return and the binding wrapping the result,
 /// a [CEReactions] end can run script, and so a collection.
-/// `keepPlatformObjectAlive` is one per-instance flag shared by every owner
-/// (pending activity), so it cannot carry a second, independent reason.
+/// `keepPlatformObjectAlive` is counted per owner (pending activity), so a
+/// second, independent keep is safe: each owner releases only its own.
 pub inline fn constructCallbackFunction(realm: Context, callback: *const CallbackFunction, args: []const JSValue) Error!Completion {
     return impl.constructCallbackFunction(realm, callback, args);
 }
@@ -1751,6 +1751,13 @@ pub inline fn structuredDeserializeWithTransfer(realm: Context, serialized: []co
 // class finalizer) queues the teardown the same way. Nor does a teardown run
 // for an instance wrapped again in between: the new wrapper owns it.
 //
+// A wrapper owns one reference to a counted instance (VTable.counted: the
+// nodes, refcount design 2.1): the adapter acquires it when it makes and
+// caches the wrapper and releases it, on the agent's thread and never inside a
+// collection, when the wrapper is finalized - through runtime.lifetime, whose
+// owner (dom.refcount) decides what the reference means. Until refcount step
+// 7 that is shadow mode: the counts are kept and checked and decide nothing.
+//
 // A node's teardown - its whole subtree's, for a collected root - is deferred
 // further, when the host gave the agent a queue (AgentOptions.deferred_teardown):
 // the adapter queues the node there, and the host frees it a slice at a time
@@ -1764,12 +1771,21 @@ pub inline fn hasWrapper(instance: *Instance) bool {
 }
 
 /// `instance` has pending activity: its wrapper is kept alive whatever script
-/// holds, until `releasePlatformObject` or its realm ends.
+/// holds, until its realm ends or every keep is released. COUNTED: each call
+/// is one keep, ended by exactly one `releasePlatformObject` - so independent
+/// owners (a script element's queued task and its fetch) keep it each for
+/// their own reason, and one owner's release never ends another's (WebKit's
+/// ActiveDOMObject `m_pendingActivityInstanceCount`; refcount design 2.3). An
+/// owner whose reason toggles keeps once and releases once, with a flag of
+/// its own. A keep taken before the instance has a wrapper is taken by the
+/// wrapper when it is made.
 pub inline fn keepPlatformObjectAlive(instance: *Instance) void {
     impl.keepPlatformObjectAlive(instance);
 }
 
-/// End what `keepPlatformObjectAlive` began.
+/// End ONE keep `keepPlatformObjectAlive` began - the caller's own. A release
+/// with no keep left ends nothing; it is a bug in its caller (V8: an error log
+/// in Debug builds, counted on the realm's wrapper cache).
 pub inline fn releasePlatformObject(instance: *Instance) void {
     impl.releasePlatformObject(instance);
 }
@@ -1859,6 +1875,71 @@ pub inline fn traceValue(owner: *Instance, value: JSValue, slot: TracedSlot) voi
 /// wrapper; must not be called while the collector runs.
 pub inline fn tracedValue(owner: *Instance, slot: TracedSlot) ?Owned {
     return impl.tracedValue(owner, slot);
+}
+
+// Node tracing's opaque root (refcount design 2.2, section 7 step 4). WebKit
+// keeps a node's wrapper alive while the node's opaque root - its
+// shadow-including root - is reachable (JSNodeOwner::isReachableFromOpaqueRoots,
+// JSNodeCustom.cpp): any reachable wrapper of a tree keeps every wrapper of
+// it. The host says when a subtree's root changes; the engine keeps the rule.
+// The host calls these only for a member that has a wrapper - one field test,
+// so a parse or an innerHTML of unwrapped nodes calls nothing.
+
+/// `member` - a node with a wrapper, the root of a subtree just inserted
+/// under `parent` (DOM insert, append, move's new parent) - now shares its
+/// opaque root with `parent`'s tree: from here on, any reachable wrapper of
+/// either keeps the wrappers of both, and `member`'s wrapper keeps its
+/// tree's root wrapper - and through it, the tree's node document. An edge,
+/// never a root: a tree script holds nothing of still goes whole.
+///
+/// V8: node tracing's edges (wrapper_cache.zig) - `member`'s wrapper holds
+/// `parent`'s in its one upward slot (`dom.node_document.traced_slot`), and
+/// `parent`'s holds a Set of its wrapped children's. A `parent` script has not
+/// seen is wrapped first, with its unwrapped ancestors, top-down, in their
+/// relevant realm: the wrapped part of a tree is upward-closed. JavaScriptCore
+/// would keep the same edges in a per-realm WeakMap (design 2.5, decision D5);
+/// it and QuickJS wrap no node today and do nothing. Never call it while the
+/// collector runs; does nothing when `member` has no wrapper.
+pub inline fn joinOpaqueRoot(member: *Instance, parent: *Instance) void {
+    impl.joinOpaqueRoot(member, parent);
+}
+
+/// `member` - a node with a wrapper - left `old_parent`'s tree (DOM remove,
+/// move's old parent) and is the root of its own opaque root: `old_parent`'s
+/// wrappers no longer keep `member`'s, nor `member`'s theirs. A root keeps
+/// its node document: V8 points `member`'s upward slot at the document's
+/// wrapper (made in its relevant realm if script has not seen it), updated in
+/// place. A move is a leave followed by a join. Nothing on JavaScriptCore,
+/// QuickJS or the test adapter (no node is wrapped there). Never call it
+/// while the collector runs; does nothing when `member` has no wrapper.
+pub inline fn leaveOpaqueRoot(member: *Instance, old_parent: *Instance) void {
+    impl.leaveOpaqueRoot(member, old_parent);
+}
+
+/// `owner` - a platform object that holds `member`, a node, for script: a
+/// MutationRecord's nodes, a static NodeList's - keeps `member`'s opaque root
+/// for as long as `owner`'s wrapper lives: an edge, never a root, in `slot`
+/// (`traceChild`'s namespace: a new member replaces the slot's old one, and
+/// `forgetTracedChild` ends it). WebKit's non-node visitors do this at
+/// marking time (`ChildListRecord::visitNodesInGCThread` ->
+/// `addWebCoreOpaqueRoot`, MutationRecord.cpp). It keeps wrapper IDENTITY
+/// only - expandos, `===` - never the native node, whose lifetime is its
+/// counted holders' (refcount design 2.3-2.4).
+///
+/// V8: the edge goes to `member`'s own wrapper when it has one - a node that
+/// moves takes its tree edges with it; else to its tree's root's wrapper
+/// when that is wrapped (the wrapped part of a tree is upward-closed, so an
+/// unwrapped root means no wrapper anywhere in the tree: nothing to keep);
+/// and nothing for a tree whose root is a document the host keeps (one with
+/// a browsing context). Never makes a wrapper. A member that is not a node
+/// is kept as `traceChild` keeps it. THE GAP against WebKit's reading at
+/// marking time: an unwrapped member that moves into a tree which only later
+/// gets wrappers is not followed (closing it needs a per-node hold chain;
+/// decision D4 keeps the gap unless a test shows it matters).
+/// JavaScriptCore, QuickJS and the test adapter keep nothing (no node is
+/// wrapped there). Never call it while the collector runs.
+pub inline fn keepOpaqueRoot(owner: *Instance, member: *Instance, slot: TracedSlot) void {
+    impl.keepOpaqueRoot(owner, member, slot);
 }
 
 // ============================================================================

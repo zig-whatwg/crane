@@ -71,11 +71,10 @@ pub const Transfer = curl_backend.Transfer;
 // Re-export the event loop's network scheduler
 pub const NetworkScheduler = scheduler.NetworkScheduler;
 
-// Re-export connection pool
+// Re-export connection pool. (Its process-wide instance, which nothing
+// fetched through - the curl share in curl_backend is the live pool - went
+// with instances B3.)
 pub const ConnectionPool = connection_pool.ConnectionPool;
-pub const getGlobalPool = connection_pool.getGlobalPool;
-pub const cleanupGlobalPool = connection_pool.cleanupGlobalPool;
-pub const resetGlobalPool = connection_pool.resetGlobalPool;
 
 // Re-export streaming types
 pub const StreamingSource = streaming_source.StreamingSource;

@@ -99,10 +99,15 @@ fn body(outcome: *Outcome) void {
 }
 
 fn run(outcome: *Outcome) !void {
+    // The agent's host keeps its rejection bookkeeping (AgentHost.rejections):
+    // it outlives the agent.
+    var agent_host = @import("html_core").agent_host.AgentHost.init(allocator);
+    defer agent_host.deinit();
     const agent = try engine.createAgent(.{
         .can_block = true,
         .from_snapshot = false,
         .hooks = &html.rejected_promises.hooks,
+        .host = &agent_host,
         .allocator = allocator,
     });
     defer engine.destroyAgent(agent);
@@ -146,4 +151,94 @@ test "a notification of rejected promises queued on a loop carries a drop that r
     try testing.expectEqual(@as(usize, 1), outcome.queued);
     try testing.expect(outcome.had_drop);
     try testing.expect(outcome.released);
+}
+
+fn wait(flag: *std.atomic.Value(bool)) void {
+    while (!flag.load(.acquire)) std.Thread.yield() catch {};
+}
+
+/// Two agents - two Browsers' - on two threads, each with its host. A's
+/// rejection is tracked on A's host; B's end (`releaseAgent`) releases B's
+/// and touches nothing of A's, whose promise handles are A's isolate's.
+const TwoAgents = struct {
+    a_tracked: std.atomic.Value(bool) = .init(false),
+    b_ended: std.atomic.Value(bool) = .init(false),
+    a_after_b: usize = 0,
+    a_failed: ?anyerror = null,
+    b_failed: ?anyerror = null,
+
+    fn agentA(self: *TwoAgents) void {
+        self.runA() catch |err| {
+            self.a_failed = err;
+            self.a_tracked.store(true, .release);
+        };
+    }
+
+    fn runA(self: *TwoAgents) !void {
+        var agent_host = @import("html_core").agent_host.AgentHost.init(allocator);
+        defer agent_host.deinit();
+        const agent = try engine.createAgent(.{
+            .can_block = true,
+            .from_snapshot = false,
+            .hooks = &html.rejected_promises.hooks,
+            .host = &agent_host,
+            .allocator = allocator,
+        });
+        defer engine.destroyAgent(agent);
+        var loop: CollectingLoop = .{};
+        defer {
+            for (loop.tasks.items) |task| if (task.drop) |drop| drop(task.context);
+            loop.tasks.deinit(allocator);
+        }
+        const made = try engine.createWorkerRealm(agent, &.{
+            .url = "http://web-platform.test:8000/workers/a.js",
+            .timer = null,
+            .event_loop = loop.eventLoop(),
+            .allocator = allocator,
+        });
+        defer engine.destroyWorkerRealm(made.realm, null, null);
+        defer html.rejected_promises.releaseAgent(agent);
+
+        try engine.runClassicScript(made.realm, .{ .utf8 = "globalThis.kept = Promise.reject(new Error('A'));" }, "a.js", null, .{ .report = ignoreReport });
+        // The global's bookkeeping is on A's host.
+        if (agent_host.rejections.items.len != 1) return error.NotTrackedOnItsHost;
+        self.a_tracked.store(true, .release);
+        wait(&self.b_ended);
+        self.a_after_b = agent_host.rejections.items.len;
+    }
+
+    fn agentB(self: *TwoAgents) void {
+        self.runB() catch |err| {
+            self.b_failed = err;
+        };
+        self.b_ended.store(true, .release);
+    }
+
+    fn runB(self: *TwoAgents) !void {
+        wait(&self.a_tracked);
+        var agent_host = @import("html_core").agent_host.AgentHost.init(allocator);
+        defer agent_host.deinit();
+        const agent = try engine.createAgent(.{
+            .can_block = true,
+            .from_snapshot = false,
+            .hooks = &html.rejected_promises.hooks,
+            .host = &agent_host,
+            .allocator = allocator,
+        });
+        defer engine.destroyAgent(agent);
+        // B's end: what Browser.deinit does before its agent goes.
+        html.rejected_promises.releaseAgent(agent);
+    }
+};
+
+test "a rejection is tracked on its agent's host, and another agent's end releases none of it" {
+    try startProcess();
+    var two: TwoAgents = .{};
+    const a = try std.Thread.spawn(.{ .stack_size = 16 * 1024 * 1024 }, TwoAgents.agentA, .{&two});
+    const b = try std.Thread.spawn(.{ .stack_size = 16 * 1024 * 1024 }, TwoAgents.agentB, .{&two});
+    a.join();
+    b.join();
+    if (two.a_failed) |err| return err;
+    if (two.b_failed) |err| return err;
+    try testing.expectEqual(@as(usize, 1), two.a_after_b);
 }

@@ -9,7 +9,11 @@ Browser's live workers; the BroadcastChannel registry; `html.SharedWorkerManager
 worker manager with each shared worker's owner set. B1's allocators and registries join it as
 supplements. Workers 1B-ii (2026-10-05): every dedicated worker runs its agent, realm and event loop
 on a thread of its own (src/html/worker_thread.zig); workers batch 2 (2026-10-05): every shared
-worker does too, and every worker realm has its own event loop.
+worker does too, and every worker realm has its own event loop. B3 started (2026-10-11, lane inst3):
+the storage shed and bucket file systems (`storage.UserAgentStorage`), the blob URL store and the
+cookie jar with its CookieStore listeners (`dom.cookie_change_listeners`) are supplements of the
+BrowserScope, reached from a realm through `dom.browser_state`; a request carries its client's
+blob URL store; rejection tracking lives on each agent's host (`AgentHost.rejections`).
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.

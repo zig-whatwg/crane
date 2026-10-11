@@ -69,6 +69,10 @@ pub const WorkerScriptFetchOptions = struct {
     /// outside settings for a worker's script - for the blob URL store's
     /// same-origin check.
     requesting_origin: ?[]const u8 = null,
+    /// The user agent's blob URL store (a `file.BlobURLStore`) the outside
+    /// settings reach - its Browser's (BORROWED). A blob: script's blob is
+    /// obtained there; null: a blob URL is a network error.
+    blob_url_store: ?*anyopaque = null,
     /// Credentials mode
     credentials: CredentialsMode = .same_origin,
     /// Whether this is for importScripts (stricter rules apply)
@@ -192,7 +196,7 @@ pub fn fetchWorkerScript(
     }
 
     if (std.mem.startsWith(u8, url, "blob:")) {
-        return handleBlobUrl(allocator, url, options.requesting_origin, options.worker_type);
+        return handleBlobUrl(allocator, url, options.requesting_origin, options.blob_url_store, options.worker_type);
     }
 
     // Step 3: For HTTP(S) URLs, use the fetch module
@@ -285,11 +289,12 @@ fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
 /// entry's blob, obtained for the requesting environment - same-origin only
 /// - is the script. Fetch's scheme fetch "blob" does exactly that, through
 /// the blob URL store's resolver its owner installs once, at process start
-/// (fetch.algorithms.scheme_fetch.installBlobResolver): so a worker on any
-/// thread resolves the same store. (This used to be a resolver of its own,
-/// a threadlocal the WPT runner set on its thread only: a nested worker's
-/// blob: script, fetched on the outer worker's thread, found none.)
-fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]const u8, worker_type: WorkerType) WorkerScriptError!FetchedScript {
+/// (fetch.algorithms.scheme_fetch.installBlobResolver), in `blob_url_store` -
+/// the outside settings' Browser's: so a worker on any thread resolves its
+/// Browser's store, and no other Browser's. (This used to be a resolver of
+/// its own, a threadlocal the WPT runner set on its thread only: a nested
+/// worker's blob: script, fetched on the outer worker's thread, found none.)
+fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]const u8, blob_url_store: ?*anyopaque, worker_type: WorkerType) WorkerScriptError!FetchedScript {
     // The requesting origin, for the same-origin check: the creating
     // context's (document or worker), passed by the caller.
     const origin = requesting_origin orelse {
@@ -300,6 +305,7 @@ fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]co
     const request = fetch.internal.InternalRequest.init(allocator, url) catch return WorkerScriptError.OutOfMemory;
     defer request.deinit();
     request.setOrigin(origin) catch return WorkerScriptError.OutOfMemory;
+    request.blob_url_store = blob_url_store;
     const result = fetch.algorithms.scheme_fetch.schemeFetchRequest(allocator, request) catch return WorkerScriptError.OutOfMemory;
     const response = switch (result) {
         .response => |response| response,
