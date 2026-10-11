@@ -55,7 +55,7 @@ var mock_state: u64 = 0;
 
 fn setup() !void {
     if (data_once != null) return;
-    runtime.SlabAllocator.init(std.heap.page_allocator);
+    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
     const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
     ffi.v8_Isolate_Enter(isolate);
     _ = ffi.v8_HandleScope_New(isolate);
@@ -82,7 +82,7 @@ fn wrapped() !Made {
 
 /// A new instance of the realm that script has not seen: no wrapper.
 fn unwrapped() !Made {
-    const instance = try runtime.SlabAllocator.get().alloc(&mock_vtable);
+    const instance = try runtime.BrowserScope.standalone().?.slab.alloc(&mock_vtable);
     instance.state = @ptrCast(&mock_state);
     instance.ctx = data_once.?;
     return Made.of(instance);
@@ -211,7 +211,7 @@ test "a hold recorded for a freed instance is not inherited by its slot's next o
     const first = try unwrapped();
     v8.worker_realm.keepPlatformObjectAlive(first.instance);
     // The instance goes without ever being wrapped, and its slot is reissued.
-    runtime.SlabAllocator.get().free(first.instance);
+    runtime.BrowserScope.standalone().?.slab.free(first.instance);
     const second = try unwrapped();
     try std.testing.expectEqual(first.instance, second.instance);
     try wrap(second);
@@ -284,7 +284,7 @@ fn noopCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
 
 /// A wrapped probe instance whose state is its index.
 fn probeAt(index: usize) !Made {
-    const instance = try runtime.SlabAllocator.get().alloc(&probe_vtable);
+    const instance = try runtime.BrowserScope.standalone().?.slab.alloc(&probe_vtable);
     probe_states[index] = index;
     instance.state = @ptrCast(&probe_states[index]);
     instance.ctx = data_once.?;

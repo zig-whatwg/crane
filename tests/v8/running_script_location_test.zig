@@ -99,8 +99,7 @@ var pools_ready = false;
 fn setup() !void {
     try protocol.initializeEngine(.{});
     if (pools_ready) return;
-    runtime.SlabAllocator.init(std.heap.page_allocator);
-    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    runtime.initializeRuntime(std.heap.page_allocator);
     pools_ready = true;
 }
 

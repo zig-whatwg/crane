@@ -27,7 +27,7 @@ test "outerHTML uses a temporary body for a DocumentFragment parent and reclaims
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();
-    const before = runtime.SlabAllocator.get().stats().currently_allocated;
+    const before = runtime.BrowserScope.standalone().?.slab.stats().currently_allocated;
     for (0..10) |_| {
         const fragment = try interfaces.Document.call_createDocumentFragment(fixture.document);
         defer dom.node_creation.destroyUninserted(fragment);
@@ -42,7 +42,7 @@ test "outerHTML uses a temporary body for a DocumentFragment parent and reclaims
         try std.testing.expectEqualStrings("span", name.asSlice());
         try std.testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Node.get_nextSibling(replacement));
     }
-    try std.testing.expectEqual(before, runtime.SlabAllocator.get().stats().currently_allocated);
+    try std.testing.expectEqual(before, runtime.BrowserScope.standalone().?.slab.stats().currently_allocated);
 }
 
 test "cloning character data creates it in the destination document context" {

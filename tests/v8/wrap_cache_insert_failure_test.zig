@@ -42,8 +42,7 @@ fn setup() !void {
     try protocol.initializeEngine(.{});
     if (pools_ready) return;
     interfaces.process_hooks.startHooksForTest();
-    runtime.SlabAllocator.init(std.heap.page_allocator);
-    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    runtime.initializeRuntime(std.heap.page_allocator);
     pools_ready = true;
 }
 
@@ -185,14 +184,14 @@ test "a constructor whose wrapper cannot be cached throws, and frees the instanc
     const cache = page.cache();
     var failing = std.testing.FailingAllocator.init(cache.allocator, .{ .fail_index = 0 });
     const saved = cache.allocator;
-    const before = runtime.SlabAllocator.get().stats().currently_allocated;
+    const before = runtime.BrowserScope.standalone().?.slab.stats().currently_allocated;
     cache.allocator = failing.allocator();
     page.eval("try { globalThis.made = new Headers(); outcome = 'constructed'; } catch (e) { outcome = 'threw'; }") catch |err| {
         cache.allocator = saved;
         return err;
     };
     cache.allocator = saved;
-    const after = runtime.SlabAllocator.get().stats().currently_allocated;
+    const after = runtime.BrowserScope.standalone().?.slab.stats().currently_allocated;
     const outcome = try page.instanceOrString("outcome");
     defer testing.allocator.free(outcome);
     try testing.expectEqualStrings("threw", outcome);

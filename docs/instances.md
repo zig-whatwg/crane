@@ -14,6 +14,13 @@ the storage shed and bucket file systems (`storage.UserAgentStorage`), the blob 
 cookie jar with its CookieStore listeners (`dom.cookie_change_listeners`) are supplements of the
 BrowserScope, reached from a realm through `dom.browser_state`; a request carries its client's
 blob URL store; rejection tracking lives on each agent's host (`AgentHost.rejections`).
+B1's allocator half (2026-10-11, lane inst4): the BrowserScope owns the slab and arena every platform
+object of its Browser comes from (`Instance.init` allocates from the realm's scope; an object's Browser is
+read from its address, `BrowserScope.ofInstance` / `runtime.arenaOf`), and every address-keyed side table
+the DOM keeps (InstanceRegistry, EventTarget's, the NodeBase bridge, internal_state, StaticRange's, the
+option and textarea maps) is a `BrowserScope.Table` of it; a Browser's end sweeps only its own tables
+(dom.teardown_sweeps). Two whole Browsers run at once on two threads. `runtime.initializeRuntime` makes the
+standalone scope for tests and runtime-only hosts.
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.

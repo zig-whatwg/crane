@@ -28,9 +28,9 @@ const runtime = @import("runtime");
 const ArenaAllocator = runtime.ArenaAllocator;
 
 test "createRaw survives a zero-byte request" {
-    ArenaAllocator.init(std.testing.allocator);
-    defer ArenaAllocator.deinit();
-    const arena = ArenaAllocator.get();
+    var arena_value = runtime.ArenaAllocator.init(std.testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     // The call that aborted. It must return a usable, aligned pointer.
     const ptr = try arena.createRaw(0, @alignOf(u64));
@@ -39,9 +39,9 @@ test "createRaw survives a zero-byte request" {
 }
 
 test "create() of a zero-sized struct returns an aligned pointer" {
-    ArenaAllocator.init(std.testing.allocator);
-    defer ArenaAllocator.deinit();
-    const arena = ArenaAllocator.get();
+    var arena_value = runtime.ArenaAllocator.init(std.testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     // The shape real interfaces have: an InternalState holding nothing.
     const Empty = struct {};
@@ -52,9 +52,9 @@ test "create() of a zero-sized struct returns an aligned pointer" {
 }
 
 test "destroyRaw of a zero-byte block is a no-op, not a corruption" {
-    ArenaAllocator.init(std.testing.allocator);
-    defer ArenaAllocator.deinit();
-    const arena = ArenaAllocator.get();
+    var arena_value = runtime.ArenaAllocator.init(std.testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const ptr = try arena.createRaw(0, @alignOf(u64));
 
@@ -67,9 +67,9 @@ test "destroyRaw of a zero-byte block is a no-op, not a corruption" {
 }
 
 test "a zero-byte block is never recycled into a real allocation" {
-    ArenaAllocator.init(std.testing.allocator);
-    defer ArenaAllocator.deinit();
-    const arena = ArenaAllocator.get();
+    var arena_value = runtime.ArenaAllocator.init(std.testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const zero = try arena.createRaw(0, @alignOf(u64));
     arena.destroyRaw(zero, 0, @alignOf(u64));

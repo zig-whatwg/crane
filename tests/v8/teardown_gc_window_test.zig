@@ -36,8 +36,7 @@ var cache_once: ?*WrapperCache = null;
 fn setup() !*runtime.ContextData {
     if (data_once) |data| return data;
     interfaces.process_hooks.startHooksForTest();
-    runtime.SlabAllocator.init(std.heap.page_allocator);
-    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    runtime.initializeRuntime(std.heap.page_allocator);
     const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
     ffi.v8_Isolate_Enter(isolate);
     _ = ffi.v8_HandleScope_New(isolate);

@@ -59,8 +59,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Create internal state for Event (required for flags like dispatch_flag, initialized_flag)
     // PointerEvent -> MouseEvent -> UIEvent -> Event
     // So state.base.base.base.own._internal is Event's internal state
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(EventImpl.InternalState);
+    const internal = try runtime.arenaOf(instance).create(EventImpl.InternalState);
     internal.* = EventImpl.InternalState.init(ctx.allocator);
     state.base.base.base.own._internal = internal;
 

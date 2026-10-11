@@ -63,8 +63,7 @@ pub fn init(
 
     // Initialize internal state
     const state = instance.getState(StateType);
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
 
@@ -84,8 +83,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // and wrapper_cache cleanup) would try to deinit already-freed memory,
         // causing integer overflow crashes when ArrayList tries to free its
         // heap storage with corrupted slice.len.
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing

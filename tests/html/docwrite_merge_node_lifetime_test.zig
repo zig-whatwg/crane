@@ -26,8 +26,8 @@ fn exercise(scenario: Scenario) !void {
     runtime.cleanup_coordinator.setActiveCoordinator(&coordinator);
     defer runtime.cleanup_coordinator.setActiveCoordinator(null);
 
-    const slots_before = runtime.SlabAllocator.get().stats().currently_allocated;
-    const bytes_before = runtime.ArenaAllocator.get().stats().bytes_in_use;
+    const slots_before = runtime.BrowserScope.standalone().?.slab.stats().currently_allocated;
+    const bytes_before = runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use;
     const root = try interfaces.DocumentFragment.init(std.testing.allocator, &context);
     errdefer dom.node_creation.destroyUninserted(root);
     const child = try interfaces.Text.init(std.testing.allocator, &context);
@@ -50,8 +50,8 @@ fn exercise(scenario: Scenario) !void {
     }
     try std.testing.expect(root_state_bytes > 0 and child_state_bytes > 0);
     _ = try interfaces.Node.call_appendChild(root, child);
-    const slots_allocated = runtime.SlabAllocator.get().stats().currently_allocated;
-    const bytes_allocated = runtime.ArenaAllocator.get().stats().bytes_in_use;
+    const slots_allocated = runtime.BrowserScope.standalone().?.slab.stats().currently_allocated;
+    const bytes_allocated = runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use;
     try std.testing.expectEqual(slots_before + 2, slots_allocated);
     try std.testing.expect(bytes_allocated > bytes_before);
 
@@ -73,17 +73,17 @@ fn exercise(scenario: Scenario) !void {
         try std.testing.expect(runtime.instance_lifecycle.isCleanedUp(child));
         try std.testing.expectEqual(@as(?*dom.NodeBase, null), dom.instance_bridge.getNodeBase(root));
         try std.testing.expectEqual(@as(?*dom.NodeBase, null), dom.instance_bridge.getNodeBase(child));
-        try std.testing.expectEqual(slots_allocated, runtime.SlabAllocator.get().stats().currently_allocated);
-        try std.testing.expectEqual(bytes_before + root_state_bytes + child_state_bytes, runtime.ArenaAllocator.get().stats().bytes_in_use);
+        try std.testing.expectEqual(slots_allocated, runtime.BrowserScope.standalone().?.slab.stats().currently_allocated);
+        try std.testing.expectEqual(bytes_before + root_state_bytes + child_state_bytes, runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use);
         if (scenario == .coordinated) coordinator.endContextCleanup();
         // Stand in for that owner's storage phase, after resource cleanup.
         runtime.gc.releaseStorage(child);
-        try std.testing.expectEqual(bytes_before + root_state_bytes, runtime.ArenaAllocator.get().stats().bytes_in_use);
+        try std.testing.expectEqual(bytes_before + root_state_bytes, runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use);
         runtime.gc.releaseStorage(root);
     }
     // Check before pool shutdown: bulk arena/slab cleanup would hide retention.
-    try std.testing.expectEqual(slots_before, runtime.SlabAllocator.get().stats().currently_allocated);
-    try std.testing.expectEqual(bytes_before, runtime.ArenaAllocator.get().stats().bytes_in_use);
+    try std.testing.expectEqual(slots_before, runtime.BrowserScope.standalone().?.slab.stats().currently_allocated);
+    try std.testing.expectEqual(bytes_before, runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use);
 }
 
 fn onFreshThread(scenario: Scenario) !void {

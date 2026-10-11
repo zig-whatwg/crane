@@ -46,64 +46,59 @@
 
 const std = @import("std");
 const Instance = @import("instance.zig").Instance;
+const BrowserScope = @import("browser_scope.zig").BrowserScope;
 
 /// Type-erased internal state storage: instance address -> internal state
-/// pointer (the actual InternalState type is known by the caller).
+/// pointer (the actual InternalState type is known by the caller). One per
+/// Browser - its scope's `.internal_states` table - so an instance's entry is
+/// its Browser's and goes with it (docs/instances.md).
 ///
 /// Every thread that makes platform objects - a Browser's and each of its
-/// workers' (docs/instances.md) - registers here, so the map is reached only
-/// under `mutex`. A value is a pointer to a block the instance's own thread
-/// allocated and frees, so a pointer read under the lock stays good after it.
-const Registry = struct {
-    /// Protects `map` and `initialized`; held for one map operation, never
-    /// across a call out of this file.
+/// workers' - registers here, so the map is reached only under `mutex`. A
+/// value is a pointer to a block the instance's own thread allocated and
+/// frees, so a pointer read under the lock stays good after it.
+pub const Registry = struct {
+    /// Protects `map`; held for one map operation, never across a call out of
+    /// this file.
     mutex: std.Io.Mutex = .init,
     map: std.AutoHashMapUnmanaged(usize, *anyopaque) = .empty,
-    allocator: std.mem.Allocator = std.heap.page_allocator,
-    initialized: bool = false,
-};
-var global_registry: Registry = .{};
+    allocator: std.mem.Allocator,
 
-/// Initialize the registry with a specific allocator
-/// This should be called early in application startup.
-/// If not called, registrations use page_allocator.
-pub fn initRegistry(allocator: std.mem.Allocator) void {
-    std.Io.Threaded.mutexLock(&global_registry.mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
-    if (global_registry.initialized) {
-        // Already initialized: the map keeps its allocator - an entry's
-        // storage must be freed by the allocator that made it.
-        return;
+    pub fn init(allocator: std.mem.Allocator) Registry {
+        return .{ .allocator = allocator };
     }
-    global_registry.allocator = allocator;
-    global_registry.initialized = true;
+
+    /// With its scope: the entries go (the blocks they point to are their
+    /// owners').
+    pub fn deinit(self: *Registry) void {
+        self.map.deinit(self.allocator);
+    }
+};
+
+/// `instance`'s Browser's registry.
+fn registryOf(instance: *const Instance) !*Registry {
+    return BrowserScope.ofInstance(instance).table(.internal_states, Registry);
+}
+
+/// `instance`'s Browser's registry, if it was ever made.
+fn existingRegistryOf(instance: *const Instance) ?*Registry {
+    return BrowserScope.ofInstance(instance).existingTable(.internal_states, Registry);
 }
 
 /// Register internal state for an instance
 ///
 /// This should be called during impl init() to associate internal state
-/// with the instance. The state must be allocated from ArenaAllocator
-/// or another allocator with sufficient lifetime.
+/// with the instance. The state must be allocated from the instance's arena
+/// (runtime.arenaOf) or another allocator with sufficient lifetime.
 ///
 /// ## Parameters
 /// - `instance`: The WebIDL instance
 /// - `internal`: Pointer to the internal state struct
-///
-/// ## Example
-/// ```zig
-/// pub fn init(allocator: Allocator, ...) !*Instance {
-///     const instance = try Instance.init(...);
-///     const internal = try ArenaAllocator.get().create(InternalState);
-///     internal.* = InternalState.init(allocator);
-///     try internal_state.setInternal(instance, internal);
-///     return instance;
-/// }
-/// ```
 pub fn setInternal(instance: *Instance, internal: anytype) !void {
-    std.Io.Threaded.mutexLock(&global_registry.mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
-    global_registry.initialized = true;
-    try global_registry.map.put(global_registry.allocator, @intFromPtr(instance), @ptrCast(internal));
+    const registry = try registryOf(instance);
+    std.Io.Threaded.mutexLock(&registry.mutex);
+    defer std.Io.Threaded.mutexUnlock(&registry.mutex);
+    try registry.map.put(registry.allocator, @intFromPtr(instance), @ptrCast(internal));
 }
 
 /// Get internal state for an instance
@@ -114,73 +109,31 @@ pub fn setInternal(instance: *Instance, internal: anytype) !void {
 /// ## Type Safety
 /// The caller must ensure the correct InternalState type is specified.
 /// Using the wrong type will result in undefined behavior.
-///
-/// ## Parameters
-/// - `InternalStateType`: The type of internal state to retrieve
-/// - `instance`: The WebIDL instance
-///
-/// ## Returns
-/// Pointer to the internal state, or null if not found
-///
-/// ## Example
-/// ```zig
-/// const HTMLScriptElementInternal = @import("impls").HTMLScriptElement.InternalState;
-///
-/// if (internal_state.getInternal(HTMLScriptElementInternal, instance)) |internal| {
-///     if (internal.already_started) {
-///         return;
-///     }
-///     internal.already_started = true;
-/// }
-/// ```
 pub fn getInternal(comptime InternalStateType: type, instance: *Instance) ?*InternalStateType {
-    std.Io.Threaded.mutexLock(&global_registry.mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
-    const ptr = global_registry.map.get(@intFromPtr(instance)) orelse return null;
+    const registry = existingRegistryOf(instance) orelse return null;
+    std.Io.Threaded.mutexLock(&registry.mutex);
+    defer std.Io.Threaded.mutexUnlock(&registry.mutex);
+    const ptr = registry.map.get(@intFromPtr(instance)) orelse return null;
     return @ptrCast(@alignCast(ptr));
 }
 
 /// Remove internal state registration for an instance
 ///
 /// This should be called during impl deinit() to clean up.
-/// Note: This does NOT free the internal state memory - that should
-/// be handled by the impl's deinit or by ArenaAllocator reset.
-///
-/// ## Parameters
-/// - `instance`: The WebIDL instance
+/// Note: This does NOT free the internal state memory - that is the impl's.
 pub fn removeInternal(instance: *Instance) void {
-    std.Io.Threaded.mutexLock(&global_registry.mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
-    _ = global_registry.map.remove(@intFromPtr(instance));
+    const registry = existingRegistryOf(instance) orelse return;
+    std.Io.Threaded.mutexLock(&registry.mutex);
+    defer std.Io.Threaded.mutexUnlock(&registry.mutex);
+    _ = registry.map.remove(@intFromPtr(instance));
 }
 
 /// Check if an instance has internal state registered
-///
-/// ## Parameters
-/// - `instance`: The WebIDL instance
-///
-/// ## Returns
-/// true if internal state is registered, false otherwise
 pub fn hasInternal(instance: *Instance) bool {
-    std.Io.Threaded.mutexLock(&global_registry.mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
-    return global_registry.map.contains(@intFromPtr(instance));
-}
-
-/// Reset the entire registry (for testing or shutdown)
-///
-/// Warning: This does NOT free the internal state memory.
-/// Only use during shutdown or between test runs.
-pub fn resetRegistry() void {
-    std.Io.Threaded.mutexLock(&global_registry.mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
-    if (global_registry.initialized) {
-        global_registry.map.clearAndFree(global_registry.allocator);
-        global_registry.initialized = false;
-        // A registration before the next initRegistry uses page_allocator,
-        // as it always did.
-        global_registry.allocator = std.heap.page_allocator;
-    }
+    const registry = existingRegistryOf(instance) orelse return false;
+    std.Io.Threaded.mutexLock(&registry.mutex);
+    defer std.Io.Threaded.mutexUnlock(&registry.mutex);
+    return registry.map.contains(@intFromPtr(instance));
 }
 
 // =============================================================================
@@ -331,156 +284,4 @@ pub fn setOptionalSlice(
     }
 }
 
-// =============================================================================
-// Tests
-// =============================================================================
-
-const testing = std.testing;
-
-test "setInternal and getInternal work correctly" {
-    // Reset registry for clean test
-    resetRegistry();
-    defer resetRegistry();
-
-    const TestInternal = struct {
-        value: u32,
-        flag: bool,
-    };
-
-    // Create a mock instance
-    const delegates = .{};
-    const vtable = @import("instance.zig").VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    var state: u8 = 0;
-    var instance = Instance{
-        .vtable = &vtable,
-        .state = @ptrCast(&state),
-        .ctx = undefined,
-    };
-
-    // Allocate and register internal state
-    var internal = TestInternal{ .value = 42, .flag = true };
-    try setInternal(&instance, &internal);
-
-    // Retrieve and verify
-    const retrieved = getInternal(TestInternal, &instance);
-    try testing.expect(retrieved != null);
-    try testing.expectEqual(@as(u32, 42), retrieved.?.value);
-    try testing.expect(retrieved.?.flag);
-
-    // Modify through retrieved pointer
-    retrieved.?.value = 100;
-    try testing.expectEqual(@as(u32, 100), internal.value);
-}
-
-test "getInternal returns null for unregistered instance" {
-    resetRegistry();
-    defer resetRegistry();
-
-    const TestInternal = struct {
-        value: u32,
-    };
-
-    const delegates = .{};
-    const vtable = @import("instance.zig").VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    var state: u8 = 0;
-    var instance = Instance{
-        .vtable = &vtable,
-        .state = @ptrCast(&state),
-        .ctx = undefined,
-    };
-
-    const retrieved = getInternal(TestInternal, &instance);
-    try testing.expect(retrieved == null);
-}
-
-test "removeInternal works correctly" {
-    resetRegistry();
-    defer resetRegistry();
-
-    const TestInternal = struct {
-        value: u32,
-    };
-
-    const delegates = .{};
-    const vtable = @import("instance.zig").VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    var state: u8 = 0;
-    var instance = Instance{
-        .vtable = &vtable,
-        .state = @ptrCast(&state),
-        .ctx = undefined,
-    };
-
-    var internal = TestInternal{ .value = 42 };
-    try setInternal(&instance, &internal);
-
-    try testing.expect(hasInternal(&instance));
-
-    removeInternal(&instance);
-
-    try testing.expect(!hasInternal(&instance));
-    try testing.expect(getInternal(TestInternal, &instance) == null);
-}
-
-test "field accessors work correctly" {
-    resetRegistry();
-    defer resetRegistry();
-
-    const TestInternal = struct {
-        flag: bool,
-        count: u32,
-        name: ?[]const u8,
-    };
-
-    const delegates = .{};
-    const vtable = @import("instance.zig").VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    var state: u8 = 0;
-    var instance = Instance{
-        .vtable = &vtable,
-        .state = @ptrCast(&state),
-        .ctx = undefined,
-    };
-
-    var internal = TestInternal{
-        .flag = false,
-        .count = 0,
-        .name = null,
-    };
-    try setInternal(&instance, &internal);
-
-    // Test bool accessor
-    try testing.expectEqual(false, getBool(&instance, TestInternal, "flag").?);
-    setBool(&instance, TestInternal, "flag", true);
-    try testing.expectEqual(true, getBool(&instance, TestInternal, "flag").?);
-
-    // Test u32 accessor
-    try testing.expectEqual(@as(u32, 0), getU32(&instance, TestInternal, "count").?);
-    setU32(&instance, TestInternal, "count", 5);
-    try testing.expectEqual(@as(u32, 5), getU32(&instance, TestInternal, "count").?);
-
-    // Test increment/decrement
-    incrementU32(&instance, TestInternal, "count");
-    try testing.expectEqual(@as(u32, 6), getU32(&instance, TestInternal, "count").?);
-    decrementU32(&instance, TestInternal, "count");
-    try testing.expectEqual(@as(u32, 5), getU32(&instance, TestInternal, "count").?);
-
-    // Test optional slice accessor
-    try testing.expect(getOptionalSlice(&instance, TestInternal, "name") == null);
-    setOptionalSlice(&instance, TestInternal, "name", "test");
-    try testing.expectEqualStrings("test", getOptionalSlice(&instance, TestInternal, "name").?);
-}
+// Tests: tests/runtime/browser_scope_allocators_test.zig, runtime_threads_test.zig.

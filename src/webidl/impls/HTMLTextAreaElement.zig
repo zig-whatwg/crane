@@ -52,49 +52,68 @@ pub const ImplError = error{
 /// Storing the state inline in the map removes the arena from the picture
 /// entirely: the map owns its own memory, so a stale entry can only ever give a
 /// wrong answer, never corrupt a neighbour. The map is keyed on the instance
-/// address and is process-global, like the shared registry it replaces.
+/// address and is its Browser's (a side table of its runtime.BrowserScope).
 ///
 /// TODO: the same alloc/free pair is in HTMLInputElement.zig, HTMLFormElement.zig
 /// and ~17 other impls. This is a local workaround, not the fix; the fix is in
 /// whatever holds a block past `ArenaAllocator.destroy`.
 const StateMap = struct {
-    var map: ?std.AutoHashMap(usize, InternalState) = null;
+    /// One Browser's map - a side table of its runtime.BrowserScope, so its
+    /// entries are its own and end with it (instances B1).
+    const Table = struct {
+        map: std.AutoHashMap(usize, InternalState),
 
-    fn ensure() *std.AutoHashMap(usize, InternalState) {
-        if (map == null) {
-            map = std.AutoHashMap(usize, InternalState).init(std.heap.page_allocator);
+        pub fn init(allocator: std.mem.Allocator) Table {
+            return .{ .map = std.AutoHashMap(usize, InternalState).init(allocator) };
         }
-        return &map.?;
+
+        pub fn deinit(self: *Table) void {
+            var values = self.map.valueIterator();
+            while (values.next()) |state| state.deinit();
+            self.map.deinit();
+        }
+    };
+
+    /// `instance`'s Browser's map, made on first use.
+    fn ensure(instance: *runtime.Instance) !*std.AutoHashMap(usize, InternalState) {
+        return &(try runtime.BrowserScope.ofInstance(instance).table(.textarea_states, Table)).map;
+    }
+
+    /// `instance`'s Browser's map, if it has one.
+    fn existing(instance: *runtime.Instance) ?*std.AutoHashMap(usize, InternalState) {
+        const table = runtime.BrowserScope.ofInstance(instance).existingTable(.textarea_states, Table) orelse return null;
+        return &table.map;
     }
 
     fn put(instance: *runtime.Instance, value: InternalState) !void {
-        try ensure().put(@intFromPtr(instance), value);
+        try (try ensure(instance)).put(@intFromPtr(instance), value);
     }
 
     fn get(instance: *runtime.Instance) ?*InternalState {
-        return ensure().getPtr(@intFromPtr(instance));
+        return (existing(instance) orelse return null).getPtr(@intFromPtr(instance));
     }
 
     /// The entry for `instance`, creating a default one if this is the first
     /// write. Nothing is stored until something assigns, so a parser-created
     /// element that script never touches costs nothing at all.
     fn getOrPut(instance: *runtime.Instance) !*InternalState {
-        const entry = try ensure().getOrPut(@intFromPtr(instance));
+        const entry = try (try ensure(instance)).getOrPut(@intFromPtr(instance));
         if (!entry.found_existing) entry.value_ptr.* = .{};
         return entry.value_ptr;
     }
 
     fn remove(instance: *runtime.Instance) ?InternalState {
-        if (ensure().fetchRemove(@intFromPtr(instance))) |kv| return kv.value;
+        const map = existing(instance) orelse return null;
+        if (map.fetchRemove(@intFromPtr(instance))) |kv| return kv.value;
         return null;
     }
 
-    /// Free every entry's value and forget them all.
-    fn sweep() void {
-        const m = map orelse return;
-        var values = m.valueIterator();
+    /// Free every one of `scope`'s entries' values and forget them all.
+    fn sweep(scope: *runtime.BrowserScope) void {
+        const table = scope.existingTable(.textarea_states, Table) orelse return;
+        var values = table.map.valueIterator();
         while (values.next()) |state| state.deinit();
-        map.?.clearRetainingCapacity();
+        table.map.clearRetainingCapacity();
     }
 };
 
@@ -103,8 +122,8 @@ const StateMap = struct {
 /// (none, over 2,881 files at leaks3's tip), and init frees an entry it finds
 /// at a new textarea's address - which must never be one whose raw value
 /// came from an allocator that has gone with an earlier browser.
-pub fn cleanupAllRemainingInternal() void {
-    StateMap.sweep();
+pub fn cleanupAllRemainingInternal(scope: *runtime.BrowserScope) void {
+    StateMap.sweep(scope);
 }
 
 fn isTextArea(instance: *runtime.Instance) bool {
@@ -226,7 +245,7 @@ fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void
 pub fn installHooks() void {
     // The steps other code runs on textareas (each idempotent).
     dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_edit = &userEdit, .editor_text = &editorText });
-    dom.teardown_sweeps.install(&cleanupAllRemainingInternal);
+    dom.teardown_sweeps.install(.element_types, &cleanupAllRemainingInternal);
 }
 
 /// Initialize instance (creates the instance)

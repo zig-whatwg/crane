@@ -40,7 +40,7 @@ pub const InternalState = struct {
     }
 };
 
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.canvas_rendering_context_2d, InternalState);
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);

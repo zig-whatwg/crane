@@ -69,7 +69,7 @@ fn droppedSlotThenGone() !void {
     try expectTrue(browser, "image.complete === false");
 
     // A teardown that frees the slot without the element's own deinit.
-    runtime.SlabAllocator.get().free(element);
+    runtime.BrowserScope.ofInstance(element).slab.free(element);
     // The fetch layer finds its client gone: terminates the fetch, and
     // `gone` destroys it.
     try testing.expect(fetch.algorithms.async_fetch.sweep());

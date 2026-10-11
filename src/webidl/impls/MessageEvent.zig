@@ -75,8 +75,7 @@ pub fn init(
 
     // Initialize internal state
     const state = instance.getState(State);
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = .{};
     state.own._internal = internal;
 
@@ -122,8 +121,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     // Release MessageEvent's OWN internal block. The parent releases the Event-level
     // one, which on a MessageEvent instance is a different allocation.
     if (state.own._internal) |internal| {
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
 
@@ -224,7 +222,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Create the INHERITED Event internal state and set the initialized flag.
     // Without it dispatchEvent throws InvalidStateError, so the event can be
     // constructed but never dispatched. Same thing MouseEvent does by hand.
-    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
+    try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
 
     return instance;
 }
@@ -458,7 +456,7 @@ pub fn createPostMessageEvent(
     // The inherited Event internal state and its initialized flag. Without
     // them dispatchEvent throws InvalidStateError - which is what every
     // window.postMessage call did, synchronously, before this line existed.
-    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
+    try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
 
     // Nothing can fail from here, so the event takes `data`: a handle is
     // the event's to release from now on.

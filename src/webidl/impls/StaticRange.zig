@@ -72,22 +72,13 @@ pub const InternalState = struct {
     }
 };
 
-/// Global storage for StaticRange internal state
-/// Since StaticRange has no _internal in its generated State, we use this map
-var internal_storage: std.AutoHashMap(*runtime.Instance, *InternalState) = undefined;
-var storage_initialized: bool = false;
-
-fn ensureStorageInit() void {
-    if (!storage_initialized) {
-        internal_storage = std.AutoHashMap(*runtime.Instance, *InternalState).init(std.heap.page_allocator);
-        storage_initialized = true;
-    }
-}
+/// StaticRange's state, in its Browser's side table (instances B1): StaticRange
+/// has no _internal in its generated State.
+const Registry = runtime.InstanceRegistry(.static_ranges, InternalState);
 
 /// Get the internal state for an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    ensureStorageInit();
-    return internal_storage.get(instance);
+    return Registry.get(instance);
 }
 
 /// This kind of range's answer to AbstractRange's boundary-point getters.
@@ -102,25 +93,15 @@ fn boundariesOf(range: *runtime.Instance) ?range_boundaries.Boundaries {
     };
 }
 
-/// Store internal state for an instance
-fn setInternal(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureStorageInit();
-    try internal_storage.put(instance, internal);
-}
-
-/// Remove internal state for an instance
+/// Remove internal state for an instance, returning its block to the arena.
 fn removeInternal(instance: *runtime.Instance) void {
-    ensureStorageInit();
-    // Return the block, not just the map entry. StaticRange keeps its own storage
-    // map rather than using InstanceRegistry, so it needs its own release.
-    if (internal_storage.fetchRemove(instance)) |kv| {
+    if (Registry.get(instance)) |internal| {
         // A range freed unwrapped (a failed construction) lets the edges
         // waiting for its wrapper go; a collected one's went with it.
-        kv.value.kept_start.release(instance);
-        kv.value.kept_end.release(instance);
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, kv.value);
+        internal.kept_start.release(instance);
+        internal.kept_end.release(instance);
     }
+    Registry.remove(instance);
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -139,13 +120,9 @@ pub fn init(
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
-    // Allocate internal state using arena
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    // Internal state, from its Browser's arena, in its Browser's table.
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init();
-
-    // Store in our global map
-    try setInternal(instance, internal);
 
     return instance;
 }

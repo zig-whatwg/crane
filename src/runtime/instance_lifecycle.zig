@@ -12,8 +12,15 @@
 //!
 //! ## Solution
 //!
-//! Track lifecycle flags per-instance using a lightweight registry.
-//! Flags are stored externally to preserve Instance's 24-byte size constraint.
+//! Track lifecycle flags per instance, in the instance's own slab slot
+//! (runtime.SlabAllocator, beside its generation): no registry, no lookup,
+//! and the flags belong to the instance's Browser like the slot does
+//! (docs/instances.md). Flags are stored outside the Instance to preserve its
+//! 24-byte size constraint. They survive the instance's free - a teardown
+//! still asks whether a freed node's cleanup ran - and start empty when the
+//! slot is issued again.
+//!
+//! Only for instances `Instance.init` made (every slab-issued one).
 //!
 //! ## Flags
 //!
@@ -46,7 +53,7 @@ const std = @import("std");
 const Instance = @import("instance.zig").Instance;
 
 /// Lifecycle flags for an instance
-pub const LifecycleFlags = packed struct {
+pub const LifecycleFlags = packed struct(u8) {
     /// Cleanup has started (prevents recursive cleanup)
     cleanup_started: bool = false,
 
@@ -63,67 +70,24 @@ pub const LifecycleFlags = packed struct {
     _reserved: u4 = 0,
 };
 
-/// Thread-local lifecycle registry
-/// Uses a HashMap for O(1) lookup by instance pointer
-const Registry = std.AutoHashMap(*const Instance, LifecycleFlags);
+const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 
-threadlocal var registry: ?Registry = null;
-threadlocal var registry_allocator: ?std.mem.Allocator = null;
-
-/// Initialize the lifecycle registry for this thread
-pub fn init(allocator: std.mem.Allocator) void {
-    if (registry == null) {
-        registry = Registry.init(allocator);
-        registry_allocator = allocator;
-    }
+fn read(instance: *const Instance) LifecycleFlags {
+    return @bitCast(SlabAllocator.lifecycleBitsOf(instance));
 }
 
-/// Deinitialize the lifecycle registry
-pub fn deinit() void {
-    if (registry) |*r| {
-        r.deinit();
-        registry = null;
-        registry_allocator = null;
-    }
+fn write(instance: *const Instance, flags: LifecycleFlags) void {
+    SlabAllocator.setLifecycleBits(instance, @bitCast(flags));
 }
 
-/// Get lifecycle flags for an instance (creates default if not present)
-fn getOrCreate(instance: *const Instance) *LifecycleFlags {
-    const r = &(registry orelse {
-        // Auto-initialize with page allocator if not explicitly initialized
-        // This is a fallback for testing - production should call init()
-        registry = Registry.init(std.heap.page_allocator);
-        registry_allocator = std.heap.page_allocator;
-        return getOrCreate(instance);
-    });
-
-    const result = r.getOrPut(instance) catch {
-        // On OOM, return a static default (shouldn't happen in practice)
-        std.log.err("[instance_lifecycle] OOM in getOrPut! Returning default_flags", .{});
-        return &default_flags;
-    };
-
-    if (!result.found_existing) {
-        result.value_ptr.* = .{};
-    }
-
-    return result.value_ptr;
-}
-
-/// Default flags (used as fallback on OOM)
-var default_flags: LifecycleFlags = .{};
-
-/// Get lifecycle flags for an instance (returns null if not tracked)
+/// Get lifecycle flags for an instance: all false for one nothing marked.
 pub fn get(instance: *const Instance) ?LifecycleFlags {
-    const r = registry orelse return null;
-    return r.get(instance);
+    return read(instance);
 }
 
-/// Remove lifecycle tracking for an instance
+/// Forget an instance's lifecycle flags.
 pub fn remove(instance: *const Instance) void {
-    if (registry) |*r| {
-        _ = r.remove(instance);
-    }
+    write(instance, .{});
 }
 
 // ============================================================================
@@ -158,51 +122,55 @@ pub fn hasGCWeakCallbackPending(instance: *const Instance) bool {
 /// Returns true if this is the first call (cleanup should proceed)
 /// Returns false if cleanup was already started (should skip)
 pub fn markCleanupStarted(instance: *const Instance) bool {
-    const flags = getOrCreate(instance);
+    var flags = read(instance);
     if (flags.cleanup_started) {
         return false; // Already started, skip
     }
     flags.cleanup_started = true;
+    write(instance, flags);
     return true; // First call, proceed with cleanup
 }
 
-/// Mark cleanup as complete and remove from registry
-/// This is important because slab allocator reuses memory addresses.
-/// If we don't remove the entry, a new instance at the same address
-/// would be detected as "already cleaned up" and deinit would be skipped.
+/// Mark cleanup as complete. The flags stay with the slot until it is
+/// issued again, when they start empty.
 pub fn markCleanupComplete(instance: *const Instance) void {
     // Keep the record: a node torn down by its tree is still in its wrapper
     // cache, whose teardown skips an instance only while this says "started".
     // Removing it made that instance look untouched, and its deinit ran a
     // second time (an iframe's IFrameIntegration freed twice). A reissued
-    // slot starts fresh anyway - Instance.init resets its flags.
-    const flags = getOrCreate(instance);
+    // slot starts fresh anyway - the slab clears its flags when it issues it.
+    var flags = read(instance);
     flags.cleanup_started = true;
     flags.cleanup_complete = true;
+    write(instance, flags);
 }
 
 /// Mark instance as attached to DOM
 pub fn markAttachedToDOM(instance: *const Instance) void {
-    const flags = getOrCreate(instance);
+    var flags = read(instance);
     flags.attached_to_dom = true;
+    write(instance, flags);
 }
 
 /// Mark instance as detached from DOM
 pub fn markDetachedFromDOM(instance: *const Instance) void {
-    const flags = getOrCreate(instance);
+    var flags = read(instance);
     flags.attached_to_dom = false;
+    write(instance, flags);
 }
 
 /// Mark that GC weak callback is registered
 pub fn markGCWeakCallbackPending(instance: *const Instance) void {
-    const flags = getOrCreate(instance);
+    var flags = read(instance);
     flags.gc_weak_callback_pending = true;
+    write(instance, flags);
 }
 
 /// Clear GC weak callback pending flag
 pub fn clearGCWeakCallbackPending(instance: *const Instance) void {
-    const flags = getOrCreate(instance);
+    var flags = read(instance);
     flags.gc_weak_callback_pending = false;
+    write(instance, flags);
 }
 
 /// Check if cleanup should proceed (not already started/complete)
@@ -219,163 +187,9 @@ pub fn isBeingCleanedUp(instance: *const Instance) bool {
     return flags.cleanup_started;
 }
 
-/// Reset all flags for an instance (for testing)
+/// Reset all flags for an instance.
 pub fn reset(instance: *const Instance) void {
-    if (registry) |*r| {
-        if (r.getPtr(instance)) |flags| {
-            flags.* = .{};
-        }
-    }
+    write(instance, .{});
 }
 
-/// Clear the entire registry (for testing between tests)
-pub fn clearAll() void {
-    if (registry) |*r| {
-        r.clearRetainingCapacity();
-    }
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-const testing = std.testing;
-
-test "LifecycleFlags - default values" {
-    const flags = LifecycleFlags{};
-    try testing.expect(!flags.cleanup_started);
-    try testing.expect(!flags.cleanup_complete);
-    try testing.expect(!flags.attached_to_dom);
-    try testing.expect(!flags.gc_weak_callback_pending);
-}
-
-test "LifecycleFlags - packed size" {
-    try testing.expectEqual(@as(usize, 1), @sizeOf(LifecycleFlags));
-}
-
-test "instance_lifecycle - init and deinit" {
-    init(testing.allocator);
-    defer deinit();
-
-    // Should be initialized
-    try testing.expect(registry != null);
-}
-
-test "instance_lifecycle - mark and check cleanup" {
-    init(testing.allocator);
-    defer deinit();
-
-    // Create a dummy instance for testing
-    const vtable = @import("instance.zig").VTable{
-        .deinit = null,
-        .methods_ptr = undefined,
-    };
-    var instance = Instance{
-        .vtable = &vtable,
-        .state = undefined,
-        .ctx = undefined,
-    };
-
-    // Initially not cleaned up
-    try testing.expect(shouldCleanup(&instance));
-    try testing.expect(!isCleanupStarted(&instance));
-    try testing.expect(!isCleanedUp(&instance));
-
-    // Mark cleanup started
-    try testing.expect(markCleanupStarted(&instance));
-    try testing.expect(isCleanupStarted(&instance));
-    try testing.expect(!isCleanedUp(&instance));
-    try testing.expect(!shouldCleanup(&instance)); // Should not cleanup again
-
-    // Second call returns false
-    try testing.expect(!markCleanupStarted(&instance));
-
-    // Mark cleanup complete
-    markCleanupComplete(&instance);
-    try testing.expect(isCleanedUp(&instance));
-
-    // Remove tracking
-    remove(&instance);
-    try testing.expect(!isCleanedUp(&instance)); // No longer tracked
-}
-
-test "instance_lifecycle - DOM attachment tracking" {
-    init(testing.allocator);
-    defer deinit();
-
-    const vtable = @import("instance.zig").VTable{
-        .deinit = null,
-        .methods_ptr = undefined,
-    };
-    var instance = Instance{
-        .vtable = &vtable,
-        .state = undefined,
-        .ctx = undefined,
-    };
-
-    // Initially not attached
-    try testing.expect(!isAttachedToDOM(&instance));
-
-    // Mark attached
-    markAttachedToDOM(&instance);
-    try testing.expect(isAttachedToDOM(&instance));
-
-    // Mark detached
-    markDetachedFromDOM(&instance);
-    try testing.expect(!isAttachedToDOM(&instance));
-}
-
-test "instance_lifecycle - GC weak callback tracking" {
-    init(testing.allocator);
-    defer deinit();
-
-    const vtable = @import("instance.zig").VTable{
-        .deinit = null,
-        .methods_ptr = undefined,
-    };
-    var instance = Instance{
-        .vtable = &vtable,
-        .state = undefined,
-        .ctx = undefined,
-    };
-
-    // Initially no callback pending
-    try testing.expect(!hasGCWeakCallbackPending(&instance));
-
-    // Mark pending
-    markGCWeakCallbackPending(&instance);
-    try testing.expect(hasGCWeakCallbackPending(&instance));
-
-    // Clear pending
-    clearGCWeakCallbackPending(&instance);
-    try testing.expect(!hasGCWeakCallbackPending(&instance));
-}
-
-test "instance_lifecycle - reset and clearAll" {
-    init(testing.allocator);
-    defer deinit();
-
-    const vtable = @import("instance.zig").VTable{
-        .deinit = null,
-        .methods_ptr = undefined,
-    };
-    var instance = Instance{
-        .vtable = &vtable,
-        .state = undefined,
-        .ctx = undefined,
-    };
-
-    // Set some flags
-    _ = markCleanupStarted(&instance);
-    markAttachedToDOM(&instance);
-
-    // Reset should clear flags
-    reset(&instance);
-    try testing.expect(!isCleanupStarted(&instance));
-    try testing.expect(!isAttachedToDOM(&instance));
-
-    // Set again for clearAll test
-    _ = markCleanupStarted(&instance);
-    clearAll();
-    try testing.expect(!isCleanupStarted(&instance));
-}
+// Tests: tests/runtime/ (instance_lifecycle_test.zig, browser_scope_allocators_test.zig).

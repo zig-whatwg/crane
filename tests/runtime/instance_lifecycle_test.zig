@@ -12,34 +12,71 @@
 //! freeing its IFrameIntegration block twice. The arena then handed that block
 //! to the next page's Window state AND to a DocumentType, whose zeroing wiped
 //! the Window's browsing context (a SEGV at 0x20 in BrowsingContext.initChild).
+//! The flags live in the instance's slab slot (instances B1): they belong to
+//! the instance's Browser, survive the instance's free, and start empty when
+//! the slab issues the slot again.
 
 const std = @import("std");
 const testing = std.testing;
 const runtime = @import("runtime");
 const lifecycle = runtime.instance_lifecycle;
 
-test "a completed cleanup is still a started one, until the slot is reused" {
-    defer lifecycle.clearAll();
-    var instance: runtime.Instance = undefined;
+const no_methods = .{};
+const vtable: runtime.VTable = .{ .name = "Lifecycle", .deinit = null, .methods_ptr = &no_methods };
 
-    try testing.expect(lifecycle.markCleanupStarted(&instance));
-    lifecycle.markCleanupComplete(&instance);
+test "a completed cleanup is still a started one, until the slot is reused" {
+    var slab = runtime.SlabAllocator.init(testing.allocator);
+    defer slab.deinit();
+    const instance = try slab.alloc(&vtable);
+
+    try testing.expect(lifecycle.markCleanupStarted(instance));
+    lifecycle.markCleanupComplete(instance);
 
     // What the wrapper cache and every type's guard read.
-    try testing.expect(lifecycle.isCleanupStarted(&instance));
-    try testing.expect(lifecycle.isCleanedUp(&instance));
-    try testing.expect(!lifecycle.markCleanupStarted(&instance));
+    try testing.expect(lifecycle.isCleanupStarted(instance));
+    try testing.expect(lifecycle.isCleanedUp(instance));
+    try testing.expect(!lifecycle.markCleanupStarted(instance));
+
+    // And after the slot is freed: a teardown that still holds the address
+    // reads "cleaned up", not "untouched".
+    slab.free(instance);
+    try testing.expect(lifecycle.isCleanupStarted(instance));
+    try testing.expect(lifecycle.isCleanedUp(instance));
 }
 
 test "a reissued slot starts fresh" {
-    defer lifecycle.clearAll();
-    var instance: runtime.Instance = undefined;
+    var slab = runtime.SlabAllocator.init(testing.allocator);
+    defer slab.deinit();
+    const instance = try slab.alloc(&vtable);
 
-    try testing.expect(lifecycle.markCleanupStarted(&instance));
-    lifecycle.markCleanupComplete(&instance);
+    try testing.expect(lifecycle.markCleanupStarted(instance));
+    lifecycle.markCleanupComplete(instance);
+    lifecycle.markAttachedToDOM(instance);
+    slab.free(instance);
 
-    // Instance.init resets the flags of the address it hands out.
-    lifecycle.reset(&instance);
-    try testing.expect(!lifecycle.isCleanupStarted(&instance));
-    try testing.expect(lifecycle.markCleanupStarted(&instance));
+    // The slab clears the flags of the slot it hands out.
+    const again = try slab.alloc(&vtable);
+    try testing.expectEqual(instance, again);
+    try testing.expect(!lifecycle.isCleanupStarted(again));
+    try testing.expect(!lifecycle.isAttachedToDOM(again));
+    try testing.expect(lifecycle.markCleanupStarted(again));
+}
+
+test "flags are each instance's own, and never change its generation" {
+    var slab = runtime.SlabAllocator.init(testing.allocator);
+    defer slab.deinit();
+    const first = try slab.alloc(&vtable);
+    const second = try slab.alloc(&vtable);
+    const generation = runtime.SlabAllocator.generationOf(first);
+
+    lifecycle.markGCWeakCallbackPending(first);
+    lifecycle.markAttachedToDOM(first);
+    try testing.expect(lifecycle.hasGCWeakCallbackPending(first));
+    try testing.expect(!lifecycle.hasGCWeakCallbackPending(second));
+    try testing.expect(lifecycle.shouldCleanup(second));
+    try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(first));
+    lifecycle.clearGCWeakCallbackPending(first);
+    lifecycle.markDetachedFromDOM(first);
+    try testing.expect(!lifecycle.hasGCWeakCallbackPending(first));
+    try testing.expect(!lifecycle.isAttachedToDOM(first));
 }

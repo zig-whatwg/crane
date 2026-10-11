@@ -28,7 +28,7 @@ pub const ImplError = error{
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.html_area_element, InternalState);
 
 /// Internal state for HTMLAreaElement implementation
 pub const InternalState = struct {
@@ -62,11 +62,10 @@ pub fn init(
     errdefer interfaces.HTMLElement.deinit(instance);
 
     // Initialize HTMLAreaElement's own internal state in registry
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{};
 
     return instance;

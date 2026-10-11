@@ -54,54 +54,72 @@ pub const ImplError = error{
 /// Storing the state inline in the map removes the arena from the picture
 /// entirely: the map owns its own memory, so a stale entry can only ever give a
 /// wrong answer, never corrupt a neighbour. The map is keyed on the instance
-/// address and is process-global, like the shared registry it replaces.
+/// address and is its Browser's (a side table of its runtime.BrowserScope).
 ///
 /// TODO: the same alloc/free pair is in HTMLInputElement.zig, HTMLFormElement.zig
 /// and ~17 other impls. This is a local workaround, not the fix; the fix is in
 /// whatever holds a block past `ArenaAllocator.destroy`.
 const StateMap = struct {
-    var map: ?std.AutoHashMap(usize, InternalState) = null;
+    /// One Browser's map - a side table of its runtime.BrowserScope, so its
+    /// entries are its own and end with it (instances B1).
+    const Table = struct {
+        map: std.AutoHashMap(usize, InternalState),
 
-    fn ensure() *std.AutoHashMap(usize, InternalState) {
-        if (map == null) {
-            map = std.AutoHashMap(usize, InternalState).init(std.heap.page_allocator);
+        pub fn init(allocator: std.mem.Allocator) Table {
+            return .{ .map = std.AutoHashMap(usize, InternalState).init(allocator) };
         }
-        return &map.?;
+
+        pub fn deinit(self: *Table) void {
+            self.map.deinit();
+        }
+    };
+
+    /// `instance`'s Browser's map, made on first use.
+    fn ensure(instance: *runtime.Instance) !*std.AutoHashMap(usize, InternalState) {
+        return &(try runtime.BrowserScope.ofInstance(instance).table(.option_states, Table)).map;
+    }
+
+    /// `instance`'s Browser's map, if it has one.
+    fn existing(instance: *runtime.Instance) ?*std.AutoHashMap(usize, InternalState) {
+        const table = runtime.BrowserScope.ofInstance(instance).existingTable(.option_states, Table) orelse return null;
+        return &table.map;
     }
 
     fn put(instance: *runtime.Instance, value: InternalState) !void {
-        try ensure().put(@intFromPtr(instance), value);
+        try (try ensure(instance)).put(@intFromPtr(instance), value);
     }
 
     fn get(instance: *runtime.Instance) ?*InternalState {
-        return ensure().getPtr(@intFromPtr(instance));
+        return (existing(instance) orelse return null).getPtr(@intFromPtr(instance));
     }
 
     /// The entry for `instance`, creating a default one if this is the first
     /// write. Nothing is stored until something assigns, so a parser-created
     /// element that script never touches costs nothing at all.
     fn getOrPut(instance: *runtime.Instance) !*InternalState {
-        const entry = try ensure().getOrPut(@intFromPtr(instance));
+        const entry = try (try ensure(instance)).getOrPut(@intFromPtr(instance));
         if (!entry.found_existing) entry.value_ptr.* = .{};
         return entry.value_ptr;
     }
 
     fn remove(instance: *runtime.Instance) ?InternalState {
-        if (ensure().fetchRemove(@intFromPtr(instance))) |kv| return kv.value;
+        const map = existing(instance) orelse return null;
+        if (map.fetchRemove(@intFromPtr(instance))) |kv| return kv.value;
         return null;
     }
 
-    /// Forget every entry. The states own nothing heap-allocated.
-    fn sweep() void {
-        if (map) |*m| m.clearRetainingCapacity();
+    /// Forget every one of `scope`'s entries. The states own nothing heap-allocated.
+    fn sweep(scope: *runtime.BrowserScope) void {
+        const table = scope.existingTable(.option_states, Table) orelse return;
+        table.map.clearRetainingCapacity();
     }
 };
 
 /// dom.teardown_sweeps: the options no teardown reached - nodes no exit
 /// frees - leave the map with the browser, rather than as stale entries a new
 /// option of the next browser could be born under.
-fn cleanupAllRemainingInternal() void {
-    StateMap.sweep();
+fn cleanupAllRemainingInternal(scope: *runtime.BrowserScope) void {
+    StateMap.sweep(scope);
 }
 
 /// https://html.spec.whatwg.org/multipage/form-elements.html#concept-option-selectedness
@@ -153,7 +171,7 @@ pub fn installHooks() void {
     // The select element's reset algorithm is this file's, as the rest of
     // the selection model is: installed before any option exists.
     @import("dom").form_controls.install(.{ .is = &isSelectElement, .reset = &resetSelect, .selected_index = &selectedIndex, .set_selected_index = &setSelectedIndex });
-    @import("dom").teardown_sweeps.install(&cleanupAllRemainingInternal);
+    @import("dom").teardown_sweeps.install(.element_types, &cleanupAllRemainingInternal);
 }
 
 /// Initialize instance (creates the instance)

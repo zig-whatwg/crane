@@ -6,15 +6,7 @@ test "descendant abort task captures its global task document and generation" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     // A real allocator-issued slot, without replacing the process's slab.
-    var slab: runtime.SlabAllocator = .{
-        .slabs = null,
-        .free_list = null,
-        .backing_allocator = arena.allocator(),
-        .total_slabs = 0,
-        .total_allocated = 0,
-        .total_freed = 0,
-        .next_generation = 1,
-    };
+    var slab = runtime.SlabAllocator.init(arena.allocator());
     const VTable = struct {
         const delegates = .{};
         const value: runtime.VTable = .{ .name = "Document", .deinit = null, .methods_ptr = &delegates };

@@ -55,7 +55,7 @@ pub fn init(
     state.base.own.cancelBubble = false;
     state.base.own.returnValue = true;
     state.base.own.defaultPrevented = false;
-    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
+    try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
     return instance;
 }
 

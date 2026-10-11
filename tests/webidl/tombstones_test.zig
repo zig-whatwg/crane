@@ -135,32 +135,5 @@ test "TombstoneGuard: a map that grew was rebuilt, and starts counting afresh" {
     try std.testing.expectEqual(@as(usize, 0), guard.removals);
 }
 
-test "InstanceRegistry: a page's worth of states registered and released, page after page, leaves half the unused slots free" {
-    const State = struct { value: u32 };
-    const Registry = webidl.utils.InstanceRegistry(State);
-    defer Registry.deinitRegistry();
-    var state: State = .{ .value = 1 };
-
-    var next: usize = 0x1000;
-    for (0..resident) |_| {
-        try Registry.set(@as(*anyopaque, @ptrFromInt(next)), &state);
-        next += stride;
-    }
-    for (0..pages) |page| {
-        const first = next;
-        for (0..per_page) |i| {
-            try Registry.set(@as(*anyopaque, @ptrFromInt(next)), &state);
-            next += stride;
-            if (i == 0 and page > 0) {
-                const counts = tombstones.slotCounts(Registry.ensure());
-                if (!counts.halfOfUnusedFree()) {
-                    std.debug.print("page {d}: {d} of {d} slots free, {d} live\n", .{ page, counts.free, counts.capacity, counts.live });
-                    return error.TombstonesFilledTheTable;
-                }
-            }
-        }
-        var key = first;
-        while (key < next) : (key += stride) Registry.remove(@as(*anyopaque, @ptrFromInt(key)));
-    }
-    try std.testing.expectEqual(@as(usize, resident), Registry.count());
-}
+// InstanceRegistry's own churn test: tests/runtime/instance_registry_test.zig
+// (runtime.InstanceRegistry, a Browser's side table, since instances B1).

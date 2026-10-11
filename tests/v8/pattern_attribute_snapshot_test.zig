@@ -97,8 +97,7 @@ const SnapshotPage = struct {
         errdefer protocol.deinitializeEngine();
         if (!pools_ready) {
             interfaces.process_hooks.startHooksForTest();
-            runtime.SlabAllocator.init(std.heap.page_allocator);
-            runtime.ArenaAllocator.init(std.heap.page_allocator);
+            runtime.initializeRuntime(std.heap.page_allocator);
             pools_ready = true;
         }
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = true, .hooks = &no_hooks, .host = null });

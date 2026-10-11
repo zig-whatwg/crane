@@ -5,7 +5,8 @@
 //!
 //! ## Available Utilities
 //!
-//! - `InstanceRegistry(T)` - Generic registry pattern for instance-to-state mapping
+//! - (`InstanceRegistry` is runtime's now: runtime.InstanceRegistry, a Browser's
+//!   side table - instances B1)
 //! - `InternalStateAccessor(T, S)` - Generic accessor for internal state retrieval
 //! - `tombstones.TombstoneGuard` - when to rehash a long-lived address-keyed side table
 //!
@@ -23,17 +24,10 @@
 //! ```zig
 //! const utils = @import("utils");
 //!
-//! // Use registry pattern
-//! const Registry = utils.InstanceRegistry(InternalState);
-//!
 //! // Use state accessor
 //! const Accessor = utils.InternalStateAccessor(InternalState, State);
 //! ```
 
-pub const InstanceRegistry = @import("registry.zig").InstanceRegistry;
-/// A runtime begins: the registries' entries from before it are an earlier
-/// runtime's, whose arena is gone (registry.zig `runtime_epoch`).
-pub const beginRegistryRuntime = @import("registry.zig").beginRuntime;
 /// When to rehash a long-lived address-keyed side table (see tombstones.zig).
 pub const tombstones = @import("tombstones.zig");
 pub const InternalStateAccessor = @import("internal_state.zig").InternalStateAccessor;
@@ -58,7 +52,6 @@ pub const extractOptionalDictionary = typed_extraction.extractOptionalDictionary
 
 test {
     @import("std").testing.refAllDecls(@This());
-    _ = @import("registry.zig");
     _ = @import("tombstones.zig");
     _ = @import("internal_state.zig");
     _ = @import("typed_extraction.zig");

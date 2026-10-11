@@ -178,9 +178,8 @@ test "removing a subtree a static list holds rescues its root alone" {
     try onFreshThread(oneWrapperPerRescuedTree);
 }
 
-fn slabAllocated() !usize {
-    const slab = try @import("runtime").SlabAllocator.tryGet();
-    return slab.stats().total_allocated;
+fn slabAllocated(browser: *browser_mod.Browser) usize {
+    return browser.scope.slab.stats().total_allocated;
 }
 
 /// An observed mutation whose record script never reads makes no NodeList:
@@ -202,9 +201,9 @@ fn unreadRecordsMakeNoListAndNoRescue() !void {
         \\mo.observe(dst, { childList: true });
         \\mo.observe(document.getElementById('dst2'), { childList: true });
     );
-    const before = try slabAllocated();
+    const before = slabAllocated(browser);
     try page.runScript("for (const node of nodes) dst.appendChild(node); mo.disconnect(); mo.observe(document.getElementById('dst2'), { childList: true });");
-    const allocated = (try slabAllocated()) - before;
+    const allocated = slabAllocated(browser) - before;
     // One record per mutation; each used to bring two NodeLists with it.
     if (allocated >= 300) {
         std.debug.print("200 observed mutations allocated {d} instances\n", .{allocated});
@@ -272,8 +271,8 @@ fn retainedAfterDroppedLists(lists: bool) !Retained {
     const page = browser.current_context orelse return error.NoPage;
     try page.loadHTML("<!doctype html><body><div id=host></div></body>", .{ .base_url = "about:blank" });
     try page.runScript("TestUtils.gc(); TestUtils.gc();");
-    const slab = try @import("runtime").SlabAllocator.tryGet();
-    const arena = @import("runtime").ArenaAllocator.tryGet() catch null;
+    const slab = &browser.scope.slab;
+    const arena: ?*@import("runtime").ArenaAllocator = &browser.scope.arena;
     const instances_before = slab.stats().currently_allocated;
     const native_before = counting.outstanding;
     const arena_before = if (arena) |a| a.stats().bytes_in_use else 0;

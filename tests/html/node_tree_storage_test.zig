@@ -31,8 +31,8 @@ fn runOnFreshThread(scenario: Scenario) !void {
             const ctx = page.realm orelse return error.TestUnexpectedResult;
             try testing.expect(ctx.hasEngine());
 
-            const before_instances = runtime.SlabAllocator.get().stats().currently_allocated;
-            const before_states = runtime.ArenaAllocator.get().stats().bytes_in_use;
+            const before_instances = browser.scope.slab.stats().currently_allocated;
+            const before_states = browser.scope.arena.stats().bytes_in_use;
             const root = try interfaces.HTMLDivElement.init(testing.allocator, ctx);
             const child = try interfaces.HTMLDivElement.init(testing.allocator, ctx);
             const text = try interfaces.Text.init(testing.allocator, ctx);
@@ -102,8 +102,8 @@ fn runOnFreshThread(scenario: Scenario) !void {
                 },
             }
 
-            try testing.expectEqual(before_instances, runtime.SlabAllocator.get().stats().currently_allocated);
-            try testing.expectEqual(before_states, runtime.ArenaAllocator.get().stats().bytes_in_use);
+            try testing.expectEqual(before_instances, browser.scope.slab.stats().currently_allocated);
+            try testing.expectEqual(before_states, browser.scope.arena.stats().bytes_in_use);
         }
     };
     var run: Run = .{ .scenario = scenario };

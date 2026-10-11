@@ -30,7 +30,7 @@ pub const InternalState = struct {
 
 /// Get internal state from instance
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.dom_string_map, InternalState);
 
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);

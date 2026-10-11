@@ -57,9 +57,11 @@ pub const InternalState = struct {
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.document_fragment, InternalState);
 
 pub fn installHooks() void {
+    // Its states left at its Browser's end (Browser.deinit).
+    @import("dom").teardown_sweeps.install(.node_types, &sweepRemaining);
     dom.template_contents.install(.{ .set_host = &setTemplateHost, .host = &templateHost, .clear_host = &clearTemplateHost });
 }
 
@@ -106,8 +108,6 @@ pub fn init(
     const instance = try interfaces.Node.initWithState(allocator, StateType, vtable, ctx);
     errdefer interfaces.Node.deinit(instance);
 
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-
     // Set the node type for this DocumentFragment
     try dom.node_creation.setType(instance, interfaces.Node.get_DOCUMENT_FRAGMENT_NODE());
 
@@ -115,7 +115,7 @@ pub fn init(
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
 
     return instance;
@@ -163,7 +163,8 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 // NonElementParentNode Mixin Operations
 // =============================================================================
 
-/// Clean up ALL remaining internal states.
-pub fn cleanupAllRemainingInternal() void {
-    Registry.deinitAllAndClear();
+/// dom.teardown_sweeps: at its Browser's end, every DocumentFragment state still in
+/// `scope`'s table - an orphan's no teardown reached - frees what it owns.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }

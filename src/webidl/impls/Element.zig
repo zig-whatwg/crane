@@ -517,7 +517,7 @@ fn qualifiedNameIs(entry: *const AttributeEntry, qualified_name: []const u8) boo
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.element, InternalState);
 
 /// Get the internal state from an instance
 /// Made public for use by Document's getElementById, getElementsByTagName, etc.
@@ -534,6 +534,8 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // Its states left at its Browser's end (Browser.deinit).
+    @import("dom").teardown_sweeps.install(.elements, &sweepRemaining);
     // The attribute list's hook, for its ancestors' use (cloning). Installed
     // before any element can be cloned: this runs for every element.
     dom.element_attributes.install(.{
@@ -657,11 +659,10 @@ pub fn init(
     try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ELEMENT_NODE);
 
     // Initialize Element's own internal state in registry
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
 
     return instance;
@@ -706,13 +707,10 @@ fn forgetHost(shadow: *runtime.Instance) void {
     dom.shadow_hosts.hostDestroyed(shadow);
 }
 
-/// Clean up ALL remaining Element internal states.
-/// This is called during final context cleanup to catch any leaked elements
-/// that were removed from the DOM tree but not properly deinited.
-/// This handles the case where DOM manipulation (e.g., removeChild) creates
-/// orphaned elements that aren't cleaned up by the normal tree traversal.
-pub fn cleanupAllRemainingInternal() void {
-    Registry.deinitAllAndClear();
+/// dom.teardown_sweeps: at its Browser's end, every Element state still in
+/// `scope`'s table - an orphan's no teardown reached - frees what it owns.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }
 
 // =============================================================================

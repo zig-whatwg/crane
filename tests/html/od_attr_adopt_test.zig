@@ -30,7 +30,7 @@ fn adoptMakesNoAttrNodes() !void {
         \\globalThis.seen = root.firstChild.getAttributeNode('data-i');
         \\if (seen.ownerDocument !== d1) throw new Error('before');
     );
-    const slab = runtime.SlabAllocator.get();
+    const slab = &page.browser.scope.slab;
     const before = slab.stats().total_allocated;
     try page.run("d2.adoptNode(root)");
     try testing.expectEqual(before, slab.stats().total_allocated);

@@ -42,19 +42,25 @@ const mock_vtable = runtime.VTable{
 /// Create a mock Instance for testing
 /// Caller must ensure allocators are initialized before calling
 fn createMockInstance(allocator: std.mem.Allocator) !*runtime.Instance {
-    return try runtime.Instance.init(allocator, MockState, &mock_vtable, undefined);
+    _ = allocator;
+    // From the standalone scope, with no realm: these tests never reach one.
+    const scope = runtime.BrowserScope.standalone() orelse return error.RuntimeNotStarted;
+    const instance = try scope.slab.alloc(&mock_vtable);
+    const state = try scope.arena.create(MockState);
+    @memset(std.mem.asBytes(state), 0);
+    instance.state = state;
+    instance.ctx = undefined;
+    return instance;
 }
 
 /// Initialize allocators needed for Instance creation
 fn initTestAllocators(allocator: std.mem.Allocator) void {
-    runtime.SlabAllocator.init(allocator);
-    runtime.ArenaAllocator.init(allocator);
+    runtime.initializeRuntime(allocator);
 }
 
 /// Deinitialize test allocators
 fn deinitTestAllocators() void {
-    runtime.ArenaAllocator.deinit();
-    runtime.SlabAllocator.deinit();
+    runtime.deinitializeRuntime();
 }
 
 // ============================================================================
