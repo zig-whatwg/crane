@@ -519,6 +519,30 @@ progress = [
   status = "doing"
 
 [[infra]]
+id = "zig-017"
+title = "Toolchain: Zig 0.17 (0.1 requirement)"
+why = """The user, 2026-10-11: Crane moves to Zig 0.17 before 0.1. 0.17.0 (2026-10-01) fixes \
+std.debug's StackIterator leak that inflated debug-allocator measurements, and brings macOS 27 \
+headers and LLVM 22 libc++ (likely retiring build.zig's useBuildableMacosSdk workaround). Known \
+costs: @hasDecl is pub-only (silent), @bitCast semantics, @cImport removed (curl, mbedTLS), build \
+API renames, DebugAllocator -> SafeAllocator, the V8 prebuilt's libc++ ABI."""
+done_when = """zig build test, wpt-runner and the iOS build pass on 0.17; a full worklist sweep \
+shows no regression against the last 0.16 sweep; chat and AGENTS.md updated; 0.16 retired."""
+progress = []
+
+  [[infra.items]]
+  name = "Trial: scratch worktree on 0.17, SDK 27, error count, V8 link, a few WPT files"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Port the tree (build.zig, @hasDecl audit, @bitCast, @cImport replacements, allocator rename)"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Verify: zig build test, iOS link, full sweep A/B, timers x3; retire 0.16 and the SDK workaround"
+  status = "todo"
+
+[[infra]]
 id = "impls-boundary"
 title = "No impl reached outside its own interface (0.1 requirement)"
 why = """The user, 2026-09-29: an interface's impl is reached only through its own \
