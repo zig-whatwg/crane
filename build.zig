@@ -3653,6 +3653,20 @@ pub fn build(b: *std.Build) void {
     lint_global_state_check.has_side_effects = true;
     lint_global_state_check.setCwd(b.path("."));
     test_step.dependOn(&lint_global_state_check.step);
+    // Unicode IDNA tables are regenerated explicitly; normal tests use inline fixtures only.
+    const idna_tables_module = b.createModule(.{
+        .root_source_file = b.path("tools/url/generate_idna_tables.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const idna_tables_exe = b.addExecutable(.{ .name = "idna_tables", .root_module = idna_tables_module });
+    const idna_tables_run = b.addRunArtifact(idna_tables_exe);
+    idna_tables_run.setCwd(b.path("."));
+    idna_tables_run.has_side_effects = true;
+    if (b.args) |args| idna_tables_run.addArgs(args);
+    b.step("idna-tables", "Regenerate the pinned Unicode IDNA tables from local inputs").dependOn(&idna_tables_run.step);
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = idna_tables_module })).step);
+
     const unicode_identifier_module = b.createModule(.{
         .root_source_file = b.path("tools/unicode/generate_identifier_tables.zig"),
         .target = b.graph.host,
