@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Find an object's Browser from its address, not from its context](architecture-find-an-objects-browser-from-its-address-not-its-context.md) - An owner you can only reach through a context dies with the context; put the owner where the object's memory is - an allocation block aligned to its size names its allocator for free.
 - [A flag made counted changes every caller - audit them all, and test each by collection](architecture-a-flag-made-counted-changes-every-caller.md) - Changing a primitive's counting semantics is a change to every caller: grep them all (no `head`), balance each with its own bool, and prove each one by collecting the object it keeps.
 - [A threadlocal listener list splits a Browser when its work moves threads](architecture-a-threadlocal-listener-list-splits-a-browser-when-its-work-moves-threads.md) - When work moves to another thread, every threadlocal registry it reached becomes one partition per thread, and nothing says so: give each its real owner (Browser, agent, realm) and deliver across threads through the owner's task sink.
 - [A dying tree's holds stay on its root - unlink for teardown without moving counts](architecture-a-dying-tree-s-holds-stay-on-its-root.md) - In a dying tree, the root owns the books: unlink children without moving counts, and settle the whole total once, at the root's free.
@@ -367,6 +368,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+- [Reading a torn-down node's state in an engine-less realm reads freed memory](testing-reading-a-torn-down-nodes-state-in-an-engine-less-realm-reads-freed-memory.md) - A green test that reads an object after its teardown is reading freed memory unless the teardown is documented to keep it - check which branch of the storage release the test's realm takes.
 - [A retention bound relative to a control holds only when the control retains nothing](testing-a-retention-bound-relative-to-a-control-needs-a-control-that-retains-nothing.md) - Read the control's numbers before you read the comparison: a control that leaks makes "no worse than without" mean nothing.
 - [gc_bench's end-of-run counts without --gc are the last batch, not retention](testing-gc-bench-end-counts-without-gc-are-the-last-batch.md) - "Identical in every round" proves the count is deterministic, not that anything leaked. A whole number of objects per cycle in the last batch is the harness. Measure retention with --gc.
 - [A timed window measures where the collection lands - compare with a collection between rounds](testing-a-timed-window-measures-where-the-gc-lands.md) - Before blaming the measured code for a timing regression, time the unmeasured part of the round too and rerun with a collection between rounds: lifetimes move GC work, they do not only add it.
