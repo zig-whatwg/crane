@@ -33,14 +33,22 @@ const max_behaviors = 16;
 var behaviors: [max_behaviors]Behavior = undefined;
 var count: usize = 0;
 
-/// Install `behavior`. Idempotent: the same `has` function installs once.
+/// Install `behavior`. Idempotent: installing the same behaviour again adds
+/// nothing - and a behaviour is the same only if EVERY function it names is
+/// the installed one's. `of` answers with the first behaviour whose check
+/// accepts the target.
+///
+/// Not keyed by `has`: a release build folds functions with identical code
+/// into one (LLVM), so two owners' checks that are distinct in Debug can share
+/// an address there, and replacing the entry with the same `has` made the
+/// LAST behaviour win in release builds and the first in Debug. Folding can
+/// make two checks equal but never two whole behaviours that differ, so this
+/// table holds what a Debug build's holds, less exact duplicates
+/// (docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md).
 pub fn install(behavior: Behavior) void {
     process_start.assertInstalling();
-    for (behaviors[0..count]) |*existing| {
-        if (existing.has == behavior.has) {
-            existing.* = behavior;
-            return;
-        }
+    for (behaviors[0..count]) |existing| {
+        if (std.meta.eql(existing, behavior)) return;
     }
     if (count == max_behaviors) return;
     behaviors[count] = behavior;
@@ -73,6 +81,33 @@ test "a target has the behaviour whose brand check accepts it, installed once" {
     install(.{ .has = &testHas, .run = &testRun });
     install(.{ .has = &testHas, .run = &testRun });
     try std.testing.expectEqual(@as(usize, 1), count);
+    const behavior = of(&target) orelse return error.TestExpectedBehavior;
+    behavior.run(&target, &target);
+    try std.testing.expectEqual(@as(usize, 1), test_runs);
+}
+
+test "behaviours that share a check stay two, and the first installed answers: a release build can make two checks one function" {
+    // Two owners whose `has` functions have the same body are ONE function in
+    // a release build. The table and the answer must be Debug's: both
+    // behaviours, the first one installed first.
+    const saved_behaviors = behaviors;
+    const saved_count = count;
+    const saved_runs = test_runs;
+    defer {
+        behaviors = saved_behaviors;
+        count = saved_count;
+        test_runs = saved_runs;
+    }
+    const Later = struct {
+        fn run(_: *runtime.Instance, _: *runtime.Instance) void {
+            test_runs += 10;
+        }
+    };
+    count = 0;
+    test_runs = 0;
+    var target: runtime.Instance = undefined;
+    install(.{ .has = &testHas, .run = &testRun });
+    install(.{ .has = &testHas, .run = &Later.run });
     const behavior = of(&target) orelse return error.TestExpectedBehavior;
     behavior.run(&target, &target);
     try std.testing.expectEqual(@as(usize, 1), test_runs);
