@@ -1,164 +1,66 @@
-//! Unicode Normalization for IDNA
-//!
-//! Implements Unicode NFC (Normalization Form C) normalization for domain names.
-//!
-//! Full implementation with:
-//! - Canonical decomposition
-//! - Canonical ordering (by combining class)
-//! - Canonical composition with exclusions
-//! - Lowercase conversion
-
+//! Unicode NFC for UTS #46 Processing step 2. Mapping/case folding is a
+//! separate step: normalization itself preserves case (UAX #15 section 1.3).
 const std = @import("std");
 const infra = @import("infra");
 const unicode_data = @import("unicode_data.zig");
 
-/// Normalize a string for IDNA processing (NFC normalization)
+/// Canonically decompose, reorder and compose UTF-8. Caller owns the result.
 pub fn normalize(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-    // Step 1: Decode UTF-8 to code points
-    var codepoints = infra.List(u21).init(allocator);
-    defer codepoints.deinit();
-
-    var i: usize = 0;
-    while (i < input.len) {
-        const cp_len = std.unicode.utf8ByteSequenceLength(input[i]) catch {
-            i += 1;
-            continue;
-        };
-
-        if (i + cp_len > input.len) break;
-
-        const cp = std.unicode.utf8Decode(input[i..][0..cp_len]) catch {
-            i += 1;
-            continue;
-        };
-
-        try codepoints.append(cp);
-        i += cp_len; // BUGFIX: Advance by the full UTF-8 sequence length
-    }
-
-    // Step 2: Canonical decomposition (recursive)
     var decomposed = infra.List(u21).init(allocator);
     defer decomposed.deinit();
-
-    for (0..codepoints.len) |j| {
-        const cp = codepoints.get(j).?;
-        try decomposeRecursive(allocator, cp, &decomposed);
-    }
-
-    // Step 3: Canonical ordering by combining class
+    var it = (try std.unicode.Utf8View.init(input)).iterator();
+    while (it.nextCodepoint()) |cp| try decomposeRecursive(allocator, cp, &decomposed);
     canonicalOrder(decomposed.toSliceMut());
 
-    // Step 4: Canonical composition
+    // Canonical composition checks every next character, including class-zero
+    // characters (e.g. Bengali vowel-sign pairs), against the last starter.
+    // An intervening character blocks if its class is >= the current class.
     var composed = infra.List(u21).init(allocator);
     defer composed.deinit();
-
-    i = 0;
-    while (i < decomposed.len) {
-        var current = decomposed.get(i).?;
-        const starter_cc = unicode_data.lookupCombiningClass(current);
-        i += 1;
-
-        // If this is a combining mark (not a starter), just output it
-        if (starter_cc != 0) {
-            try composed.append(current);
-            continue;
-        }
-
-        // Try Hangul L+V composition with next character if it's a V
-        if (i < decomposed.len) {
-            const next = decomposed.get(i).?;
-            if (tryComposeHangul(current, next)) |hangul_comp| {
-                current = hangul_comp;
-                i += 1;
-
-                // Try LV+T composition
-                if (i < decomposed.len) {
-                    const next_t = decomposed.get(i).?;
-                    if (tryComposeHangul(current, next_t)) |hangul_comp_t| {
-                        current = hangul_comp_t;
-                        i += 1;
-                    }
-                }
-            }
-        }
-
-        // Collect combining marks after current
-        var marks = infra.List(u21).init(allocator);
-        defer marks.deinit();
-
-        while (i < decomposed.len) {
-            const cc = unicode_data.lookupCombiningClass(decomposed.get(i).?);
-            if (cc == 0) break; // Hit next starter
-            try marks.append(decomposed.get(i).?);
-            i += 1;
-        }
-
-        // Try to compose current with marks (must respect blocking)
-        var last_cc: u8 = 0;
-        var consumed_marks = infra.List(bool).init(allocator);
-        defer consumed_marks.deinit();
-
-        for (0..marks.len) |_| {
-            try consumed_marks.append(false);
-        }
-
-        for (0..marks.len) |mark_idx| {
-            const mark = marks.get(mark_idx).?;
-            if (consumed_marks.get(mark_idx).?) continue;
-
-            const mark_cc = unicode_data.lookupCombiningClass(mark);
-
-            // Can only compose if mark_cc > last_cc (blocking rule)
-            if (last_cc == 0 or mark_cc > last_cc) {
-                if (unicode_data.lookupComposition(current, mark)) |comp| {
-                    if (!unicode_data.isCompositionExcluded(comp)) {
-                        current = comp;
-                        consumed_marks.toSliceMut()[mark_idx] = true;
-                        last_cc = 0;
+    var starter: ?usize = null;
+    var previous_cc: u8 = 0;
+    for (decomposed.items()) |cp| {
+        const cc = unicode_data.lookupCombiningClass(cp);
+        if (starter) |index| {
+            if (previous_cc == 0 or previous_cc < cc) {
+                const first = composed.items()[index];
+                const candidate = tryComposeHangul(first, cp) orelse unicode_data.lookupComposition(first, cp);
+                if (candidate) |combined| {
+                    if (!unicode_data.isCompositionExcluded(combined)) {
+                        composed.toSliceMut()[index] = combined;
+                        // Keep the class of the last *unconsumed* character.
                         continue;
                     }
                 }
             }
-
-            // Couldn't compose - update last_cc
-            if (mark_cc != 0) {
-                last_cc = mark_cc;
-            }
         }
-
-        try composed.append(current);
-
-        // Add unconsumed marks
-        for (0..marks.len) |mark_idx| {
-            if (!consumed_marks.get(mark_idx).?) {
-                try composed.append(marks.get(mark_idx).?);
-            }
-        }
+        if (cc == 0) starter = composed.len;
+        try composed.append(cp);
+        previous_cc = cc;
     }
-
-    // Step 5: Lowercase (for testing - IDNA mapping should handle this)
-    var lowercased = infra.List(u21).init(allocator);
-    defer lowercased.deinit();
-
-    for (0..composed.len) |j| {
-        const cp = composed.get(j).?;
-        try lowercased.append(normalizeCodePoint(cp));
-    }
-
-    // Step 6: Encode back to UTF-8
     var result = infra.List(u8).init(allocator);
-    errdefer result.deinit();
-
-    for (0..lowercased.len) |j| {
-        const cp = lowercased.get(j).?;
+    defer result.deinit();
+    for (composed.items()) |cp| {
         var buf: [4]u8 = undefined;
-        const len = std.unicode.utf8Encode(cp, &buf) catch continue;
+        const len = try std.unicode.utf8Encode(cp, &buf);
         try result.appendSlice(buf[0..len]);
     }
-
     return result.toOwnedSlice();
 }
 
+fn canonicalOrder(cps: []u21) void {
+    if (cps.len < 2) return;
+    for (1..cps.len) |index| {
+        var i = index;
+        const cc = unicode_data.lookupCombiningClass(cps[i]);
+        if (cc == 0) continue;
+        while (i > 0) : (i -= 1) {
+            const previous_cc = unicode_data.lookupCombiningClass(cps[i - 1]);
+            if (previous_cc <= cc) break;
+            std.mem.swap(u21, &cps[i - 1], &cps[i]);
+        }
+    }
+}
 /// Hangul syllable decomposition constants
 const HANGUL_SBASE: u21 = 0xAC00;
 const HANGUL_LBASE: u21 = 0x1100;
@@ -218,65 +120,4 @@ fn tryComposeHangul(first: u21, second: u21) ?u21 {
     }
 
     return null;
-}
-
-/// Canonical ordering algorithm
-/// Sorts combining marks by their combining class (stable sort)
-fn canonicalOrder(cps: []u21) void {
-    if (cps.len < 2) return;
-
-    // Bubble sort by combining class (stable)
-    var swapped = true;
-    while (swapped) {
-        swapped = false;
-        var i: usize = 0;
-        while (i < cps.len - 1) : (i += 1) {
-            const cc1 = unicode_data.lookupCombiningClass(cps[i]);
-            const cc2 = unicode_data.lookupCombiningClass(cps[i + 1]);
-
-            // Only swap if both have non-zero combining classes
-            if (cc1 > 0 and cc2 > 0 and cc1 > cc2) {
-                const temp = cps[i];
-                cps[i] = cps[i + 1];
-                cps[i + 1] = temp;
-                swapped = true;
-            }
-        }
-    }
-}
-
-/// Normalize a single code point (lowercase)
-fn normalizeCodePoint(cp: u21) u21 {
-    // ASCII uppercase to lowercase
-    if (cp >= 'A' and cp <= 'Z') {
-        return cp + ('a' - 'A');
-    }
-
-    // Already lowercase ASCII or other characters
-    if (cp < 128) {
-        return cp;
-    }
-
-    // Common Unicode lowercase mappings
-    return switch (cp) {
-        // Latin-1 Supplement uppercase
-        0xC0...0xD6 => cp + 32, // À-Ö -> à-ö
-        0xD8...0xDE => cp + 32, // Ø-Þ -> ø-þ
-
-        // Georgian capitals (U+10A0-10C5) -> Georgian lowercase (U+2D00-U+2D25)
-        // Offset: 0x10A0 -> 0x2D00 is 0x1C60 (7264 in decimal)
-        0x10A0...0x10C5 => cp + 0x1C60,
-
-        // Garay capitals (U+10D40-10D65) -> Garay lowercase (U+10D60-10D85)
-        // Unicode 16.0 script, offset +0x20 (32)
-        0x10D40...0x10D65 => cp + 0x20,
-
-        // Specific Unicode case mappings for common IDNA test failures
-        0x04C0 => 0x04CF, // CYRILLIC LETTER PALOCHKA → cyrillic small letter palochka
-        0x2132 => 0x214E, // TURNED CAPITAL F → turned small f
-        0x2183 => 0x2184, // ROMAN NUMERAL REVERSED ONE HUNDRED → latin small letter reversed c
-
-        // Already lowercase or symbols - return as-is
-        else => cp,
-    };
 }
