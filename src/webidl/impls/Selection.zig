@@ -36,9 +36,6 @@ const AbstractRange = interfaces.AbstractRange;
 
 pub const State = Selection.State;
 
-/// Static sentinel value for empty array - avoids using @ptrFromInt
-var empty_array_sentinel: u8 = 0;
-
 pub const ImplError = error{
     NotImplemented,
     InvalidStateError,

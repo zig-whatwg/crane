@@ -116,6 +116,7 @@ src/dom/refcount.zig hooks 1 G P-res decl:4dad5b7413d7153c
 src/dom/refcount.zig tree_checks_requested 1 G P-res decl:4b877655cb3bb361
 src/dom/script_elements.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/script_elements.zig svg_implementation 1 G H decl:2b000c56b2bcfae5
+src/dom/selection.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/shadow_hosts.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/slot_helpers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/string_lists.zig implementation 1 G P-res decl:9c737e7125e9c3d4
@@ -352,7 +353,6 @@ src/webidl/impls/MessagePort.zig live_ports 1 TL R decl:0cbcb52490f59067
 src/webidl/impls/Navigation.zig live 1 TL I/engine decl:0cbcb52490f59067
 src/webidl/impls/ProcessingInstruction.zig live 1 TL I/engine decl:30788a16b6a95410
 src/webidl/impls/ProcessingInstruction.zig live_guard 1 TL I/engine decl:1bc3d8565c89199d
-src/webidl/impls/Selection.zig empty_array_sentinel 1 G P-const decl:f33e1c60fc8c8315
 src/webidl/impls/StaticRange.zig internal_storage 1 G I/engine decl:7d18da3551f80893
 src/webidl/impls/StaticRange.zig storage_initialized 1 G I/engine decl:4b877655cb3bb361
 src/webidl/impls/Text.zig undefined_sentinel 1 G P-const decl:f33e1c60fc8c8315
