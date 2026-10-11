@@ -16,7 +16,9 @@ const callbacks = @import("callbacks");
 const infra = @import("infra");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const HTMLCollection = interfaces.HTMLCollection;
-const live_collections = @import("dom").live_collections;
+const dom = @import("dom");
+const live_collections = dom.live_collections;
+const node_holds = dom.node_holds;
 
 pub const State = HTMLCollection.State;
 
@@ -43,12 +45,16 @@ pub const InternalState = struct {
     /// collection script keeps can outlive its root; a mismatch means the
     /// root is gone and the collection is empty, never a read of freed memory.
     root_generation: u64 = 0,
+    /// The collection HOLDS its root (refcount design 5h; WebKit's
+    /// collections keep `Ref<ContainerNode> m_ownerNode`, Blink's
+    /// LiveNodeListBase a traced `Member<ContainerNode> owner_node_`): one
+    /// counted reference for its life, and its wrapper keeps the root's
+    /// opaque root (`live_collections.root_slot`). Script that keeps only
+    /// `root.getElementsByClassName('x')` keeps the root and its tree.
+    root_hold: node_holds.MemberHold = .{},
     document_filter: live_collections.DocumentFilter = .images,
-    form_root_traced: bool = false,
     fieldset_controls: bool = false,
-    options_root_traced: bool = false,
     selected_options_only: bool = false,
-    table_root_traced: bool = false,
     table_filter: live_collections.TableFilter = .bodies,
 
     /// How a LIVE collection rebuilds its elements from `root`: set by the
@@ -93,6 +99,7 @@ fn makeLive(collection: *runtime.Instance, root: *runtime.Instance, refill: Refi
     const internal = getInternal(collection) orelse return;
     internal.root = root;
     internal.root_generation = runtime.SlabAllocator.generationOf(root);
+    internal.root_hold.take(collection, root, live_collections.root_slot);
     internal.refill = refill;
     refresh(collection, internal);
 }
@@ -105,7 +112,7 @@ fn makeElementChildren(collection: *runtime.Instance, root: *runtime.Instance) v
 }
 
 /// HTML 3.1.7 document tree accessors: the generated SameObject cache owns
-/// the document-to-list edge. Root retention is the refcount follow-up.
+/// the document-to-list edge; the collection holds the document (`makeLive`).
 fn makeDocumentElements(collection: *runtime.Instance, document: *runtime.Instance, filter: live_collections.DocumentFilter) void {
     const internal = getInternal(collection) orelse return;
     internal.document_filter = filter;
@@ -156,10 +163,6 @@ fn makeFormControls(collection: *runtime.Instance, root: *runtime.Instance, fiel
     internal.fieldset_controls = fieldset;
     // Form owner association is not covered by a document tree version.
     internal.cacheable = false;
-    if (collection.ctx.hasEngine()) {
-        @import("engine").traceChild(collection, root, .{ .name = "formControlsRoot" });
-        internal.form_root_traced = true;
-    }
     makeLive(collection, root, &refillFormControls);
 }
 
@@ -168,10 +171,6 @@ fn makeSelectOptions(collection: *runtime.Instance, select: *runtime.Instance, s
     internal.selected_options_only = selected_only;
     // selectedOptions also depends on IDL selectedness, not just attributes.
     internal.cacheable = !selected_only;
-    if (collection.ctx.hasEngine()) {
-        @import("engine").traceChild(collection, select, .{ .name = "optionsRoot" });
-        internal.options_root_traced = true;
-    }
     makeLive(collection, select, &refillSelectOptions);
 }
 
@@ -186,10 +185,6 @@ fn makeTable(collection: *runtime.Instance, root: *runtime.Instance, filter: liv
     // HTML 4.9 table membership depends only on the tree. The shared
     // document version also invalidates named reads after attribute changes.
     internal.cacheable = true;
-    if (collection.ctx.hasEngine()) {
-        @import("engine").traceChild(collection, root, .{ .name = "tableRoot" });
-        internal.table_root_traced = true;
-    }
     makeLive(collection, root, &refillTable);
 }
 
@@ -429,9 +424,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        if (internal.form_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "formControlsRoot" });
-        if (internal.options_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "optionsRoot" });
-        if (internal.table_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "tableRoot" });
+        internal.root_hold.release(instance, live_collections.root_slot);
         internal.deinit();
 
         // Return the block itself, not just what it points to.

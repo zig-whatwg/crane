@@ -185,6 +185,64 @@ fn keepMemberOf(owner: *runtime.Instance, member: *runtime.Instance, is_node: bo
     engine.keepOpaqueRoot(owner, member, slot);
 }
 
+/// One node a holder holds and keeps itself: a live collection's root
+/// (refcount design 5h; WebKit's collections hold `Ref<ContainerNode>
+/// m_ownerNode`). A counted hold in the node's chain - so a node freed under
+/// it is forgotten, never released, exactly as a `Holder`'s - plus the
+/// holder's keep of the member's opaque root (`keepMember`), which follows
+/// the member wherever it moves: no removal rescues it. A member that is not
+/// a node (a collection that roots a RadioNodeList) is kept, not counted.
+pub const MemberHold = struct {
+    hold: Hold = .{},
+    /// The member when it is not a node (kept, not counted), with its
+    /// generation; a node member is the hold's.
+    other: ?*runtime.Instance = null,
+    other_generation: u64 = 0,
+    kept: bool = false,
+
+    /// Hold `member` from `owner` and keep its opaque root in `slot`. The
+    /// member hold holds nothing yet.
+    pub fn take(self: *MemberHold, owner: *runtime.Instance, member: *runtime.Instance, slot: engine.TracedSlot) void {
+        std.debug.assert(self.hold.node == null and self.other == null);
+        const base = instance_bridge.getNodeBase(@ptrCast(member));
+        if (base) |node| {
+            self.hold.link(null, member, node);
+        } else {
+            self.other = member;
+            self.other_generation = runtime.SlabAllocator.generationOf(member);
+        }
+        if (owner.ctx.hasEngine() and member.ctx.hasEngine()) {
+            keepMemberOf(owner, member, base != null, slot);
+            self.kept = true;
+        }
+    }
+
+    /// The member's tree node while it is alive and a node; null otherwise.
+    /// By the slab generation alone, with no registry read: `nodeReleased`
+    /// empties the hold before the tree node is freed.
+    pub fn liveBase(self: *const MemberHold) ?*NodeBase {
+        _ = self.hold.get() orelse return null;
+        return self.hold.base;
+    }
+
+    /// The member, or null once it was freed (a teardown net).
+    pub fn get(self: *const MemberHold) ?*runtime.Instance {
+        if (self.other) |member| {
+            if (runtime.SlabAllocator.generationOf(member) != self.other_generation) return null;
+            return member;
+        }
+        return self.hold.get();
+    }
+
+    /// Let the member go, and the keep: the owner is cleared or going.
+    pub fn release(self: *MemberHold, owner: *runtime.Instance, slot: engine.TracedSlot) void {
+        self.hold.unlink();
+        self.other = null;
+        if (self.kept) engine.forgetTracedChild(owner, slot);
+        self.kept = false;
+    }
+};
+
 /// The edge slots a holder's rescues hang from, on its owner's wrapper.
 pub const root_slot: engine.TracedSlot = .{ .name = "node-holds:root" };
 pub const roots_slot: engine.TracedSlot = .{ .name = "node-holds:roots" };

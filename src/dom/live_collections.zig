@@ -21,8 +21,14 @@ pub fn treeVersion(document: *runtime.Instance) ?u64 {
     return @import("refcount.zig").treeVersion(document);
 }
 
-/// A teardown check, not a hold. A mutation invalidates the cache before a
-/// removed node can be reused. Root ownership is the refcount lane's follow-up.
+/// The traced slot a live collection's wrapper keeps its root's opaque root
+/// in (dom.node_holds.MemberHold; refcount design 5h). One slot for every kind
+/// of collection, HTMLCollection's and NodeList's.
+pub const root_slot: @import("engine").TracedSlot = .{ .name = "live-collection:root" };
+
+/// A teardown check, not a hold: a cached entry, or a root a collection
+/// reads. A mutation invalidates the cache before a removed node can be
+/// reused. The collection's hold on its root is a node_holds.MemberHold.
 pub const Link = struct {
     instance: *runtime.Instance,
     generation: u64,
