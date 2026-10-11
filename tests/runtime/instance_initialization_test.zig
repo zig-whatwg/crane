@@ -48,10 +48,8 @@ test "Instance.init - state memory is zero-initialized" {
     const allocator = testing.allocator;
 
     // Initialize allocators required by Instance.init
-    runtime.SlabAllocator.init(allocator);
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     // Create mock context
     var ctx_data = try runtime.ContextData.init(allocator, .{});
@@ -81,10 +79,8 @@ test "Instance.init - state memory is zero-initialized" {
 test "Instance.init - optional fields don't contain garbage" {
     const allocator = testing.allocator;
 
-    runtime.SlabAllocator.init(allocator);
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     var ctx_data = try runtime.ContextData.init(allocator, .{});
     defer ctx_data.deinit();
@@ -109,10 +105,8 @@ test "Instance.init - optional fields don't contain garbage" {
 test "Instance.init - numeric fields are zero" {
     const allocator = testing.allocator;
 
-    runtime.SlabAllocator.init(allocator);
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     var ctx_data = try runtime.ContextData.init(allocator, .{});
     defer ctx_data.deinit();
@@ -132,10 +126,8 @@ test "Instance.init - numeric fields are zero" {
 test "Instance.init - boolean fields are false" {
     const allocator = testing.allocator;
 
-    runtime.SlabAllocator.init(allocator);
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     var ctx_data = try runtime.ContextData.init(allocator, .{});
     defer ctx_data.deinit();
@@ -154,10 +146,8 @@ test "Instance.init - boolean fields are false" {
 test "Instance.init - array fields are zeroed" {
     const allocator = testing.allocator;
 
-    runtime.SlabAllocator.init(allocator);
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     var ctx_data = try runtime.ContextData.init(allocator, .{});
     defer ctx_data.deinit();
@@ -180,10 +170,8 @@ test "Instance.init - array fields are zeroed" {
 test "Instance.init - regression test for cached property crash" {
     const allocator = testing.allocator;
 
-    runtime.SlabAllocator.init(allocator);
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     // Simulate a WebIDL interface state with cached properties
     const DocumentLikeState = struct {
@@ -221,10 +209,8 @@ test "Instance.init - regression test for cached property crash" {
 test "Instance.init - large state is fully zeroed" {
     const allocator = testing.allocator;
 
-    runtime.SlabAllocator.init(allocator);
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     // Test with a larger state (similar to Document which has ~2KB state)
     const LargeState = struct {
@@ -262,10 +248,8 @@ test "Instance.init - large state is fully zeroed" {
 test "Instance.init - no memory leaks" {
     const allocator = testing.allocator;
 
-    runtime.SlabAllocator.init(allocator);
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     var ctx_data = try runtime.ContextData.init(allocator, .{});
     defer ctx_data.deinit();

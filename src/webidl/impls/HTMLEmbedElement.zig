@@ -68,7 +68,7 @@ pub fn init(
     }
     // From the runtime arena, as the iframe's state is: an element torn
     // down with its tree may never run its own deinit.
-    const arena = runtime.ArenaAllocator.get();
+    const arena = runtime.arenaOf(instance);
     const internal = try arena.create(InternalState);
     errdefer arena.destroy(InternalState, internal);
     internal.* = .{
@@ -85,7 +85,7 @@ pub fn deinit(instance: *runtime.Instance) void {
             // A second deinit must find nothing to free.
             state.own._internal = null;
             embedded_content.elementGone(internal.content);
-            if (runtime.ArenaAllocator.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+            runtime.arenaOf(instance).destroy(InternalState, internal);
         }
     }
     interfaces.HTMLElement.deinit(instance);

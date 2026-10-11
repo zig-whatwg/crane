@@ -64,8 +64,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         if (internal.promise) |value| value.release();
         if (internal.reason) |value| value.release();
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
     // Event's own resources (type string, internal state).
@@ -82,8 +81,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     const state = instance.getState(State);
 
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = .{};
     state.own._internal = internal;
 
@@ -107,7 +105,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     if (eventInitDict.reason) |reason| internal.reason = try hold(ctx, reason);
 
     // Without the initialized flag dispatchEvent throws InvalidStateError.
-    try webidl.utils.initEventBase(&state.base.own, ArenaAllocator.get(), ctx.allocator);
+    try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
 
     return instance;
 }

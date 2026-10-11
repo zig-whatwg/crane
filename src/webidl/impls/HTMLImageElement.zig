@@ -133,7 +133,7 @@ const FireEventTaskContext = struct {
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.html_image_element, InternalState);
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
@@ -146,11 +146,10 @@ fn getOrCreateInternal(instance: *runtime.Instance) !*InternalState {
 
     // Create new internal state using the runtime's arena allocator
     // This ensures proper cleanup during context shutdown
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
     // The registry owns this block, so `Registry.remove` returns it to
     // the arena. With `set` it was dropped from the map and held to
     // process exit - measured at 904 bytes per discarded element.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{
         .allocator = instance.ctx.allocator,
     };
@@ -181,7 +180,7 @@ pub fn init(
     // that took it for its own inherited the dead one's request state (or,
     // from an earlier runtime, a block that is gone). createIn frees and
     // reports a dead one's (docs/lessons/architecture-an-address-keyed-entry-a-teardown-misses-is-inherited.md).
-    const internal = try Registry.createIn(instance, runtime.ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{ .allocator = instance.ctx.allocator };
 
     return instance;
@@ -330,7 +329,7 @@ pub fn installHooks() void {
     @import("dom").document_fetches.install(.{ .discard = discardRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
 }
 fn prepareDocumentAbort(document: *runtime.Instance) bool {
-    var iter = Registry.iterator() orelse return false;
+    var iter = Registry.iterator(runtime.BrowserScope.ofInstance(document)) orelse return false;
     var canceled = false;
     while (iter.next()) |entry| {
         const internal = entry.internal;
@@ -342,7 +341,7 @@ fn prepareDocumentAbort(document: *runtime.Instance) bool {
     return canceled;
 }
 fn abortDocument(document: *runtime.Instance) void {
-    var iter = Registry.iterator() orelse return;
+    var iter = Registry.iterator(runtime.BrowserScope.ofInstance(document)) orelse return;
     while (iter.next()) |entry| {
         const internal = entry.internal;
         const generation = internal.document_abort_pending orelse continue;
@@ -359,7 +358,7 @@ fn abortDocument(document: *runtime.Instance) void {
     }
 }
 fn discardRealm(realm: runtime.Context) void {
-    var iter = Registry.iterator() orelse return;
+    var iter = Registry.iterator(realm.browserScope() orelse return) orelse return;
     while (iter.next()) |entry| {
         const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
         if (instance.ctx != realm) continue;

@@ -24,7 +24,7 @@ const allocator = std.heap.page_allocator;
 /// The process-wide pieces a worker's platform objects need, as crane.Process
 /// starts them - unless a file before this one did.
 fn startProcess() void {
-    if (runtime.SlabAllocator.tryGet()) |_| {} else |_| runtime.initializeRuntime(allocator);
+    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(allocator);
     @import("interfaces").process_hooks.startHooksForTest();
 }
 

@@ -97,8 +97,7 @@ fn initializeException(instance: *runtime.Instance, name_str: []const u8, msg_st
     // Use arena allocator for InternalState and strings.
     // This ensures cleanup happens when the context is destroyed, even if
     // deinitWithoutCallbacks() is used during child context teardown.
-    const ArenaAllocator = runtime.ArenaAllocator;
-    const arena = ArenaAllocator.get();
+    const arena = runtime.arenaOf(instance);
 
     // Create internal state using arena
     const internal = try arena.create(InternalState);

@@ -32,7 +32,7 @@ const Document = interfaces.Document;
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = webidl.utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
@@ -676,6 +676,8 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // Its states left at its Browser's end (Browser.deinit).
+    @import("dom").teardown_sweeps.install(.documents, &sweepRemaining);
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
     @import("dom").refcount.install(.{ .document_counts = &countsOf });
     @import("dom").custom_elements.installDocument(.{
@@ -863,11 +865,10 @@ pub fn init(
     try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_NODE);
 
     // Initialize Document's own internal state in registry
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
 
     return instance;
@@ -3818,6 +3819,9 @@ pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!*runtim
 pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
 
+    // Selection API: a document without a browsing context has no selection.
+    if (internal.destroyed or internal.default_view == null) return null;
+
     // The document's one selection, made on first use.
     const selection = internal.selection orelse blk: {
         const made = interfaces.Selection.init(internal.allocator, instance.ctx) catch |err| {
@@ -3833,6 +3837,7 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     // It is this document's for the document's whole life, whatever script
     // keeps of it (`KeptChild`).
     internal.selection_kept.handOut(instance, selection, .{ .name = "selection" });
+    @import("dom").selection.bindDocument(selection, instance);
     return selection;
 }
 
@@ -5183,7 +5188,8 @@ fn setModuleLoader(instance: *runtime.Instance, loader: *anyopaque, dispose: dom
 }
 
 fn visitRealmModuleLoaders(realm: runtime.Context, visit: dom_document_modules.VisitLoaderFn, data: ?*anyopaque) void {
-    var entries = Registry.iterator() orelse return;
+    // The realm's Browser's documents.
+    var entries = Registry.iterator(realm.browserScope() orelse return) orelse return;
     while (entries.next()) |entry| {
         const document: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
         if (document.ctx != realm) continue;
@@ -5738,7 +5744,8 @@ pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerro
     return .null;
 }
 
-/// Clean up ALL remaining internal states.
-pub fn cleanupAllRemainingInternal() void {
-    Registry.deinitAllAndClear();
+/// dom.teardown_sweeps: at its Browser's end, every Document state still in
+/// `scope`'s table - an orphan's no teardown reached - frees what it owns.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }

@@ -94,12 +94,12 @@ test "unwrapped parser subtrees return their instance slots and state blocks" {
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();
-    const slots_before = runtime.SlabAllocator.get().stats().currently_allocated;
-    const bytes_before = runtime.ArenaAllocator.get().stats().bytes_in_use;
+    const slots_before = runtime.BrowserScope.standalone().?.slab.stats().currently_allocated;
+    const bytes_before = runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use;
     const fragment = try parser.parseFragment(std.testing.allocator, &fixture.context, "<b><p>x</b>", null);
     dom.node_creation.destroyUninserted(fragment);
-    try std.testing.expectEqual(slots_before, runtime.SlabAllocator.get().stats().currently_allocated);
-    try std.testing.expectEqual(bytes_before, runtime.ArenaAllocator.get().stats().bytes_in_use);
+    try std.testing.expectEqual(slots_before, runtime.BrowserScope.standalone().?.slab.stats().currently_allocated);
+    try std.testing.expectEqual(bytes_before, runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use);
 }
 
 test "repeated unwrapped template parse clone and import have no retained native storage" {
@@ -108,8 +108,8 @@ test "repeated unwrapped template parse clone and import have no retained native
     defer fixture.deinit();
     // The one inert owner belongs to the document, across every cycle.
     _ = try dom.template_contents.ownerDocument(fixture.document);
-    const slots_before = runtime.SlabAllocator.get().stats().currently_allocated;
-    const bytes_before = runtime.ArenaAllocator.get().stats().bytes_in_use;
+    const slots_before = runtime.BrowserScope.standalone().?.slab.stats().currently_allocated;
+    const bytes_before = runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use;
     for (0..50) |_| {
         const source = try template(fixture.document);
         try interfaces.Element.set_innerHTML(source, .{ .domstring = runtime.DOMString.initInterned("<b><p>x</b>") });
@@ -118,8 +118,8 @@ test "repeated unwrapped template parse clone and import have no retained native
         dom.node_creation.destroyUninserted(imported);
         dom.node_creation.destroyUninserted(clone);
         dom.node_creation.destroyUninserted(source);
-        try std.testing.expectEqual(slots_before, runtime.SlabAllocator.get().stats().currently_allocated);
-        try std.testing.expectEqual(bytes_before, runtime.ArenaAllocator.get().stats().bytes_in_use);
+        try std.testing.expectEqual(slots_before, runtime.BrowserScope.standalone().?.slab.stats().currently_allocated);
+        try std.testing.expectEqual(bytes_before, runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use);
     }
 }
 

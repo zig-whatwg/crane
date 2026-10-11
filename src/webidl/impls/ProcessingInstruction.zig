@@ -53,7 +53,7 @@ pub const InternalState = struct {
 /// The ProcessingInstructions alive, for the final teardown's sweep.
 ///
 /// A PI still alive when the browser ends is never deinit'd one by one:
-/// cleanup sweeps the node registries wholesale (impls/cleanup.zig), and its
+/// the teardown sweeps free the node registries wholesale (dom.teardown_sweeps), and its
 /// target - the PI's own, outside those registries - then leaked (17 over
 /// dom/ranges/Range-surroundContents.html, the PIs in subtrees nothing tore
 /// down). So the PI keeps its own list, taken on init and given up on deinit,
@@ -75,11 +75,14 @@ fn untrackLive(instance: *runtime.Instance) void {
     if (map.remove(instance)) live_guard.noteRemoval(map);
 }
 
-/// dom.teardown_sweeps: free the state of every PI still alive.
-fn sweepLive() void {
+/// dom.teardown_sweeps: free the state of every PI of `scope`'s Browser
+/// still alive (the thread's set holds only its Browser's: a Browser's PIs
+/// are made on its window thread).
+fn sweepLive(scope: *runtime.BrowserScope) void {
     const map = if (live) |*m| m else return;
     var it = map.keyIterator();
     while (it.next()) |instance| {
+        if (runtime.BrowserScope.ofInstance(instance.*) != scope) continue;
         if (getInternal(instance.*)) |internal| {
             internal.deinit();
             internal.target = "";
@@ -100,7 +103,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
-    @import("dom").teardown_sweeps.install(&sweepLive);
+    @import("dom").teardown_sweeps.install(.element_types, &sweepLive);
 }
 
 /// Initialize instance (creates the instance)
@@ -119,8 +122,7 @@ pub fn init(
 
     // Initialize ProcessingInstruction internal state
     const state = instance.getState(StateType);
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
     trackLive(instance);
@@ -140,8 +142,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // OWNS; without this the state struct stays allocated for the
         // life of the process - measured at 208 bytes per discarded
         // element across the impls still doing it this way.
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
     // And CharacterData's and Node's teardown: its data, its NodeBase and its

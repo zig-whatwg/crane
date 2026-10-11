@@ -1,4 +1,6 @@
-//! Final teardown's sweeps of per-type side tables.
+//! Final teardown's sweeps of per-type side tables - a Browser's (instances
+//! B1: every table is a side table of the Browser's runtime.BrowserScope,
+//! and a sweep frees that Browser's entries only, never another's).
 //!
 //! A node in its document when its realm ends is torn down by the realm's
 //! tree walk, through its own deinit (Node.deinitNodeByType dispatches on
@@ -6,14 +8,19 @@
 //! node removed from its tree while script held no wrapper of it, or whose
 //! wrapper was collected while it was still in a tree - nothing frees such an
 //! orphan (node lifetime: the tree traced both ways is the fix). By then its
-//! realm is gone, so `impls/cleanup.zig` frees the node registries wholesale,
-//! never through a deinit, which would read the instance's freed context. A
-//! type that keeps state of its own outside those registries installs a sweep
-//! here (once, at process start: its installHooks) and cleanup runs every
-//! installed sweep; cleanup never imports the type.
+//! realm is gone, so each type's sweep frees what is left of its side table
+//! wholesale, never through a deinit, which would read the instance's freed
+//! context. Every type with a side table installs its sweep here (once, at
+//! process start: its installHooks), in its `Phase`, and the Browser's end
+//! runs every installed sweep over its scope (Browser.deinit, before its
+//! agent ends) without naming any type - this was impls/cleanup.zig, which
+//! imported eleven impls (impls-boundary design 5.3).
 //!
-//! The sweeps installed, and why (counted at leaks3's tip over the forms,
-//! dom/ranges and one-in-four-sample files, 2,881, 2026-10-05):
+//! The node registries' sweeps (EventTarget, HTMLScriptElement, HTMLElement,
+//! Element, Text, Comment, DocumentType, DocumentFragment, CharacterData,
+//! Node, Document) free their InternalStates' own memory. The other sweeps,
+//! and why (counted at leaks3's tip over the forms, dom/ranges and
+//! one-in-four-sample files, 2,881, 2026-10-05):
 //! - ProcessingInstruction: an orphaned PI's target (17 freed).
 //! - HTMLTextAreaElement, HTMLOptionElement: their state maps fill lazily and
 //!   their init frees an entry it finds at the new address, so no entry may
@@ -26,47 +33,83 @@
 //! HTMLInputElement's sweep retired with the vtable dispatch: an input in a
 //! document is deinit'd by its tree, and none was left at the end (0 of 0).
 //!
-//! lint-impls: hook for HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction, HTMLSlotElement
+//! lint-impls: hook for EventTarget, HTMLScriptElement, HTMLElement, Element, HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction, HTMLSlotElement, Text, Comment, DocumentType, DocumentFragment, CharacterData, Node, Document
 
 const std = @import("std");
+const runtime = @import("runtime");
 const process_start = @import("process_start.zig");
 
-/// Frees every entry of one type's side table.
-pub const Sweep = *const fn () void;
+/// Frees every entry of one type's side table in `scope` - one Browser's.
+pub const Sweep = *const fn (scope: *runtime.BrowserScope) void;
 
-const max_sweeps = 16;
-var sweeps: [max_sweeps]Sweep = undefined;
-var count: usize = 0;
+/// When a sweep runs, in this order - the order impls/cleanup.zig encoded:
+/// event targets first, while the agent lives, so their listeners' engine
+/// values are released; then each type's state before its bases' (the most
+/// derived first), so no base's sweep frees what a derived type's state
+/// still reads; the Document's last.
+pub const Phase = enum {
+    /// EventTarget: listeners and event handlers.
+    event_targets,
+    /// HTMLScriptElement.
+    script_elements,
+    /// HTMLElement.
+    html_elements,
+    /// Element.
+    elements,
+    /// Element types with side tables of their own (an option's
+    /// selectedness, a textarea's raw value, a slot's assigned nodes) and
+    /// ProcessingInstruction's target.
+    element_types,
+    /// Text, Comment, DocumentType, DocumentFragment.
+    node_types,
+    /// CharacterData.
+    character_data,
+    /// Node: the NodeBases.
+    nodes,
+    /// Document.
+    documents,
+};
+const phase_count = @typeInfo(Phase).@"enum".fields.len;
 
-/// Install `sweep`. Idempotent: the same function installs once.
-pub fn install(sweep: Sweep) void {
+const max_sweeps = 8;
+var sweeps: [phase_count][max_sweeps]Sweep = undefined;
+var count: [phase_count]usize = @splat(0);
+
+/// Install `sweep` in `phase`. Idempotent: the same function installs once.
+pub fn install(phase: Phase, sweep: Sweep) void {
     process_start.assertInstalling();
-    for (sweeps[0..count]) |existing| {
+    const p = @intFromEnum(phase);
+    for (sweeps[p][0..count[p]]) |existing| {
         if (existing == sweep) return;
     }
-    if (count == max_sweeps) return;
-    sweeps[count] = sweep;
-    count += 1;
+    if (count[p] == max_sweeps) @panic("dom.teardown_sweeps: a phase has room for 8 sweeps");
+    sweeps[p][count[p]] = sweep;
+    count[p] += 1;
 }
 
-/// Run every installed sweep, in installation order.
-pub fn runAll() void {
-    for (sweeps[0..count]) |sweep| sweep();
+/// Run every installed sweep over `scope`, phase by phase, each phase's in
+/// installation order: `scope`'s Browser ends. Before its agent ends.
+pub fn runAll(scope: *runtime.BrowserScope) void {
+    for (0..phase_count) |p| {
+        for (sweeps[p][0..count[p]]) |sweep| sweep(scope);
+    }
 }
 
 var test_sweeps: usize = 0;
-fn testSweep() void {
+fn testSweep(_: *runtime.BrowserScope) void {
     test_sweeps += 1;
 }
 
 test "an installed sweep runs once per runAll, however often it was installed" {
     const saved = count;
     defer count = saved;
-    count = 0;
-    runAll();
+    count = @splat(0);
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    runAll(&scope);
     try std.testing.expectEqual(@as(usize, 0), test_sweeps);
-    install(&testSweep);
-    install(&testSweep);
-    runAll();
+    install(.nodes, &testSweep);
+    install(.nodes, &testSweep);
+    runAll(&scope);
     try std.testing.expectEqual(@as(usize, 1), test_sweeps);
 }

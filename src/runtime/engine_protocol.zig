@@ -677,6 +677,15 @@ pub const WindowRealmOptions = struct {
     /// is entered only for the calls that run in it. A realm without one
     /// stays the agent's entered realm for its life.
     parent: ?Context = null,
+    /// The Browser the realm belongs to (runtime.BrowserScope,
+    /// docs/instances.md): the engine records it as the realm's
+    /// `ContextData.browser_scope` as soon as the realm exists - before
+    /// `create_global_object` - so every platform object of the realm, its
+    /// Window first, comes from that Browser's slab and arena. A frame
+    /// passes its parent's. BORROWED: the Browser outlives its realms. Null
+    /// for a realm no Browser made (a unit test's): its objects come from the
+    /// standalone scope (runtime.initializeRuntime).
+    browser_scope: ?*runtime.BrowserScope = null,
     /// HTML "create a new realm", the customization for the global object:
     /// the host makes the realm's Window. `global_this` is BORROWED until
     /// destroyWindowRealm: the host's Window may keep it as the global it is

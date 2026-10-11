@@ -470,13 +470,13 @@ test "frame document identities reject replacement and slab reuse of the same ad
         }
         fn body() !void {
             const allocator = std.testing.allocator;
-            runtime.SlabAllocator.init(allocator);
-            defer runtime.SlabAllocator.deinit();
+            var slab_value = runtime.SlabAllocator.init(allocator);
+            defer slab_value.deinit();
             var dummy_engine: u32 = 0;
             var realm = try runtime.ContextData.init(allocator, .{ .engine_ctx = &dummy_engine });
             defer realm.deinit();
             const vtable: runtime.VTable = .{ .name = "Window", .deinit = null, .methods_ptr = &dummy_engine };
-            const slab = runtime.SlabAllocator.get();
+            const slab = &slab_value;
             const window = try slab.alloc(&vtable);
             defer slab.free(window);
             window.ctx = &realm;
@@ -1267,6 +1267,8 @@ pub const Context = struct {
             .timer = self.timer,
             .event_loop = self.event_loop,
             .origin = null,
+            // The realm's Browser, recorded before its Window is made.
+            .browser_scope = self.browser_scope,
             .create_global_object = createWindow,
             .host = self,
         }) catch |err| {
@@ -1274,8 +1276,7 @@ pub const Context = struct {
             return error.ContextCreateFailed;
         };
         self.realm = realm;
-        // The realm's Browser, and the inbox other threads post its tasks to.
-        realm.browser_scope = self.browser_scope;
+        // The inbox other threads post the realm's tasks to.
         realm.task_sink = self.task_sink;
 
         // __internal and GLOBAL, before the singletons stored in __internal.
@@ -2109,9 +2110,8 @@ pub const Context = struct {
         // Clean up mutation observer threadlocal state (global_agent)
         mutation_observer_algorithms.resetAgent();
 
-        // Clear instance lifecycle registry entries
-        // (the registry itself persists but entries for this context's instances should be cleaned)
-        instance_lifecycle.clearAll();
+        // (Instance lifecycle flags live in each instance's slab slot and go
+        // with it: nothing of the page's to clear here.)
 
         // Clear timer interface and cancel all pending timers, before the
         // realm ends, so that none fires into it.

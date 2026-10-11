@@ -203,6 +203,12 @@ the caller's.
   the agent's entered realm for its life. A realm whose WindowProxy went on
   to a later one (`window_proxy_of`) is severed from its Window at its end:
   a function of it that script still holds finds no Window, not a freed one.
+- **Browser:** `WindowRealmOptions.browser_scope` is the realm's Browser
+  (runtime.BrowserScope); the engine records it as the realm's
+  `ContextData.browser_scope` before `create_global_object`, so the Window
+  and every other platform object of the realm come from that Browser's
+  slab and arena. A frame passes its parent's. A worker realm's host sets it
+  in `WorkerRealmOptions.on_realm`, which also runs before the global is made.
 - **Threads:** an agent is used only on the thread that made it - every
   operation that takes the agent, or a realm or value of it, runs there. The
   one exception is `abortRunningScript`, which may be called from any thread

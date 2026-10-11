@@ -96,7 +96,6 @@ fn workerLife(failed: *?anyerror) void {
     workerSteps() catch |err| {
         failed.* = err;
     };
-    runtime.instance_lifecycle.deinit();
 }
 
 fn workerSteps() !void {
@@ -139,7 +138,7 @@ fn runWorkers(n: usize) !void {
 }
 
 test "worker threads that end leave no per-thread containers mapped" {
-    if (runtime.SlabAllocator.tryGet()) |_| {} else |_| runtime.initializeRuntime(std.heap.page_allocator);
+    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
     @import("interfaces").process_hooks.startHooksForTest();
     try engine.initializeEngine(.{});
 

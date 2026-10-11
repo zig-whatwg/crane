@@ -589,12 +589,15 @@ pub fn releaseContentNavigable(integration: *IFrameIntegration) void {
 }
 
 /// Deinit `integration` and return its block to the arena it came from
-/// (`runtime.ArenaAllocator`, where every container allocates its content
-/// navigable).
+/// (`block_arena`: its container's Browser's runtime.ArenaAllocator, where
+/// every container allocates its content navigable).
 pub fn destroyContentNavigable(integration: *IFrameIntegration) void {
+    const block_arena = integration.block_arena;
     integration.deinit();
-    const Arena = runtime.ArenaAllocator;
-    if (Arena.tryGet() catch null) |arena| arena.destroy(IFrameIntegration, integration);
+    if (block_arena) |ptr| {
+        const arena: *runtime.ArenaAllocator = @ptrCast(@alignCast(ptr));
+        arena.destroy(IFrameIntegration, integration);
+    }
 }
 
 test "without an installed implementation nothing navigates" {

@@ -180,6 +180,12 @@ pub const IFrameIntegration = struct {
     /// Allocator for this integration's resources
     allocator: Allocator,
 
+    /// The arena this integration's own block came from (a
+    /// runtime.ArenaAllocator: its container's Browser's,
+    /// runtime.arenaOf(element)), where dom.navigables.destroyContentNavigable
+    /// returns it. Null for one not made in an arena.
+    block_arena: ?*anyopaque = null,
+
     /// The nested browsing context (null until element is inserted)
     browsing_context: ?*BrowsingContext,
 

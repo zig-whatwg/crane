@@ -73,7 +73,7 @@ pub const Page = struct {
         const html = try std.fmt.bufPrint(&buffer, "<!doctype html><body>{s}</body>", .{body_markup});
         try page.loadHTML(html, .{ .base_url = "about:blank" });
         try page.runScript("TestUtils.gc(); TestUtils.gc();");
-        const slab = try runtime.SlabAllocator.tryGet();
+        const slab = &browser.scope.slab;
         return .{ .browser = browser, .slab = slab, .baseline = slab.stats().currently_allocated };
     }
 

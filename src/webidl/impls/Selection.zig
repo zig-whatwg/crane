@@ -21,9 +21,10 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Selection = interfaces.Selection;
+const dom = @import("dom");
+const boundary_points = dom.boundary_points;
+const Link = @import("same_object.zig").Link;
 
-// Import related implementations
-const NodeImpl = @import("Node.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const engine = @import("engine");
 
@@ -33,12 +34,11 @@ const AbstractRange = interfaces.AbstractRange;
 
 pub const State = Selection.State;
 
-/// Static sentinel value for empty array - avoids using @ptrFromInt
-var empty_array_sentinel: u8 = 0;
-
 pub const ImplError = error{
     NotImplemented,
     InvalidStateError,
+    InvalidNodeTypeError,
+    NotFoundError,
     IndexSizeError,
     OutOfMemory,
 };
@@ -57,29 +57,15 @@ pub const SelectionType = enum {
     range, // Range selection
 };
 
-/// Internal state for Selection implementation
-/// Per spec, a Selection holds:
-/// - An anchor (node + offset) where selection started
-/// - A focus (node + offset) where selection ends
-/// - The direction of selection (forward/backward)
-/// - A single associated Range (browsers only support one range per selection)
+/// A Selection's live Range is the source of its boundary points. Keeping
+/// separate anchor/focus copies loses Range setters and DOM mutation updates.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-
-    /// The anchor node (where selection started)
-    anchor_node: ?*runtime.Instance = null,
-    /// The anchor offset within the anchor node
-    anchor_offset: u32 = 0,
-
-    /// The focus node (where selection currently ends)
-    focus_node: ?*runtime.Instance = null,
-    /// The focus offset within the focus node
-    focus_offset: u32 = 0,
 
     /// The direction of selection
     direction: Direction = .none,
 
-    /// The associated range (lazily created, may be null if empty selection)
+    /// The associated live range (null only for an empty selection)
     /// Per spec, most browsers only support a single range per selection
     /// Written only through `setRange`, which keeps it.
     ///
@@ -93,9 +79,16 @@ pub const InternalState = struct {
     /// cached_range_. The selection's own wrapper lives as long as the
     /// selection: its document keeps it (Document's `selection_kept`).
     range: ?*runtime.Instance = null,
+    /// Teardown net for the traced range, which the collector may free first.
+    range_generation: u64 = 0,
 
-    /// The document this selection belongs to
-    document: ?*runtime.Instance = null,
+    /// The document this selection belongs to, retained by a traced edge.
+    /// Its generation is only the teardown safety net.
+    document: ?Link = null,
+
+    /// The document's has-scheduled-selectionchange-event flag. Its unique
+    /// Selection owns it; input/textarea flags belong to those controls.
+    selectionchange_scheduled: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -103,24 +96,40 @@ pub const InternalState = struct {
         };
     }
 
-    pub fn deinit(self: *InternalState) void {
+    pub fn deinit(self: *InternalState, selection: *runtime.Instance) void {
+        if (self.range) |range| {
+            const link: Link = .{ .instance = range, .generation = self.range_generation };
+            if (link.isLive()) dom.selection.associateRange(range, selection, false);
+        }
         // Don't free the range - its wrapper owns it. The edge to it goes
         // with this selection's wrapper; nothing to end here, which may run
         // while the collector does (engine.forgetTracedChild must not).
         self.range = null;
-        self.anchor_node = null;
-        self.focus_node = null;
+        self.range_generation = 0;
+        self.document = null;
     }
 
     /// Make `range` the range of `selection` (whose state this is), or clear
     /// it, keeping the range while it is one (see `range`).
-    fn setRange(self: *InternalState, selection: *runtime.Instance, range: ?*runtime.Instance) void {
-        if (self.range == range) return;
-        self.range = range;
-        if (range) |r|
-            engine.traceChild(selection, r, range_slot)
-        else
-            engine.forgetTracedChild(selection, range_slot);
+    fn setRange(self: *InternalState, selection: *runtime.Instance, range: ?*runtime.Instance, direction: Direction) void {
+        const before = snapshot(self);
+        if (self.range != range) {
+            if (self.range) |old| {
+                const link: Link = .{ .instance = old, .generation = self.range_generation };
+                if (link.isLive()) dom.selection.associateRange(old, selection, false);
+            }
+            self.range = range;
+            if (range) |r| {
+                self.range_generation = runtime.SlabAllocator.generationOf(r);
+                engine.traceChild(selection, r, range_slot);
+                dom.selection.associateRange(r, selection, true);
+            } else {
+                self.range_generation = 0;
+                engine.forgetTracedChild(selection, range_slot);
+            }
+        }
+        self.direction = direction;
+        if (!std.meta.eql(before, snapshot(self))) scheduleSelectionchange(selection) catch {};
     }
 };
 
@@ -146,8 +155,7 @@ pub fn init(
 
     // Initialize internal state
     const state = instance.getState(StateType);
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
 
@@ -158,29 +166,70 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        internal.deinit(instance);
 
         // Return the block itself, not just what it points to.
         // `internal.deinit()` releases the strings and lists the state
         // OWNS; without this the state struct stays allocated for the
         // life of the process - measured at 208 bytes per discarded
         // element across the impls still doing it this way.
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Create a Selection for a document
-pub fn createSelection(allocator: std.mem.Allocator, ctx: runtime.Context, document: *runtime.Instance) !*runtime.Instance {
-    const instance = try init(allocator, State, &interfaces.Selection.vtable, ctx);
-    errdefer deinit(instance);
+/// Install the association hook once, at process startup.
+pub fn installHooks() void {
+    dom.selection.install(.{ .bind_document = &bindDocument, .range_mutated = &rangeMutated });
+}
 
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.document = document;
+fn rangeMutated(selection: *runtime.Instance, range: *runtime.Instance, containers_changed: bool) void {
+    const internal = getInternal(selection) orelse return;
+    if (internal.range != range) return;
+    const b = boundaries(internal) orelse return;
+    // An offset-only setter cannot change its container's document. Adoption
+    // separately updates Range ownership; offset changes still queue an event.
+    if (containers_changed and (!isInDocument(internal, b.start_container) or !isInDocument(internal, b.end_container))) {
+        // Browsers dissociate a live Range that leaves the document; moving
+        // it back does not restore the selection (codex-selection Q17).
+        // Blink Range::RemoveFromSelectionIfInDifferentRoot (core/dom/range.cc),
+        // Gecko nsRange::NotifySelectionListenersAfterRangeSet (dom/base/nsRange.cpp),
+        // WebKit Range::updateAssociatedSelection/updateDocument (WebCore/dom/Range.cpp).
+        internal.setRange(selection, null, .none);
+        return;
+    }
+    scheduleSelectionchange(selection) catch {};
+}
 
-    return instance;
+fn bindDocument(selection: *runtime.Instance, document: *runtime.Instance) void {
+    const internal = getInternal(selection) orelse return;
+    if (internal.document) |link| if (link.isLive() and link.instance == document) return;
+    // Document has wrapped the Selection through KeptChild.handOut first.
+    // Two traced edges permit the document/selection cycle to collect.
+    engine.traceChild(selection, document, .{ .name = "document" });
+    internal.document = Link.to(document);
+}
+
+fn associatedDocument(internal: *const InternalState) ?*runtime.Instance {
+    const link = internal.document orelse return null;
+    return if (link.isLive()) link.instance else null;
+}
+
+/// Read the live range instead of a second copy of its boundary points.
+fn boundaries(internal: *const InternalState) ?dom.range_boundaries.Boundaries {
+    return dom.range_boundaries.of(internal.range orelse return null);
+}
+
+fn visibleBoundaries(internal: *const InternalState) ?dom.range_boundaries.Boundaries {
+    const b = boundaries(internal) orelse return null;
+    // Browser rule: expose same-root shadow endpoints. The cached spec says
+    // null outside the document tree, but Chrome/Firefox pass 24/24 cases in
+    // selection-at-nodes-not-part-of-flattened-tree.html (Safari 13/24),
+    // WPT cc74d2669f, runs 6218298311311360/4877098740350976/5164107446878208.
+    // Blink core/editing/dom_selection.cc anchorNode reads the cached Range.
+    if (!isInDocument(internal, b.start_container) or !isInDocument(internal, b.end_container)) return null;
+    return b;
 }
 
 // =============================================================================
@@ -192,7 +241,8 @@ pub fn createSelection(allocator: std.mem.Allocator, ctx: runtime.Context, docum
 /// Returns null if the selection is empty.
 pub fn get_anchorNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.anchor_node;
+    const b = visibleBoundaries(internal) orelse return null;
+    return if (internal.direction == .backward) b.end_container else b.start_container;
 }
 
 /// Selection API - anchorOffset getter
@@ -200,7 +250,8 @@ pub fn get_anchorNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Returns 0 if the selection is empty.
 pub fn get_anchorOffset(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.anchor_offset;
+    const b = visibleBoundaries(internal) orelse return 0;
+    return if (internal.direction == .backward) b.end_offset else b.start_offset;
 }
 
 /// Selection API - focusNode getter
@@ -208,7 +259,8 @@ pub fn get_anchorOffset(instance: *runtime.Instance) anyerror!u32 {
 /// Returns null if the selection is empty.
 pub fn get_focusNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.focus_node;
+    const b = visibleBoundaries(internal) orelse return null;
+    return if (internal.direction == .backward) b.start_container else b.end_container;
 }
 
 /// Selection API - focusOffset getter
@@ -216,7 +268,8 @@ pub fn get_focusNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Returns 0 if the selection is empty.
 pub fn get_focusOffset(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.focus_offset;
+    const b = visibleBoundaries(internal) orelse return 0;
+    return if (internal.direction == .backward) b.start_offset else b.end_offset;
 }
 
 /// Selection API - isCollapsed getter
@@ -224,15 +277,8 @@ pub fn get_focusOffset(instance: *runtime.Instance) anyerror!u32 {
 /// A collapsed selection is also known as a caret.
 pub fn get_isCollapsed(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Empty selection is considered collapsed
-    if (internal.anchor_node == null or internal.focus_node == null) {
-        return true;
-    }
-
-    // Collapsed if anchor and focus are at the same position
-    return internal.anchor_node == internal.focus_node and
-        internal.anchor_offset == internal.focus_offset;
+    const b = boundaries(internal) orelse return true;
+    return b.start_container == b.end_container and b.start_offset == b.end_offset;
 }
 
 /// Selection API - rangeCount getter
@@ -240,45 +286,26 @@ pub fn get_isCollapsed(instance: *runtime.Instance) anyerror!bool {
 /// Per spec, this is typically 0 or 1 (most browsers only support single range).
 pub fn get_rangeCount(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // If we have anchor and focus set, we have one range
-    if (internal.anchor_node != null and internal.focus_node != null) {
-        return 1;
-    }
-    return 0;
+    return if (visibleBoundaries(internal) != null) 1 else 0;
 }
 
 /// Selection API - type getter
 /// Returns the type of selection: "None", "Caret", or "Range"
 pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // No selection
-    if (internal.anchor_node == null or internal.focus_node == null) {
-        return runtime.DOMString.initInterned("None");
-    }
-
-    // Check if collapsed (caret)
-    if (internal.anchor_node == internal.focus_node and
-        internal.anchor_offset == internal.focus_offset)
-    {
-        return runtime.DOMString.initInterned("Caret");
-    }
-
-    // Range selection
-    return runtime.DOMString.initInterned("Range");
+    if (try get_rangeCount(instance) == 0) return .initInterned("None");
+    return .initInterned(if (try get_isCollapsed(instance)) "Caret" else "Range");
 }
 
 /// Selection API - direction getter
 /// Returns the direction of selection: "none", "forward", or "backward"
 pub fn get_direction(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    return switch (internal.direction) {
-        .none => runtime.DOMString.initInterned("none"),
-        .forward => runtime.DOMString.initInterned("forward"),
-        .backward => runtime.DOMString.initInterned("backward"),
-    };
+    if (internal.range == null) return .initInterned("none");
+    return .initInterned(switch (internal.direction) {
+        .none => "none",
+        .forward => "forward",
+        .backward => "backward",
+    });
 }
 
 // =============================================================================
@@ -290,79 +317,46 @@ pub fn get_direction(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Throws IndexSizeError if index is out of range.
 pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Only support index 0 (single range per selection)
-    if (index != 0) {
-        return error.IndexSizeError;
-    }
-
-    // If no selection, throw IndexSizeError
-    if (internal.anchor_node == null or internal.focus_node == null) {
-        return error.IndexSizeError;
-    }
-
-    // Create or return the associated range
-    if (internal.range) |range| {
-        return range;
-    }
-
-    // Create a new range representing the selection
-    const range = try createRangeFromSelection(internal);
-    internal.setRange(instance, range);
-    return range;
+    if (index != 0 or visibleBoundaries(internal) == null) return error.IndexSizeError;
+    return internal.range.?;
 }
 
 /// Selection API - addRange(range)
 /// Adds the specified range to the selection.
-/// Per spec, if there's already a range, this may be ignored or replace it
-/// (browser-dependent behavior). We replace the selection.
+/// An existing range is preserved (Chrome/Safari and the Selection spec).
 pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
+    // WebIDL interface conversion, pending shared binding brand checks (CE2-M1).
+    if (range.stateAs(interfaces.Range.State) == null) return error.TypeError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Get the range's boundary points via AbstractRange interface (per Golden Rule #13)
-    const start_container = try AbstractRange.get_startContainer(range);
-    const start_offset = try AbstractRange.get_startOffset(range);
-    const end_container = try AbstractRange.get_endContainer(range);
-    const end_offset = try AbstractRange.get_endOffset(range);
-
-    // Set selection to the range's boundaries
-    internal.anchor_node = start_container;
-    internal.anchor_offset = start_offset;
-    internal.focus_node = end_container;
-    internal.focus_offset = end_offset;
-    internal.direction = .forward;
-    internal.setRange(instance, range);
+    // Steps 1-2: require this document and an empty exposed selection.
+    // Browser deviation: connected shadow ranges are accepted. Chrome and
+    // Firefox pass "adding to selection sets the selection" in tentative/
+    // Selection-getComposedRanges-range-update.html; Safari fails (file
+    // totals 8/9, 5/9, 2/9 at WPT cc74d2669f). Blink DomSelection::addRange
+    // checks OwnerDocument and IsConnected, not the ordinary root:
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/editing/dom_selection.cc
+    const start = try AbstractRange.get_startContainer(range);
+    const end = try AbstractRange.get_endContainer(range);
+    if (!isInDocument(internal, start) or !isInDocument(internal, end)) return;
+    if (try get_rangeCount(instance) != 0) return;
+    // Step 3: associate the supplied object by strong reference, never a copy.
+    internal.setRange(instance, range, .forward);
 }
 
 /// Selection API - removeRange(range)
 /// Removes the specified range from the selection.
 pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
+    if (range.stateAs(interfaces.Range.State) == null) return error.TypeError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if this is our range
-    if (internal.range == range) {
-        // Clear the selection
-        internal.anchor_node = null;
-        internal.anchor_offset = 0;
-        internal.focus_node = null;
-        internal.focus_offset = 0;
-        internal.direction = .none;
-        internal.setRange(instance, null);
-    }
-    // If not our range, do nothing (per spec)
+    if (internal.range != range) return error.NotFoundError;
+    try call_removeAllRanges(instance);
 }
 
 /// Selection API - removeAllRanges()
 /// Removes all ranges from the selection, leaving it empty.
 pub fn call_removeAllRanges(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    internal.anchor_node = null;
-    internal.anchor_offset = 0;
-    internal.focus_node = null;
-    internal.focus_offset = 0;
-    internal.direction = .none;
-    internal.setRange(instance, null);
+    internal.setRange(instance, null, .none);
 }
 
 /// Selection API - empty()
@@ -376,17 +370,15 @@ pub fn call_empty(instance: *runtime.Instance) anyerror!void {
 /// If node is null, collapses to no selection.
 pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // TODO: Validate offset against node's length
-    // (child count for Element, data length for CharacterData)
-
-    // Collapse to the specified point
-    internal.anchor_node = node;
-    internal.anchor_offset = if (offset.was_passed) offset.value else 0;
-    internal.focus_node = node;
-    internal.focus_offset = if (offset.was_passed) offset.value else 0;
-    internal.direction = .none;
-    internal.setRange(instance, null); // Invalidate cached range
+    // Steps 1-3: null clears; doctype and length errors precede the document check.
+    const target = node orelse return call_removeAllRanges(instance);
+    const off = if (offset.was_passed) offset.value else 0;
+    try validateBoundary(target, off);
+    // Step 4: the associated document must be a shadow-including ancestor.
+    if (!isInDocument(internal, target)) return;
+    // Steps 5-7: make and associate a live Range now, before any DOM mutation.
+    const range = try newRange(instance, target, off, target, off);
+    internal.setRange(instance, range, .none);
 }
 
 /// Selection API - setPosition(node, offset)
@@ -400,29 +392,10 @@ pub fn call_setPosition(instance: *runtime.Instance, node: ?*runtime.Instance, o
 /// Throws InvalidStateError if the selection is empty.
 pub fn call_collapseToStart(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Must have a selection
-    if (internal.anchor_node == null or internal.focus_node == null) {
-        return error.InvalidStateError;
-    }
-
-    // Determine the start point (depends on direction)
-    const start_node: *runtime.Instance = switch (internal.direction) {
-        .backward => internal.focus_node.?,
-        else => internal.anchor_node.?,
-    };
-    const start_offset: u32 = switch (internal.direction) {
-        .backward => internal.focus_offset,
-        else => internal.anchor_offset,
-    };
-
-    // Collapse to start
-    internal.anchor_node = start_node;
-    internal.anchor_offset = start_offset;
-    internal.focus_node = start_node;
-    internal.focus_offset = start_offset;
-    internal.direction = .none;
-    internal.setRange(instance, null);
+    const b = boundaries(internal) orelse return error.InvalidStateError;
+    // Replace the range, preserving the old Range object and its boundaries.
+    const range = try newRange(instance, b.start_container, b.start_offset, b.start_container, b.start_offset);
+    internal.setRange(instance, range, .none);
 }
 
 /// Selection API - collapseToEnd()
@@ -430,29 +403,10 @@ pub fn call_collapseToStart(instance: *runtime.Instance) anyerror!void {
 /// Throws InvalidStateError if the selection is empty.
 pub fn call_collapseToEnd(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Must have a selection
-    if (internal.anchor_node == null or internal.focus_node == null) {
-        return error.InvalidStateError;
-    }
-
-    // Determine the end point (depends on direction)
-    const end_node: *runtime.Instance = switch (internal.direction) {
-        .backward => internal.anchor_node.?,
-        else => internal.focus_node.?,
-    };
-    const end_offset: u32 = switch (internal.direction) {
-        .backward => internal.anchor_offset,
-        else => internal.focus_offset,
-    };
-
-    // Collapse to end
-    internal.anchor_node = end_node;
-    internal.anchor_offset = end_offset;
-    internal.focus_node = end_node;
-    internal.focus_offset = end_offset;
-    internal.direction = .none;
-    internal.setRange(instance, null);
+    const b = boundaries(internal) orelse return error.InvalidStateError;
+    // Replace the range, preserving the old Range object and its boundaries.
+    const range = try newRange(instance, b.end_container, b.end_offset, b.end_container, b.end_offset);
+    internal.setRange(instance, range, .none);
 }
 
 /// Selection API - extend(node, offset)
@@ -460,73 +414,59 @@ pub fn call_collapseToEnd(instance: *runtime.Instance) anyerror!void {
 /// The anchor remains unchanged. This changes the selection direction.
 pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Must have an anchor point to extend from
-    if (internal.anchor_node == null) {
-        return error.InvalidStateError;
-    }
-
-    // Set the focus point
-    internal.focus_node = node;
-    internal.focus_offset = if (offset.was_passed) offset.value else 0;
-
-    // Determine direction based on position comparison
-    // TODO: Implement proper document position comparison
-    // For now, assume forward if focus comes after anchor
-    internal.direction = .forward;
-    internal.setRange(instance, null);
+    // Steps 1-2: the document check precedes empty-selection and offset errors.
+    if (!isInDocument(internal, node)) return;
+    const b = boundaries(internal) orelse return error.InvalidStateError;
+    const off = if (offset.was_passed) offset.value else 0;
+    try validateBoundary(node, off);
+    // Steps 3-7: compare the old anchor with the new focus in their common tree.
+    const anchor = if (internal.direction == .backward) b.end_container else b.start_container;
+    const anchor_offset = if (internal.direction == .backward) b.end_offset else b.start_offset;
+    const same_root = getRoot(anchor) == getRoot(node);
+    const backward = same_root and boundary_points.position(DomTree, node, off, anchor, anchor_offset) == .before;
+    const range = if (!same_root)
+        try newRange(instance, node, off, node, off)
+    else if (backward)
+        try newRange(instance, node, off, anchor, anchor_offset)
+    else
+        try newRange(instance, anchor, anchor_offset, node, off);
+    // Steps 8-9: replace only after successful validation and construction.
+    internal.setRange(instance, range, if (backward) .backward else .forward);
 }
 
 /// Selection API - setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
 /// Sets the selection to span the specified positions.
 pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.Instance, anchorOffset: u32, focusNode: *runtime.Instance, focusOffset: u32) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Set both anchor and focus
-    internal.anchor_node = anchorNode;
-    internal.anchor_offset = anchorOffset;
-    internal.focus_node = focusNode;
-    internal.focus_offset = focusOffset;
-
-    // Determine direction
-    if (anchorNode == focusNode) {
-        if (anchorOffset == focusOffset) {
-            internal.direction = .none;
-        } else if (anchorOffset < focusOffset) {
-            internal.direction = .forward;
-        } else {
-            internal.direction = .backward;
-        }
-    } else {
-        // TODO: Compare document positions for cross-node selection
-        internal.direction = .forward;
-    }
-
-    internal.setRange(instance, null);
+    // Steps 1-2: offset validation precedes the associated-document check.
+    if (anchorOffset > try nodeLength(anchorNode) or focusOffset > try nodeLength(focusNode)) return error.IndexSizeError;
+    if (!isInDocument(internal, anchorNode) or !isInDocument(internal, focusNode)) return;
+    try validateBoundary(anchorNode, anchorOffset);
+    try validateBoundary(focusNode, focusOffset);
+    // Steps 3-5: compare boundary points, including ancestor/descendant positions.
+    const same_root = getRoot(anchorNode) == getRoot(focusNode);
+    const backward = same_root and boundary_points.position(DomTree, focusNode, focusOffset, anchorNode, anchorOffset) == .before;
+    const range = if (backward)
+        try newRange(instance, focusNode, focusOffset, anchorNode, anchorOffset)
+    else
+        try newRange(instance, anchorNode, anchorOffset, focusNode, focusOffset);
+    // Steps 6-7.
+    internal.setRange(instance, range, if (backward) .backward else .forward);
 }
 
 /// Selection API - selectAllChildren(node)
 /// Selects all the children of the specified node.
 pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Set anchor to beginning of node's children
-    internal.anchor_node = node;
-    internal.anchor_offset = 0;
-
-    // Set focus to end of node's children
-    // Count children to get the end offset
-    var child_count: u32 = 0;
-    var child = NodeImpl.getFirstChild(node);
-    while (child != null) {
-        child_count += 1;
-        child = NodeImpl.getNextSibling(child.?);
-    }
-
-    internal.focus_node = node;
-    internal.focus_offset = child_count;
-    internal.direction = .forward;
-    internal.setRange(instance, null);
+    // Reject doctypes, then require this document (including its shadow trees).
+    // Browser deviation from the cached ordinary-root check: Chrome/Firefox
+    // selection-at-nodes-not-part-of-flattened-tree.html 24/24, Safari 13/24
+    // at cc74d2669f. Blink DomSelection::selectAllChildren calls setBaseAndExtent.
+    if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_TYPE_NODE()) return error.InvalidNodeTypeError;
+    if (!isInDocument(internal, node)) return;
+    // Steps 3-7: child count, including zero for CharacterData, not node length.
+    const range = try newRange(instance, node, 0, node, countChildren(node));
+    internal.setRange(instance, range, .forward);
 }
 
 /// Selection API - modify(alter, direction, granularity)
@@ -549,10 +489,8 @@ pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instan
 /// Note: Layout-dependent granularities (line, lineboundary) require a LayoutBackend.
 /// This implementation supports character and word granularity without layout.
 pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMString), direction: webidl.Opt(runtime.DOMString), granularity: webidl.Opt(runtime.DOMString)) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
     // Must have a selection to modify
-    if (internal.focus_node == null) {
+    if (try get_focusNode(instance) == null) {
         return; // No selection, nothing to modify
     }
 
@@ -568,8 +506,8 @@ pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMStr
     const granularity_slice = if (granularity.was_passed) granularity.value.asSlice() else "character";
 
     // Get the current focus position
-    const focus_node = internal.focus_node.?;
-    const focus_offset = internal.focus_offset;
+    const focus_node = (try get_focusNode(instance)).?;
+    const focus_offset = try get_focusOffset(instance);
 
     // Determine new position based on granularity
     var new_node = focus_node;
@@ -597,39 +535,11 @@ pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMStr
         return;
     }
 
-    // Apply the modification based on alter mode
     if (is_extend) {
-        // Extend: only move focus, keep anchor
-        internal.focus_node = new_node;
-        internal.focus_offset = new_offset;
-
-        // Update direction based on positions
-        if (internal.anchor_node == new_node) {
-            if (internal.anchor_offset == new_offset) {
-                internal.direction = .none;
-            } else if (internal.anchor_offset < new_offset) {
-                internal.direction = .forward;
-            } else {
-                internal.direction = .backward;
-            }
-        } else {
-            // Cross-node: determine direction by document order
-            // For simplicity, use existing direction or default to forward
-            if (internal.direction == .none) {
-                internal.direction = if (is_forward) .forward else .backward;
-            }
-        }
+        try call_extend(instance, new_node, .passed(new_offset));
     } else {
-        // Move: collapse selection to new position
-        internal.anchor_node = new_node;
-        internal.anchor_offset = new_offset;
-        internal.focus_node = new_node;
-        internal.focus_offset = new_offset;
-        internal.direction = .none;
+        try call_collapse(instance, new_node, .passed(new_offset));
     }
-
-    // Invalidate cached range
-    internal.setRange(instance, null);
 }
 
 /// Result of a position calculation
@@ -640,17 +550,14 @@ const PositionResult = struct {
 
 /// Move position by one character
 fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !PositionResult {
-    const CharacterDataImpl = @import("CharacterData.zig");
-    const node_type = NodeImpl.getNodeType(node) orelse 0;
+    const node_type = interfaces.Node.get_nodeType(node) catch 0;
 
     // For text nodes, we can move within the text content
-    if (node_type == NodeImpl.NodeType.TEXT_NODE or
-        node_type == NodeImpl.NodeType.COMMENT_NODE or
-        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE)
+    if (node_type == interfaces.Node.get_TEXT_NODE() or
+        node_type == interfaces.Node.get_COMMENT_NODE() or
+        node_type == interfaces.Node.get_CDATA_SECTION_NODE())
     {
-        if (CharacterDataImpl.getInternalState(node)) |char_internal| {
-            const data_len = char_internal.getLength();
-
+        if (interfaces.CharacterData.get_length(node)) |data_len| {
             if (forward) {
                 if (offset < data_len) {
                     // Move forward within same node
@@ -676,7 +583,7 @@ fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !Positio
                     return .{ .node = node, .offset = 0 };
                 }
             }
-        }
+        } else |_| {}
     }
 
     // For element nodes, offset refers to child index
@@ -697,24 +604,26 @@ fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !Positio
 
 /// Move position by one word
 fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResult {
-    const CharacterDataImpl = @import("CharacterData.zig");
-    const node_type = NodeImpl.getNodeType(node) orelse 0;
+    const node_type = interfaces.Node.get_nodeType(node) catch 0;
 
     // Only works for text nodes
-    if (node_type != NodeImpl.NodeType.TEXT_NODE and
-        node_type != NodeImpl.NodeType.COMMENT_NODE and
-        node_type != NodeImpl.NodeType.CDATA_SECTION_NODE)
+    if (node_type != interfaces.Node.get_TEXT_NODE() and
+        node_type != interfaces.Node.get_COMMENT_NODE() and
+        node_type != interfaces.Node.get_CDATA_SECTION_NODE())
     {
         // For non-text nodes, fall back to character movement
         return moveByCharacter(node, offset, forward);
     }
 
-    const char_internal = CharacterDataImpl.getInternalState(node) orelse {
-        return .{ .node = node, .offset = offset };
+    var text = interfaces.CharacterData.get_data(node) catch |err| switch (err) {
+        error.InvalidStateError => return .{ .node = node, .offset = offset },
+        else => return err,
     };
-
-    const data = char_internal.getData();
-    const data_len = char_internal.getLength();
+    defer text.deinit(node.ctx.allocator);
+    const data = text.asSlice();
+    const data_len = try interfaces.CharacterData.get_length(node);
+    // Follow-up after the utf16 lane lands: convert code-unit positions with
+    // infra.wtf8.byteOffsetOfCodeUnit before indexing the WTF-8 bytes here.
 
     if (forward) {
         // Find end of current word, then start of next word
@@ -760,7 +669,7 @@ fn moveToDocumentBoundary(node: *runtime.Instance, forward: bool) !PositionResul
     var current = node;
 
     // Find the root (document or fragment)
-    while (NodeImpl.getParent(current)) |parent| {
+    while (interfaces.Node.get_parentNode(current) catch null) |parent| {
         current = parent;
     }
 
@@ -768,10 +677,9 @@ fn moveToDocumentBoundary(node: *runtime.Instance, forward: bool) !PositionResul
         // Move to end of document
         // Find last descendant text node, position at end
         if (try findLastTextNode(current)) |last_text| {
-            const CharacterDataImpl = @import("CharacterData.zig");
-            if (CharacterDataImpl.getInternalState(last_text)) |char_internal| {
-                return .{ .node = last_text, .offset = char_internal.getLength() };
-            }
+            if (interfaces.CharacterData.get_length(last_text)) |length| {
+                return .{ .node = last_text, .offset = length };
+            } else |_| {}
         }
         // No text nodes, position at end of root's children
         return .{ .node = current, .offset = countChildren(current) };
@@ -798,10 +706,10 @@ fn isWordBoundary(c: u8) bool {
 /// Count children of a node
 fn countChildren(node: *runtime.Instance) u32 {
     var count: u32 = 0;
-    var child = NodeImpl.getFirstChild(node);
+    var child = firstChild(node);
     while (child != null) {
         count += 1;
-        child = NodeImpl.getNextSibling(child.?);
+        child = nextSibling(child.?);
     }
     return count;
 }
@@ -812,7 +720,7 @@ fn getNextTextPosition(node: *runtime.Instance) !?PositionResult {
 
     // Try next sibling first
     while (true) {
-        if (NodeImpl.getNextSibling(current)) |sibling| {
+        if (nextSibling(current)) |sibling| {
             // Check if sibling is a text node
             if (isTextNode(sibling)) {
                 return .{ .node = sibling, .offset = 0 };
@@ -824,7 +732,7 @@ fn getNextTextPosition(node: *runtime.Instance) !?PositionResult {
             current = sibling;
         } else {
             // No more siblings, go up to parent
-            if (NodeImpl.getParent(current)) |parent| {
+            if (parentNode(current)) |parent| {
                 current = parent;
             } else {
                 return null; // Reached root
@@ -839,25 +747,23 @@ fn getPreviousTextPosition(node: *runtime.Instance) !?PositionResult {
 
     // Try previous sibling first
     while (true) {
-        if (NodeImpl.getPreviousSibling(current)) |sibling| {
+        if (previousSibling(current)) |sibling| {
             // Check sibling's descendants (rightmost text)
             if (try findLastTextNode(sibling)) |text| {
-                const CharacterDataImpl = @import("CharacterData.zig");
-                if (CharacterDataImpl.getInternalState(text)) |char_internal| {
-                    return .{ .node = text, .offset = char_internal.getLength() };
-                }
+                if (interfaces.CharacterData.get_length(text)) |length| {
+                    return .{ .node = text, .offset = length };
+                } else |_| {}
             }
             // Check if sibling itself is a text node
             if (isTextNode(sibling)) {
-                const CharacterDataImpl = @import("CharacterData.zig");
-                if (CharacterDataImpl.getInternalState(sibling)) |char_internal| {
-                    return .{ .node = sibling, .offset = char_internal.getLength() };
-                }
+                if (interfaces.CharacterData.get_length(sibling)) |length| {
+                    return .{ .node = sibling, .offset = length };
+                } else |_| {}
             }
             current = sibling;
         } else {
             // No more siblings, go up to parent
-            if (NodeImpl.getParent(current)) |parent| {
+            if (parentNode(current)) |parent| {
                 current = parent;
             } else {
                 return null; // Reached root
@@ -872,12 +778,12 @@ fn findFirstTextNode(root: *runtime.Instance) !?*runtime.Instance {
         return root;
     }
 
-    var child = NodeImpl.getFirstChild(root);
+    var child = firstChild(root);
     while (child) |c| {
         if (try findFirstTextNode(c)) |text| {
             return text;
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return null;
 }
@@ -890,10 +796,10 @@ fn findLastTextNode(root: *runtime.Instance) !?*runtime.Instance {
 
     // Start from last child
     var last_child: ?*runtime.Instance = null;
-    var child = NodeImpl.getFirstChild(root);
+    var child = firstChild(root);
     while (child) |c| {
         last_child = c;
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
 
     if (last_child) |lc| {
@@ -907,68 +813,62 @@ fn findLastTextNode(root: *runtime.Instance) !?*runtime.Instance {
 
 /// Check if node is a text-type node
 fn isTextNode(node: *runtime.Instance) bool {
-    const node_type = NodeImpl.getNodeType(node) orelse 0;
-    return node_type == NodeImpl.NodeType.TEXT_NODE or
-        node_type == NodeImpl.NodeType.COMMENT_NODE or
-        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE;
+    const node_type = interfaces.Node.get_nodeType(node) catch 0;
+    return node_type == interfaces.Node.get_TEXT_NODE() or
+        node_type == interfaces.Node.get_COMMENT_NODE() or
+        node_type == interfaces.Node.get_CDATA_SECTION_NODE();
 }
 
 /// Selection API - deleteFromDocument()
 /// Deletes the content of the selection from the document.
 pub fn call_deleteFromDocument(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // If there's no selection or it's collapsed, do nothing
-    if (internal.anchor_node == null or internal.focus_node == null) {
-        return;
-    }
-
-    if (internal.anchor_node == internal.focus_node and
-        internal.anchor_offset == internal.focus_offset)
-    {
-        return; // Collapsed, nothing to delete
-    }
-
-    // Get or create the range
-    const range = if (internal.range) |r| r else try createRangeFromSelection(internal);
-    internal.setRange(instance, range);
-
-    // Delete the range contents (use interface per Golden Rule #13)
-    interfaces.Range.call_deleteContents(range) catch return error.InvalidStateError;
-
-    // Collapse to start after deletion
-    try call_collapseToStart(instance);
+    if (visibleBoundaries(internal) == null) return;
+    // Delete through the associated live Range; preserve its object identity.
+    const before = snapshot(internal);
+    defer if (!std.meta.eql(before, snapshot(internal))) {
+        scheduleSelectionchange(instance) catch {};
+    };
+    try Range.call_deleteContents(internal.range.?);
 }
 
 /// Selection API - containsNode(node, allowPartialContainment)
 /// Returns true if the specified node is part of the selection.
 pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, allowPartialContainment: webidl.Opt(bool)) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const b = boundaries(internal) orelse return false;
+    if (!isInDocument(internal, node) or getRoot(node) != getRoot(b.start_container)) return false;
+    // Browser rule: plain DOM containment overcounts nodes absent from the
+    // flat tree. Chrome/Firefox pass 24/24 in selection-at-nodes-not-part-of-
+    // flattened-tree.html, Safari 13/24 (cc74d2669f). Blink containsNode uses
+    // ComputeVisibleSelectionInDomTree after layout; this is its structural
+    // exclusion only. Line-box/visible-selection checks require host layout.
+    if (!try participatesInFlatTree(internal.allocator, node)) return false;
+    const partial = allowPartialContainment.was_passed and allowPartialContainment.value;
+    const length = try nodeLength(node);
+    return boundary_points.position(DomTree, b.start_container, b.start_offset, node, if (partial) length else 0) != .after and
+        boundary_points.position(DomTree, b.end_container, b.end_offset, node, if (partial) 0 else length) != .before;
+}
 
-    // No selection means no containment
-    if (internal.anchor_node == null or internal.focus_node == null) {
-        return false;
-    }
-
-    // Get or create the range for containment check
-    const range = if (internal.range) |r| r else blk: {
-        const r = try createRangeFromSelection(internal);
-        internal.setRange(instance, r);
-        break :blk r;
-    };
-
-    const allow_partial = if (allowPartialContainment.was_passed) allowPartialContainment.value else false;
-    if (allow_partial) {
-        // Check if node intersects with the selection range (via Range interface per Golden Rule #13)
-        return Range.call_intersectsNode(range, node) catch false;
-    } else {
-        // Check if node is fully contained within the selection range
-        // Node must be an inclusive descendant of commonAncestorContainer
-        // and its boundaries must be within the range
-        // NOTE: containsNode is an internal helper, not a spec method.
-        // TODO: Consider adding containsNode to Range interface or inlining logic here
-        const RangeImpl = @import("Range.zig");
-        return RangeImpl.containsNode(range, node) catch false;
+fn participatesInFlatTree(allocator: std.mem.Allocator, node: *runtime.Instance) !bool {
+    var current = node;
+    while (true) {
+        if (dom.shadow_dom_algorithms.assignedSlotOf(current)) |slot| {
+            current = slot;
+            continue;
+        }
+        if (current.stateAs(interfaces.ShadowRoot.State) != null) {
+            current = interfaces.ShadowRoot.get_host(current) catch return false;
+            continue;
+        }
+        const parent = parentNode(current) orelse return (try interfaces.Node.get_nodeType(current)) == interfaces.Node.get_DOCUMENT_NODE();
+        if (dom.shadow_hosts.rootForHost(parent) != null) return false;
+        if (parent.stateAs(interfaces.HTMLSlotElement.State) != null) {
+            const assigned = try dom.shadow_dom_algorithms.assignedNodes(allocator, parent, false, false);
+            defer allocator.free(assigned);
+            if (assigned.len != 0) return false;
+        }
+        current = parent;
     }
 }
 
@@ -989,64 +889,29 @@ pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, a
 /// 3. Get end node/offset and adjust for shadow boundaries
 /// 4. Return array with a single StaticRange
 pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetComposedRangesOptions)) anyerror!runtime.JSValue {
+    const allowed = if (options.was_passed) options.value.shadowRoots else null;
+    // WebIDL sequence<ShadowRoot> conversion precedes the method's steps.
+    // Local brand checks until the shared binding fix (CE2-M1 point 3).
+    if (allowed) |roots| for (roots) |root| {
+        if (root.stateAs(interfaces.ShadowRoot.State) == null) return error.TypeError;
+    };
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Step 1: If this is empty, return empty array
-    if (internal.anchor_node == null or internal.focus_node == null) {
-        // TODO: Return proper empty V8 Array - need V8 array creation utility
-        return runtime.JSValue.jsUndefined;
-    }
-
-    // Get allowed shadow roots from options
-    const allowed_shadow_roots: ?[]const *runtime.Instance = if (options.was_passed)
-        options.value.shadowRoots
-    else
-        null;
-
-    // Determine start and end based on direction
-    var start_node: *runtime.Instance = undefined;
-    var start_offset: u32 = undefined;
-    var end_node: *runtime.Instance = undefined;
-    var end_offset: u32 = undefined;
-
-    switch (internal.direction) {
-        .backward => {
-            // Focus comes before anchor
-            start_node = internal.focus_node.?;
-            start_offset = internal.focus_offset;
-            end_node = internal.anchor_node.?;
-            end_offset = internal.anchor_offset;
-        },
-        else => {
-            // Anchor comes before focus (or same position)
-            start_node = internal.anchor_node.?;
-            start_offset = internal.anchor_offset;
-            end_node = internal.focus_node.?;
-            end_offset = internal.focus_offset;
-        },
-    }
-
-    // Step 2-3: Adjust start for shadow boundaries
-    // While startNode's root is a shadow root not in the allowed list,
-    // move to the shadow host's parent
-    const adjusted_start = try adjustForShadowBoundary(start_node, start_offset, allowed_shadow_roots, false);
-    const adjusted_end = try adjustForShadowBoundary(end_node, end_offset, allowed_shadow_roots, true);
-
-    // Step 4: Create a StaticRange with the adjusted boundaries
-    // For now, we return a single StaticRange wrapped in an array
-    // TODO: Proper array allocation and StaticRange creation
-    // The StaticRange interface expects:
-    //   - startContainer, startOffset, endContainer, endOffset
-    const static_range = try interfaces.StaticRange.init(internal.allocator, instance.ctx);
-    errdefer interfaces.StaticRange.deinit(static_range);
-
-    // Set the StaticRange boundaries via its implementation
-    const StaticRangeImpl = @import("StaticRange.zig");
-    try StaticRangeImpl.setStart(static_range, adjusted_start.node, adjusted_start.offset);
-    try StaticRangeImpl.setEnd(static_range, adjusted_end.node, adjusted_end.offset);
-
-    // TODO: Return proper V8 Array containing the StaticRange instance
-    // For now return the single instance - V8 layer should wrap in array
-    return runtime.JSValue.fromInstance(static_range);
+    const realm = engine.currentRealm() orelse instance.ctx;
+    // Step 1: an empty Selection returns an empty sequence.
+    const b = boundaries(internal) orelse return (try engine.createSequenceOfPlatformObjects(realm, &.{})).take();
+    // Steps 2-5: rescope each boundary independently through undisclosed roots.
+    const start = try adjustForShadowBoundary(b.start_container, b.start_offset, allowed, false);
+    const end = try adjustForShadowBoundary(b.end_container, b.end_offset, allowed, true);
+    // Step 6: return a new StaticRange in a sequence, using its IDL constructor.
+    const range = try interfaces.StaticRange.call_constructor(realm, .{
+        .startContainer = start.node,
+        .startOffset = start.offset,
+        .endContainer = end.node,
+        .endOffset = end.offset,
+    });
+    const generation = runtime.SlabAllocator.generationOf(range);
+    errdefer range.releaseIfUnwrapped(generation);
+    return (try engine.createSequenceOfPlatformObjects(realm, &.{range})).take();
 }
 
 /// Adjust a boundary point for shadow boundaries
@@ -1057,7 +922,6 @@ fn adjustForShadowBoundary(
     allowed_shadow_roots: ?[]const *runtime.Instance,
     is_end: bool,
 ) !PositionResult {
-    const ShadowRootImpl = @import("ShadowRoot.zig");
     var current_node = node;
     var current_offset = offset;
 
@@ -1067,8 +931,7 @@ fn adjustForShadowBoundary(
         const root = getRoot(current_node);
 
         // Check if root is a shadow root
-        const shadow_internal = ShadowRootImpl.getInternalState(root);
-        if (shadow_internal == null) {
+        if (root.stateAs(interfaces.ShadowRoot.State) == null) {
             // Not a shadow root, we're done
             break;
         }
@@ -1079,10 +942,10 @@ fn adjustForShadowBoundary(
         }
 
         // Get the shadow root's host
-        const host = shadow_internal.?.host orelse break;
+        const host = try interfaces.ShadowRoot.get_host(root);
 
         // Get parent of host
-        const parent = NodeImpl.getParent(host) orelse break;
+        const parent = (try interfaces.Node.get_parentNode(host)) orelse break;
 
         // Calculate index of host in parent
         const host_index = getChildIndex(parent, host);
@@ -1105,7 +968,7 @@ fn adjustForShadowBoundary(
 /// Get the root node of a node
 fn getRoot(node: *runtime.Instance) *runtime.Instance {
     var current = node;
-    while (NodeImpl.getParent(current)) |parent| {
+    while (interfaces.Node.get_parentNode(current) catch null) |parent| {
         current = parent;
     }
     return current;
@@ -1115,10 +978,16 @@ fn getRoot(node: *runtime.Instance) *runtime.Instance {
 fn isShadowRootAllowed(shadow_root: *runtime.Instance, allowed_list: ?[]const *runtime.Instance) bool {
     const list = allowed_list orelse return false;
 
-    // Check if shadow_root matches any in the list
+    // The root may be an ancestor of an explicitly disclosed nested root.
     for (list) |allowed| {
-        if (allowed == shadow_root) {
-            return true;
+        var current = allowed;
+        while (true) {
+            if (current == shadow_root) return true;
+            if (parentNode(current)) |parent| {
+                current = parent;
+            } else if (current.stateAs(interfaces.ShadowRoot.State) != null) {
+                current = interfaces.ShadowRoot.get_host(current) catch break;
+            } else break;
         }
     }
     return false;
@@ -1127,13 +996,13 @@ fn isShadowRootAllowed(shadow_root: *runtime.Instance, allowed_list: ?[]const *r
 /// Get the index of a child in its parent
 fn getChildIndex(parent: *runtime.Instance, child: *runtime.Instance) u32 {
     var index: u32 = 0;
-    var current = NodeImpl.getFirstChild(parent);
+    var current = firstChild(parent);
     while (current) |c| {
         if (c == child) {
             return index;
         }
         index += 1;
-        current = NodeImpl.getNextSibling(c);
+        current = nextSibling(c);
     }
     return index;
 }
@@ -1142,31 +1011,35 @@ fn getChildIndex(parent: *runtime.Instance, child: *runtime.Instance) u32 {
 // Helper functions
 // =============================================================================
 
-/// Create a Range object from the current selection boundaries
-fn createRangeFromSelection(internal: *InternalState) !*runtime.Instance {
-    const anchor = internal.anchor_node orelse return error.InvalidStateError;
-    const focus = internal.focus_node orelse return error.InvalidStateError;
-
-    // Create a new Range (use interface per Golden Rule #13)
-    // Note: We need a context here - get it from anchor node
-    const range = try interfaces.Range.call_constructor(anchor.ctx);
-
-    // Set the range boundaries based on direction
-    switch (internal.direction) {
-        .backward => {
-            // Focus comes before anchor
-            try interfaces.Range.call_setStart(range, focus, internal.focus_offset);
-            try interfaces.Range.call_setEnd(range, anchor, internal.anchor_offset);
-        },
-        else => {
-            // Anchor comes before focus (or same position)
-            try interfaces.Range.call_setStart(range, anchor, internal.anchor_offset);
-            try interfaces.Range.call_setEnd(range, focus, internal.focus_offset);
-        },
-    }
-
+/// Construct and validate both boundaries before publishing a new range.
+fn newRange(instance: *runtime.Instance, start: *runtime.Instance, start_offset: u32, end: *runtime.Instance, end_offset: u32) !*runtime.Instance {
+    const range = try Range.call_constructor(instance.ctx);
+    const generation = runtime.SlabAllocator.generationOf(range);
+    errdefer range.releaseIfUnwrapped(generation);
+    try Range.call_setStart(range, start, start_offset);
+    try Range.call_setEnd(range, end, end_offset);
     return range;
 }
+
+fn isInDocument(internal: *const InternalState, node: *runtime.Instance) bool {
+    const document = associatedDocument(internal) orelse return false;
+    const root = interfaces.Node.call_getRootNode(node, .passed(.{ .composed = true })) catch return false;
+    return root == document;
+}
+
+/// DOM boundary-point tree adapter; all node reads use the generated interface.
+const DomTree = struct {
+    pub const Node = *runtime.Instance;
+    pub fn parent(node: Node) ?Node {
+        return interfaces.Node.get_parentNode(node) catch null;
+    }
+    pub fn index(node: Node) u32 {
+        var result: u32 = 0;
+        var sibling = interfaces.Node.get_previousSibling(node) catch null;
+        while (sibling) |sibling_node| : (sibling = interfaces.Node.get_previousSibling(sibling_node) catch null) result += 1;
+        return result;
+    }
+};
 
 /// Stringifier - serialize method for toString
 /// Spec: https://w3c.github.io/selection-api/#dom-selection-stringifier
@@ -1182,14 +1055,132 @@ fn createRangeFromSelection(internal: *InternalState) !*runtime.Instance {
 /// Allocator.free's memset on the literal's read-only page.
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
-    if (internal.anchor_node == null or internal.focus_node == null) return "";
-    const range = if (internal.range) |r| r else blk: {
-        const r = try createRangeFromSelection(internal);
-        internal.setRange(instance, r);
-        break :blk r;
-    };
+    const range = internal.range orelse return "";
     const text = try Range.serialize(range);
     defer if (text.len > 0) range.ctx.allocator.free(text);
     if (text.len == 0) return "";
     return instance.ctx.allocator.dupe(u8, text);
 }
+
+/// DOM node length through the owning interfaces: CharacterData length,
+/// child count otherwise, and zero for attributes and doctypes.
+/// TODO(CharacterData length: UTF-16 units, see codex-selection Q7): the
+/// shared getter currently counts bytes; keep Selection and Range in the
+/// same units until the DOM-core fix lands.
+fn nodeLength(node: *runtime.Instance) !u32 {
+    return switch (try interfaces.Node.get_nodeType(node)) {
+        2, 10 => 0,
+        3, 4, 7, 8 => try interfaces.CharacterData.get_length(node),
+        else => blk: {
+            var length: u32 = 0;
+            var child = try interfaces.Node.get_firstChild(node);
+            while (child) |current| : (child = try interfaces.Node.get_nextSibling(current)) length += 1;
+            break :blk length;
+        },
+    };
+}
+
+/// DOM set-the-start-or-end steps 1-2, in their exception order.
+fn validateBoundary(node: *runtime.Instance, offset: u32) !void {
+    if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_TYPE_NODE())
+        return error.InvalidNodeTypeError;
+    if (offset > try nodeLength(node)) return error.IndexSizeError;
+}
+
+fn firstChild(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_firstChild(node) catch null;
+}
+fn nextSibling(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_nextSibling(node) catch null;
+}
+fn previousSibling(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_previousSibling(node) catch null;
+}
+fn parentNode(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_parentNode(node) catch null;
+}
+
+/// Boundary identity determines whether a programmatic selection changed.
+/// Browsers suppress notifications for an equal selection even when its Range
+/// object was replaced, a deviation from the spec's blanket "associated
+/// with a new range" trigger: Chrome/Firefox/Safari each pass 5/5 in
+/// selection/document-selectionchange.html at WPT cc74d2669f (run IDs
+/// 6218298311311360, 4877098740350976, 5164107446878208). Blink's
+/// core/editing/dom_selection.cc UpdateFrameSelection returns when the
+/// selection did not change. https://wpt.fyi/results/selection/document-selectionchange.html
+const Snapshot = struct {
+    points: ?dom.range_boundaries.Boundaries,
+    direction: Direction,
+};
+
+fn snapshot(internal: *const InternalState) Snapshot {
+    return .{ .points = boundaries(internal), .direction = internal.direction };
+}
+
+fn scheduleSelectionchange(selection: *runtime.Instance) !void {
+    const internal = getInternal(selection) orelse return;
+    if (internal.selectionchange_scheduled) return; // Scheduling step 1.
+    const document = associatedDocument(internal) orelse return;
+    const loop = document.ctx.getOptionalEventLoop() orelse return;
+    const hold = try engine.retainValue(document.ctx, .{ .instance = document });
+    errdefer hold.release();
+    const task = try internal.allocator.create(SelectionchangeTask);
+    task.* = .{
+        .allocator = internal.allocator,
+        .selection = Link.to(selection),
+        .document = Link.to(document),
+        .document_hold = hold,
+    };
+    // Step 2, before handoff: a closing queue may synchronously drop/free task.
+    internal.selectionchange_scheduled = true;
+    // Step 3: user interaction task source. The existing runtime loop is one
+    // FIFO and cannot distinguish task sources yet (codex-selection Q5).
+    loop.queueTask(.{
+        .callback = &SelectionchangeTask.run,
+        .context = task,
+        .drop = &SelectionchangeTask.drop,
+        .document = document,
+        .document_generation = task.document.generation,
+    });
+    // task may already be destroyed; never access it after queueTask.
+}
+
+const SelectionchangeTask = struct {
+    allocator: std.mem.Allocator,
+    selection: Link,
+    document: Link,
+    document_hold: engine.Owned,
+
+    fn clearFlag(self: *SelectionchangeTask) void {
+        if (self.selection.isLive()) {
+            if (getInternal(self.selection.instance)) |internal| internal.selectionchange_scheduled = false;
+        }
+    }
+
+    fn run(context: ?*anyopaque) void {
+        const self: *SelectionchangeTask = @ptrCast(@alignCast(context orelse return));
+        defer self.destroy();
+        // Firing step 1: clear before dispatch so a listener can queue again.
+        self.clearFlag();
+        if (!self.document.isLive()) return;
+        const document = self.document.instance;
+        // Firing step 3: a trusted, non-bubbling, non-cancelable document event.
+        const event = interfaces.Event.call_constructor(document.ctx, .initInterned("selectionchange"), .notPassed()) catch return;
+        const generation = runtime.SlabAllocator.generationOf(event);
+        defer event.releaseIfUnwrapped(generation);
+        const event_hold = engine.retainValue(document.ctx, .{ .instance = event }) catch return;
+        defer event_hold.release();
+        _ = dom.fire_event.dispatchTrusted(document, event) catch {};
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *SelectionchangeTask = @ptrCast(@alignCast(context orelse return));
+        self.clearFlag();
+        self.destroy();
+    }
+
+    fn destroy(self: *SelectionchangeTask) void {
+        self.document_hold.release();
+        self.allocator.destroy(self);
+    }
+};

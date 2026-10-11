@@ -22,7 +22,7 @@ const allocator = std.heap.page_allocator;
 /// The process-wide pieces a worker realm's platform objects need, unless a
 /// file before this one started them.
 fn startProcess() !void {
-    if (runtime.SlabAllocator.tryGet()) |_| {} else |_| runtime.initializeRuntime(allocator);
+    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(allocator);
     @import("interfaces").process_hooks.startHooksForTest();
     try engine.initializeEngine(.{});
 }

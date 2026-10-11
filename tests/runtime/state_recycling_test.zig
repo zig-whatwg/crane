@@ -40,10 +40,9 @@ const SmallState = struct { a: u64, b: u64 };
 const LargeState = struct { data: [64]u64 };
 
 test "PHASE 6 EXIT: freed state is handed back out instead of growing the arena" {
-    ArenaAllocator.init(std.testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = runtime.ArenaAllocator.init(std.testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const first = try arena.create(SmallState);
     const first_addr = @intFromPtr(first);
@@ -61,10 +60,9 @@ test "a create/discard loop occupies a bounded amount of memory" {
     // The criterion itself, in miniature: 10,000 cycles must not cost 10,000
     // allocations. Before the free list, `bytes_in_use` rose by sizeof(State)
     // every single iteration.
-    ArenaAllocator.init(std.testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = runtime.ArenaAllocator.init(std.testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     var i: usize = 0;
     while (i < 10_000) : (i += 1) {
@@ -80,10 +78,9 @@ test "a create/discard loop occupies a bounded amount of memory" {
 test "free lists do not mix sizes" {
     // Handing a small block back for a large request is a buffer overflow, and it
     // would only show up as corruption far from here.
-    ArenaAllocator.init(std.testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = runtime.ArenaAllocator.init(std.testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const small = try arena.create(SmallState);
     arena.destroy(SmallState, small);
@@ -104,10 +101,9 @@ test "recycled state is zeroed, as a fresh allocation would be" {
     // defaults through an allocator. Recycled memory carries the previous
     // occupant's bytes, so if reuse did not clear them, an optional pointer field
     // would come back non-null and be dereferenced.
-    ArenaAllocator.init(std.testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = runtime.ArenaAllocator.init(std.testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const first = try arena.create(SmallState);
     first.* = .{ .a = 0xDEAD_BEEF, .b = 0xFEED_FACE };
@@ -124,10 +120,9 @@ test "bytes_in_use falls when state is freed, unlike the cumulative counter" {
     // `total_bytes_allocated` is cumulative and cannot answer "how much is held" -
     // it rises identically whether or not anything is freed. The benchmark reads
     // this to report retention, so it has to be the live figure.
-    ArenaAllocator.init(std.testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = runtime.ArenaAllocator.init(std.testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const before = arena.stats().bytes_in_use;
     const s = try arena.create(LargeState);

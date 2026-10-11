@@ -75,13 +75,19 @@ pub fn rootForHost(host: *runtime.Instance) ?*runtime.Instance {
     return step(host);
 }
 
+const test_vtable_methods: u8 = 0;
+const test_vtable: runtime.VTable = .{ .name = "ShadowRoot", .deinit = null, .methods_ptr = &test_vtable_methods };
+
 test "hostDestroyed without an installed implementation does nothing" {
     const saved = implementation;
     defer implementation = saved;
     implementation = null;
-    // Never dereferenced: with no implementation the call does not reach it.
-    var shadow: runtime.Instance = undefined;
-    hostDestroyed(&shadow);
+    // A slab's instance, as every Instance is (its Browser is read from its
+    // address); never a node, so no NodeBase.
+    var scope = runtime.BrowserScope.init(@import("std").testing.allocator);
+    defer scope.deinit();
+    const shadow = try scope.slab.alloc(&test_vtable);
+    hostDestroyed(shadow);
 }
 
 test "hostDestroyed forwards to the installed implementation" {
@@ -96,7 +102,9 @@ test "hostDestroyed forwards to the installed implementation" {
         }
     };
     install(.{ .host_destroyed = &Fake.hostDestroyed });
-    var shadow: runtime.Instance = undefined;
-    hostDestroyed(&shadow);
-    try std.testing.expectEqual(@as(?*runtime.Instance, &shadow), Fake.seen);
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const shadow = try scope.slab.alloc(&test_vtable);
+    hostDestroyed(shadow);
+    try std.testing.expectEqual(@as(?*runtime.Instance, shadow), Fake.seen);
 }
