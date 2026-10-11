@@ -73,6 +73,8 @@ pub const extended_attrs = @import("extended_attrs.zig");
 pub const helpers = @import("helpers.zig");
 pub const wrappers = @import("wrappers.zig");
 pub const overload_resolution = @import("overload_resolution.zig");
+pub const special_operations = @import("special_operations.zig");
+pub const SpecialOperations = special_operations.SpecialOperations;
 pub const legacy_platform_objects = @import("legacy_platform_objects.zig");
 pub const utils = @import("utils/root.zig");
 

@@ -62,6 +62,15 @@ pub const Storage = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .named_getter = .{ .function = "call_getItem" },
+            .named_setter = .{ .function = "call_setItem" },
+            .named_deleter = .{ .function = "call_removeItem" },
+        };
     };
 
     pub const State = runtime.FlattenedState(

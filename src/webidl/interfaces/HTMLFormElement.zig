@@ -253,6 +253,16 @@ pub const HTMLFormElement = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_getter", .implemented = @hasDecl(HTMLFormElementImpl, "call_getter") },
+            .named_getter = .{ .function = "call_getter__1", .implemented = @hasDecl(HTMLFormElementImpl, "call_getter__1") },
+            .legacy_override_built_ins = true,
+            .legacy_unenumerable_named_properties = true,
+        };
     };
 
     /// HTML 3.2.3 [HTMLConstructor]: the constructor's steps are HTML's "HTML
@@ -550,6 +560,22 @@ pub const HTMLFormElement = struct {
         return try HTMLFormElementImpl.get_length(instance);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        if (comptime @hasDecl(HTMLFormElementImpl, "call_getter")) {
+            return try HTMLFormElementImpl.call_getter(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_getter__1(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(HTMLFormElementImpl, "call_getter__1")) {
+            return try HTMLFormElementImpl.call_getter__1(instance, name);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
     /// Extended attributes: [CEReactions]
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -561,21 +587,6 @@ pub const HTMLFormElement = struct {
 
     pub fn call_submit(instance: *runtime.Instance) anyerror!void {
         return try HTMLFormElementImpl.call_submit(instance);
-    }
-
-    /// Arguments for getter (WebIDL overloading)
-    pub const GetterArgs = union(enum) {
-        /// getter(index)
-        unsigned_long: u32,
-        /// getter(name)
-        string: DOMString,
-    };
-
-    pub fn call_getter(instance: *runtime.Instance, args: GetterArgs) anyerror!Element {
-        switch (args) {
-            .unsigned_long => |arg| return try HTMLFormElementImpl.unsigned_long(instance, arg),
-            .string => |arg| return try HTMLFormElementImpl.string(instance, arg),
-        }
     }
 
     pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {

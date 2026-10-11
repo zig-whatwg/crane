@@ -1,6 +1,7 @@
 # Codegen: An anonymous indexed getter is gated like an overload
 
 **Date**: 2026-10-09
+**Status** (2026-10-11): `Meta.indexed_getter_implemented` is gone - every special operation, anonymous or not, is in `Meta.special_operations` (an anonymous one with `.implemented`), and HTMLFormElement's two anonymous getters are separate gated delegates; see [A special operation is found by its metadata, not its name](codegen-a-special-operation-is-found-by-its-metadata-not-its-name.md). The takeaway stands.
 **Lesson**: The binding installed indexed access only for a named `item` getter (`call_item`); an anonymous `getter T (unsigned long index)` (`call_getter`) got none, and it cannot simply be wired, because most impls of such interfaces do not implement it and the binding may not ask the impls.
 
 **Why**: Codegen emitted every anonymous getter's delegate as an unconditional call into the impl. Nothing analysed it, so the 12 impls that lack `call_getter` (AudioTrackList, SourceBufferList, the CSS typed OM lists, HTMLAllCollection, ...) compiled. The moment the binding referenced `Interface.call_getter` for all of them, those 12 would fail to compile, and the impls boundary forbids the adapter from importing "impls" to check.

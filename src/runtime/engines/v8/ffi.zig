@@ -3206,7 +3206,7 @@ pub extern fn v8_Proxy_IsRevoked(proxy: *Object) bool;
 /// taken over.
 pub extern fn v8_Object_SetPrivateRef(holder: *Object, key: [*]const u8, key_len: c_int, value: *Value) void;
 
-pub extern fn v8_CreateLegacyPlatformObjectProxy(context: *Context, target: *Object) ?*Object;
+pub extern fn v8_CreateLegacyPlatformObjectProxy(context: *Context, target: *Object, named_setter: bool) ?*Object;
 
 // ============================================================================
 // CallbackManager API

@@ -1458,6 +1458,89 @@ fn takesIndex(comptime Interface: type, comptime name: []const u8) bool {
     return (params[1].type orelse return false) == u32;
 }
 
+/// What the binding installs for an interface's special operations (WebIDL
+/// 2.5.6, 3.9 legacy platform objects): the generated functions codegen's
+/// `Meta.special_operations` (webidl.SpecialOperations) names - each only
+/// when its impl implements it - and the extended attributes that change its
+/// named properties. Never a function guessed from its name: Storage's
+/// `getter DOMString? getItem(DOMString key)` is `call_getItem`,
+/// SVGNumberList's indexed `getItem(unsigned long)` too, and NamedNodeMap's
+/// regular `setNamedItem(Attr)` is no setter at all.
+pub const SpecialBinding = struct {
+    indexed_getter: ?[]const u8 = null,
+    indexed_setter: ?[]const u8 = null,
+    named_getter: ?[]const u8 = null,
+    named_setter: ?[]const u8 = null,
+    named_deleter: ?[]const u8 = null,
+    legacy_override_built_ins: bool = false,
+    legacy_unenumerable_named_properties: bool = false,
+    /// The named getter and setter stand in for CSSOM's camel-cased
+    /// attributes (webidl.SpecialOperations.crane_css_properties).
+    crane_css_properties: bool = false,
+};
+
+const SpecialShape = enum { index, index_value, name, name_value };
+
+/// The function `op` (a ?webidl.special_operations.Operation) names, when
+/// the impl implements it; a compile error when the generated interface
+/// does not declare it with `shape`'s parameters - the codegen's contract.
+fn boundSpecialOperation(comptime Interface: type, comptime op: anytype, comptime shape: SpecialShape) ?[]const u8 {
+    const o = op orelse return null;
+    if (!o.implemented) return null;
+    if (!@hasDecl(Interface, o.function))
+        @compileError(@typeName(Interface) ++ ": Meta.special_operations names " ++ o.function ++ ", which the generated interface does not declare");
+    const params = @typeInfo(@TypeOf(@field(Interface, o.function))).@"fn".params;
+    const key: type = switch (shape) {
+        .index, .index_value => u32,
+        .name, .name_value => runtime.DOMString,
+    };
+    const arity: usize = switch (shape) {
+        .index, .name => 2,
+        .index_value, .name_value => 3,
+    };
+    if (params.len != arity or params[0].type != *runtime.Instance or params[1].type != key)
+        @compileError(@typeName(Interface) ++ "." ++ o.function ++ " is not a special operation of the shape Meta.special_operations says");
+    return o.function;
+}
+
+/// `Interface`'s special operations as the binding installs them. A [Global]
+/// interface's named properties are its named properties object's (WebIDL
+/// 3.7.4, HTML's WindowProperties), not the global object's own, so it has
+/// none here. A named getter comes with the generated
+/// `getSupportedPropertyNames`, its supported property names (2.5.6.2).
+pub fn specialBinding(comptime Interface: type) SpecialBinding {
+    comptime {
+        const Meta = Interface.Meta;
+        if (!@hasDecl(Meta, "special_operations")) return .{};
+        const ops = Meta.special_operations;
+        var binding: SpecialBinding = .{};
+        binding.indexed_getter = boundSpecialOperation(Interface, ops.indexed_getter, .index);
+        if (binding.indexed_getter != null) binding.indexed_setter = boundSpecialOperation(Interface, ops.indexed_setter, .index_value);
+        if (!isGlobalInterface(Meta)) {
+            binding.named_getter = boundSpecialOperation(Interface, ops.named_getter, .name);
+            if (binding.named_getter != null) {
+                if (!@hasDecl(Interface, "getSupportedPropertyNames"))
+                    @compileError(@typeName(Interface) ++ " has a named getter and no getSupportedPropertyNames");
+                binding.named_setter = boundSpecialOperation(Interface, ops.named_setter, .name_value);
+                binding.named_deleter = boundSpecialOperation(Interface, ops.named_deleter, .name);
+                binding.legacy_override_built_ins = ops.legacy_override_built_ins;
+                binding.legacy_unenumerable_named_properties = ops.legacy_unenumerable_named_properties;
+                binding.crane_css_properties = ops.crane_css_properties;
+            }
+        }
+        return binding;
+    }
+}
+
+/// Whether `Meta`'s interface is declared [Global] (WebIDL 3.4.8).
+fn isGlobalInterface(comptime Meta: type) bool {
+    if (!@hasDecl(Meta, "extended_attributes")) return false;
+    for (Meta.extended_attributes) |attr| {
+        if (@hasField(@TypeOf(attr), "name") and std.mem.eql(u8, attr.name, "Global")) return true;
+    }
+    return false;
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -1476,24 +1559,25 @@ pub fn V8Interface(comptime Interface: type) type {
     const Meta = Interface.Meta;
     const interface_name = Meta.name;
 
-    // WebIDL 2.5.6.1: the indexed property getter - a named one, `getter T?
-    // item(unsigned long index)` (codegen's `call_item`), or an anonymous
-    // one, `getter T (unsigned long index)` (`call_getter`). Codegen gates an
-    // anonymous one: its delegate answers NotImplemented until the impl
-    // declares it, and Meta.indexed_getter_implemented says whether it has
-    // (DataTransferItemList, TextTrackList yes; AudioTrackList and most
-    // others not yet). Indexed access is installed only through a getter the
-    // impl implements - the default, with no constant, is not to install it.
-    const indexed_getter_name: ?[]const u8 = comptime blk: {
-        if (takesIndex(Interface, "call_item")) break :blk "call_item";
-        if (@hasDecl(Meta, "indexed_getter_implemented") and Meta.indexed_getter_implemented and takesIndex(Interface, "call_getter")) break :blk "call_getter";
-        break :blk null;
-    };
+    // WebIDL 2.5.6: the special operations, from codegen's table
+    // (specialBinding). The indexed getter is `call_item` for `getter T?
+    // item(unsigned long index)`, `call_getItem` for SVGNumberList's, and an
+    // anonymous one's `call_getter` - installed only once its impl implements
+    // it (DataTransferItemList, TextTrackList yes; AudioTrackList and most
+    // others not yet).
+    const special = comptime specialBinding(Interface);
+    const indexed_getter_name: ?[]const u8 = special.indexed_getter;
     const has_indexed_getter = indexed_getter_name != null;
-    // An anonymous getter is the impl's for a supported property index only
-    // (an impl answers IndexSizeError past the end, where an `item` answers
-    // null): its supported indices are those below `length`.
-    const indexed_getter_checks_length = comptime has_indexed_getter and std.mem.eql(u8, indexed_getter_name.?, "call_getter") and @hasDecl(Interface, "get_length");
+    // A getter that answers null past the end (`item`) says itself which
+    // indices are supported; one that answers a value or throws (an
+    // anonymous getter: IndexSizeError; SVGNumberList's getItem;
+    // CSSStyleDeclaration's item, "" past the end) is asked only for a
+    // supported property index - those below `length` (3.9.1 step 1.2).
+    const indexed_getter_checks_length = comptime has_indexed_getter and @hasDecl(Interface, "get_length") and
+        @typeInfo(@typeInfo(@typeInfo(@TypeOf(@field(Interface, indexed_getter_name.?))).@"fn".return_type.?).error_union.payload) != .optional;
+    const has_indexed_setter = comptime special.indexed_setter != null;
+    const has_named_getter = comptime special.named_getter != null;
+    const has_named_setter = comptime special.named_setter != null;
 
     // WebIDL 2.5.9: one type parameter is a value iterator, two a pair
     // iterator. Codegen's Meta.iterable carries a null key type for the first.
@@ -1536,15 +1620,7 @@ pub fn V8Interface(comptime Interface: type) type {
     // HostHooks.htmlConstructor (its generated `html_constructor`).
     const is_html_constructor = comptime @hasDecl(Interface, "html_constructor") and Interface.html_constructor;
 
-    const is_global_interface = comptime blk: {
-        if (!@hasDecl(Meta, "extended_attributes")) break :blk false;
-        for (Meta.extended_attributes) |attr| {
-            if (@hasField(@TypeOf(attr), "name") and std.mem.eql(u8, attr.name, "Global")) {
-                break :blk true;
-            }
-        }
-        break :blk false;
-    };
+    const is_global_interface = comptime isGlobalInterface(Meta);
 
     return struct {
         const Self = @This();
@@ -1749,21 +1825,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Register named property callbacks if interface has named getter
             // This matches the condition in createTemplate() for named property handler registration
             ext_refs.setRegistrationContext(interface_name, .interface_named_property);
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
-            const is_global_object = comptime std.mem.eql(u8, interface_name, "Window") or
-                std.mem.eql(u8, interface_name, "WorkerGlobalScope");
-            const has_named_enumerator = comptime @hasDecl(Interface, "getSupportedPropertyNames");
-
-            if (has_named_getter and !is_global_object and has_named_enumerator) {
+            if (has_named_getter) {
                 ext_refs.registerPointer(@intFromPtr(&namedPropertyGetter));
                 ext_refs.registerPointer(@intFromPtr(&namedPropertySetter));
                 ext_refs.registerPointer(@intFromPtr(&namedPropertySetterReadOnly));
@@ -2694,14 +2756,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // - iterable only: supports for...of but not obj[0]
             // - both: supports both features
             //
-            // Only register if call_item takes u32 index (not Opt(DOMString) like HTMLAllCollection)
-            // call_item or an implemented anonymous call_getter, taking a u32
-            // index (`indexed_getter_name`).
+            // The indexed getter Meta.special_operations names (specialBinding).
             const has_indexed_item = has_indexed_getter;
             // Check if interface has get_length for enumerator support
             const has_length = comptime @hasDecl(Interface, "get_length");
-            // Check if interface has indexed setter (set_item or call_setter)
-            const has_indexed_setter = comptime @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
             if (has_indexed_item) {
                 if (has_length) {
                     // Use full indexed property handler with query and descriptor callbacks
@@ -2750,70 +2808,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_ObjectTemplate_SetValueIteratorToArrayMethods(proto_tmpl);
             }
 
-            // Register named property handler if interface has named getter operations
-            // This enables named property access: obj.name, obj["name"]
-            // WebIDL interfaces with "getter" operations on DOMString support named property access
-            // Examples: NamedNodeMap, DOMStringMap, HTMLCollection (with named item getter)
-            //
-            // Named getter method names vary by IDL definition:
-            // - call_getNamedItem: NamedNodeMap (getter Attr? getNamedItem(DOMString name))
-            // - call_namedItem: HTMLCollection (getter Element? namedItem(DOMString name))
-            // - call_getter: DOMStringMap (getter DOMString (DOMString name)) - anonymous getter
-            //   NOTE: call_getter is ALSO used for indexed getters (taking u32), so we must
-            //   check the parameter type to distinguish named vs indexed getters
-            //
-            // IMPORTANT: Don't enable named property handler for global objects (Window)
-            // because it interferes with global property setting
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                // Check if second param is DOMString (which is runtime.DOMString)
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
-            const is_global_object = comptime std.mem.eql(u8, interface_name, "Window") or
-                std.mem.eql(u8, interface_name, "WorkerGlobalScope");
-
-            // Named property handler for legacy platform objects
-            // Enables named property access (obj.name, obj["name"]) and enumeration
-            // Only enable for interfaces with:
-            // 1. Named getter (call_getNamedItem or call_namedItem)
-            // 2. getSupportedPropertyNames delegate for enumeration
-            // 3. Not a global object (Window/WorkerGlobalScope)
-            const has_named_enumerator = comptime @hasDecl(Interface, "getSupportedPropertyNames");
-            if (has_named_getter and !is_global_object and has_named_enumerator) {
-                // Check if interface has named setter
-                // Named setter method names vary by IDL definition:
-                // - call_setNamedItem: NamedNodeMap (setter void setNamedItem(Attr attr))
-                // - set_namedItem: HTMLCollection-style setter
-                // - call_setter: DOMStringMap (setter void (DOMString name, DOMString value)) - anonymous setter
-                //   NOTE: call_setter could be for indexed setters too, so check param type
-                const has_call_setter_with_domstring = comptime blk: {
-                    if (!@hasDecl(Interface, "call_setter")) break :blk false;
-                    const fn_info = @typeInfo(@TypeOf(Interface.call_setter)).@"fn";
-                    if (fn_info.params.len < 2) break :blk false;
-                    const second_param_type = fn_info.params[1].type orelse break :blk false;
-                    break :blk second_param_type == runtime.DOMString;
-                };
-                const has_named_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
-                    @hasDecl(Interface, "set_namedItem") or
-                    has_call_setter_with_domstring;
-
-                // Check for [LegacyOverrideBuiltIns] extended attribute
-                // Per WebIDL §3.9.1, this allows named properties to shadow built-ins on the prototype chain
-                const has_legacy_override_builtins = comptime blk: {
-                    if (!@hasDecl(Meta, "extended_attributes")) break :blk false;
-                    for (Meta.extended_attributes) |attr| {
-                        if (@hasField(@TypeOf(attr), "name") and std.mem.eql(u8, attr.name, "LegacyOverrideBuiltIns")) {
-                            break :blk true;
-                        }
-                    }
-                    break :blk false;
-                };
+            // WebIDL 3.9: the named property handler of a legacy platform
+            // object with a named getter (Meta.special_operations, through
+            // specialBinding: never for a [Global] interface, whose named
+            // properties are its named properties object's). Its names come
+            // from the generated getSupportedPropertyNames.
+            if (has_named_getter) {
+                // [LegacyOverrideBuiltIns] (3.4.7) on the interface or an
+                // ancestor: named properties shadow the prototype chain, so
+                // the interceptor masks.
+                const has_legacy_override_builtins = special.legacy_override_built_ins;
 
                 // CSSStyleDeclaration needs masking mode because CSS properties like "display"
                 // may exist on a parent prototype (CSS2Properties), but we need the named
@@ -5938,9 +5942,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Property exists - return attributes
             // Indexed properties are: enumerable, configurable, NOT writable (read-only) for most collections
-            // Check if interface has an indexed setter
-            const has_setter = comptime @hasDecl(Interface, "call_setter") or @hasDecl(Interface, "set_item");
-            const attributes: i32 = if (has_setter) 0 else 1; // 1 = ReadOnly
+            // 3.9.1 step 1.2.7: writable when there is an indexed setter.
+            const attributes: i32 = if (has_indexed_setter) 0 else 1; // 1 = ReadOnly
             // A Smi in the return slot: no handle to make or release. Every
             // `i in list` and every element Array.prototype.indexOf visits
             // (HasProperty, then Get) asks this.
@@ -6043,13 +6046,8 @@ pub fn V8Interface(comptime Interface: type) type {
             if (v8_value == null) return .kNo;
             defer if (value_owned) v8.v8_Global_Dispose(v8_value.?);
 
-            // Check if interface has an indexed setter (makes it writable)
-            // Use same logic as indexedPropertyDefiner - prefer Meta.has_indexed_setter from codegen
-            const has_setter = comptime blk: {
-                if (@hasDecl(Meta, "has_indexed_setter")) break :blk Meta.has_indexed_setter;
-                break :blk @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
-            };
-            const writable = has_setter;
+            // 3.9.1 step 1.2.7: writable when there is an indexed setter.
+            const writable = has_indexed_setter;
 
             // { value: v8_value, writable, enumerable: true, configurable: true },
             // made in one call (as the named descriptor's is).
@@ -6136,7 +6134,7 @@ pub fn V8Interface(comptime Interface: type) type {
             return .kYes;
         }
 
-        /// Indexed property setter for writable collections (has set_item or call_setter)
+        /// Indexed property setter for a collection with an indexed setter
         /// Actually sets the value at the given index
         fn indexedPropertySetter(
             index: u32,
@@ -6144,8 +6142,7 @@ pub fn V8Interface(comptime Interface: type) type {
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
             // Only compile if Interface has indexed setter
-            const has_setter = comptime @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
-            if (comptime !has_setter) {
+            if (comptime !has_indexed_setter) {
                 return .kNo;
             }
 
@@ -6173,12 +6170,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
-            // Get the setter function at comptime
-            const setter_fn = comptime if (@hasDecl(Interface, "set_item"))
-                Interface.set_item
-            else
-                Interface.call_setter;
-            const setter_name = comptime if (@hasDecl(Interface, "set_item")) "set_item" else "call_setter";
+            // The indexed setter Meta.special_operations names.
+            const setter_name = comptime special.indexed_setter.?;
+            const setter_fn = @field(Interface, setter_name);
 
             // Get the value type from the setter function signature
             const SetterFnType = @TypeOf(setter_fn);
@@ -6240,14 +6234,6 @@ pub fn V8Interface(comptime Interface: type) type {
             // and taken here at entry it was never released - every
             // Object.defineProperty on an indexed collection pinned the realm.
 
-            // Check for indexed setter via Meta (from codegen) or fallback to method detection
-            const has_indexed_setter = comptime blk: {
-                // Prefer Meta.has_indexed_setter from codegen (authoritative for IDL-defined setters)
-                if (@hasDecl(Meta, "has_indexed_setter")) break :blk Meta.has_indexed_setter;
-                // Fallback: check if impl has set_item (for interfaces with impl-defined setters)
-                break :blk @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
-            };
-
             // WebIDL §3.9.3 step 1: Interface supports indexed properties
             // This callback is only registered for interfaces with indexed property support,
             // so we know we're handling an indexed property access.
@@ -6292,39 +6278,22 @@ pub fn V8Interface(comptime Interface: type) type {
                     // keeps this handle (a value it keeps, it keeps through
                     // its own).
                     defer v8.v8_Global_Dispose(value);
-                    // Call the setter (set_item or call_setter)
-                    if (@hasDecl(Interface, "set_item")) {
-                        // Get value type from set_item signature
-                        const it_val_type = comptime blk: {
-                            const info_si = @typeInfo(@TypeOf(Interface.set_item)).@"fn";
-                            break :blk info_si.params[2].type.?;
-                        };
+                    // Step 1.3: invoke the indexed setter with P and
+                    // Desc.[[Value]] (the setter Meta.special_operations
+                    // names; this definer is installed only with one).
+                    if (comptime has_indexed_setter) {
+                        const setter_name = comptime special.indexed_setter.?;
+                        const setter_fn = @field(Interface, setter_name);
+                        const value_type = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".params[2].type.?;
                         // Released unless converting the value can keep it
                         // (typeRetainsContext).
                         const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
-                        defer if (comptime !typeRetainsContext(it_val_type)) v8.v8_Context_Dispose(v8_context);
-                        const zig_value = conv.fromV8Value(it_val_type, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
+                        defer if (comptime !typeRetainsContext(value_type)) v8.v8_Context_Dispose(v8_context);
+                        const zig_value = conv.fromV8Value(value_type, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
                             conv.throwTypeError(isolate, @errorName(err));
                             return .kYes;
                         };
-                        callInCatchScopeIfListed(Interface, "set_item", isolate, Interface.set_item, .{ instance, index, zig_value }) catch |err| {
-                            conv.throwTypeError(isolate, @errorName(err));
-                        };
-                    } else if (@hasDecl(Interface, "call_setter")) {
-                        // Get value type from call_setter signature
-                        const cs_val_type = comptime blk: {
-                            const info_cs = @typeInfo(@TypeOf(Interface.call_setter)).@"fn";
-                            break :blk info_cs.params[2].type.?;
-                        };
-                        // Released unless converting the value can keep it
-                        // (typeRetainsContext).
-                        const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
-                        defer if (comptime !typeRetainsContext(cs_val_type)) v8.v8_Context_Dispose(v8_context);
-                        const zig_value = conv.fromV8Value(cs_val_type, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
-                            conv.throwTypeError(isolate, @errorName(err));
-                            return .kYes;
-                        };
-                        callInCatchScopeIfListed(Interface, "call_setter", isolate, Interface.call_setter, .{ instance, index, zig_value }) catch |err| {
+                        callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, index, zig_value }) catch |err| {
                             conv.throwTypeError(isolate, @errorName(err));
                         };
                     }
@@ -6347,14 +6316,6 @@ pub fn V8Interface(comptime Interface: type) type {
             info: *const v8.PropertyCallbackInfoVoid,
         ) callconv(.c) v8.Intercepted {
             const isolate = info.getIsolate();
-            // Check for named setter via Meta (from codegen) or fallback to method detection
-            const has_named_setter = comptime blk: {
-                // Prefer Meta.has_named_setter from codegen (authoritative for IDL-defined setters)
-                if (@hasDecl(Meta, "has_named_setter")) break :blk Meta.has_named_setter;
-                // Fallback: check if impl has named setter methods
-                break :blk @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem");
-            };
-
             // Verify property is a string (not a Symbol)
             if (!v8.v8_Name_IsString(property)) {
                 return .kNo;
@@ -6381,31 +6342,15 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// Named property getter for legacy platform objects (obj.name, obj["name"])
-        /// Called when JavaScript accesses a named property on objects with WebIDL "getter" operations.
-        /// For example:
-        /// - NamedNodeMap has "getter Attr? getNamedItem(DOMString name)" -> call_getNamedItem
-        /// - HTMLCollection has "getter Element? namedItem(DOMString name)" -> call_namedItem
-        /// - DOMStringMap has "getter DOMString (DOMString name)" -> call_getter (anonymous)
+        /// Called when JavaScript accesses a named property on objects with WebIDL "getter" operations,
+        /// through the function Meta.special_operations names: NamedNodeMap's
+        /// `getter Attr? getNamedItem(DOMString)` is call_getNamedItem, Storage's
+        /// `getter DOMString? getItem(DOMString)` call_getItem, DOMStringMap's
+        /// anonymous `getter DOMString (DOMString)` call_getter.
         fn namedPropertyGetter(
             property: *v8.Name,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
-            // Only compile if Interface has named item getter
-            // Named getter method names vary by IDL definition:
-            // - call_getNamedItem: NamedNodeMap (getter Attr? getNamedItem(DOMString name))
-            // - call_namedItem: HTMLCollection (getter Element? namedItem(DOMString name))
-            // - call_getter: DOMStringMap (getter DOMString (DOMString name)) - anonymous getter
-            //   NOTE: call_getter is also used for indexed getters (u32), so check param type
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
             if (comptime !has_named_getter) {
                 return .kNo;
             }
@@ -6460,12 +6405,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Select the appropriate getter function based on what the interface declares
-            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
-                Interface.call_getNamedItem
-            else if (@hasDecl(Interface, "call_namedItem"))
-                Interface.call_namedItem
-            else
-                Interface.call_getter;
+            const getter_fn = @field(Interface, special.named_getter.?);
 
             const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
@@ -6562,21 +6502,6 @@ pub fn V8Interface(comptime Interface: type) type {
         fn namedPropertyEnumerator(
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) void {
-            // Only compile if Interface has named getter
-            // Named getter method names vary by IDL definition:
-            // - call_getNamedItem: NamedNodeMap
-            // - call_namedItem: HTMLCollection
-            // - call_getter: DOMStringMap (anonymous getter with DOMString param)
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
             if (comptime !has_named_getter) {
                 return;
             }
@@ -6779,17 +6704,6 @@ pub fn V8Interface(comptime Interface: type) type {
             property: *v8.Name,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
-            // Named getter method names vary by IDL definition
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
             if (comptime !has_named_getter) {
                 return .kNo;
             }
@@ -6848,12 +6762,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Call the named item getter to check if property exists
-            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
-                Interface.call_getNamedItem
-            else if (@hasDecl(Interface, "call_namedItem"))
-                Interface.call_namedItem
-            else
-                Interface.call_getter;
+            const getter_fn = @field(Interface, special.named_getter.?);
 
             const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
@@ -6888,8 +6797,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     var attr_value: c_int = if (has_unenumerable_attr) v8.PropertyAttribute.DontEnum else 0;
 
                     // Also check for named setter presence to set ReadOnly flag
-                    const has_setter = comptime @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem") or @hasDecl(Interface, "call_setter");
-                    if (!has_setter) attr_value |= v8.PropertyAttribute.ReadOnly;
+                    if (!has_named_setter) attr_value |= v8.PropertyAttribute.ReadOnly;
 
                     const v8_attr = v8.v8_Integer_New(isolate, attr_value);
                     info.setReturnValue(@ptrCast(v8_attr));
@@ -6909,15 +6817,8 @@ pub fn V8Interface(comptime Interface: type) type {
             value: ?*v8.Value,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
-            // Only compile if Interface has named setter
-            // Named setter method names vary by IDL definition:
-            // - call_setNamedItem: NamedNodeMap
-            // - set_namedItem: some collections
-            // - call_setter: DOMStringMap (anonymous setter)
-            const has_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
-                @hasDecl(Interface, "set_namedItem") or
-                @hasDecl(Interface, "call_setter");
-            if (comptime !has_setter) {
+            // Only compiled with a named setter (Meta.special_operations).
+            if (comptime !has_named_setter) {
                 return .kNo;
             }
 
@@ -6985,20 +6886,9 @@ pub fn V8Interface(comptime Interface: type) type {
             // Create a DOMString from the property name
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
-            // Get the setter function at comptime
-            // Named setter method names vary by IDL definition
-            const setter_fn = comptime if (@hasDecl(Interface, "call_setNamedItem"))
-                Interface.call_setNamedItem
-            else if (@hasDecl(Interface, "set_namedItem"))
-                Interface.set_namedItem
-            else
-                Interface.call_setter;
-            const setter_name = comptime if (@hasDecl(Interface, "call_setNamedItem"))
-                "call_setNamedItem"
-            else if (@hasDecl(Interface, "set_namedItem"))
-                "set_namedItem"
-            else
-                "call_setter";
+            // The named setter Meta.special_operations names.
+            const setter_name = comptime special.named_setter.?;
+            const setter_fn = @field(Interface, setter_name);
 
             // Get the value type from the setter function signature
             const SetterFnType = @TypeOf(setter_fn);
@@ -7055,16 +6945,6 @@ pub fn V8Interface(comptime Interface: type) type {
             _: *v8.Value, // value - ignored since we don't actually set
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
             if (comptime !has_named_getter) {
                 return .kNo; // Don't intercept - allow fallthrough
             }
@@ -7116,12 +6996,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Check if this is a supported property name by calling the getter
-            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
-                Interface.call_getNamedItem
-            else if (@hasDecl(Interface, "call_namedItem"))
-                Interface.call_namedItem
-            else
-                Interface.call_getter;
+            const getter_fn = @field(Interface, special.named_getter.?);
 
             const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
@@ -7157,17 +7032,6 @@ pub fn V8Interface(comptime Interface: type) type {
             property: *v8.Name,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
-            // Named getter method names vary by IDL definition
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
             if (comptime !has_named_getter) {
                 return .kNo;
             }
@@ -7231,12 +7095,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Call the named item getter
-            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
-                Interface.call_getNamedItem
-            else if (@hasDecl(Interface, "call_namedItem"))
-                Interface.call_namedItem
-            else
-                Interface.call_getter;
+            const getter_fn = @field(Interface, special.named_getter.?);
 
             const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
@@ -7297,11 +7156,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const enumerable = has_enumerable_attr;
 
-            // Check if interface has a named setter (makes it writable)
-            const has_named_setter = comptime blk: {
-                if (@hasDecl(Meta, "has_named_setter")) break :blk Meta.has_named_setter;
-                break :blk @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem") or @hasDecl(Interface, "call_setter");
-            };
+            // 3.9.1 step 2.1.7: writable when there is a named setter.
             const writable = has_named_setter;
 
             // Create property descriptor object

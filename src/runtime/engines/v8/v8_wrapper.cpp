@@ -11266,15 +11266,6 @@ bool IsArrayIndexKey(Isolate* isolate, Local<Value> key) {
     return n < 0xFFFFFFFFull;
 }
 
-// Whether the platform object `target` implements an interface with a named
-// property setter. Of the interfaces template_registry.zig wraps in this proxy
-// (legacy_platform_objects), only Storage declares one in its IDL
-// (DOMStringMap has one too, but is not proxied).
-bool HasNamedPropertySetter(Isolate* isolate, Local<Object> target) {
-    String::Utf8Value name(isolate, target->GetConstructorName());
-    return name.length() > 0 && std::strcmp(*name, "Storage") == 0;
-}
-
 // The Proxy "set" trap: WebIDL 3.9.3 legacy platform object [[Set]](P, V,
 // Receiver). The trap receives (target, P, V, Receiver); O is the target, and
 // "O and Receiver are the same object" means Receiver is this proxy.
@@ -11313,8 +11304,12 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
     // indexed setter: without one, the indexed interceptors answer as
     // [[DefineOwnProperty]] requires (WebIDL 3.9.3 [[DefineOwnProperty]] step
     // 1), which is what steps 2-3 would reach for a supported index.
+    // Whether O implements an interface with a named property setter: the
+    // trap's data, set when the proxy is made from the interface's
+    // Meta.special_operations (template_registry.hasNamedPropertySetter).
+    const bool has_named_setter = info.Data()->IsTrue();
     const bool via_own_setters = receiver_is_o &&
-        (is_index || (property->IsString() && HasNamedPropertySetter(isolate, target)));
+        (is_index || (property->IsString() && has_named_setter));
 
     if (!via_own_setters && property->IsName()) {
         // Step 2: "Let ownDesc be LegacyPlatformObjectGetOwnProperty(O, P,
@@ -11433,8 +11428,10 @@ extern "C" {
 ///
 /// @param context - The V8 context
 /// @param target - The legacy platform object to wrap
+/// @param named_setter - Its interface has a named property setter (WebIDL
+///   3.9.2 [[Set]] step 1.2), from its Meta.special_operations
 /// @return Global handle to the Proxy, or nullptr on failure
-Global<Object>* v8_CreateLegacyPlatformObjectProxy(Global<Context>* context, Global<Object>* target) {
+Global<Object>* v8_CreateLegacyPlatformObjectProxy(Global<Context>* context, Global<Object>* target, bool named_setter) {
     if (!context || !target) return nullptr;
 
     Isolate* isolate = Isolate::GetCurrent();
@@ -11461,8 +11458,8 @@ Global<Object>* v8_CreateLegacyPlatformObjectProxy(Global<Context>* context, Glo
     // data property whatever Object.prototype holds - a [[Set]] would have run
     // an accessor script installed there. GetFunction (PREPARE_FOR_EXECUTION,
     // api.cc:7503), Object::New and Proxy::New (api.cc:8866) fire nothing.
-    auto set_trap = [&](const char* name, FunctionCallback callback) {
-        Local<FunctionTemplate> tmpl = FunctionTemplate::New(isolate, callback);
+    auto set_trap = [&](const char* name, FunctionCallback callback, Local<Value> data = Local<Value>()) {
+        Local<FunctionTemplate> tmpl = FunctionTemplate::New(isolate, callback, data);
         Local<Function> fn = tmpl->GetFunction(ctx).ToLocalChecked();
         handler->CreateDataProperty(ctx, String::NewFromUtf8(isolate, name).ToLocalChecked(), fn).Check();
     };
@@ -11477,7 +11474,7 @@ Global<Object>* v8_CreateLegacyPlatformObjectProxy(Global<Context>* context, Glo
     // every path that unwraps a receiver's internal fields
     // (GetAlignedPointerFromInternalField, InternalFieldCount, both variants)
     // looks through a proxy to its target.
-    set_trap("set", TrapSet);
+    set_trap("set", TrapSet, Boolean::New(isolate, named_setter));
     set_trap("has", TrapHas);
     set_trap("deleteProperty", TrapDeleteProperty);
     set_trap("ownKeys", LegacyPlatformObjectOwnKeys);

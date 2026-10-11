@@ -38,6 +38,8 @@ const wrapper_type_info = @import("wrapper_type_info.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const instance_bridge = @import("dom").instance_bridge;
 const ownership = @import("isolate_ownership.zig");
+const interfaces = @import("interfaces");
+const specialBinding = @import("interface.zig").specialBinding;
 
 const log = std.log.scoped(.template_registry);
 
@@ -487,7 +489,7 @@ pub fn wrapInstanceAsV8Object(
     // [[OwnPropertyKeys]] enumeration order per WebIDL §3.9.6.
     const final_object = if (isLegacyPlatformObject(interface_name)) blk: {
         const lpo_proxy = @import("legacy_platform_object_proxy.zig");
-        const proxy = lpo_proxy.wrapInProxy(v8_object, isolate, context);
+        const proxy = lpo_proxy.wrapInProxy(v8_object, isolate, context, hasNamedPropertySetter(interface_name));
         // The proxy holds its target, and nothing below uses the target's own
         // handle - kept, it was one leaked Global per legacy platform object
         // (every HTMLCollection, NodeList, ...), each pinning its page.
@@ -642,21 +644,21 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 /// HTMLTableSectionElement ("has rows collection" - but `rows` is an
 /// attribute), Selection and MimeType have neither kind of getter, and
 /// wrapping them only cost them the proxy's semantics.
-const legacy_platform_objects = [_][]const u8{
-    "HTMLCollection",
-    "HTMLFormControlsCollection",
-    "HTMLOptionsCollection",
-    "NamedNodeMap",
-    "Storage",
-    "Plugin",
-    "PluginArray",
-    "MimeTypeArray",
+const legacy_platform_objects = .{
+    interfaces.HTMLCollection,
+    interfaces.HTMLFormControlsCollection,
+    interfaces.HTMLOptionsCollection,
+    interfaces.NamedNodeMap,
+    interfaces.Storage,
+    interfaces.Plugin,
+    interfaces.PluginArray,
+    interfaces.MimeTypeArray,
     // Named properties of Crane's binding, not of the IDL. Unwrapped, V8 runs
     // its named setter interceptor before a prototype accessor, so
     // `style.cssText = ...` set an unknown property "css-text" instead
     // (content-security-policy/style-src/style-src-inline-style-with-csstext
     // .html); the proxy's set trap finds the accessor first.
-    "CSSStyleDeclaration",
+    interfaces.CSSStyleDeclaration,
     // NOTE: Window is NOT included here because it's the global object
     // and wrapping it in a Proxy breaks method invocation semantics.
     // Window's OwnPropertyKeys order needs special handling in V8 C++.
@@ -665,9 +667,23 @@ const legacy_platform_objects = [_][]const u8{
 /// Whether an interface's wrapper is a Proxy: a legacy platform object with
 /// named properties (see legacy_platform_objects).
 pub fn isLegacyPlatformObject(interface_name: []const u8) bool {
-    for (legacy_platform_objects) |lpo_name| {
-        if (std.mem.eql(u8, interface_name, lpo_name)) {
-            return true;
+    inline for (legacy_platform_objects) |Interface| {
+        if (std.mem.eql(u8, interface_name, Interface.Meta.name)) return true;
+    }
+    return false;
+}
+
+/// Whether a proxied legacy platform object's interface has a named property
+/// setter (WebIDL 3.9.2 [[Set]] step 1.2: then every String P assigned on
+/// the object itself goes to it) - from its Meta.special_operations, as the
+/// binding installs it, never from its name. Not CSSStyleDeclaration's:
+/// those stand in for attributes, reached through the prototype chain
+/// (crane_css_properties).
+pub fn hasNamedPropertySetter(interface_name: []const u8) bool {
+    inline for (legacy_platform_objects) |Interface| {
+        if (std.mem.eql(u8, interface_name, Interface.Meta.name)) {
+            const binding = comptime specialBinding(Interface);
+            return comptime binding.named_setter != null and !binding.crane_css_properties;
         }
     }
     return false;
