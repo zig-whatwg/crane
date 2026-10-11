@@ -44,8 +44,7 @@ fn agent() !*ffi.Isolate {
     _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
     if (!pools_ready) {
         interfaces.process_hooks.startHooksForTest();
-        runtime.SlabAllocator.init(std.heap.page_allocator);
-        runtime.ArenaAllocator.init(std.heap.page_allocator);
+        runtime.initializeRuntime(std.heap.page_allocator);
         pools_ready = true;
     }
     isolate_once = i;

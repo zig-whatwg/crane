@@ -38,26 +38,48 @@ const context_manager = @import("context_manager.zig");
 const conv = @import("conversions.zig");
 const template_registry = @import("template_registry.zig");
 
-var template_cache: ?*v8.FunctionTemplate = null;
-var template_cache_isolate: ?*v8.Isolate = null;
-var template_cache_generation: u64 = 0;
+const protocol_agents = @import("protocol_agents.zig");
 
-/// Get or create the FunctionTemplate for WindowProperties
-pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
-    if (template_cache) |cached| {
-        if (template_cache_isolate == isolate and
-            template_cache_generation == template_registry.cache_generation)
-        {
-            return cached;
+/// The WindowProperties template for `isolate`, and whether the caller owns
+/// the handle.
+const Template = struct {
+    template: *v8.FunctionTemplate,
+    /// Not cached: an isolate createAgent did not make (a test's own, the
+    /// snapshot generator's) has no agent record, so its caller disposes it.
+    owned: bool,
+};
+
+/// `isolate`'s WindowProperties template: its agent's (AgentRecord, Blink's
+/// V8PerIsolateData shape), made by the isolate's first window realm. It was
+/// one process-wide cache keyed by the last isolate that made one, read and
+/// written unlocked: two Browsers making window realms on two threads at
+/// once could hand one isolate the other's template.
+fn templateFor(isolate: *v8.Isolate) Template {
+    const record = protocol_agents.recordOf(isolate);
+    if (record) |r| {
+        if (r.window_properties_template) |cached| {
+            if (r.window_properties_generation == template_registry.cache_generation) return .{ .template = cached, .owned = false };
+            // The template registry was rebuilt since: so is this.
+            v8.v8_FunctionTemplate_Dispose(cached);
+            r.window_properties_template = null;
         }
-        // Invalidate stale cache
-        template_cache = null;
-        template_cache_isolate = null;
     }
+    const made = makeTemplate(isolate);
+    const r = record orelse return .{ .template = made, .owned = true };
+    r.window_properties_template = made;
+    r.window_properties_generation = template_registry.cache_generation;
+    return .{ .template = made, .owned = false };
+}
 
+/// A new FunctionTemplate for WindowProperties.
+fn makeTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     const tpl = v8.v8_FunctionTemplate_New(isolate, null, null).?;
-    const name = v8.v8_String_NewFromUtf8(isolate, "WindowProperties", 16);
-    v8.v8_FunctionTemplate_SetClassName(tpl, name.?);
+    // The template keeps its class name; the handle is ours. (Made once per
+    // process before, its leak went unseen; made per realm for an isolate
+    // with no agent record, it was a handle a realm.)
+    const name = v8.v8_String_NewFromUtf8(isolate, "WindowProperties", 16).?;
+    defer v8.v8_String_Dispose(name);
+    v8.v8_FunctionTemplate_SetClassName(tpl, name);
 
     // NOTE: We do NOT use v8_FunctionTemplate_Inherit here because that would
     // cause EventTarget's prototype methods to appear as own properties on
@@ -101,9 +123,6 @@ pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     // EventTarget.prototype. With both immutable, that step was refused
     // silently and `window instanceof EventTarget` was never true.
 
-    template_cache = tpl;
-    template_cache_isolate = isolate;
-    template_cache_generation = template_registry.cache_generation;
     return tpl;
 }
 
@@ -118,8 +137,9 @@ pub fn create(
 ) ?*v8.Object {
     _ = event_target_prototype;
 
-    const tpl = getTemplate(isolate);
-    const instance_tpl = v8.v8_FunctionTemplate_InstanceTemplate(tpl);
+    const made = templateFor(isolate);
+    defer if (made.owned) v8.v8_FunctionTemplate_Dispose(made.template);
+    const instance_tpl = v8.v8_FunctionTemplate_InstanceTemplate(made.template);
     defer v8.v8_ObjectTemplate_Dispose(instance_tpl);
     const instance = v8.v8_ObjectTemplate_NewInstance(instance_tpl, context) orelse return null;
 

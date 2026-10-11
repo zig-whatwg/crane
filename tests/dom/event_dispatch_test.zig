@@ -33,10 +33,8 @@ test "initEvent stores a type string the Event owns" {
 
     // Instance.init draws from the process-wide slab and arena; without
     // these the first allocation aborts. tests/runtime does the same.
-    runtime.SlabAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     var ctx_data = try runtime.createNullContext(allocator);
     defer ctx_data.deinit();
@@ -67,10 +65,8 @@ test "initEvent releases the type string it replaces" {
 
     // Instance.init draws from the process-wide slab and arena; without
     // these the first allocation aborts. tests/runtime does the same.
-    runtime.SlabAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     var ctx_data = try runtime.createNullContext(allocator);
     defer ctx_data.deinit();
@@ -99,10 +95,8 @@ test "the constructor sets the initialized flag" {
 
     // Instance.init draws from the process-wide slab and arena; without
     // these the first allocation aborts. tests/runtime does the same.
-    runtime.SlabAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     var ctx_data = try runtime.createNullContext(allocator);
     defer ctx_data.deinit();
@@ -119,10 +113,8 @@ test "createEvent leaves the initialized flag unset until initEvent" {
 
     // Instance.init draws from the process-wide slab and arena; without
     // these the first allocation aborts. tests/runtime does the same.
-    runtime.SlabAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     var ctx_data = try runtime.createNullContext(allocator);
     defer ctx_data.deinit();
@@ -148,10 +140,8 @@ test "createEvent leaves the initialized flag unset until initEvent" {
 test "inner event creation steps initialize an Event subclass's Event attributes through Event's impl" {
     const allocator = std.testing.allocator;
 
-    runtime.SlabAllocator.init(allocator);
-    defer runtime.SlabAllocator.deinit();
-    runtime.ArenaAllocator.init(allocator);
-    defer runtime.ArenaAllocator.deinit();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
 
     var ctx_data = try runtime.createNullContext(allocator);
     defer ctx_data.deinit();

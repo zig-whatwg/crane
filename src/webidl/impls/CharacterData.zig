@@ -196,7 +196,7 @@ comptime {
 
 // Use shared InstanceRegistry utility for internal state management
 const webidl = @import("webidl");
-const Registry = webidl.utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.character_data, InternalState);
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -219,11 +219,10 @@ pub fn init(
     errdefer NodeImpl.deinit(instance);
 
     // Initialize CharacterData internal state in global registry
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = try InternalState.init(allocator);
 
     return instance;
@@ -433,7 +432,15 @@ pub fn deleteDataRange(instance: *runtime.Instance, offset: u32, count: u32) !vo
     try replaceDataInternal(instance, internal, offset, count, "");
 }
 
-/// Clean up ALL remaining internal states.
-pub fn cleanupAllRemainingInternal() void {
-    Registry.deinitAllAndClear();
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Its states left at its Browser's end (Browser.deinit).
+    @import("dom").teardown_sweeps.install(.character_data, &sweepRemaining);
+}
+
+/// dom.teardown_sweeps: at its Browser's end, every CharacterData state still in
+/// `scope`'s table - an orphan's no teardown reached - frees what it owns.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }

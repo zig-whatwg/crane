@@ -67,8 +67,7 @@ fn realm() !void {
     ffi.v8_Context_Enter(context);
     v8.context_manager.init(std.heap.page_allocator) catch {};
     _ = try v8.context_manager.getOrCreate(context, realm_allocator.allocator());
-    runtime.SlabAllocator.init(std.heap.page_allocator);
-    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    runtime.initializeRuntime(std.heap.page_allocator);
     isolate_once = i;
     context_once = context;
 }

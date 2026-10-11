@@ -9,6 +9,10 @@
 //! - Supports variable-size allocations (Node, Element, Text have different sizes)
 //! - Reset retains capacity for next GC cycle
 //!
+//! One per Browser (runtime.BrowserScope.arena, docs/instances.md): a
+//! Browser's platform objects take their state from its own arena, and its
+//! end frees exactly them.
+//!
 //! Thread safety: every thread that makes platform objects takes its state
 //! from here - a Browser's thread and each of its workers' (docs/instances.md)
 //! - so every method takes `mutex`.
@@ -38,7 +42,7 @@ pub const ArenaAllocator = struct {
     /// only grows - it has no way to release an individual block - but a freed
     /// block is handed straight back out, so the loop stops asking for new memory.
     ///
-    /// Reuse rather than `reset()` deliberately. The arena is process-global and
+    /// Reuse rather than `reset()` deliberately. The arena is the Browser's and
     /// holds the Window, the Document and every node still in the tree, so a
     /// blanket reset would free live state along with dead. Reuse touches only
     /// blocks their owners have already given up.
@@ -51,9 +55,6 @@ pub const ArenaAllocator = struct {
     /// makes or frees a platform object's state takes it, for one bump or one
     /// free-list push or pop - never across a call out of this file.
     mutex: std.Io.Mutex = .init,
-
-    /// Global instance
-    var global: ?ArenaAllocator = null;
 
     /// A freed block, with the next pointer written into the block itself.
     ///
@@ -114,9 +115,9 @@ pub const ArenaAllocator = struct {
         self.free_lists[class] = block;
     }
 
-    /// Initialize the global arena allocator
-    pub fn init(backing_allocator: std.mem.Allocator) void {
-        global = ArenaAllocator{
+    /// An empty arena over `backing_allocator`.
+    pub fn init(backing_allocator: std.mem.Allocator) ArenaAllocator {
+        return .{
             .arena = std.heap.ArenaAllocator.init(backing_allocator),
             .total_allocations = 0,
             .total_bytes_allocated = 0,
@@ -124,50 +125,16 @@ pub const ArenaAllocator = struct {
         };
     }
 
-    /// Error type for arena allocator operations
-    pub const ArenaError = error{
-        /// The allocator was not initialized before use
-        NotInitialized,
-    };
-
-    /// Get the global arena allocator instance
-    /// Panics if the allocator was not initialized - this is a programming error.
-    /// Use tryGet() for error-returning variant.
-    pub fn get() *ArenaAllocator {
-        // `|*g|` is the address of the payload IN PLACE, the same form `tryGet`
-        // uses. The previous `&(global orelse @panic(...))` takes the address of
-        // the value the `orelse` expression yields, and whether that is the
-        // payload or a temporary copy is not something a reader can tell from
-        // the line. A pointer to a copy that has gone out of scope reads as an
-        // ArenaAllocator whose backing Allocator has a null vtable, which is
-        // exactly how custom-elements/Document-createElement.html died: SEGV at
-        // 0x0 in mem.Allocator.rawAlloc, under Registry.createIn, under
-        // Node.init, at the bottom of an iframe insertion-steps chain.
-        if (global) |*g| return g;
-        @panic("ArenaAllocator not initialized - call init() first");
-    }
-
-    /// Get the global arena allocator instance, returning error if not initialized
-    /// Use this in contexts where you need to handle missing initialization gracefully.
-    pub fn tryGet() ArenaError!*ArenaAllocator {
-        if (global) |*g| {
-            return g;
-        }
-        return ArenaError.NotInitialized;
-    }
-
-    /// Deinitialize the global allocator
-    pub fn deinit() void {
-        if (global) |*g| {
-            g.arena.deinit();
-            global = null;
-        }
+    /// Free every block - the state of every platform object made from it.
+    pub fn deinit(self: *ArenaAllocator) void {
+        self.arena.deinit();
+        self.free_lists = @splat(null);
     }
 
     /// Create (allocate) a single instance of type T
     ///
     /// This is the primary allocation method used by generated code:
-    ///   const state = try ArenaAllocator.get().create(FullState);
+    ///   const state = try runtime.arenaOf(instance).create(FullState);
     pub fn create(self: *ArenaAllocator, comptime T: type) !*T {
         return @ptrCast(@alignCast(try self.createRaw(@sizeOf(T), @alignOf(T))));
     }
@@ -335,19 +302,17 @@ pub const ArenaAllocator = struct {
 const testing = std.testing;
 
 test "ArenaAllocator init and deinit" {
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = ArenaAllocator.init(testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
     try testing.expect(arena.total_allocations == 0);
     try testing.expect(arena.total_bytes_allocated == 0);
 }
 
 test "ArenaAllocator.create allocates single item" {
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = ArenaAllocator.init(testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const TestStruct = struct {
         value: u32,
@@ -362,10 +327,9 @@ test "ArenaAllocator.create allocates single item" {
 }
 
 test "ArenaAllocator.create multiple items" {
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = ArenaAllocator.init(testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const TestStruct = struct {
         value: u32,
@@ -388,10 +352,9 @@ test "ArenaAllocator.create multiple items" {
 }
 
 test "ArenaAllocator.alloc allocates slice" {
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = ArenaAllocator.init(testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const slice = try arena.alloc(u32, 10);
     try testing.expectEqual(@as(usize, 10), slice.len);
@@ -409,10 +372,9 @@ test "ArenaAllocator.alloc allocates slice" {
 }
 
 test "ArenaAllocator.dupe duplicates slice" {
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = ArenaAllocator.init(testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const original = [_]u32{ 1, 2, 3, 4, 5 };
     const duplicated = try arena.dupe(u32, &original);
@@ -430,10 +392,9 @@ test "ArenaAllocator.dupe duplicates slice" {
 }
 
 test "ArenaAllocator.reset frees memory but retains capacity" {
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = ArenaAllocator.init(testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     // Allocate some items
     _ = try arena.create(u32);
@@ -457,10 +418,9 @@ test "ArenaAllocator.reset frees memory but retains capacity" {
 }
 
 test "ArenaAllocator supports variable-sized types" {
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = ArenaAllocator.init(testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     const SmallStruct = struct {
         value: u8,
@@ -486,10 +446,9 @@ test "ArenaAllocator supports variable-sized types" {
 }
 
 test "ArenaAllocator.stats accuracy" {
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
+    var arena_value = ArenaAllocator.init(testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
 
     // Initial stats
     var s = arena.stats();

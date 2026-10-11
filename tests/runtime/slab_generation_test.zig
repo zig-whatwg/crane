@@ -24,9 +24,9 @@ const vtable = VTable{
 };
 
 test "a slot reads dead until issued, and dead again once freed" {
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-    const slab = SlabAllocator.get();
+    var slab_value = runtime.SlabAllocator.init(testing.allocator);
+    defer slab_value.deinit();
+    const slab = &slab_value;
 
     const inst = try slab.alloc(&vtable);
     try testing.expect(SlabAllocator.generationOf(inst) != SlabAllocator.dead_generation);
@@ -36,9 +36,9 @@ test "a slot reads dead until issued, and dead again once freed" {
 }
 
 test "a reissued slot carries a generation no earlier occupant saw" {
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-    const slab = SlabAllocator.get();
+    var slab_value = runtime.SlabAllocator.init(testing.allocator);
+    defer slab_value.deinit();
+    const slab = &slab_value;
 
     const first = try slab.alloc(&vtable);
     const g1 = SlabAllocator.generationOf(first);
@@ -58,9 +58,9 @@ test "a reissued slot carries a generation no earlier occupant saw" {
 }
 
 test "generations are distinct across slots and across slabs" {
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-    const slab = SlabAllocator.get();
+    var slab_value = runtime.SlabAllocator.init(testing.allocator);
+    defer slab_value.deinit();
+    const slab = &slab_value;
 
     // 300 > one slab's 256 slots, so the second slab's init path is covered too.
     var seen = std.AutoHashMap(u64, void).init(testing.allocator);

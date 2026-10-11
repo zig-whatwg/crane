@@ -85,20 +85,22 @@ const mock_vtable = runtime.VTable{
     .methods_ptr = &mock_methods,
 };
 
-/// Create a mock runtime Instance for testing
+/// Create a mock runtime Instance for testing: a slot of the standalone
+/// scope's slab, as every Instance is a slab's (the wrapper cache asks the
+/// instance's Browser - BrowserScope.ofInstance - whether it is a node).
 fn createMockInstance(allocator: std.mem.Allocator) !*runtime.Instance {
-    const instance = try allocator.create(runtime.Instance);
-    instance.* = .{
-        .vtable = &mock_vtable,
-        .state = undefined,
-        .ctx = undefined,
-    };
+    _ = allocator;
+    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    const instance = try runtime.BrowserScope.standalone().?.slab.alloc(&mock_vtable);
+    instance.state = undefined;
+    instance.ctx = undefined;
     return instance;
 }
 
 /// Destroy mock runtime Instance
 fn destroyMockInstance(allocator: std.mem.Allocator, instance: *runtime.Instance) void {
-    allocator.destroy(instance);
+    _ = allocator;
+    runtime.BrowserScope.ofInstance(instance).slab.free(instance);
 }
 
 /// Cleanup cache entries without calling V8 dispose (for mock objects)

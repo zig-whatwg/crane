@@ -2317,10 +2317,10 @@ fn isConstantInList(needle: types.Constant, haystack: []const types.Constant) bo
 /// Example output:
 /// ```zig
 /// pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-///     const instance = try runtime.SlabAllocator.get().alloc(&vtable);
-///     errdefer runtime.SlabAllocator.get().free(instance);
+///     const instance = try runtime.Instance.init(allocator, State, &vtable, ctx);
+///     errdefer runtime.Instance.deinit(instance);
 ///
-///     const state = try runtime.ArenaAllocator.get().create(State);
+///     const state = instance.getState(State);
 ///     instance.state = state;
 ///
 ///     // Initialize the state (Impl receives full hierarchy)

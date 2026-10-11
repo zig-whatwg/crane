@@ -159,7 +159,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     // The inherited Event internal state and its initialized flag: without
     // them dispatchEvent throws InvalidStateError.
-    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
+    try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
     return instance;
 }
 

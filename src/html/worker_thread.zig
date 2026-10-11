@@ -144,7 +144,6 @@ pub const WorkerThread = struct {
     /// thread made, ended with it - otherwise each worker thread leaks it at
     /// its exit.
     fn endThreadState() void {
-        runtime.instance_lifecycle.deinit();
         _ = fetch.algorithms.async_fetch.sweep();
         fetch.network.scheduler.endIdleThreadScheduler();
     }

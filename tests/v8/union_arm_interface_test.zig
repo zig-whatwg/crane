@@ -201,8 +201,7 @@ const protocol = @import("engine");
 /// The process-wide pools a platform object's Instance comes from, made
 /// once for the file and, like V8 here, never torn down.
 fn ensurePools() void {
-    if (runtime.SlabAllocator.tryGet()) |_| {} else |_| runtime.SlabAllocator.init(std.heap.page_allocator);
-    if (runtime.ArenaAllocator.tryGet()) |_| {} else |_| runtime.ArenaAllocator.init(std.heap.page_allocator);
+    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
 }
 
 /// The value `source` evaluates to in this file's context. OWNED.

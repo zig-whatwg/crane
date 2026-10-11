@@ -3,9 +3,9 @@
 //! change listeners - is a Browser's, a supplement of its scope
 //! (runtime.BrowserScope), never the process's or a thread's.
 //!
-//! Two whole Browsers cannot be alive at once until instances B1 gives each
-//! its own slab and arena (runtime.initializeRuntime is still process-wide),
-//! so these tests prove isolation two ways (integrator, 2026-10-10):
+//! These tests (inst3, written before instances B1 gave each Browser its own
+//! slab and arena) prove isolation two ways (integrator, 2026-10-10); the
+//! concurrent two-Browser tests are tests/html/instances_concurrent_test.zig:
 //!
 //! - scope level: two Browsers' scopes on two threads reach each store
 //!   through the supplement the binding reaches (realm.browser_scope ->
@@ -208,15 +208,25 @@ fn blobURLsResolveInTheirBrowserOnly() !void {
     try openPage(browser);
     const realm = browser.getRealm() orelse return error.NoRealm;
 
-    // Another Browser's scope, which the page's realm belongs to for one
-    // script: the blob URL that script makes is that Browser's.
+    _ = realm;
+
+    // A blob URL another Browser's store made, for the same origin, handed
+    // to this page as a string. (Not by lending the page's realm another
+    // Browser's scope for a script: since instances B1 a realm's objects
+    // come from its scope's slab, so that script's Blob would be the other
+    // Browser's object, freed with it while this page still held it.)
     var other = runtime.BrowserScope.init(testing.allocator);
     defer other.deinit();
-    const own = realm.browser_scope;
-    realm.browser_scope = &other;
-    const made = truthy(browser, "globalThis.other_url = URL.createObjectURL(new Blob(['other'])); true");
-    realm.browser_scope = own;
-    if (!try made) return error.NoBlobURL;
+    var other_url: []u8 = undefined;
+    {
+        const store = try other.of(file.BlobURLStore);
+        const blob = try file.BlobData.init(testing.allocator, "other", "text/plain");
+        defer blob.deinit();
+        other_url = try store.createObjectURL(blob, origin, null);
+    }
+    defer testing.allocator.free(other_url);
+    var buffer: [256]u8 = undefined;
+    try expectScript(browser, try std.fmt.bufPrint(&buffer, "globalThis.other_url = '{s}'; true", .{other_url}));
 
     try expectScript(browser, "globalThis.own_url = URL.createObjectURL(new Blob(['own'])); true");
     try expectScript(browser,

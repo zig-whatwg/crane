@@ -126,6 +126,15 @@ const AgentRecord = struct {
     /// teardown goes to (wrapper_cache.queueCollectedNode), BORROWED; the
     /// agent's end drains and closes it.
     deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
+    /// The WindowProperties named properties object's template
+    /// (window_properties.zig): this isolate's, made by its first window
+    /// realm and reused by every later one, as Blink keeps its templates in
+    /// V8PerIsolateData; disposed by the agent's end. Read and written on
+    /// the agent's own thread only.
+    window_properties_template: ?*ffi.FunctionTemplate = null,
+    /// template_registry.cache_generation when it was made: a later
+    /// generation means the template registry was rebuilt, and so must it be.
+    window_properties_generation: u64 = 0,
 };
 
 /// The agent's PatternMatcher, made on its first use; null for an isolate
@@ -300,6 +309,7 @@ pub fn endAgent(agent: *Agent) void {
     const host_agent = if (record) |r| r.host_agent else false;
     const shadow_realms = if (record) |r| r.shadow_realms else null;
     const pattern_matcher = if (record) |r| r.pattern_matcher else null;
+    const window_properties = if (record) |r| r.window_properties_template else null;
     const deferred_teardown = if (record) |r| r.deferred_teardown else null;
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
@@ -307,6 +317,8 @@ pub fn endAgent(agent: *Agent) void {
     // Its utility context and compiled patterns: handles of this isolate,
     // released before it is disposed.
     ffi.v8_PatternMatcher_Delete(pattern_matcher);
+    // Its WindowProperties template: a handle of this isolate too.
+    if (window_properties) |template| ffi.v8_FunctionTemplate_Dispose(template);
     // The deferred teardown queue is empty: every node in it was queued by a
     // realm, and each realm's end drained its own (they end before their
     // agent). Closed from here on - what the collections below find is torn

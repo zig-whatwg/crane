@@ -50,7 +50,6 @@ const std = @import("std");
 const log = std.log.scoped(.browser);
 const engine = @import("engine");
 const runtime = @import("runtime");
-const impls = @import("impls");
 const namespaces = @import("namespaces");
 
 const context_mod = @import("Context.zig");
@@ -141,8 +140,9 @@ pub const Browser = struct {
     cookie_jar: *cookiestore.CookieJar,
     /// The Browser's scope: its per-Browser state, as supplements every realm
     /// of it reaches (ContextData.browser_scope; docs/instances.md rule 2) -
-    /// its live workers (html.WorkerRegistry). Ends after every realm and
-    /// every worker thread.
+    /// its live workers (html.WorkerRegistry) - and the slab and arena every
+    /// platform object of it comes from. Ends after every realm and every
+    /// worker thread.
     scope: *runtime.BrowserScope,
 
     /// Initialize a new Browser instance
@@ -167,9 +167,9 @@ pub const Browser = struct {
         try @import("fetch").network.globalInit();
         errdefer @import("fetch").network.globalCleanup();
 
-        // Initialize WebIDL runtime (SlabAllocator, ArenaAllocator)
-        runtime.initializeRuntime(allocator);
-        errdefer runtime.deinitializeRuntime();
+        // The platform objects of this Browser, and their side tables, come
+        // from its own scope (made below, before its first realm), never from
+        // another Browser's: nothing process-wide is started here.
 
         // Agents are made from the process's snapshot, unless this Browser
         // asked for none (an empty snapshot_path).
@@ -311,8 +311,9 @@ pub const Browser = struct {
             std.debug.assert(self.agent_host.deferred_teardown.isEmpty());
             // IMPORTANT: Clean up orphaned DOM nodes BEFORE the agent ends!
             // DOM node internal states may use the agent's allocator, which
-            // its end frees. We must clean them up while allocators are valid.
-            impls.cleanup.cleanupAllDomRegistries();
+            // its end frees. Every type's side table of THIS Browser is swept
+            // (dom.teardown_sweeps) - never another Browser's.
+            @import("dom").teardown_sweeps.runAll(self.scope);
 
             // Release the rejection tracker's promise handles - this agent's,
             // on its host, and no other Browser's - while the agent that
@@ -333,11 +334,11 @@ pub const Browser = struct {
         }
 
         // The Browser's scope: every realm and every worker thread is gone.
+        // Its side tables end (what their entries still hold of the engine
+        // is released without it), then its slab and arena - every platform
+        // object of this Browser, and none of another's.
         self.scope.deinit();
         self.allocator.destroy(self.scope);
-
-        // Cleanup WebIDL runtime
-        runtime.deinitializeRuntime();
 
         // The network ends with the last Browser, once nothing that could
         // hold a transfer is left: the thread's scheduler closes, and so does

@@ -51,12 +51,15 @@ fn runFake(item: *DeferredTeardown.Item, budget: usize) DeferredTeardown.Progres
 
 const fake_steps: DeferredTeardown.Steps = .{ .run = runFake };
 
+/// The slab the tests' instances come from (each test makes and ends it).
+var test_slab: SlabAllocator = undefined;
+
 fn setupSlab() void {
-    SlabAllocator.init(testing.allocator);
+    test_slab = SlabAllocator.init(testing.allocator);
 }
 
 fn push(queue: *DeferredTeardown, tree: *FakeTree, owner: ?*const anyopaque) !*Instance {
-    const inst = try SlabAllocator.get().alloc(&vtable);
+    const inst = try test_slab.alloc(&vtable);
     try testing.expect(queue.push(.{
         .instance = inst,
         .generation = SlabAllocator.generationOf(inst),
@@ -70,7 +73,7 @@ fn push(queue: *DeferredTeardown, tree: *FakeTree, owner: ?*const anyopaque) !*I
 
 test "a slice frees at most its budget, and the item resumes in the next one" {
     setupSlab();
-    defer SlabAllocator.deinit();
+    defer test_slab.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
@@ -92,7 +95,7 @@ test "a slice frees at most its budget, and the item resumes in the next one" {
 
 test "items are freed in the order they were queued, a slice running into the next item" {
     setupSlab();
-    defer SlabAllocator.deinit();
+    defer test_slab.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     var log: std.ArrayListUnmanaged(usize) = .empty;
@@ -112,7 +115,7 @@ test "items are freed in the order they were queued, a slice running into the ne
 
 test "an owner's end drains its items fully and leaves the others queued" {
     setupSlab();
-    defer SlabAllocator.deinit();
+    defer test_slab.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     var realm_a: u8 = 0;
@@ -138,7 +141,7 @@ test "an owner's end drains its items fully and leaves the others queued" {
 
 test "an item in the middle of its teardown is finished by its owner's end" {
     setupSlab();
-    defer SlabAllocator.deinit();
+    defer test_slab.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     var realm: u8 = 0;
@@ -154,7 +157,7 @@ test "an item in the middle of its teardown is finished by its owner's end" {
 
 test "drop forgets an owner's items without running them" {
     setupSlab();
-    defer SlabAllocator.deinit();
+    defer test_slab.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     var realm: u8 = 0;
@@ -169,12 +172,12 @@ test "drop forgets an owner's items without running them" {
 
 test "a closed queue refuses items: the caller tears them down inline" {
     setupSlab();
-    defer SlabAllocator.deinit();
+    defer test_slab.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
     queue.close();
-    const inst = try SlabAllocator.get().alloc(&vtable);
+    const inst = try test_slab.alloc(&vtable);
     trees[0] = .{ .nodes = 1 };
     try testing.expect(!queue.push(.{
         .instance = inst,
@@ -189,7 +192,7 @@ test "a closed queue refuses items: the caller tears them down inline" {
 
 test "under the high-water mark relieve frees nothing; over it, what was added and a slice more" {
     setupSlab();
-    defer SlabAllocator.deinit();
+    defer test_slab.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
@@ -216,7 +219,7 @@ fn pushAnotherAndRelieve(tree: *FakeTree) void {
     const queue = tree.queue.?;
     tree.during = null;
     trees[7] = .{ .nodes = DeferredTeardown.high_water };
-    const inst = SlabAllocator.get().alloc(&vtable) catch return;
+    const inst = test_slab.alloc(&vtable) catch return;
     _ = queue.push(.{
         .instance = inst,
         .generation = SlabAllocator.generationOf(inst),
@@ -231,7 +234,7 @@ fn pushAnotherAndRelieve(tree: *FakeTree) void {
 
 test "a collection during a slice queues its items but runs no nested slice" {
     setupSlab();
-    defer SlabAllocator.deinit();
+    defer test_slab.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
 
@@ -255,7 +258,7 @@ fn endOtherRealm(tree: *FakeTree) void {
 
 test "an item whose teardown ends another realm drains that realm's items, nested" {
     setupSlab();
-    defer SlabAllocator.deinit();
+    defer test_slab.deinit();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     var realm: u8 = 0;

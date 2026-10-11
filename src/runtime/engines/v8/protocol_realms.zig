@@ -263,6 +263,9 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     const realm = context_manager.getOrCreateWithExternalEventLoop(context, options.timer, options.event_loop, allocator) catch
         return error.OperationFailed;
     registered = true;
+    // The realm's Browser, before any platform object of it exists - its
+    // Window comes from that Browser's slab and arena.
+    realm.browser_scope = options.browser_scope;
 
     if (restored) {
         // The snapshot has the interfaces; the adapter's template registry

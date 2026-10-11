@@ -47,8 +47,7 @@ fn retireUnderFailingAllocator() !void {
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
     try v8.context_manager.init(failing.allocator());
     defer v8.context_manager.deinit();
-    runtime.SlabAllocator.init(std.heap.page_allocator);
-    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    runtime.initializeRuntime(std.heap.page_allocator);
 
     const realm = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
     try std.testing.expect(realm.hasEngine());

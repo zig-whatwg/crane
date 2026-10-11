@@ -2,9 +2,9 @@
 //!
 //! This module provides callbacks for JavaScript engine garbage collectors.
 //! It handles:
-//! - Object finalization (onObjectFreed)
-//! - GC sweep phase (onGCSweep)
-//! - Memory lifecycle coordination between GC and allocators
+//! - Object finalization (onObjectFreed): the object's own cleanup, then its
+//!   storage back to its Browser's slab and arena (releaseStorage)
+//! - The deferred teardown queue (DeferredTeardown)
 //!
 //! Supported JavaScript engines:
 //! - V8 (Chrome, Node.js)
@@ -12,7 +12,7 @@
 //! - SpiderMonkey (Firefox)
 //!
 //! Thread safety: Callbacks are called from GC thread
-//! Memory model: Two-phase cleanup (deinit resources, then batch free memory)
+//! Memory model: Two-phase cleanup (deinit resources, then return the storage)
 //!
 //! ## Typed GC Callback Support
 //!
@@ -60,8 +60,7 @@
 
 const std = @import("std");
 const Instance = @import("instance.zig").Instance;
-const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
-const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
+const BrowserScope = @import("browser_scope.zig").BrowserScope;
 
 /// GC finalizer callback - called when JS engine garbage collects an object
 ///
@@ -114,6 +113,10 @@ pub fn onObjectFreed(user_data: ?*anyopaque) callconv(.c) void {
 /// while its wrapper was still cached. The caller has established that the
 /// slot was not reissued.
 pub fn releaseStorage(inst: *Instance) void {
+    // Its Browser's: the scope whose slab issued it, read from its address -
+    // never its context, which its realm's end may already have freed.
+    const scope = BrowserScope.ofInstance(inst);
+
     // Step 2: Return the state block for reuse.
     //
     // The finalizer path, the counterpart to Instance.deinit - and the one that
@@ -122,17 +125,15 @@ pub fn releaseStorage(inst: *Instance) void {
     // state forever, which is what `zig build gc-bench` measures: live instances
     // fall to 9 under a forced GC while RSS keeps climbing.
     if (inst.vtable.state_size != 0) {
-        if (ArenaAllocator.tryGet() catch null) |arena| {
-            arena.destroyRaw(
-                @ptrCast(inst.state),
-                inst.vtable.state_size,
-                inst.vtable.state_align,
-            );
-        }
+        scope.arena.destroyRaw(
+            @ptrCast(inst.state),
+            inst.vtable.state_size,
+            inst.vtable.state_align,
+        );
     }
 
     // Step 3: Return Instance handle to slab allocator
-    SlabAllocator.get().free(inst);
+    scope.slab.free(inst);
 }
 
 /// An agent's queue of native objects whose last owner went away - a node
@@ -422,33 +423,6 @@ pub const DeferredTeardown = struct {
     }
 };
 
-/// GC sweep callback - called after JS engine completes a GC sweep
-///
-/// This is called by the JavaScript engine after it has completed a full
-/// GC sweep and finalized all dead objects. At this point:
-/// - All onObjectFreed callbacks have been called
-/// - All type-specific deinit functions have run
-/// - Owned resources have been cleaned up
-///
-/// Now we can batch-free all FullState memory in one operation by
-/// resetting the arena allocator.
-///
-/// Signature: extern "C" fn() void
-///
-/// JavaScript engines call this after GC sweep:
-///   // V8 example:
-///   isolate->AddGCEpilogueCallback(onGCSweep, v8::GCType::kGCTypeAll);
-///
-/// Thread safety: Called from GC thread, must not allocate
-///
-/// ## KEEP - C ABI boundary
-/// The `callconv(.c)` is required for JavaScript engine interop.
-pub fn onGCSweep() callconv(.c) void {
-    // Reset arena to batch-free ALL FullState memory at once
-    // This is much faster than individual frees
-    ArenaAllocator.get().reset();
-}
-
 /// Error type for GC integration operations
 pub const GCError = error{
     /// registerCallbacks was called but no JS engine implementation is available
@@ -518,195 +492,4 @@ pub fn TypedFinalizer(comptime T: type) type {
             self.cleanup_fn(instance);
         }
     };
-}
-
-// ============================================================================
-// Statistics
-// ============================================================================
-
-/// Statistics for GC integration
-pub const GCStats = struct {
-    /// Total objects finalized
-    objects_finalized: usize = 0,
-    /// Total GC sweeps
-    gc_sweeps: usize = 0,
-    /// Total bytes freed by arena resets
-    total_bytes_freed: usize = 0,
-
-    /// Global stats instance
-    var global: GCStats = .{};
-
-    /// Get the global stats
-    pub fn get() *GCStats {
-        return &global;
-    }
-
-    /// Reset stats
-    pub fn reset() void {
-        global = .{};
-    }
-};
-
-/// Instrumented version of onObjectFreed for testing/debugging
-///
-/// KEEP: anyopaque required - extern "C" callback for JavaScript engine GC.
-/// See onObjectFreed for full documentation.
-pub fn onObjectFreedInstrumented(user_data: ?*anyopaque) callconv(.c) void {
-    GCStats.get().objects_finalized += 1;
-    onObjectFreed(user_data);
-}
-
-/// Instrumented version of onGCSweep for testing/debugging
-///
-/// KEEP: callconv(.c) required - extern "C" callback for JavaScript engine GC.
-/// See onGCSweep for full documentation.
-pub fn onGCSweepInstrumented() callconv(.c) void {
-    const stats = GCStats.get();
-    stats.gc_sweeps += 1;
-
-    // Track bytes before reset
-    const arena_stats = ArenaAllocator.get().stats();
-    stats.total_bytes_freed += arena_stats.total_bytes_allocated;
-
-    onGCSweep();
-}
-
-// Unit tests
-const testing = std.testing;
-const VTable = @import("instance.zig").VTable;
-const MethodMap = @import("instance.zig").MethodMap;
-
-test "onObjectFreed calls deinit_fn" {
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    var deinit_called = false;
-
-    const TestImpl = struct {
-        fn deinit(instance: *Instance) void {
-            const called: *bool = @ptrCast(@alignCast(instance.state));
-            called.* = true;
-        }
-    };
-
-    // Create instance
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = &TestImpl.deinit,
-        .methods_ptr = &delegates,
-    };
-
-    const inst = try SlabAllocator.get().alloc(&vtable);
-    inst.state = @ptrCast(&deinit_called);
-
-    // Call finalizer
-    onObjectFreed(inst);
-
-    // Verify deinit was called
-    try testing.expect(deinit_called);
-}
-
-test "onObjectFreed handles null user_data" {
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-
-    // Should not crash
-    onObjectFreed(null);
-}
-
-test "onObjectFreed handles null deinit_fn" {
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    const inst = try SlabAllocator.get().alloc(&vtable);
-    inst.state = undefined;
-
-    // Should not crash even without deinit_fn
-    onObjectFreed(inst);
-}
-
-test "onGCSweep resets arena" {
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const arena = ArenaAllocator.get();
-
-    // Allocate some items
-    _ = try arena.create(u32);
-    _ = try arena.create(u64);
-    _ = try arena.alloc(u8, 100);
-
-    const stats_before = arena.stats();
-    try testing.expectEqual(@as(usize, 3), stats_before.total_allocations);
-
-    // Call GC sweep
-    onGCSweep();
-
-    const stats_after = arena.stats();
-    try testing.expectEqual(@as(usize, 3), stats_after.total_allocations); // Cumulative
-
-    // Can still allocate after sweep
-    const item = try arena.create(u32);
-    item.* = 42;
-    try testing.expectEqual(@as(u32, 42), item.*);
-}
-
-test "onObjectFreedInstrumented increments stats" {
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    GCStats.reset();
-
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    const inst1 = try SlabAllocator.get().alloc(&vtable);
-    const inst2 = try SlabAllocator.get().alloc(&vtable);
-
-    onObjectFreedInstrumented(inst1);
-    onObjectFreedInstrumented(inst2);
-
-    const stats = GCStats.get();
-    try testing.expectEqual(@as(usize, 2), stats.objects_finalized);
-}
-
-test "onGCSweepInstrumented increments stats" {
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    GCStats.reset();
-
-    onGCSweepInstrumented();
-    onGCSweepInstrumented();
-
-    const stats = GCStats.get();
-    try testing.expectEqual(@as(usize, 2), stats.gc_sweeps);
-}
-
-test "GCStats.reset clears stats" {
-    GCStats.reset();
-
-    const stats = GCStats.get();
-    stats.objects_finalized = 10;
-    stats.gc_sweeps = 5;
-
-    GCStats.reset();
-
-    try testing.expectEqual(@as(usize, 0), stats.objects_finalized);
-    try testing.expectEqual(@as(usize, 0), stats.gc_sweeps);
 }

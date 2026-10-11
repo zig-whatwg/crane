@@ -498,8 +498,7 @@ pub fn init(
 
     // Initialize Window's own internal state
     const state = instance.getState(StateType);
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = try InternalState.init(allocator);
     internal.ui_backend = internal.stub_ui_backend.backend();
     state.own._internal = internal;
@@ -754,8 +753,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // Return the block itself, not just what it points to. `internal.deinit()`
         // releases what the state OWNS; the state struct was staying allocated for
         // the life of the process.
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
 
