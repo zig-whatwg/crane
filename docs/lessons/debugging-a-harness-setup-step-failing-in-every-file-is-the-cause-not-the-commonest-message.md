@@ -1,0 +1,17 @@
+# Debugging: When every file in a directory fails, find the setup step that fails once per file, not the commonest message
+
+**Date**: 2026-10-10
+**Lesson**: 85,193 failing wasm/core subtests had a single cause, a harness setup step that threw in all 258 files. The two commonest messages were symptoms of it, and the cause was the one message that appeared exactly twice per file.
+
+**Why**: A harness that chains its tests (wasm/core's async_index.js chains promises; a failed step leaves shared state, here the import registry, unset) turns one failure into thousands of failures downstream. Each downstream failure carries its own message, so a count of messages ranks the symptoms highest. The cause shows up as a message whose count is a small, exact multiple of the number of files.
+
+**What Happened**: The sweep's report for wasm/core read "Import #0 "spectest": module is not an object or function" 37,685 times and "Cannot read properties of undefined" 43,002 times. The suspects were promise chaining, the Instance's exports, realms and script ordering. Clustering every message and counting files per cluster turned up "Unhandled rejection ... Cannot convert a BigInt value to a number" 516 times across 258 files, in subtest #1, "Reinitialize the default imports". The step it names, `reinitializeRegistry`, builds `new WebAssembly.Table({initial: 10n, element: "anyfunc", address: "i64"})`. The JS API spec, Chrome (V8 >= 13.3), Firefox and Safari name that member `address`. V8 13.1.203, the version Crane links, still reads the memory64 proposal's earlier name `index` (13.1 wasm-js.cc GetIndexType, fetched at tag 13.1.203, since the local checkout is 14.6). V8 therefore saw an i32 table, and ToNumber(10n) threw. The registry stayed `{}`, and every module that imported `spectest` or a registered module failed after it. A test copy of the harness with only `address` changed to `index` took 16 sample files to 100%, f64 from 5,027 to 10,031 of 10,031, before any engine change was made.
+
+**Fix**:
+1. Cluster the failure messages, normalising names and numbers out of them, and count the FILES each cluster appears in next to its subtest count. A cluster of k x (number of files) subtests at the same subtest index is a setup step.
+2. Confirm it cheaply: change only that step in a test copy of the harness (never edit upstream WPT), run a sample, and compare. The difference is the payoff of the fix before the fix is written.
+3. For this case: `v8_WebAssembly_InstallAddressDescriptors` (v8_wrapper.cpp) replaces WebAssembly.Memory and WebAssembly.Table in every realm with native constructors. Each converts `address` first and constructs V8's own constructor with a descriptor that inherits the caller's members and has `index` as its own property. `--experimental-wasm-memory64` (RUNTIME_V8_FLAGS) enables the i64 modules.
+
+**Status**: **Delete the shim, its call sites in protocol_realms.zig and worker_realm.zig, its extern, and the memory64 flag when Crane links V8 >= 13.3.** That V8 reads `address` itself and ships memory64. tests/v8/wh_wasm_address_descriptor_test.zig's identity and order cases stay as they are, because they test the spec and not the shim.
+
+**Takeaway**: **Rank failure clusters by how many files they hit and where they first appear, not by how many subtests they hold. A setup step that fails once in every file looks small in the counts but is the cause of everything after it.**

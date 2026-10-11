@@ -198,6 +198,9 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
     // [code_generation_checks]: eval and Function in it reach the agent's
     // host, when the host checks them.
     @import("protocol_agents.zig").restrictCodeGenerationFromStrings(isolate, context);
+    // WebAssembly's Memory and Table read the descriptor's `address`, which
+    // V8 13.1 calls `index` (until the V8 upgrade, >= 13.3).
+    ffi.v8_WebAssembly_InstallAddressDescriptors(isolate, context);
     ffi.v8_Context_Enter(context);
     defer ffi.v8_Context_Exit(context);
 
