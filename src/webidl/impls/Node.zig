@@ -1106,48 +1106,75 @@ pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) any
 /// Operation: compareDocumentPosition
 /// https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
 pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime.Instance) anyerror!u16 {
-    // Same node
+    // Step 1: Identical nodes compare equal, including unattached attributes.
     if (instance == other) return 0;
 
-    const self_internal = getInternal(instance) orelse return DocumentPosition.DISCONNECTED;
-    const self_base = self_internal.node_base orelse return DocumentPosition.DISCONNECTED;
-
-    const other_internal = getInternal(other) orelse return DocumentPosition.DISCONNECTED;
-    const other_base = other_internal.node_base orelse return DocumentPosition.DISCONNECTED;
-
-    // Check if disconnected (different trees) using NodeBase tree traversal
-    var self_root = self_base;
-    while (self_root.parent_node) |parent| {
-        self_root = parent;
-    }
-
-    var other_root = other_base;
-    while (other_root.parent_node) |parent| {
-        other_root = parent;
-    }
-
-    if (self_root != other_root) {
-        // Disconnected - use pointer comparison for consistent ordering
-        const self_ptr = @intFromPtr(instance);
-        const other_ptr = @intFromPtr(other);
-        if (self_ptr < other_ptr) {
-            return DocumentPosition.DISCONNECTED | DocumentPosition.FOLLOWING | DocumentPosition.IMPLEMENTATION_SPECIFIC;
-        } else {
-            return DocumentPosition.DISCONNECTED | DocumentPosition.PRECEDING | DocumentPosition.IMPLEMENTATION_SPECIFIC;
+    // Steps 2-5: Attributes participate at their owner element's position.
+    var node1: ?*runtime.Instance = other;
+    var node2: ?*runtime.Instance = instance;
+    const attr1 = try interfaces.Node.get_nodeType(other) == NodeType.ATTRIBUTE_NODE;
+    const attr2 = try interfaces.Node.get_nodeType(instance) == NodeType.ATTRIBUTE_NODE;
+    if (attr1) node1 = try interfaces.Attr.get_ownerElement(other);
+    if (attr2) {
+        node2 = try interfaces.Attr.get_ownerElement(instance);
+        if (attr1 and node1 != null and node1 == node2) {
+            // Step 5.2: Iterate the actual attribute list. Both input Attr
+            // nodes already exist; reading their order must not create a
+            // NamedNodeMap or materialize the list's other Attr nodes.
+            // An element has only one attribute per (namespace, local name),
+            // so equality within this list is identity of the cached Attr.
+            const owner = node1.?;
+            for (0..dom_module.element_attributes.count(owner)) |i| {
+                const attr = dom_module.element_attributes.existingNodeAt(owner, i) orelse continue;
+                if (attr == other) return DocumentPosition.IMPLEMENTATION_SPECIFIC | DocumentPosition.PRECEDING;
+                if (attr == instance) return DocumentPosition.IMPLEMENTATION_SPECIFIC | DocumentPosition.FOLLOWING;
+            }
         }
     }
 
-    // Check contains relationships
-    if (try call_contains(instance, other)) {
-        return DocumentPosition.CONTAINED_BY | DocumentPosition.FOLLOWING;
-    }
-    if (try call_contains(other, instance)) {
-        return DocumentPosition.CONTAINS | DocumentPosition.PRECEDING;
-    }
+    // Reuse the same iterative tree-order algorithm as Range. Parent and
+    // index are borrowed reads through the Node interface, with no storage.
+    const Tree = struct {
+        pub const Node = *runtime.Instance;
+        pub fn parent(node: @This().Node) ?@This().Node {
+            return interfaces.Node.get_parentNode(node) catch null;
+        }
+        pub fn index(node: @This().Node) u32 {
+            var result: u32 = 0;
+            var sibling = interfaces.Node.get_previousSibling(node) catch null;
+            while (sibling) |s| : (sibling = interfaces.Node.get_previousSibling(s) catch null) result += 1;
+            return result;
+        }
+        fn root(node: @This().Node) @This().Node {
+            var current = node;
+            while (parent(current)) |p| current = p;
+            return current;
+        }
+    };
 
-    // Find common ancestor and determine order
-    // TODO: Full tree order comparison
-    return DocumentPosition.FOLLOWING;
+    // Step 6: Disconnected trees (and ownerless attributes) have a consistent
+    // implementation-specific order, based on the original nodes' addresses.
+    if (node1 == null or node2 == null or Tree.root(node1.?) != Tree.root(node2.?)) {
+        const order = if (@intFromPtr(instance) < @intFromPtr(other)) DocumentPosition.FOLLOWING else DocumentPosition.PRECEDING;
+        return DocumentPosition.DISCONNECTED | DocumentPosition.IMPLEMENTATION_SPECIFIC | order;
+    }
+    const a = node1.?;
+    const b = node2.?;
+    const points = dom_module.boundary_points;
+
+    // Steps 7-8: Attributes follow their owner and precede its children, but
+    // an attribute does not contain its owner's descendants.
+    if ((!attr1 and points.isAncestor(Tree, a, b)) or (a == b and attr2))
+        return DocumentPosition.CONTAINS | DocumentPosition.PRECEDING;
+    if ((!attr2 and points.isAncestor(Tree, b, a)) or (a == b and attr1))
+        return DocumentPosition.CONTAINED_BY | DocumentPosition.FOLLOWING;
+
+    // Steps 9-10: Distinct branches compare by tree order, never FOLLOWING
+    // in both directions. The latter made the Range WPT oracle's recursive
+    // swap overflow before it reached Range.compareBoundaryPoints itself.
+    // WebKit Node::compareDocumentPosition likewise normalizes Attr owners
+    // then uses treeOrder: Source/WebCore/dom/Node.cpp.
+    return if (points.isFollowing(Tree, b, a)) DocumentPosition.PRECEDING else DocumentPosition.FOLLOWING;
 }
 
 /// Operation: isSameNode
