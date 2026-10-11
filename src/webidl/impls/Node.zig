@@ -141,7 +141,7 @@ pub const InternalState = struct {
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.node, InternalState);
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -157,6 +157,8 @@ fn getEventTargetInternal(instance: *runtime.Instance) ?*EventTargetImpl.Interna
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // Its states and NodeBases left at its Browser's end (Browser.deinit).
+    dom_module.teardown_sweeps.install(.nodes, &sweepRemaining);
     // Every other node creator sets a node document through
     // `dom.node_document`, never through this impl. The hook is installed
     // here, before anything can hold this node to set its document.
@@ -2214,17 +2216,18 @@ fn freeNodeName(internal: *InternalState, node_base: *NodeBase) void {
     node_base.node_name_allocated = false;
 }
 
-/// Clean up ALL remaining Node internal states AND their NodeBases.
-/// This is called during final context cleanup to catch any leaked nodes
+/// dom.teardown_sweeps: clean up ALL of `scope`'s remaining Node internal
+/// states AND their NodeBases, at its Browser's end.
+/// It catches any leaked nodes
 /// that were removed from the tree (via removeChild) but never explicitly deinited.
 ///
 /// This function properly frees:
 /// 1. NodeBase (the tree structure)
 /// 2. InternalState owned strings
 /// 3. Unregisters from instance_bridge
-pub fn cleanupAllRemainingInternal() void {
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
     // Get an iterator over all remaining entries
-    var iter = Registry.iterator() orelse return;
+    var iter = Registry.iterator(scope) orelse return;
 
     while (iter.next()) |entry| {
         const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
@@ -2250,5 +2253,5 @@ pub fn cleanupAllRemainingInternal() void {
     }
 
     // Clear the registry
-    Registry.clear();
+    Registry.clear(scope);
 }

@@ -59,7 +59,7 @@ pub const InternalState = struct {
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.document_type, InternalState);
 
 /// Get the internal state from an instance
 /// Made public for use by HTMLParser when creating DOCTYPE nodes.
@@ -70,6 +70,8 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // Its states left at its Browser's end (Browser.deinit).
+    @import("dom").teardown_sweeps.install(.node_types, &sweepRemaining);
     // The parsers set a doctype's identifiers through `dom.node_creation`.
     @import("dom").node_creation.installDocumentType(.{ .set_ids = &setIdsHook });
 }
@@ -182,7 +184,8 @@ pub fn createDocumentType(
     return instance;
 }
 
-/// Clean up ALL remaining internal states.
-pub fn cleanupAllRemainingInternal() void {
-    Registry.deinitAllAndClear();
+/// dom.teardown_sweeps: at its Browser's end, every DocumentType state still in
+/// `scope`'s table - an orphan's no teardown reached - frees what it owns.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }

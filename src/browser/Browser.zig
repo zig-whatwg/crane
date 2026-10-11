@@ -50,7 +50,6 @@ const std = @import("std");
 const log = std.log.scoped(.browser);
 const engine = @import("engine");
 const runtime = @import("runtime");
-const impls = @import("impls");
 const namespaces = @import("namespaces");
 
 const context_mod = @import("Context.zig");
@@ -168,12 +167,9 @@ pub const Browser = struct {
         try @import("fetch").network.globalInit();
         errdefer @import("fetch").network.globalCleanup();
 
-        // The platform objects of this Browser come from its own scope's
-        // slab and arena (made below, before its first realm), never from
-        // another Browser's. INTERIM until the DOM's side tables are the
-        // scope's too: the process-wide registries start a new runtime.
-        runtime.beginRegistries();
-        errdefer runtime.endRegistries();
+        // The platform objects of this Browser, and their side tables, come
+        // from its own scope (made below, before its first realm), never from
+        // another Browser's: nothing process-wide is started here.
 
         // Agents are made from the process's snapshot, unless this Browser
         // asked for none (an empty snapshot_path).
@@ -315,8 +311,9 @@ pub const Browser = struct {
             std.debug.assert(self.agent_host.deferred_teardown.isEmpty());
             // IMPORTANT: Clean up orphaned DOM nodes BEFORE the agent ends!
             // DOM node internal states may use the agent's allocator, which
-            // its end frees. We must clean them up while allocators are valid.
-            impls.cleanup.cleanupAllDomRegistries();
+            // its end frees. Every type's side table of THIS Browser is swept
+            // (dom.teardown_sweeps) - never another Browser's.
+            @import("dom").teardown_sweeps.runAll(self.scope);
 
             // Release the rejection tracker's promise handles - this agent's,
             // on its host, and no other Browser's - while the agent that
@@ -336,13 +333,10 @@ pub const Browser = struct {
             @import("html").window.browsing_context.BrowsingContext.freeRetired();
         }
 
-        // INTERIM (as in init): the process-wide registries' own end, while
-        // the scope's arena still holds their blocks.
-        runtime.endRegistries();
-
         // The Browser's scope: every realm and every worker thread is gone.
-        // Its slab and arena go with it - every platform object of this
-        // Browser, and none of another's.
+        // Its side tables end (what their entries still hold of the engine
+        // is released without it), then its slab and arena - every platform
+        // object of this Browser, and none of another's.
         self.scope.deinit();
         self.allocator.destroy(self.scope);
 

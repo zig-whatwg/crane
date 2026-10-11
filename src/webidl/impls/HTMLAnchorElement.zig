@@ -29,7 +29,7 @@ pub const ImplError = error{
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.html_anchor_element, InternalState);
 
 /// Internal state for HTMLAnchorElement implementation
 /// Stores cached relList DOMTokenList instance

@@ -289,7 +289,7 @@ fn takeSample(cycle: usize) Sample {
         .arena_allocations = if (arena) |a| a.stats().total_allocations else 0,
         .arena_recycled = if (arena) |a| a.stats().total_recycled else 0,
         .live_instances = if (slab) |sl| sl.stats().currently_allocated else 0,
-        .bridge_entries = instance_bridge.entryCount(),
+        .bridge_entries = if (browser_scope) |scope| instance_bridge.entryCount(scope) else 0,
         .gpa_outstanding = counting.outstanding,
         .heap = readHeap(),
         .counter_storage = undefined,

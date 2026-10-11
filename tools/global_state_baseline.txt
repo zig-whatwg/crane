@@ -82,7 +82,6 @@ src/dom/indexeddb.zig records 1 G P-res decl:9298618a82f473d9
 src/dom/indexeddb.zig requests 1 G P-res decl:30978182fd939a7b
 src/dom/indexeddb.zig stores 1 G P-res decl:d69009bc151fed96
 src/dom/indexeddb.zig transactions 1 G P-res decl:0aff5c30d889fb93
-src/dom/instance_bridge.zig instance_to_nodebase 1 G I/engine decl:2f2aefbbd5d3307c
 src/dom/intersection_targets.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/live_collections.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/media_elements.zig implementation 1 G P-res decl:9c737e7125e9c3d4
@@ -123,8 +122,8 @@ src/dom/style_sheet_owners.zig load_delay 1 G H decl:8da63f45bc254f79
 src/dom/style_sheet_owners.zig parser_steps 1 G H decl:efc82acf0bf6e79e
 src/dom/style_sheet_owners.zig test_popped 1 G X decl:3796f88280404836
 src/dom/target_element.zig implementation 1 G H decl:9c737e7125e9c3d4
-src/dom/teardown_sweeps.zig count 1 G H decl:3796f88280404836
-src/dom/teardown_sweeps.zig sweeps 1 G H decl:1e82f37f23c768cf
+src/dom/teardown_sweeps.zig count 1 G H decl:242dc8fa36bcac73
+src/dom/teardown_sweeps.zig sweeps 1 G H decl:0199e16bc919f205
 src/dom/teardown_sweeps.zig test_sweeps 1 G X decl:3796f88280404836
 src/dom/template_contents.zig hooks 1 G P-res decl:4dad5b7413d7153c
 src/dom/token_lists.zig implementation 1 G H decl:9c737e7125e9c3d4
@@ -307,7 +306,6 @@ src/runtime/instance.zig TypeIdHolder.marker 1 G P-res decl:f33e1c60fc8c8315
 src/runtime/lifetime.zig hooks 1 G P-res decl:4dad5b7413d7153c
 src/runtime/native_timer.zig fired 1 G X decl:3796f88280404836
 src/runtime/native_timer.zig fired_ids 1 G X decl:f6c851a114bc5146
-src/runtime/root.zig runtime_cleanup_hook 1 G H decl:ea7442cad310ba31
 src/runtime/timer.zig nesting_level 1 TL A decl:cf9dca8c2da04496
 src/service_worker/client.zig Client.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/job.zig Job.next_id 1 G P-res decl:1dfcee87d8da8735
@@ -322,15 +320,12 @@ src/urlpattern/pcre2_ffi.zig Regex.static_captures 1 TL C decl:0e6fd21dca79378c
 src/webdriver/main.zig main.handler.server_ptr 1 G P-res decl:f033b82c181714a1
 src/webidl/impls/Element.zig undefined_sentinel 1 G P-const decl:f33e1c60fc8c8315
 src/webidl/impls/EventTarget.zig current_events 1 G R decl:776d6beda41b573f
-src/webidl/impls/EventTarget.zig internal_state_registry 1 G I/engine decl:5461307b03e22334
 src/webidl/impls/EventTarget.zig next_handler_serial 1 G I/engine decl:d7230747e11f8385
 src/webidl/impls/EventTarget.zig next_listener_id 1 TL I/engine decl:e78eed1e4659a6b5
 src/webidl/impls/HTMLFormElement.zig next_navigation_token 1 TL I/engine decl:e78eed1e4659a6b5
 src/webidl/impls/HTMLIFrameElement.zig live_navigables 1 TL I/engine decl:c69847a9a757c81e
 src/webidl/impls/HTMLIFrameElement.zig navigations 1 TL I/engine decl:0a8f4501a48d1807
 src/webidl/impls/HTMLIFrameElement.zig next_navigation_id 1 TL I/engine decl:e78eed1e4659a6b5
-src/webidl/impls/HTMLOptionElement.zig StateMap.map 1 G I/engine decl:8d514e4e521c73b3
-src/webidl/impls/HTMLTextAreaElement.zig StateMap.map 1 G I/engine decl:8d514e4e521c73b3
 src/webidl/impls/History.zig push_replace_depth 1 TL C decl:cf9dca8c2da04496
 src/webidl/impls/IntersectionObserver.zig observing 1 TL I/engine decl:0cbcb52490f59067
 src/webidl/impls/MessagePort.zig live_ports 1 TL R decl:0cbcb52490f59067
@@ -338,8 +333,6 @@ src/webidl/impls/Navigation.zig live 1 TL I/engine decl:0cbcb52490f59067
 src/webidl/impls/ProcessingInstruction.zig live 1 TL I/engine decl:30788a16b6a95410
 src/webidl/impls/ProcessingInstruction.zig live_guard 1 TL I/engine decl:1bc3d8565c89199d
 src/webidl/impls/Selection.zig empty_array_sentinel 1 G P-const decl:f33e1c60fc8c8315
-src/webidl/impls/StaticRange.zig internal_storage 1 G I/engine decl:7d18da3551f80893
-src/webidl/impls/StaticRange.zig storage_initialized 1 G I/engine decl:4b877655cb3bb361
 src/webidl/impls/Text.zig undefined_sentinel 1 G P-const decl:f33e1c60fc8c8315
 src/webidl/impls/WebSocket.zig live_sockets 1 TL R decl:0cbcb52490f59067
 src/webidl/impls/WindowOrWorkerGlobalScope.zig FetchCall.live 1 TL R decl:09681821288f02db
@@ -347,7 +340,4 @@ src/webidl/impls/XMLHttpRequest.zig live_pending 1 TL R decl:a09702dad165b24c
 src/webidl/impls/fetch_body.zig boundary_counter 1 TL I/engine decl:1dfcee87d8da8735
 src/webidl/types/buffer_sources.zig engine_buffer 1 G P-const decl:9bc1d032c76bbf7d
 src/webidl/types/dictionaries.zig mock_data 1 G X decl:f33e1c60fc8c8315
-src/webidl/utils/registry.zig InstanceRegistry.guard 1 G I/engine decl:0492ce83193eb819
-src/webidl/utils/registry.zig InstanceRegistry.map 1 G I/engine decl:59165264326ba34d
-src/webidl/utils/registry.zig runtime_epoch 1 G P-res decl:1dfcee87d8da8735
 src/websocket/connection.zig handshake_gate 1 TL I/profile decl:f0ae7878d15d1ca1

@@ -63,6 +63,38 @@ pub const BrowserScope = struct {
     pub const Table = enum(u8) {
         /// runtime.internal_state: an instance's internal state.
         internal_states,
+        /// dom.instance_bridge: a node's NodeBase.
+        node_bases,
+        /// EventTarget's state: listeners and event handlers.
+        event_targets,
+        /// StaticRange's boundary points.
+        static_ranges,
+        /// HTMLOptionElement's and HTMLTextAreaElement's state, kept by value.
+        option_states,
+        textarea_states,
+        /// runtime.InstanceRegistry's tables, one per impl that keeps one
+        /// (its InternalState).
+        node,
+        character_data,
+        text,
+        comment,
+        document,
+        document_fragment,
+        document_type,
+        shadow_root,
+        element,
+        html_element,
+        html_anchor_element,
+        html_area_element,
+        html_form_element,
+        html_image_element,
+        html_input_element,
+        html_script_element,
+        html_slot_element,
+        html_template_element,
+        canvas_rendering_context_2d,
+        css_style_declaration,
+        dom_string_map,
     };
     const table_count = @typeInfo(Table).@"enum".fields.len;
 

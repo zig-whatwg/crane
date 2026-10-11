@@ -34,7 +34,7 @@ pub const ImplError = error{
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = webidl.utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.css_style_declaration, InternalState);
 
 /// Internal state for CSSStyleDeclaration implementation
 pub const InternalState = struct {

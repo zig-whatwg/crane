@@ -261,6 +261,9 @@ pub const CrossThreadTask = task_sink.CrossThreadTask;
 /// A Browser's scope: its per-Browser state, as supplements reached through
 /// the realm (ContextData.browser_scope; docs/instances.md rule 2).
 pub const BrowserScope = @import("browser_scope.zig").BrowserScope;
+/// An impl's internal state per instance, in the instance's Browser's side
+/// table (instances B1).
+pub const InstanceRegistry = @import("instance_registry.zig").InstanceRegistry;
 
 // Typed callback wrappers for type-safe callback handling
 // Replaces *anyopaque user data with typed alternatives
@@ -339,7 +342,6 @@ pub fn initializeRuntime(allocator: std.mem.Allocator) void {
     const scope = allocator.create(BrowserScope) catch @panic("out of memory starting the runtime");
     scope.* = BrowserScope.init(allocator);
     BrowserScope.setStandalone(scope);
-    beginRegistries();
 }
 
 /// End the runtime `initializeRuntime` started: the standalone scope ends,
@@ -347,40 +349,11 @@ pub fn initializeRuntime(allocator: std.mem.Allocator) void {
 ///
 /// Thread safety: Not thread-safe, call once during shutdown
 pub fn deinitializeRuntime() void {
-    endRegistries();
     const scope = BrowserScope.standalone() orelse return;
     BrowserScope.setStandalone(null);
     const allocator = scope.allocator;
     scope.deinit();
     allocator.destroy(scope);
-}
-
-/// INTERIM (instances B1, until the DOM's side tables are the scope's): the
-/// process-wide registries' entries from before now belong to an earlier
-/// runtime (webidl.utils.beginRegistryRuntime). A Browser's start and the
-/// standalone runtime's call it; one runtime at a time, as those registries
-/// assume.
-pub fn beginRegistries() void {
-    @import("webidl").utils.beginRegistryRuntime();
-}
-
-/// INTERIM (instances B1, as `beginRegistries`): the registries' own end,
-/// after the agent's - EventTarget's registry releases what its entries
-/// still hold, with no engine.
-pub fn endRegistries() void {
-    if (runtime_cleanup_hook) |hook| hook();
-}
-
-/// Cleanup hook function type
-pub const CleanupHookFn = *const fn () void;
-
-/// Global cleanup hook (set by impls that need cleanup during deinit)
-var runtime_cleanup_hook: ?CleanupHookFn = null;
-
-/// Register a cleanup hook to be called by `endRegistries`
-/// This allows impl modules to register cleanup without circular dependencies
-pub fn registerCleanupHook(hook: CleanupHookFn) void {
-    runtime_cleanup_hook = hook;
 }
 
 /// Set a property on a runtime.Instance target using JavaScript [[Set]] semantics

@@ -40,7 +40,7 @@ pub const InternalState = struct {
 };
 
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.html_slot_element, InternalState);
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
@@ -57,13 +57,13 @@ pub fn installHooks() void {
     // A slot removed from its tree while script held no wrapper of it is an
     // orphan nothing deinits before the browser ends, and its SlotState owns
     // memory of its own (the name and both node lists).
-    dom.teardown_sweeps.install(&sweepRemaining);
+    dom.teardown_sweeps.install(.element_types, &sweepRemaining);
 }
 
 /// `dom.teardown_sweeps`: free the state of every slot no exit reached -
 /// e.g. the slot attachShadow step 4.3 removes from a declarative shadow root.
-fn sweepRemaining() void {
-    Registry.deinitAllAndClear();
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }
 
 /// `dom.slot_helpers`: the slot's state.

@@ -24,10 +24,8 @@
 
 const std = @import("std");
 const NodeBase = @import("node_base.zig").NodeBase;
+const runtime = @import("runtime");
 const tombstones = @import("webidl").utils.tombstones;
-
-// Forward declaration - will be resolved when Node.zig impl adds the node_base field
-// For now, we use a simpler approach that doesn't require modifying InternalState yet
 
 /// Placeholder type for the bridge context
 /// This will be populated when Node.zig InternalState is updated
@@ -38,25 +36,33 @@ pub const BridgeContext = struct {
     instance: *anyopaque,
 };
 
-/// Registry mapping runtime.Instance pointers to their NodeBase
-/// This is a temporary solution until NodeBase is embedded in InternalState
+/// One Browser's map from runtime.Instance pointers to their NodeBase: a side
+/// table of its runtime.BrowserScope (`.node_bases`, instances B1), so a
+/// Browser's nodes are its own and their entries end with it.
 ///
 /// Nodes are a window's, but the map is READ for every platform object of
-/// every thread: the wrapper cache and the template registry ask it whether
-/// an object is a node (wrapper_cache.zig, template_registry.zig), and a
-/// worker's objects live on the worker's own thread (docs/instances.md). So
-/// every access takes `mutex`.
-const Bridge = struct {
-    /// Protects `map`, `initialized` and `guard`; held for one map operation,
-    /// never across a call out of this file.
+/// every thread of the Browser: the wrapper cache and the template registry
+/// ask it whether an object is a node (wrapper_cache.zig,
+/// template_registry.zig), and a worker's objects live on the worker's own
+/// thread (docs/instances.md). So every access takes `mutex`.
+pub const Bridge = struct {
+    /// Protects `map` and `guard`; held for one map operation, never across
+    /// a call out of this file.
     mutex: std.Io.Mutex = .init,
-    map: std.AutoHashMap(*anyopaque, *NodeBase) = undefined,
-    initialized: bool = false,
+    map: std.AutoHashMap(*anyopaque, *NodeBase),
     /// Every node a page makes enters this map and leaves it when the page
     /// ends; the guard rehashes before an insert once the tombstones those
     /// removals leave could take half the free slots
     /// (webidl.utils.tombstones).
     guard: tombstones.TombstoneGuard = .{},
+
+    pub fn init(allocator: std.mem.Allocator) Bridge {
+        return .{ .map = std.AutoHashMap(*anyopaque, *NodeBase).init(allocator) };
+    }
+
+    pub fn deinit(self: *Bridge) void {
+        self.map.deinit();
+    }
 
     fn lock(self: *Bridge) void {
         std.Io.Threaded.mutexLock(&self.mutex);
@@ -65,27 +71,28 @@ const Bridge = struct {
     fn unlock(self: *Bridge) void {
         std.Io.Threaded.mutexUnlock(&self.mutex);
     }
-
-    /// Called with `mutex` held.
-    fn ensure(self: *Bridge) void {
-        if (self.initialized) return;
-        self.map = std.AutoHashMap(*anyopaque, *NodeBase).init(std.heap.page_allocator);
-        self.initialized = true;
-    }
 };
-var instance_to_nodebase: Bridge = .{};
 
-/// How many (instance -> NodeBase) entries are live.
+/// The Browser of `instance` - a runtime.Instance - read from its address.
+fn scopeOf(instance: *anyopaque) *runtime.BrowserScope {
+    return runtime.BrowserScope.ofInstance(@ptrCast(@alignCast(instance)));
+}
+
+/// `instance`'s Browser's bridge, if it has one.
+fn bridgeOf(instance: *anyopaque) ?*Bridge {
+    return scopeOf(instance).existingTable(.node_bases, Bridge);
+}
+
+/// How many (instance -> NodeBase) entries `scope`'s Browser has.
 ///
 /// Exposed for the Phase 6 memory benchmark. This map is keyed on the instance
 /// ADDRESS and the slab recycles addresses, so an entry that outlives its instance
 /// is not merely a leak - it is silently inherited by the next object at that
 /// address. A count that rises with created-and-discarded nodes is the symptom.
-pub fn entryCount() usize {
-    const bridge = &instance_to_nodebase;
+pub fn entryCount(scope: *runtime.BrowserScope) usize {
+    const bridge = scope.existingTable(.node_bases, Bridge) orelse return 0;
     bridge.lock();
     defer bridge.unlock();
-    if (!bridge.initialized) return 0;
     return bridge.map.count();
 }
 
@@ -93,57 +100,21 @@ pub fn entryCount() usize {
 /// measurements: every node a page makes enters and leaves this map, so its
 /// free slots are what keeps registering the next page's nodes cheap - see
 /// webidl.utils.tombstones.
-pub fn tableSlots() tombstones.SlotCounts {
-    const bridge = &instance_to_nodebase;
+pub fn tableSlots(scope: *runtime.BrowserScope) tombstones.SlotCounts {
+    const bridge = scope.existingTable(.node_bases, Bridge) orelse return .{};
     bridge.lock();
     defer bridge.unlock();
-    if (!bridge.initialized) return .{};
     return tombstones.slotCounts(&bridge.map);
-}
-
-/// Initialize the bridge registry
-/// Called once at startup
-pub fn init() void {
-    const bridge = &instance_to_nodebase;
-    bridge.lock();
-    defer bridge.unlock();
-    bridge.ensure();
-}
-
-/// Deinitialize the bridge registry
-/// Called at shutdown (optional, as page_allocator doesn't need cleanup)
-pub fn deinit() void {
-    const bridge = &instance_to_nodebase;
-    bridge.lock();
-    defer bridge.unlock();
-    if (!bridge.initialized) return;
-    bridge.map.deinit();
-    bridge.initialized = false;
 }
 
 /// Register a bidirectional mapping between a runtime.Instance and its NodeBase
 ///
 /// This should be called during Node initialization when both the Instance
 /// and its NodeBase are created.
-///
-/// Example:
-/// ```zig
-/// pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-///     const instance = try runtime.Instance.create(allocator, ...);
-///     const internal = InternalState.init(allocator);
-///     Registry.put(instance, internal);
-///
-///     // Register with bridge
-///     try instance_bridge.register(instance, &internal.node_base);
-///
-///     return instance;
-/// }
-/// ```
 pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
-    const bridge = &instance_to_nodebase;
+    const bridge = try scopeOf(instance).table(.node_bases, Bridge);
     bridge.lock();
     defer bridge.unlock();
-    bridge.ensure();
     bridge.guard.beforeInsert(&bridge.map);
     try bridge.map.put(instance, node_base);
     // Reverse direction lives on the node itself - see NodeBase.owner_instance.
@@ -154,11 +125,9 @@ pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
 ///
 /// This should be called during Node deinitialization.
 pub fn unregister(instance: *anyopaque) void {
-    const bridge = &instance_to_nodebase;
+    const bridge = bridgeOf(instance) orelse return;
     bridge.lock();
     defer bridge.unlock();
-    if (!bridge.initialized) return;
-
     if (bridge.map.get(instance)) |node_base| {
         // Not strictly required - the field dies with the node - but clearing it
         // keeps a freed instance from being observable through a resurrected node.
@@ -170,17 +139,10 @@ pub fn unregister(instance: *anyopaque) void {
 /// Get the NodeBase for a runtime.Instance
 ///
 /// Returns null if the instance is not registered or has no NodeBase.
-///
-/// Example:
-/// ```zig
-/// const node_base = bridge.getNodeBase(instance) orelse return error.InvalidStateError;
-/// try dom.mutation.insert(node_base, parent_base, null, false);
-/// ```
 pub fn getNodeBase(instance: *anyopaque) ?*NodeBase {
-    const bridge = &instance_to_nodebase;
+    const bridge = bridgeOf(instance) orelse return null;
     bridge.lock();
     defer bridge.unlock();
-    if (!bridge.initialized) return null;
     return bridge.map.get(instance);
 }
 
@@ -246,123 +208,4 @@ pub fn getInstanceTyped(comptime T: type, node_base: *NodeBase) ?*T {
 // The registry approach is kept as a fallback for nodes that may have
 // different storage patterns (e.g., XPath namespace nodes).
 
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "instance_bridge: register and lookup" {
-    init();
-    defer deinit();
-
-    // Create a mock NodeBase
-    const allocator = std.testing.allocator;
-    var node_base = NodeBase{
-        .allocator = allocator,
-        .node_type = NodeBase.ELEMENT_NODE,
-        .node_name = "div",
-        .parent_node = null,
-        .child_nodes = undefined, // Not needed for this test
-        .owner_document = null,
-        .registered_observers = undefined, // Not needed for this test
-    };
-
-    // Create a mock instance (just need a unique pointer)
-    var mock_instance: u8 = 0;
-    const instance_ptr: *anyopaque = @ptrCast(&mock_instance);
-
-    // Register
-    try register(instance_ptr, &node_base);
-
-    // Lookup by instance
-    const found_nodebase = getNodeBase(instance_ptr);
-    try std.testing.expect(found_nodebase != null);
-    try std.testing.expectEqual(&node_base, found_nodebase.?);
-
-    // Lookup by nodebase
-    const found_instance = getInstance(&node_base);
-    try std.testing.expect(found_instance != null);
-    try std.testing.expectEqual(instance_ptr, found_instance.?);
-
-    // isRuntimeInstance
-    try std.testing.expect(isRuntimeInstance(&node_base));
-
-    // Unregister
-    unregister(instance_ptr);
-
-    // Should no longer be found
-    try std.testing.expect(getNodeBase(instance_ptr) == null);
-    try std.testing.expect(getInstance(&node_base) == null);
-    try std.testing.expect(!isRuntimeInstance(&node_base));
-}
-
-test "instance_bridge: typed accessors" {
-    init();
-    defer deinit();
-
-    const allocator = std.testing.allocator;
-    var node_base = NodeBase{
-        .allocator = allocator,
-        .node_type = NodeBase.TEXT_NODE,
-        .node_name = "#text",
-        .parent_node = null,
-        .child_nodes = undefined,
-        .owner_document = null,
-        .registered_observers = undefined,
-    };
-
-    // Use a typed mock
-    const MockInstance = struct {
-        id: u32,
-    };
-    var mock = MockInstance{ .id = 42 };
-
-    try register(@ptrCast(&mock), &node_base);
-    defer unregister(@ptrCast(&mock));
-
-    // Typed lookup
-    const found = getInstanceTyped(MockInstance, &node_base);
-    try std.testing.expect(found != null);
-    try std.testing.expectEqual(@as(u32, 42), found.?.id);
-}
-
-test "instance_bridge: a page's worth of nodes registered and released, page after page, leaves half the unused slots free" {
-    init();
-    defer deinit();
-
-    // Every node shares one NodeBase here: the table is what is measured.
-    var node_base = NodeBase{
-        .allocator = std.testing.allocator,
-        .node_type = NodeBase.ELEMENT_NODE,
-        .node_name = "span",
-        .parent_node = null,
-        .child_nodes = undefined,
-        .owner_document = null,
-        .registered_observers = undefined,
-    };
-
-    // Instances at addresses never used before, as a runner's pages make
-    // them; a few stay registered throughout.
-    const stride = 16;
-    var next: usize = 0x1000;
-    for (0..64) |_| {
-        try register(@ptrFromInt(next), &node_base);
-        next += stride;
-    }
-    for (0..40) |page| {
-        const first = next;
-        for (0..4096) |i| {
-            try register(@ptrFromInt(next), &node_base);
-            next += stride;
-            if (i == 0 and page > 0) {
-                const slots = tableSlots();
-                if (!slots.halfOfUnusedFree()) {
-                    std.debug.print("page {d}: {d} of {d} slots free, {d} live\n", .{ page, slots.free, slots.capacity, slots.live });
-                    return error.TombstonesFilledTheTable;
-                }
-            }
-        }
-        var address = first;
-        while (address < next) : (address += stride) unregister(@ptrFromInt(address));
-    }
-    try std.testing.expectEqual(@as(usize, 64), entryCount());
-}
+// Tests: tests/dom/instance_bridge_test.zig.

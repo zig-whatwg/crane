@@ -30,7 +30,7 @@ const log = std.log.scoped(.html_script_element);
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = webidl.utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.html_script_element, InternalState);
 
 pub const State = HTMLScriptElement.State;
 
@@ -60,6 +60,8 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // Its states left at its Browser's end (Browser.deinit).
+    @import("dom").teardown_sweeps.install(.script_elements, &sweepRemaining);
     // A script element that becomes connected must run "prepare the script
     // element", and one whose children change may too.
     dom_module.mutation.registerPostConnectionStepsCallback(&scriptPostConnectionStepsCallback) catch |err| {
@@ -92,7 +94,8 @@ pub fn installHooks() void {
 /// preparation-time document, even after the element is moved or removed.
 fn scriptsDelayLoadEvent(document: *runtime.Instance) bool {
     const generation = runtime.SlabAllocator.generationOf(document);
-    var entries = Registry.iterator() orelse return false;
+    // The document's Browser's script elements.
+    var entries = Registry.iterator(runtime.BrowserScope.ofInstance(document)) orelse return false;
     while (entries.next()) |entry| {
         const internal = entry.internal;
         if (internal.delaying_the_load_event and internal.preparation_time_document == document and
@@ -815,7 +818,8 @@ pub const ScriptExecutionError = error{
     OutOfMemory,
 };
 
-/// Clean up ALL remaining internal states.
-pub fn cleanupAllRemainingInternal() void {
-    Registry.deinitAllAndClear();
+/// dom.teardown_sweeps: at its Browser's end, every HTMLScriptElement state still in
+/// `scope`'s table - an orphan's no teardown reached - frees what it owns.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }

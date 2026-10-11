@@ -163,7 +163,7 @@ fn setAttributeValue(instance: *runtime.Instance, comptime name: []const u8, val
 // ============================================================================
 
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.html_input_element, InternalState);
 
 /// https://html.spec.whatwg.org/multipage/input.html#concept-fe-value
 ///

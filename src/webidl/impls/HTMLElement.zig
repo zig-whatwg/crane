@@ -218,7 +218,7 @@ pub const InternalState = struct {
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.html_element, InternalState);
 
 /// Get HTMLElement's internal state from the registry
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
@@ -1036,6 +1036,8 @@ fn ensureInternals(instance: *runtime.Instance) !*runtime.Instance {
 }
 
 pub fn installHooks() void {
+    // Its states left at its Browser's end (Browser.deinit).
+    @import("dom").teardown_sweeps.install(.html_elements, &sweepRemaining);
     @import("dom").html_pseudo_classes.install(.{ .matches = &@import("html").pseudo_classes.matches, .popover_showing = &popoverShowing });
     @import("dom").custom_elements.installHTMLElement(.{ .internals = &attachedInternals, .ensure_internals = &ensureInternals });
 }
@@ -1049,7 +1051,8 @@ fn attachedInternals(instance: *runtime.Instance) ?*runtime.Instance {
     return (getInternalState(instance) orelse return null).element_internals;
 }
 
-/// Clean up ALL remaining internal states.
-pub fn cleanupAllRemainingInternal() void {
-    Registry.deinitAllAndClear();
+/// dom.teardown_sweeps: at its Browser's end, every HTMLElement state still in
+/// `scope`'s table - an orphan's no teardown reached - frees what it owns.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }

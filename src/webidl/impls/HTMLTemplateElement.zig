@@ -25,7 +25,7 @@ pub const InternalState = struct {
     content: ?*runtime.Instance = null,
     content_generation: u64 = 0,
 };
-const Registry = @import("webidl").utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.html_template_element, InternalState);
 
 pub fn installHooks() void {
     dom.template_contents.install(.{ .establish = &establishContents, .adopted = &adoptingSteps });

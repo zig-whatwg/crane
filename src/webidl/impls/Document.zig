@@ -32,7 +32,7 @@ const Document = interfaces.Document;
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = webidl.utils;
-const Registry = utils.InstanceRegistry(InternalState);
+const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
@@ -676,6 +676,8 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // Its states left at its Browser's end (Browser.deinit).
+    @import("dom").teardown_sweeps.install(.documents, &sweepRemaining);
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
     @import("dom").refcount.install(.{ .document_counts = &countsOf });
     @import("dom").custom_elements.installDocument(.{
@@ -5228,7 +5230,8 @@ fn setModuleLoader(instance: *runtime.Instance, loader: *anyopaque, dispose: dom
 }
 
 fn visitRealmModuleLoaders(realm: runtime.Context, visit: dom_document_modules.VisitLoaderFn, data: ?*anyopaque) void {
-    var entries = Registry.iterator() orelse return;
+    // The realm's Browser's documents.
+    var entries = Registry.iterator(realm.browserScope() orelse return) orelse return;
     while (entries.next()) |entry| {
         const document: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
         if (document.ctx != realm) continue;
@@ -5783,7 +5786,8 @@ pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerro
     return .null;
 }
 
-/// Clean up ALL remaining internal states.
-pub fn cleanupAllRemainingInternal() void {
-    Registry.deinitAllAndClear();
+/// dom.teardown_sweeps: at its Browser's end, every Document state still in
+/// `scope`'s table - an orphan's no teardown reached - frees what it owns.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }
