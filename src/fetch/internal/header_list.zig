@@ -20,6 +20,9 @@ pub const Header = struct {
     name: []const u8,
     /// Header value
     value: []const u8,
+    /// True only for Content-Type supplied by body extraction. Clones retain
+    /// this provenance; replacing or combining the value clears it.
+    body_generated: bool = false,
 
     /// Create a header with owned copies of name and value.
     pub fn init(allocator: Allocator, name: []const u8, value: []const u8) !Header {
@@ -40,7 +43,9 @@ pub const Header = struct {
 
     /// Clone this header
     pub fn clone(self: Header, allocator: Allocator) !Header {
-        return Header.init(allocator, self.name, self.value);
+        var copy = try Header.init(allocator, self.name, self.value);
+        copy.body_generated = self.body_generated;
+        return copy;
     }
 };
 
@@ -249,6 +254,27 @@ pub const HeaderList = struct {
         try self.entries.append(self.allocator, header);
     }
 
+    /// Append the Content-Type supplied by "extract a body". Ordinary header
+    /// creation never marks a value as generated, even if its text is identical.
+    pub fn appendBodyContentType(self: *HeaderList, value: []const u8) !void {
+        try self.append("Content-Type", value);
+        self.entries.items[self.entries.items.len - 1].body_generated = true;
+    }
+
+    /// BORROWED: the sole Content-Type, only when body extraction supplied it.
+    /// Valid until this list is mutated or deinitialized.
+    /// Duplicate entries require Fetch's ordinary MIME extraction instead.
+    pub fn generatedBodyContentType(self: *const HeaderList) ?[]const u8 {
+        var value: ?[]const u8 = null;
+        for (self.entries.items) |header| {
+            if (std.ascii.eqlIgnoreCase(header.name, "Content-Type")) {
+                if (value != null or !header.body_generated) return null;
+                value = header.value;
+            }
+        }
+        return value;
+    }
+
     /// Delete all headers with the given name.
     ///
     /// Spec: "Remove all headers whose name is a byte-case-insensitive match
@@ -277,9 +303,11 @@ pub const HeaderList = struct {
         while (i < self.entries.items.len) {
             if (std.ascii.eqlIgnoreCase(self.entries.items[i].name, name)) {
                 if (!found_first) {
-                    // Set value of first matching header
+                    // Keep the old entry valid if replacement allocation fails.
+                    const replacement = try self.allocator.dupe(u8, value);
                     self.allocator.free(self.entries.items[i].value);
-                    self.entries.items[i].value = try self.allocator.dupe(u8, value);
+                    self.entries.items[i].value = replacement;
+                    self.entries.items[i].body_generated = false;
                     found_first = true;
                     i += 1;
                 } else {
@@ -314,6 +342,7 @@ pub const HeaderList = struct {
                 );
                 self.allocator.free(header.value);
                 header.value = new_value;
+                header.body_generated = false;
                 return;
             }
         }
