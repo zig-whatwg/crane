@@ -594,8 +594,9 @@ fn matchesMp3Signature(sequence: []const u8) bool {
     // 6. Let skipped-bytes be the return value of the execution of mp3 framesize computation
     const skipped_bytes = computeMp3FrameSize(frame);
 
-    // 7. If skipped-bytes is less than 4, or skipped-bytes is greater than length - s, return false
-    if (skipped_bytes < 4 or skipped_bytes > length - s)
+    // Gecko mp3_sniff requires a complete second header plus one byte.
+    // The spec's inverted bound is tracked in mimesniff issues #70 and #168.
+    if (skipped_bytes < 4 or skipped_bytes + 4 >= length - s)
         return false;
 
     // 8. Increment s by skipped-bytes
@@ -617,12 +618,12 @@ const Mp3Frame = struct {
 ///
 /// Spec: https://mimesniff.spec.whatwg.org/#match-an-mp3-header
 fn matchMp3Header(sequence: []const u8, length: usize, s: usize) bool {
-    // 1. If length is less than 4, return false
-    if (length < 4)
+    // Check the available bytes at this frame, including the second header.
+    if (s > length or length - s < 4)
         return false;
 
-    // 2. If sequence[s] is not equal to 0xff and sequence[s + 1] & 0xe0 is not equal to 0xe0, return false
-    if (s + 1 >= length or sequence[s] != 0xFF or (sequence[s + 1] & 0xE0) != 0xE0)
+    // 2. Reject either a missing 0xff or a missing 0xe0 sync prefix.
+    if (sequence[s] != 0xFF or (sequence[s + 1] & 0xE0) != 0xE0)
         return false;
 
     // 3. Let layer be the result of sequence[s + 1] & 0x06 >> 1
@@ -649,29 +650,8 @@ fn matchMp3Header(sequence: []const u8, length: usize, s: usize) bool {
     // 9. Let freq be the value given by sample-rate in the table sample-rate
     // (This is actually used in computeMp3FrameSize, not here)
 
-    // 10-11. Final-layer validation SKIPPED due to spec error
-    //
-    // Spec says: "Let final-layer be the result of 4 - (sequence[s + 1])"
-    //            "If final-layer & 0x06 >> 1 is not 3, return false"
-    //
-    // PROBLEM: This is a known error in the WHATWG spec. The calculation
-    // "4 - (sequence[s + 1])" causes integer overflow since sequence[s+1]
-    // can be 0xFF (255). Even if we interpret it as "4 - layer", the check
-    // "(final-layer & 0x06) >> 1 == 3" is mathematically impossible to satisfy
-    // for any valid layer value (1, 2, or 3):
-    //   - layer=1 → final=3 → (3 & 0x06)>>1 = 1 ≠ 3
-    //   - layer=2 → final=2 → (2 & 0x06)>>1 = 1 ≠ 3
-    //   - layer=3 → final=1 → (1 & 0x06)>>1 = 0 ≠ 3
-    //
-    // REFERENCE: WHATWG issue #70 (https://github.com/whatwg/mimesniff/issues/70)
-    // documents multiple problems with the MP3 algorithm. Chrome uses a much
-    // simpler approach: just check for "ID3" or FF Ex patterns.
-    //
-    // CONCLUSION: This validation step appears to be a spec error and is skipped.
-    // All other validations (sync word, layer, bitrate, sample rate) are correctly
-    // implemented and sufficient for MP3 detection.
-
-    return true;
+    // Gecko is_mp3 accepts only Layer III (encoded layer 1).
+    return layer == 1;
 }
 
 /// Parse MP3 frame
@@ -703,31 +683,24 @@ const MP3_RATES = [_]u32{ 0, 32000, 40000, 48000, 56000, 64000, 80000, 96000, 11
 const MP2_5_RATES = [_]u32{ 0, 8000, 16000, 24000, 32000, 40000, 48000, 56000, 64000, 80000, 96000, 112000, 128000, 144000, 160000 };
 const SAMPLE_RATES = [_]u32{ 44100, 48000, 32000 };
 
-/// Compute MP3 frame size
+/// Compute MP3 frame size, following Gecko's mp3_parse/mp3_framesize.
 ///
-/// Spec: https://mimesniff.spec.whatwg.org/#compute-an-mp3-frame-size
+/// Browser evidence: toolkit/components/mediasniffer/mp3sniff.c in Gecko:
+/// https://github.com/mozilla/gecko-dev/blob/master/toolkit/components/mediasniffer/mp3sniff.c
+/// Chromium net/base/mime_sniffer.cc uses ID3/FF E0 magic, not frame arithmetic.
+/// The spec's reversed bitrate table and scale remain in issues #70 and #168:
+/// https://github.com/whatwg/mimesniff/issues/70
+/// https://github.com/whatwg/mimesniff/issues/168
+/// FFFB50C4 is MPEG1 Layer III at 64 kbit/s and 44100 Hz: 208 bytes, not 130.
 fn computeMp3FrameSize(frame: Mp3Frame) usize {
-    // 3-4. Get bitrate from table
-    const bitrate = if ((frame.version & 0x01) != 0)
-        MP2_5_RATES[frame.bitrate_index]
-    else
-        MP3_RATES[frame.bitrate_index];
-
-    // 6. Get samplerate from table
-    const samplerate = SAMPLE_RATES[frame.samplerate_index];
-
-    // 1. If version is 1, let scale be 72, else let scale be 144
-    const scale: u32 = if (frame.version == 1) 72 else 144;
-
-    // 2. Let size be bitrate * scale / freq
-    var size: usize = @intCast((bitrate * scale) / samplerate);
-
-    // 3. If pad is not zero, increment size by 1
-    if (frame.pad != 0)
-        size += 1;
-
-    // 4. Return size
-    return size;
+    // Gecko, like the spec, treats reserved version 1 as MPEG1 via this bit.
+    const mpeg1 = (frame.version & 1) != 0;
+    const bitrate = if (mpeg1) MP3_RATES[frame.bitrate_index] else MP2_5_RATES[frame.bitrate_index];
+    var samplerate = SAMPLE_RATES[frame.samplerate_index];
+    if (frame.version == 2) samplerate /= 2;
+    if (frame.version == 0) samplerate /= 4;
+    const scale: u32 = if (mpeg1) 144 else 72;
+    return @as(usize, (bitrate * scale) / samplerate) + frame.pad;
 }
 
 // ============================================================================
