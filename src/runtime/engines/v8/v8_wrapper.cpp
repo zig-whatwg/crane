@@ -85,7 +85,8 @@ static void releaseWeakArmRaw(void* handle);
 
 // Defined with the live string count below: every delete site a Global<String>
 // can reach calls it, so the count is of handles, not of entry points.
-static void forgetStringHandle(const void* handle);
+template <typename T>
+static void forgetStringHandle(Global<T>* handle);
 
 // ---- lane: realms (realm-tagged handles) ----
 // Handles the engine protocol made for a realm's callbacks (an event
@@ -124,8 +125,8 @@ static void untagRealmHandle(const void* handle) {
 template<typename T>
 static void resetGlobalHandle(void* ptr) {
     releaseWeakArmRaw(ptr);
-    forgetStringHandle(ptr);
     Global<T>* handle = static_cast<Global<T>*>(ptr);
+    forgetStringHandle(handle);
     handle->Reset();
     delete handle;
 }
@@ -169,43 +170,40 @@ static std::atomic<int64_t> g_site_count[kGlobalSiteSlots];
 // Live Global<String> handles (`live_string_globals`): gc_bench's build only,
 // 0 in every other, as `globals_created` is.
 //
-// Counted by HANDLE. The counter this replaced added one in
-// v8_String_NewFromUtf8 and took one away in v8_String_Dispose, but a binding
-// releases the string it returns as a Value (v8_Global_Dispose), so it rose by
-// one per string an operation or getter returned while V8's own count stayed
-// flat: 10,000 `el.getAttribute('a')` calls read +10,000 live_string_globals and
-// +0 global_handle_bytes (lane callleak, 2026-10-11). A Global<String> is
-// entered when trackHandle makes it and erased by whichever dispose releases
-// it - v8_String_Dispose, v8_Value_Dispose, v8_Global_Dispose,
-// v8_FreeToStringResult, the snapshot's bulk reset - so the type a handle is
-// released as does not matter.
-#if CRANE_TRACK_GLOBALS
-struct LiveStringHandles {
-    std::mutex lock;
-    std::unordered_set<const void*> set;
-};
-static LiveStringHandles& liveStringHandles() {
-    // process-wide: a diagnostic count of the Global<String> handles every isolate of the process holds, compiled into gc_bench alone; the lock is held for one insert, erase or size, never across a call into V8.
-    static LiveStringHandles handles;
-    return handles;
-}
-#endif
+// Counted by HANDLE. The counter used to add one in v8_String_NewFromUtf8 and
+// take one away in v8_String_Dispose, but a binding releases the string it
+// returns as a Value (v8_Global_Dispose), so it rose by one per string an
+// operation or getter returned while V8's own count stayed flat: 200,000
+// `el.getAttribute('title')` calls read +200,000 live_string_globals and +0
+// global_handle_bytes (lane callleak, 2026-10-11). trackHandle now marks every
+// Global<String> it makes with a wrapper class id - a field of the handle's own
+// node in V8's global handle table, read and written inline, no lookup and no
+// lock - and every dispose a string can reach (v8_String_Dispose,
+// v8_Value_Dispose, v8_Global_Dispose, v8_FreeToStringResult, the snapshot's
+// bulk reset) reads it back before Reset. So the type a handle is released as
+// does not matter, and an unmarked handle costs one load. A registry of
+// pointers did the same exactly and cost gc_bench 10-20% on string-heavy
+// bodies (a lock and a hash probe on every dispose).
+static std::atomic<int64_t> g_live_string_globals{0};
 
-static void rememberStringHandle(const void* handle) {
+// Nothing else in Crane assigns wrapper class ids.
+static constexpr uint16_t kCountedStringClassId = 0x5354;  // "ST"
+
+static void rememberStringHandle(Global<String>* handle) {
 #if CRANE_TRACK_GLOBALS
-    LiveStringHandles& live = liveStringHandles();
-    std::lock_guard<std::mutex> guard(live.lock);
-    live.set.insert(handle);
+    handle->SetWrapperClassId(kCountedStringClassId);
+    g_live_string_globals.fetch_add(1, std::memory_order_relaxed);
 #else
     (void)handle;
 #endif
 }
 
-static void forgetStringHandle(const void* handle) {
+template <typename T>
+static void forgetStringHandle(Global<T>* handle) {
 #if CRANE_TRACK_GLOBALS
-    LiveStringHandles& live = liveStringHandles();
-    std::lock_guard<std::mutex> guard(live.lock);
-    live.set.erase(handle);
+    if (handle->WrapperClassId() == kCountedStringClassId) {
+        g_live_string_globals.fetch_sub(1, std::memory_order_relaxed);
+    }
 #else
     (void)handle;
 #endif
@@ -3319,19 +3317,13 @@ void v8_Context_AllowCodeGenerationFromStrings(Global<Context>* context, bool al
 // String Functions
 // ============================================================================
 
-// Live Global<String> handles (liveStringHandles above; 0 outside gc_bench).
+// Live Global<String> handles (rememberStringHandle above; 0 outside gc_bench).
 //
 // Every one of these is a C++ heap allocation AND a slot in V8's global handle
 // table, which lives outside `used_heap_size` - so a leak here is invisible to
 // GetHeapStatistics while being perfectly visible in RSS.
 int64_t v8_Debug_LiveStringGlobals() {
-#if CRANE_TRACK_GLOBALS
-    LiveStringHandles& live = liveStringHandles();
-    std::lock_guard<std::mutex> guard(live.lock);
-    return static_cast<int64_t>(live.set.size());
-#else
-    return 0;
-#endif
+    return g_live_string_globals.load(std::memory_order_relaxed);
 }
 
 Global<String>* v8_String_NewFromUtf8(Isolate* isolate, const uint8_t* data, int length) {

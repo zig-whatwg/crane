@@ -271,6 +271,7 @@ src/runtime/engines/v8/v8_wrapper.cpp g_isolate_allocators 1 C++G I/engine decl:
 src/runtime/engines/v8/v8_wrapper.cpp g_live_context_globals 1 C++G D decl:dad6fa01c70ae637
 src/runtime/engines/v8/v8_wrapper.cpp g_live_globals 1 C++G D decl:bf0bdb5ea0460e73
 src/runtime/engines/v8/v8_wrapper.cpp g_live_object_globals 1 C++G D decl:34843aa9f062abbd
+src/runtime/engines/v8/v8_wrapper.cpp g_live_string_globals 1 C++G D decl:41acbea1a92a0ba7
 src/runtime/engines/v8/v8_wrapper.cpp g_live_weak_callback_data 1 C++G D decl:c98787b630a24b36
 src/runtime/engines/v8/v8_wrapper.cpp g_module_resolve_callback 1 C++G I/engine decl:61cd5a7b5a217bea
 src/runtime/engines/v8/v8_wrapper.cpp g_next_context_id 1 C++G P-const decl:0803d1d05cc3a079
@@ -289,7 +290,6 @@ src/runtime/engines/v8/v8_wrapper.cpp g_site_pc 1 C++G D decl:cccefce67abe09da
 src/runtime/engines/v8/v8_wrapper.cpp g_snapshot_handles 1 C++G P-res decl:d397b20955bc45b2
 src/runtime/engines/v8/v8_wrapper.cpp g_snapshot_mode 1 C++G P-res decl:0acdd9ebc0be07f3
 src/runtime/engines/v8/v8_wrapper.cpp g_synthetic_json_exports 1 C++G I/engine decl:36552549e835ee43
-src/runtime/engines/v8/v8_wrapper.cpp liveStringHandles.handles 1 C++G P-res decl:f32bedf67e12dfe6
 src/runtime/engines/v8/v8_wrapper.cpp pendingFinalizers.map 1 C++TL P-res decl:31bfaa4815cc0ccb
 src/runtime/engines/v8/v8_wrapper.cpp realmTagCount.count 1 C++G P-res decl:574b275d85715643
 src/runtime/engines/v8/v8_wrapper.cpp realmTagLock.lock 1 C++G P-res decl:563f7b01234ab878
