@@ -463,7 +463,7 @@ src/runtime/engines/v8/context_manager.zig host.@import 1
 src/runtime/engines/v8/frozen_context_manager.zig clock.@import 1
 src/runtime/engines/v8/frozen_context_manager.zig clock.monotonicMillis 8
 src/runtime/engines/v8/intl_binding.zig clock.@import 1
-src/runtime/engines/v8/intl_binding.zig clock.wallMillis 2
+src/runtime/engines/v8/intl_binding.zig clock.wallMillis 1
 src/runtime/engines/v8/shadow_realm.zig clock.@import 1
 src/runtime/engines/v8/shadow_realm.zig clock.wallSeconds 1
 src/runtime/engines/v8/snapshot_loader.zig clock.@import 1

@@ -9,6 +9,9 @@
 //! - `Intl.DateTimeFormat` is a constructor function
 //! - Uses CLDR data from src/intl/cldr/embedded_data.zig for 30 locales
 //! - NO global caches - each instance is independent (prevents ICU OOM bug)
+//! - Each Intl object's internal slots live in a cell of its agent's
+//!   (`Objects`, on the agent's record): freed when the object is collected
+//!   or when the agent ends ("Native state" below)
 //!
 //! ## Supported Locales (Tier 1)
 //!
@@ -26,6 +29,7 @@
 const std = @import("std");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
+const protocol_agents = @import("protocol_agents.zig");
 
 // Import CLDR data via intl module
 const intl = @import("intl");
@@ -44,9 +48,13 @@ fn getLocalTimezoneOffset(isolate: *v8.Isolate, context: *v8.Context) i32 {
     // Create a Date object and get its timezone offset
     // getTimezoneOffset() returns the offset in minutes from UTC
     // For UTC-5, it returns +300 (positive). For UTC+1, it returns -60 (negative).
+    // The source, the script and its result are each an owned Global.
     const script_str = v8.v8_String_NewFromUtf8(isolate, "new Date().getTimezoneOffset()", 30) orelse return 0;
+    defer release(script_str);
     const script = v8.v8_Script_Compile(context, script_str) orelse return 0;
+    defer release(script);
     const result = v8.v8_Script_Run(context, script) orelse return 0;
+    defer release(result);
     const offset = v8.v8_Value_NumberValue(result, context);
     if (std.math.isNan(offset)) return 0;
     // getTimezoneOffset returns minutes from local to UTC
@@ -172,234 +180,365 @@ const DateStyle = enum { full, long, medium, short };
 const TimeStyle = enum { full, long, medium, short };
 
 // ============================================================================
-// Weak Callback Data Structures for GC Cleanup
+// Handles: what one native call owns
+// ============================================================================
+//
+// Every `v8_*` call below that returns a pointer allocates a Global the caller
+// owns - where V8's own API hands back a Local that the call's HandleScope
+// frees - and so do `info.getThis()` and `info.get(i)`; `setReturnValue`,
+// `v8_Object_Set` and `v8_Array_Set` copy what they are given. So each one is
+// released as soon as the call is done with it. Kept, they were Globals per
+// call for the life of the agent (lane callleak, gc_bench --c-alloc, V8's own
+// count: +160 B per `collator.compare(a, b)`, +96 B per `numberFormat.format(k)`,
+// +192 B per `dateTimeFormat.format(0)`), and the object each constructor
+// returned stayed rooted by its own Global, so none was ever collected.
+
+/// Release `handle` - a Global a `v8_*` call returned, or null - with its own
+/// type's dispose.
+fn release(handle: anytype) void {
+    const ptr = if (@typeInfo(@TypeOf(handle)) == .optional) (handle orelse return) else handle;
+    switch (@TypeOf(ptr)) {
+        *v8.Context => v8.v8_Context_Dispose(ptr),
+        *v8.Object => v8.v8_Object_Dispose(ptr),
+        *v8.String => v8.v8_String_Dispose(ptr),
+        *v8.Array => v8.v8_Array_Dispose(ptr),
+        *v8.Script => v8.v8_Script_Dispose(ptr),
+        *v8.Value, *v8.Number => v8.v8_Value_Dispose(@ptrCast(ptr)),
+        else => @compileError("release: no dispose for " ++ @typeName(@TypeOf(ptr))),
+    }
+}
+
+/// `value` - an owned Global, or null for undefined - as the call's result,
+/// then released: SetReturnValue copies it.
+fn returnOwned(info: *const v8.FunctionCallbackInfo, value: anytype) void {
+    const ptr = if (@typeInfo(@TypeOf(value)) == .optional) (value orelse return returnUndefined(info)) else value;
+    info.setReturnValue(@ptrCast(ptr));
+    release(ptr);
+}
+
+/// undefined as the call's result, with no handle made for it (a null Global
+/// is V8's SetUndefined).
+fn returnUndefined(info: *const v8.FunctionCallbackInfo) void {
+    v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueGlobal(info, null);
+}
+
+fn returnString(info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, s: []const u8) void {
+    returnOwned(info, v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len)));
+}
+
+fn returnInteger(info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, n: i32) void {
+    returnOwned(info, v8.v8_Integer_New(isolate, n));
+}
+
+fn returnBoolean(info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, b: bool) void {
+    returnOwned(info, v8.v8_Boolean_New(isolate, b));
+}
+
+/// A new array of `values`, as strings, as the call's result.
+fn returnStringArray(info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, context: *v8.Context, values: []const []const u8) void {
+    const arr = v8.v8_Array_New(isolate, @intCast(values.len));
+    for (values, 0..) |value, i| {
+        setElementOwned(context, arr, @intCast(i), v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)));
+    }
+    returnOwned(info, arr);
+}
+
+/// `obj[key] = value`, `value` an owned Global (or null: nothing is set),
+/// released here.
+fn setOwned(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, key: []const u8, value: anytype) void {
+    defer release(value);
+    const v = if (@typeInfo(@TypeOf(value)) == .optional) (value orelse return) else value;
+    const k = v8.v8_String_NewFromUtf8(isolate, key.ptr, @intCast(key.len)) orelse return;
+    defer release(k);
+    _ = v8.v8_Object_Set(obj, context, @ptrCast(k), @ptrCast(v));
+}
+
+/// `arr[index] = value`, `value` an owned Global (or null), released here.
+fn setElementOwned(context: *v8.Context, arr: *v8.Array, index: u32, value: anytype) void {
+    defer release(value);
+    const v = if (@typeInfo(@TypeOf(value)) == .optional) (value orelse return) else value;
+    _ = v8.v8_Array_Set(arr, context, index, @ptrCast(v));
+}
+
+fn setStringProperty(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, key: []const u8, value: []const u8) void {
+    setOwned(isolate, context, obj, key, v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)));
+}
+
+fn setNumberProperty(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, key: []const u8, value: f64) void {
+    setOwned(isolate, context, obj, key, v8.v8_Number_New(isolate, value));
+}
+
+fn setBooleanProperty(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, key: []const u8, value: bool) void {
+    setOwned(isolate, context, obj, key, v8.v8_Boolean_New(isolate, value));
+}
+
+/// `obj[name]`: a function of `context` running `callback`, made with
+/// Function::New. A FunctionTemplate's function is cached in its context for
+/// the context's life (the template instantiation cache), and each Intl
+/// object had templates of its own - the DateTimeFormat's, NumberFormat's,
+/// Segmenter's and Locale's with the object itself as their data - so no
+/// Intl object was ever collected while its realm lived.
+fn defineMethod(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, name: []const u8, callback: v8.FunctionCallback) void {
+    setOwned(isolate, context, obj, name, v8.v8_Function_NewWithData(context, callback, null, 0));
+}
+
+/// `options[name]`, when it is a string: its UTF-8 in `buf` (readV8String's
+/// limits), or null. `options` is borrowed; what this makes is released.
+fn stringOption(isolate: *v8.Isolate, context: *v8.Context, options: *v8.Value, name: []const u8, buf: []u8) ?[]const u8 {
+    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return null;
+    defer release(key);
+    const value = v8.v8_Object_Get(@ptrCast(options), context, @ptrCast(key)) orelse return null;
+    defer release(value);
+    if (!v8.v8_Value_IsString(value)) return null;
+    return readV8String(v8.v8_Value_ToString(value, context), context, buf);
+}
+
+/// `options[name]`, when it is a boolean, or null.
+fn booleanOption(isolate: *v8.Isolate, context: *v8.Context, options: *v8.Value, name: []const u8) ?bool {
+    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return null;
+    defer release(key);
+    const value = v8.v8_Object_Get(@ptrCast(options), context, @ptrCast(key)) orelse return null;
+    defer release(value);
+    if (!v8.v8_Value_IsBoolean(value)) return null;
+    return v8.v8_Value_BooleanValue(value, isolate);
+}
+
+/// `options[name]`, when it is a number, or null.
+fn numberOption(isolate: *v8.Isolate, context: *v8.Context, options: *v8.Value, name: []const u8) ?f64 {
+    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return null;
+    defer release(key);
+    const value = v8.v8_Object_Get(@ptrCast(options), context, @ptrCast(key)) orelse return null;
+    defer release(value);
+    if (!v8.v8_Value_IsNumber(value)) return null;
+    return v8.v8_Value_NumberValue(value, context);
+}
+
+/// `info[index]` when it is a string: its UTF-8 in `buf`; null when it is
+/// not, or when there is no such argument. Its handle is released.
+fn stringArgument(info: *const v8.FunctionCallbackInfo, index: c_int, context: *v8.Context, buf: []u8) ?[]const u8 {
+    if (info.length() <= index) return null;
+    const arg = info.get(index);
+    defer release(arg);
+    if (!v8.v8_Value_IsString(arg)) return null;
+    return readV8String(v8.v8_Value_ToString(arg, context), context, buf);
+}
+
+/// `info[index]` when it is an object - an options bag: an owned Global
+/// (release it); null when it is not, or when there is no such argument.
+fn objectArgument(info: *const v8.FunctionCallbackInfo, index: c_int) ?*v8.Value {
+    if (info.length() <= index) return null;
+    const arg = info.get(index);
+    if (!v8.v8_Value_IsObject(arg)) {
+        release(arg);
+        return null;
+    }
+    return arg;
+}
+
+// ============================================================================
+// Native state: what an Intl object's constructor resolved
+// ============================================================================
+//
+// Each Intl object's internal slots live in a Cell: made by its constructor,
+// freed when the garbage collector takes the object (a weak handle on it) or
+// when its agent ends, whichever comes first. The object finds its cell
+// through a private property (`state_key`) script can neither read nor set,
+// which also brands it: a method called on another object finds no cell of
+// its kind. Before (until lane intlleak), the state sat in nine process-wide
+// registries keyed by an index stored in an ordinary property - every agent's
+// on every thread, behind locks, and freed by nothing but the host agent's end:
+// the weak handle was armed on the wrong value and never fired, and each entry
+// took three pages (std.heap.page_allocator: the entry, its locale, the weak
+// data - 48 KB per object on 16 KB pages).
+
+/// Which constructor made an Intl object: its brand.
+const Kind = enum {
+    datetime_format,
+    number_format,
+    collator,
+    plural_rules,
+    relative_time_format,
+    list_format,
+    display_names,
+    segmenter,
+    locale,
+};
+
+/// An Intl object's internal slots, by the constructor that made it.
+const State = union(Kind) {
+    datetime_format: DateTimeFormatEntry,
+    number_format: NumberFormatEntry,
+    collator: CollatorEntry,
+    plural_rules: PluralRulesEntry,
+    relative_time_format: RelativeTimeFormatEntry,
+    list_format: ListFormatEntry,
+    display_names: DisplayNamesEntry,
+    segmenter: SegmenterEntry,
+    locale: LocaleEntry,
+
+    fn deinit(self: *State) void {
+        switch (self.*) {
+            inline else => |*entry| entry.deinit(),
+        }
+    }
+};
+
+const Cell = struct {
+    state: State,
+    objects: *Objects,
+    /// The weak Global on the object; its collection frees the cell
+    /// (`cellCollected`). Null when it could not be armed: the agent's end
+    /// frees the cell then.
+    weak: ?*v8.Value = null,
+    prev: ?*Cell = null,
+    next: ?*Cell = null,
+};
+
+/// The private property an Intl object keeps its cell in: an External,
+/// which keeps nothing alive.
+const state_key = "crane.intl.state";
+
+/// The live Intl objects' cells of one agent - one isolate (instances B2: the
+/// adapter's per-isolate state is the agent's). Made by the agent's first
+/// Intl construction and kept on its record (protocol_agents.intlObjectsOf);
+/// freed by its end. Read and written on the agent's thread only, where V8
+/// also runs its weak callbacks, so it takes no lock.
+pub const Objects = struct {
+    allocator: std.mem.Allocator,
+    first: ?*Cell = null,
+    /// Cells alive: their objects not yet collected.
+    live: usize = 0,
+
+    pub fn create(allocator: std.mem.Allocator) error{OutOfMemory}!*Objects {
+        const self = try allocator.create(Objects);
+        self.* = .{ .allocator = allocator };
+        return self;
+    }
+
+    /// The agent's end, its isolate entered and alive: every object's state
+    /// is freed, each weak arm disarmed first - so no collection after this
+    /// reaches a freed cell, and no weak record is left behind.
+    pub fn destroy(self: *Objects) void {
+        while (self.first) |cell| {
+            v8.v8_Global_Dispose(cell.weak);
+            cell.weak = null;
+            self.free(cell);
+        }
+        self.allocator.destroy(self);
+    }
+
+    /// A new cell holding `state`, alive until `free`. On failure `state`
+    /// is freed.
+    fn adopt(self: *Objects, state: State) error{OutOfMemory}!*Cell {
+        const cell = self.allocator.create(Cell) catch |err| {
+            var doomed = state;
+            doomed.deinit();
+            return err;
+        };
+        cell.* = .{ .state = state, .objects = self, .next = self.first };
+        if (self.first) |first| first.prev = cell;
+        self.first = cell;
+        self.live += 1;
+        return cell;
+    }
+
+    fn free(self: *Objects, cell: *Cell) void {
+        if (cell.prev) |prev| prev.next = cell.next else self.first = cell.next;
+        if (cell.next) |next| next.prev = cell.prev;
+        self.live -= 1;
+        cell.state.deinit();
+        self.allocator.destroy(cell);
+    }
+};
+
+/// The current agent's Intl objects; null for an isolate no agent made (a
+/// test's own), whose Intl constructors then throw.
+fn agentObjects(isolate: *v8.Isolate) ?*Objects {
+    return protocol_agents.intlObjectsOf(isolate);
+}
+
+/// How many Intl objects of `isolate`'s agent are alive (not yet collected):
+/// what a test reads.
+pub fn liveObjectCount(isolate: *v8.Isolate) usize {
+    const objects = protocol_agents.intlObjectsOf(isolate) orelse return 0;
+    return objects.live;
+}
+
+/// The first-pass weak callback of an Intl object's weak handle: the object
+/// is collected, so its cell goes. Bookkeeping only - no V8 API call (the
+/// handle is Reset already by the wrapper; disposing deletes its Global).
+fn cellCollected(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
+    _ = length_in_bytes;
+    const cell: *Cell = @ptrCast(@alignCast(data orelse return));
+    v8.v8_Global_Dispose(cell.weak);
+    cell.weak = null;
+    cell.objects.free(cell);
+}
+
+/// `object`, just made by a constructor, takes `state`: a cell of the
+/// agent's holds it, the object's private `state_key` holds the cell, and a
+/// weak handle on the object frees the cell once it is collected. False -
+/// a TypeError thrown, `state` freed - when there is no agent or no memory.
+fn adopt(isolate: *v8.Isolate, object: *v8.Object, state: State) bool {
+    const objects = agentObjects(isolate) orelse {
+        var doomed = state;
+        doomed.deinit();
+        conv.throwTypeError(isolate, "Intl objects need an agent");
+        return false;
+    };
+    const cell = objects.adopt(state) catch {
+        conv.throwTypeError(isolate, "Out of memory");
+        return false;
+    };
+    const external = v8.v8_External_New(isolate, cell) orelse {
+        objects.free(cell);
+        conv.throwTypeError(isolate, "Out of memory");
+        return false;
+    };
+    defer v8.v8_External_Dispose(external);
+    v8.v8_Object_SetPrivateRef(object, state_key.ptr, state_key.len, @ptrCast(external));
+    // The weak handle wants a Local of the object, not our Global.
+    if (v8.v8_Global_Get(isolate, @ptrCast(object))) |local| {
+        cell.weak = v8.v8_Value_ToWeakGlobal(isolate, local, cell, cellCollected);
+    }
+    return true;
+}
+
+/// `object`'s state when `kind`'s constructor made it; null for any other
+/// object. The pointer is good while `object` is alive - for the rest of a
+/// call whose receiver it is.
+fn stateOf(comptime kind: Kind, object: *v8.Object) ?*@FieldType(State, @tagName(kind)) {
+    const held = v8.v8_Object_GetPrivateRef(object, state_key.ptr, state_key.len) orelse return null;
+    defer release(held);
+    // Only `adopt` writes the key (a Private, unreachable from script), and
+    // always an External.
+    const cell: *Cell = @ptrCast(@alignCast(v8.v8_External_Value(@ptrCast(held)) orelse return null));
+    if (std.meta.activeTag(cell.state) != kind) return null;
+    return &@field(cell.state, @tagName(kind));
+}
+
+/// The receiver's state when `kind`'s constructor made it; null otherwise.
+fn thisState(comptime kind: Kind, info: *const v8.FunctionCallbackInfo) ?*@FieldType(State, @tagName(kind)) {
+    const this_obj = info.getThis();
+    defer release(this_obj);
+    return stateOf(kind, this_obj);
+}
+
+// ============================================================================
+// DateTimeFormat state
 // ============================================================================
 
-/// Data passed to weak callbacks to identify registry entries for cleanup
-const WeakCallbackData = struct {
-    registry_type: RegistryType,
-    entry_idx: usize,
+const DateTimeFormatEntry = struct {
+    locale: []const u8,
+    locale_data: ?*const cldr.LocaleData,
+    date_style: ?DateStyle,
+    time_style: ?TimeStyle,
     allocator: std.mem.Allocator,
-    /// The Global handle created from the Local object.
-    /// Must be disposed in the weak callback before V8 can complete GC.
-    global_handle: *v8.Value,
 
-    const RegistryType = enum {
-        datetime_format,
-        number_format,
-        collator,
-        plural_rules,
-        relative_time_format,
-        list_format,
-        display_names,
-    };
+    fn deinit(self: *DateTimeFormatEntry) void {
+        self.allocator.free(self.locale);
+    }
 };
-
-/// Weak callback invoked when a V8 Intl object is garbage collected.
-/// Removes the corresponding registry entry to prevent memory leaks.
-///
-/// V8 weak callback requirements:
-/// 1. The Global handle MUST be disposed before the callback returns
-/// 2. The callback is invoked with the user data passed to v8_Value_ToWeakGlobal
-fn intlWeakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
-    _ = length_in_bytes;
-
-    const weak_data: *WeakCallbackData = @ptrCast(@alignCast(data orelse return));
-
-    // CRITICAL: Dispose the Global handle FIRST before any other cleanup.
-    // V8 requires the Global handle to be reset/disposed before the weak callback returns.
-    // Failing to do this causes: "Check failed: Handle not reset in first callback"
-    v8.v8_Global_Dispose(weak_data.global_handle);
-
-    // Now safe to clean up the registry entry
-    switch (weak_data.registry_type) {
-        .datetime_format => {
-            dtf_registry.remove(weak_data.entry_idx);
-        },
-        .number_format => {
-            nf_registry.remove(weak_data.entry_idx);
-        },
-        .collator => {
-            collator_registry.remove(weak_data.entry_idx);
-        },
-        .plural_rules => {
-            plural_rules_registry.drop(weak_data.entry_idx);
-        },
-        .relative_time_format => {
-            relative_time_format_registry.drop(weak_data.entry_idx);
-        },
-        .list_format => {
-            list_format_registry.drop(weak_data.entry_idx);
-        },
-        .display_names => {
-            display_names_registry.drop(weak_data.entry_idx);
-        },
-    }
-
-    // Finally, free the callback data itself
-    weak_data.allocator.destroy(weak_data);
-}
-
-/// Setup weak reference on a V8 object to trigger cleanup when GC'd.
-/// This prevents memory leaks by removing registry entries when JS objects
-/// are garbage collected.
-///
-/// The implementation uses V8's weak Global handle API:
-/// 1. Convert the Local object to a weak Global handle via v8_Value_ToWeakGlobal
-/// 2. Store the Global handle in WeakCallbackData so it can be disposed
-/// 3. When GC collects the object, intlWeakCallback disposes the Global and cleans registry
-///
-/// See: https://v8.dev/docs/weak-handles
-fn setupWeakCallback(
-    isolate: *v8.Isolate,
-    js_object: *v8.Object,
-    registry_type: WeakCallbackData.RegistryType,
-    entry_idx: usize,
-    allocator: std.mem.Allocator,
-) void {
-    // Allocate weak callback data on the heap (must outlive the HandleScope)
-    const weak_data = allocator.create(WeakCallbackData) catch {
-        // On allocation failure, we can't set up the weak callback.
-        // The registry entry will leak but this is a rare edge case.
-        return;
-    };
-
-    // Initialize with placeholder - will be set after v8_Value_ToWeakGlobal
-    weak_data.* = .{
-        .registry_type = registry_type,
-        .entry_idx = entry_idx,
-        .allocator = allocator,
-        .global_handle = undefined, // Set below
-    };
-
-    // Create a weak Global handle from the Local object.
-    // v8_Value_ToWeakGlobal creates a Global<Value> that:
-    // - Is immediately weak (allows GC to collect when no strong refs)
-    // - Invokes our callback when collected
-    // - Passes weak_data to the callback
-    const global_handle = v8.v8_Value_ToWeakGlobal(
-        isolate,
-        @ptrCast(js_object),
-        @ptrCast(weak_data),
-        intlWeakCallback,
-    ) orelse {
-        // Failed to create Global handle - clean up and return
-        allocator.destroy(weak_data);
-        return;
-    };
-
-    // Store the Global handle so it can be disposed in the callback
-    weak_data.global_handle = global_handle;
-}
-
-/// Internal storage for DateTimeFormat instances
-const DateTimeFormatRegistry = struct {
-    const Entry = struct {
-        locale: []const u8,
-        locale_data: ?*const cldr.LocaleData,
-        date_style: ?DateStyle,
-        time_style: ?TimeStyle,
-        allocator: std.mem.Allocator,
-
-        fn deinit(self: *Entry) void {
-            self.allocator.free(self.locale);
-        }
-    };
-
-    /// Heap entries, each with the isolate that made it: a pointer `get`
-    /// hands out stays good while another thread's `register` grows the list
-    /// (each Intl object's entry is used only by its own agent's thread; the
-    /// list is shared), and an agent's end frees only its own (`deinitFor`).
-    entries: std.ArrayList(?Slot) = .empty,
-    free_list: std.ArrayList(usize) = .empty,
-    allocator: std.mem.Allocator,
-    mutex: std.Io.Mutex = .init,
-
-    fn init(allocator: std.mem.Allocator) DateTimeFormatRegistry {
-        return .{
-            .allocator = allocator,
-        };
-    }
-
-    fn deinit(self: *DateTimeFormatRegistry) void {
-        for (self.entries.items) |slot_opt| {
-            if (slot_opt) |slot| {
-                slot.entry.deinit();
-                self.allocator.destroy(slot.entry);
-            }
-        }
-        self.entries.deinit(self.allocator);
-        self.free_list.deinit(self.allocator);
-    }
-
-    fn register(self: *DateTimeFormatRegistry, entry: Entry) !usize {
-        const owned = try self.allocator.create(Entry);
-        errdefer self.allocator.destroy(owned);
-        owned.* = entry;
-
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (self.free_list.items.len > 0) {
-            const idx = self.free_list.pop().?;
-            self.entries.items[idx] = .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() };
-            return idx;
-        }
-
-        const idx = self.entries.items.len;
-        try self.entries.append(self.allocator, .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() });
-        return idx;
-    }
-
-    fn get(self: *DateTimeFormatRegistry, idx: usize) ?*Entry {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (idx >= self.entries.items.len) return null;
-        const slot = self.entries.items[idx] orelse return null;
-        return slot.entry;
-    }
-
-    fn remove(self: *DateTimeFormatRegistry, idx: usize) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (idx >= self.entries.items.len) return;
-        if (self.entries.items[idx]) |slot| {
-            slot.entry.deinit();
-            self.allocator.destroy(slot.entry);
-            self.entries.items[idx] = null;
-            self.free_list.append(self.allocator, idx) catch {};
-        }
-    }
-
-    /// Free the entries `isolate` made - its agent is ending - and no other.
-    fn deinitFor(self: *@This(), isolate: ?*v8.Isolate) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        for (self.entries.items, 0..) |slot_opt, idx| {
-            const slot = slot_opt orelse continue;
-            if (slot.isolate != isolate) continue;
-            slot.entry.deinit();
-            self.allocator.destroy(slot.entry);
-            self.entries.items[idx] = null;
-            self.free_list.append(self.allocator, idx) catch {};
-        }
-    }
-
-    const Slot = struct {
-        entry: *Entry,
-        isolate: ?*v8.Isolate,
-    };
-};
-
-/// Made with the process, not on first use: the first use can come from
-/// two threads at once (a Browser's and a worker's, docs/instances.md).
-var dtf_registry: DateTimeFormatRegistry = .{ .allocator = std.heap.page_allocator };
-
-fn getOrInitRegistry() *DateTimeFormatRegistry {
-    return &dtf_registry;
-}
 
 // ============================================================================
 // Locale Resolution
@@ -708,6 +847,15 @@ fn readV8String(str: ?*v8.String, context: *v8.Context, buf: []u8) ?[]const u8 {
 // DateTimeFormat Constructor Callback
 // ============================================================================
 
+/// The DateStyle or TimeStyle `name` is.
+fn parseStyle(comptime Style: type, name: []const u8) ?Style {
+    if (std.mem.eql(u8, name, "full")) return .full;
+    if (std.mem.eql(u8, name, "long")) return .long;
+    if (std.mem.eql(u8, name, "medium")) return .medium;
+    if (std.mem.eql(u8, name, "short")) return .short;
+    return null;
+}
+
 /// Callback for `new Intl.DateTimeFormat(locales, options)`
 fn dateTimeFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
@@ -719,147 +867,73 @@ fn dateTimeFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callc
 
     // Get locale argument
     var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
+    const locale: []const u8 = stringArgument(info, 0, context, &locale_buf) orelse "en";
 
     // Parse options
     var date_style: ?DateStyle = null;
     var time_style: ?TimeStyle = null;
 
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
-
-            // dateStyle
-            const date_style_key = v8.v8_String_NewFromUtf8(isolate, "dateStyle", 9);
-            if (date_style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var ds_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &ds_buf)) |ds| {
-                            if (std.mem.eql(u8, ds, "full")) date_style = .full else if (std.mem.eql(u8, ds, "long")) date_style = .long else if (std.mem.eql(u8, ds, "medium")) date_style = .medium else if (std.mem.eql(u8, ds, "short")) date_style = .short;
-                        }
-                    }
-                }
-            }
-
-            // timeStyle
-            const time_style_key = v8.v8_String_NewFromUtf8(isolate, "timeStyle", 9);
-            if (time_style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var ts_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &ts_buf)) |ts| {
-                            if (std.mem.eql(u8, ts, "full")) time_style = .full else if (std.mem.eql(u8, ts, "long")) time_style = .long else if (std.mem.eql(u8, ts, "medium")) time_style = .medium else if (std.mem.eql(u8, ts, "short")) time_style = .short;
-                        }
-                    }
-                }
-            }
+    const options = objectArgument(info, 1);
+    defer release(options);
+    if (options) |options_obj| {
+        var ds_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "dateStyle", &ds_buf)) |ds| {
+            if (parseStyle(DateStyle, ds)) |style| date_style = style;
+        }
+        var ts_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "timeStyle", &ts_buf)) |ts| {
+            if (parseStyle(TimeStyle, ts)) |style| time_style = style;
         }
     }
 
-    // Resolve locale
-    const locale_data = resolveLocale(locale);
-
-    // Create entry in registry
-    const registry = getOrInitRegistry();
-    const allocator = std.heap.page_allocator;
-
+    const objects = agentObjects(isolate) orelse {
+        conv.throwTypeError(isolate, "Intl objects need an agent");
+        return;
+    };
+    const allocator = objects.allocator;
     const locale_copy = allocator.dupe(u8, locale) catch {
         conv.throwTypeError(isolate, "Out of memory");
         return;
     };
-
-    const entry = DateTimeFormatRegistry.Entry{
+    const state: State = .{ .datetime_format = .{
         .locale = locale_copy,
-        .locale_data = locale_data,
+        .locale_data = resolveLocale(locale),
         .date_style = date_style,
         .time_style = time_style,
         .allocator = allocator,
-    };
-
-    const idx = registry.register(entry) catch {
-        allocator.free(locale_copy);
-        conv.throwTypeError(isolate, "Failed to register DateTimeFormat");
-        return;
-    };
+    } };
 
     // Create the result object
     const result = v8.v8_Object_New(isolate) orelse {
-        registry.remove(idx);
+        var doomed = state;
+        doomed.deinit();
         conv.throwTypeError(isolate, "Failed to create DateTimeFormat object");
         return;
     };
+    defer release(result);
+    if (!adopt(isolate, result, state)) return;
 
-    // Store the registry index (hidden property)
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__dtf_idx__", 11) orelse {
-        registry.remove(idx);
-        conv.throwTypeError(isolate, "Failed to create index key");
-        return;
-    };
-    const idx_value = v8.v8_Number_New(isolate, @floatFromInt(idx));
-    _ = v8.v8_Object_Set(result, context, @ptrCast(idx_key), @ptrCast(idx_value));
-
-    // Add methods
-    addMethod(isolate, context, result, "format", dateTimeFormatFormatCallback, registry, idx) catch {
-        registry.remove(idx);
-        return;
-    };
-    addMethod(isolate, context, result, "formatToParts", dateTimeFormatToPartsCallback, registry, idx) catch {
-        registry.remove(idx);
-        return;
-    };
-    addMethod(isolate, context, result, "resolvedOptions", dateTimeFormatResolvedOptionsCallback, registry, idx) catch {
-        registry.remove(idx);
-        return;
-    };
-
-    // Setup weak callback to clean up registry entry when JS object is GC'd
-    setupWeakCallback(isolate, result, .datetime_format, idx, allocator);
+    defineMethod(isolate, context, result, "format", dateTimeFormatFormatCallback);
+    defineMethod(isolate, context, result, "formatToParts", dateTimeFormatToPartsCallback);
+    defineMethod(isolate, context, result, "resolvedOptions", dateTimeFormatResolvedOptionsCallback);
 
     info.setReturnValue(@ptrCast(result));
 }
 
-fn addMethod(
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-    obj: *v8.Object,
-    name: []const u8,
-    callback: *const fn (*const v8.FunctionCallbackInfo) callconv(.c) void,
-    registry: *DateTimeFormatRegistry,
-    idx: usize,
-) !void {
-    _ = registry;
-    _ = idx;
-    const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, @ptrCast(obj)) orelse return error.Failed;
-    const fn_obj = v8.v8_FunctionTemplate_GetFunction(fn_template, context) orelse return error.Failed;
-    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return error.Failed;
-    _ = v8.v8_Object_Set(obj, context, @ptrCast(key), @ptrCast(fn_obj));
-}
-
-/// Get the DateTimeFormat registry index from an object
-fn getDateTimeFormatIndex(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object) ?usize {
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__dtf_idx__", 11) orelse return null;
-    defer v8.v8_String_Dispose(idx_key);
-    const idx_value = v8.v8_Object_Get(obj, context, @ptrCast(idx_key)) orelse return null;
-
-    if (!v8.v8_Value_IsNumber(idx_value)) return null;
-
-    const num = v8.v8_Value_NumberValue(idx_value, context);
-    if (num < 0) return null;
-    return @intFromFloat(num);
+/// The time value `info[0]` is - a number, or a Date by its valueOf - or now
+/// when it is absent, null, undefined or NaN.
+fn timestampArgument(info: *const v8.FunctionCallbackInfo, context: *v8.Context) i64 {
+    if (info.length() > 0) {
+        const date_arg = info.get(0);
+        defer release(date_arg);
+        // Use v8_Value_NumberValue which handles both numbers and Date objects
+        // (Date objects implement valueOf() which returns the timestamp)
+        if (!v8.v8_Value_IsNullOrUndefined(date_arg)) {
+            const num_val = v8.v8_Value_NumberValue(date_arg, context);
+            if (!std.math.isNan(num_val)) return @intFromFloat(num_val);
+        }
+    }
+    return clock.wallMillis();
 }
 
 // ============================================================================
@@ -875,32 +949,13 @@ fn dateTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.
     };
     defer v8.v8_Context_Dispose(context);
 
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getDateTimeFormatIndex(isolate, context, this_obj) orelse {
+    const entry = thisState(.datetime_format, info) orelse {
         conv.throwTypeError(isolate, "Invalid DateTimeFormat object");
         return;
     };
 
-    const registry = getOrInitRegistry();
-    const entry = registry.get(idx) orelse {
-        conv.throwTypeError(isolate, "DateTimeFormat not found in registry");
-        return;
-    };
-
     // Get timestamp from argument (can be number or Date object)
-    var timestamp_ms: i64 = clock.wallMillis();
-    if (info.length() > 0) {
-        const date_arg = info.get(0);
-        // Use v8_Value_NumberValue which handles both numbers and Date objects
-        // (Date objects implement valueOf() which returns the timestamp)
-        if (!v8.v8_Value_IsNullOrUndefined(date_arg)) {
-            const num_val = v8.v8_Value_NumberValue(date_arg, context);
-            if (!std.math.isNan(num_val)) {
-                timestamp_ms = @intFromFloat(num_val);
-            }
-        }
-    }
+    const timestamp_ms = timestampArgument(info, context);
 
     // Format using CLDR patterns with local timezone
     const tz_offset = getLocalTimezoneOffset(isolate, context);
@@ -912,13 +967,7 @@ fn dateTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.
     // Format based on options
     const formatted = formatDateTime(&buf, dt, locale_data, entry.date_style, entry.time_style);
 
-    // Create V8 string result
-    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse {
-        conv.throwTypeError(isolate, "Failed to create result string");
-        return;
-    };
-
-    info.setReturnValue(@ptrCast(result_str));
+    returnString(info, isolate, formatted);
 }
 
 /// Format DateTime with combined date and time styles
@@ -1051,30 +1100,13 @@ fn dateTimeFormatToPartsCallback(info: *const v8.FunctionCallbackInfo) callconv(
     };
     defer v8.v8_Context_Dispose(context);
 
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getDateTimeFormatIndex(isolate, context, this_obj) orelse {
+    const entry = thisState(.datetime_format, info) orelse {
         conv.throwTypeError(isolate, "Invalid DateTimeFormat object");
         return;
     };
 
-    const registry = getOrInitRegistry();
-    const entry = registry.get(idx) orelse {
-        conv.throwTypeError(isolate, "DateTimeFormat not found");
-        return;
-    };
-
     // Get timestamp from argument (can be number or Date object)
-    var timestamp_ms: i64 = clock.wallMillis();
-    if (info.length() > 0) {
-        const date_arg = info.get(0);
-        if (!v8.v8_Value_IsNullOrUndefined(date_arg)) {
-            const num_val = v8.v8_Value_NumberValue(date_arg, context);
-            if (!std.math.isNan(num_val)) {
-                timestamp_ms = @intFromFloat(num_val);
-            }
-        }
-    }
+    const timestamp_ms = timestampArgument(info, context);
 
     // Convert to local timezone
     const tz_offset = getLocalTimezoneOffset(isolate, context);
@@ -1084,6 +1116,7 @@ fn dateTimeFormatToPartsCallback(info: *const v8.FunctionCallbackInfo) callconv(
     // Create parts array
     // For simplicity, we'll create a basic parts array
     const result_array = v8.v8_Array_New(isolate, 11);
+    defer release(result_array);
 
     // Format individual components
     var year_buf: [8]u8 = undefined;
@@ -1118,6 +1151,7 @@ fn dateTimeFormatToPartsCallback(info: *const v8.FunctionCallbackInfo) callconv(
     info.setReturnValue(@ptrCast(result_array));
 }
 
+/// `arr[idx] = { type: part_type, value: value }`, and `idx` moves on.
 fn addPart(
     isolate: *v8.Isolate,
     context: *v8.Context,
@@ -1127,19 +1161,9 @@ fn addPart(
     value: []const u8,
 ) void {
     const part_obj = v8.v8_Object_New(isolate) orelse return;
-
-    const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4) orelse return;
-    defer v8.v8_String_Dispose(type_key);
-    const type_val = v8.v8_String_NewFromUtf8(isolate, part_type.ptr, @intCast(part_type.len)) orelse return;
-    defer v8.v8_String_Dispose(type_val);
-    _ = v8.v8_Object_Set(part_obj, context, @ptrCast(type_key), @ptrCast(type_val));
-
-    const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
-    defer v8.v8_String_Dispose(value_key);
-    const value_val = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)) orelse return;
-    defer v8.v8_String_Dispose(value_val);
-    _ = v8.v8_Object_Set(part_obj, context, @ptrCast(value_key), @ptrCast(value_val));
-
+    defer release(part_obj);
+    setStringProperty(isolate, context, part_obj, "type", part_type);
+    setStringProperty(isolate, context, part_obj, "value", value);
     _ = v8.v8_Array_Set(arr, context, idx.*, @ptrCast(part_obj));
     idx.* += 1;
 }
@@ -1147,6 +1171,15 @@ fn addPart(
 // ============================================================================
 // DateTimeFormat.resolvedOptions() Callback
 // ============================================================================
+
+fn styleName(style: anytype) []const u8 {
+    return switch (style) {
+        .full => "full",
+        .long => "long",
+        .medium => "medium",
+        .short => "short",
+    };
+}
 
 /// Callback for `dtf.resolvedOptions()`
 fn dateTimeFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
@@ -1157,16 +1190,8 @@ fn dateTimeFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) c
     };
     defer v8.v8_Context_Dispose(context);
 
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getDateTimeFormatIndex(isolate, context, this_obj) orelse {
+    const entry = thisState(.datetime_format, info) orelse {
         conv.throwTypeError(isolate, "Invalid DateTimeFormat object");
-        return;
-    };
-
-    const registry = getOrInitRegistry();
-    const entry = registry.get(idx) orelse {
-        conv.throwTypeError(isolate, "DateTimeFormat not found");
         return;
     };
 
@@ -1175,6 +1200,7 @@ fn dateTimeFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) c
         conv.throwTypeError(isolate, "Failed to create options object");
         return;
     };
+    defer release(result);
 
     // Set locale
     setStringProperty(isolate, context, result, "locale", entry.locale);
@@ -1182,37 +1208,11 @@ fn dateTimeFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) c
     setStringProperty(isolate, context, result, "numberingSystem", "latn");
     setStringProperty(isolate, context, result, "timeZone", "UTC");
 
-    // Set dateStyle if present
-    if (entry.date_style) |ds| {
-        const ds_str = switch (ds) {
-            .full => "full",
-            .long => "long",
-            .medium => "medium",
-            .short => "short",
-        };
-        setStringProperty(isolate, context, result, "dateStyle", ds_str);
-    }
-
-    // Set timeStyle if present
-    if (entry.time_style) |ts| {
-        const ts_str = switch (ts) {
-            .full => "full",
-            .long => "long",
-            .medium => "medium",
-            .short => "short",
-        };
-        setStringProperty(isolate, context, result, "timeStyle", ts_str);
-    }
+    // Set dateStyle and timeStyle if present
+    if (entry.date_style) |ds| setStringProperty(isolate, context, result, "dateStyle", styleName(ds));
+    if (entry.time_style) |ts| setStringProperty(isolate, context, result, "timeStyle", styleName(ts));
 
     info.setReturnValue(@ptrCast(result));
-}
-
-fn setStringProperty(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, key: []const u8, value: []const u8) void {
-    const k = v8.v8_String_NewFromUtf8(isolate, key.ptr, @intCast(key.len)) orelse return;
-    defer v8.v8_String_Dispose(k);
-    const v = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)) orelse return;
-    defer v8.v8_String_Dispose(v);
-    _ = v8.v8_Object_Set(obj, context, @ptrCast(k), @ptrCast(v));
 }
 
 // ============================================================================
@@ -1229,16 +1229,7 @@ fn supportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c)
     defer v8.v8_Context_Dispose(context);
 
     // Return all supported locale tags
-    const tags = cldr_embedded.locale_tags;
-    const result = v8.v8_Array_New(isolate, @intCast(tags.len));
-
-    for (tags, 0..) |tag, i| {
-        const tag_str = v8.v8_String_NewFromUtf8(isolate, tag.ptr, @intCast(tag.len)) orelse continue;
-        defer v8.v8_String_Dispose(tag_str);
-        _ = v8.v8_Array_Set(result, context, @intCast(i), @ptrCast(tag_str));
-    }
-
-    info.setReturnValue(@ptrCast(result));
+    returnStringArray(info, isolate, context, &cldr_embedded.locale_tags);
 }
 
 // ============================================================================
@@ -1251,120 +1242,24 @@ const NumberStyle = enum { decimal, currency, percent, unit };
 /// NumberFormat notation enum
 const NumberNotation = enum { standard, scientific, engineering, compact };
 
-/// Internal storage for NumberFormat instances
-const NumberFormatRegistry = struct {
-    const Entry = struct {
-        locale: []const u8,
-        locale_data: ?*const cldr.LocaleData,
-        style: NumberStyle,
-        notation: NumberNotation,
-        currency: ?[]const u8,
-        minimum_integer_digits: u8,
-        minimum_fraction_digits: u8,
-        maximum_fraction_digits: u8,
-        use_grouping: bool,
-        allocator: std.mem.Allocator,
-
-        fn deinit(self: *Entry) void {
-            self.allocator.free(self.locale);
-            if (self.currency) |c| self.allocator.free(c);
-        }
-    };
-
-    /// Heap entries, each with the isolate that made it: a pointer `get`
-    /// hands out stays good while another thread's `register` grows the list
-    /// (each Intl object's entry is used only by its own agent's thread; the
-    /// list is shared), and an agent's end frees only its own (`deinitFor`).
-    entries: std.ArrayList(?Slot) = .empty,
-    free_list: std.ArrayList(usize) = .empty,
+/// A NumberFormat's internal slots
+const NumberFormatEntry = struct {
+    locale: []const u8,
+    locale_data: ?*const cldr.LocaleData,
+    style: NumberStyle,
+    notation: NumberNotation,
+    currency: ?[]const u8,
+    minimum_integer_digits: u8,
+    minimum_fraction_digits: u8,
+    maximum_fraction_digits: u8,
+    use_grouping: bool,
     allocator: std.mem.Allocator,
-    mutex: std.Io.Mutex = .init,
 
-    fn init(allocator: std.mem.Allocator) NumberFormatRegistry {
-        return .{
-            .allocator = allocator,
-        };
+    fn deinit(self: *NumberFormatEntry) void {
+        self.allocator.free(self.locale);
+        if (self.currency) |c| self.allocator.free(c);
     }
-
-    fn deinit(self: *NumberFormatRegistry) void {
-        for (self.entries.items) |slot_opt| {
-            if (slot_opt) |slot| {
-                slot.entry.deinit();
-                self.allocator.destroy(slot.entry);
-            }
-        }
-        self.entries.deinit(self.allocator);
-        self.free_list.deinit(self.allocator);
-    }
-
-    fn register(self: *NumberFormatRegistry, entry: Entry) !usize {
-        const owned = try self.allocator.create(Entry);
-        errdefer self.allocator.destroy(owned);
-        owned.* = entry;
-
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (self.free_list.items.len > 0) {
-            const idx = self.free_list.pop().?;
-            self.entries.items[idx] = .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() };
-            return idx;
-        }
-
-        const idx = self.entries.items.len;
-        try self.entries.append(self.allocator, .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() });
-        return idx;
-    }
-
-    fn get(self: *NumberFormatRegistry, idx: usize) ?*Entry {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (idx >= self.entries.items.len) return null;
-        const slot = self.entries.items[idx] orelse return null;
-        return slot.entry;
-    }
-
-    fn remove(self: *NumberFormatRegistry, idx: usize) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (idx >= self.entries.items.len) return;
-        if (self.entries.items[idx]) |slot| {
-            slot.entry.deinit();
-            self.allocator.destroy(slot.entry);
-            self.entries.items[idx] = null;
-            self.free_list.append(self.allocator, idx) catch {};
-        }
-    }
-
-    /// Free the entries `isolate` made - its agent is ending - and no other.
-    fn deinitFor(self: *@This(), isolate: ?*v8.Isolate) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        for (self.entries.items, 0..) |slot_opt, idx| {
-            const slot = slot_opt orelse continue;
-            if (slot.isolate != isolate) continue;
-            slot.entry.deinit();
-            self.allocator.destroy(slot.entry);
-            self.entries.items[idx] = null;
-            self.free_list.append(self.allocator, idx) catch {};
-        }
-    }
-
-    const Slot = struct {
-        entry: *Entry,
-        isolate: ?*v8.Isolate,
-    };
 };
-
-/// Made with the process, not on first use: the first use can come from
-/// two threads at once (a Browser's and a worker's, docs/instances.md).
-var nf_registry: NumberFormatRegistry = .{ .allocator = std.heap.page_allocator };
-
-fn getOrInitNumberFormatRegistry() *NumberFormatRegistry {
-    return &nf_registry;
-}
 
 // ============================================================================
 // NumberFormat Constructor Callback
@@ -1379,19 +1274,15 @@ fn numberFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callcon
     };
     defer v8.v8_Context_Dispose(context);
 
+    const objects = agentObjects(isolate) orelse {
+        conv.throwTypeError(isolate, "Intl objects need an agent");
+        return;
+    };
+    const allocator = objects.allocator;
+
     // Get locale argument
     var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
+    const locale: []const u8 = stringArgument(info, 0, context, &locale_buf) orelse "en";
 
     // Parse options
     var style: NumberStyle = .decimal;
@@ -1402,91 +1293,38 @@ fn numberFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callcon
     var maximum_fraction_digits: u8 = 3;
     var use_grouping: bool = true;
 
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
+    const options = objectArgument(info, 1);
+    defer release(options);
+    if (options) |options_obj| {
+        // style
+        var s_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "style", &s_buf)) |s| {
+            if (std.mem.eql(u8, s, "decimal")) style = .decimal else if (std.mem.eql(u8, s, "currency")) style = .currency else if (std.mem.eql(u8, s, "percent")) style = .percent else if (std.mem.eql(u8, s, "unit")) style = .unit;
+        }
 
-            // style
-            const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5);
-            if (style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var s_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
-                            if (std.mem.eql(u8, s, "decimal")) style = .decimal else if (std.mem.eql(u8, s, "currency")) style = .currency else if (std.mem.eql(u8, s, "percent")) style = .percent else if (std.mem.eql(u8, s, "unit")) style = .unit;
-                        }
-                    }
-                }
-            }
+        // notation
+        var n_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "notation", &n_buf)) |n| {
+            if (std.mem.eql(u8, n, "standard")) notation = .standard else if (std.mem.eql(u8, n, "scientific")) notation = .scientific else if (std.mem.eql(u8, n, "engineering")) notation = .engineering else if (std.mem.eql(u8, n, "compact")) notation = .compact;
+        }
 
-            // notation
-            const notation_key = v8.v8_String_NewFromUtf8(isolate, "notation", 8);
-            if (notation_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var n_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &n_buf)) |n| {
-                            if (std.mem.eql(u8, n, "standard")) notation = .standard else if (std.mem.eql(u8, n, "scientific")) notation = .scientific else if (std.mem.eql(u8, n, "engineering")) notation = .engineering else if (std.mem.eql(u8, n, "compact")) notation = .compact;
-                        }
-                    }
-                }
-            }
+        // currency
+        var c_buf: [8]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "currency", &c_buf)) |c| {
+            currency = allocator.dupe(u8, c) catch null;
+        }
 
-            // currency
-            const currency_key = v8.v8_String_NewFromUtf8(isolate, "currency", 8);
-            if (currency_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var c_buf: [8]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &c_buf)) |c| {
-                            currency = std.heap.page_allocator.dupe(u8, c) catch null;
-                        }
-                    }
-                }
-            }
+        // useGrouping
+        if (booleanOption(isolate, context, options_obj, "useGrouping")) |grouping| use_grouping = grouping;
 
-            // useGrouping
-            const grouping_key = v8.v8_String_NewFromUtf8(isolate, "useGrouping", 11);
-            if (grouping_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsBoolean(v)) {
-                        use_grouping = v8.v8_Value_BooleanValue(v, isolate);
-                    }
-                }
-            }
+        // minimumFractionDigits
+        if (numberOption(isolate, context, options_obj, "minimumFractionDigits")) |num| {
+            if (num >= 0 and num <= 20) minimum_fraction_digits = @intFromFloat(num);
+        }
 
-            // minimumFractionDigits
-            const min_frac_key = v8.v8_String_NewFromUtf8(isolate, "minimumFractionDigits", 21);
-            if (min_frac_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsNumber(v)) {
-                        const num = v8.v8_Value_NumberValue(v, context);
-                        if (num >= 0 and num <= 20) {
-                            minimum_fraction_digits = @intFromFloat(num);
-                        }
-                    }
-                }
-            }
-
-            // maximumFractionDigits
-            const max_frac_key = v8.v8_String_NewFromUtf8(isolate, "maximumFractionDigits", 21);
-            if (max_frac_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsNumber(v)) {
-                        const num = v8.v8_Value_NumberValue(v, context);
-                        if (num >= 0 and num <= 20) {
-                            maximum_fraction_digits = @intFromFloat(num);
-                        }
-                    }
-                }
-            }
+        // maximumFractionDigits
+        if (numberOption(isolate, context, options_obj, "maximumFractionDigits")) |num| {
+            if (num >= 0 and num <= 20) maximum_fraction_digits = @intFromFloat(num);
         }
     }
 
@@ -1498,21 +1336,14 @@ fn numberFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callcon
         maximum_fraction_digits = 0;
     }
 
-    // Resolve locale
-    const locale_data = resolveLocale(locale);
-
-    // Create entry in registry
-    const registry = getOrInitNumberFormatRegistry();
-    const allocator = std.heap.page_allocator;
-
     const locale_copy = allocator.dupe(u8, locale) catch {
+        if (currency) |c| allocator.free(c);
         conv.throwTypeError(isolate, "Out of memory");
         return;
     };
-
-    const entry = NumberFormatRegistry.Entry{
+    const state: State = .{ .number_format = .{
         .locale = locale_copy,
-        .locale_data = locale_data,
+        .locale_data = resolveLocale(locale),
         .style = style,
         .notation = notation,
         .currency = currency,
@@ -1521,75 +1352,32 @@ fn numberFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callcon
         .maximum_fraction_digits = maximum_fraction_digits,
         .use_grouping = use_grouping,
         .allocator = allocator,
-    };
-
-    const idx = registry.register(entry) catch {
-        allocator.free(locale_copy);
-        if (currency) |c| allocator.free(c);
-        conv.throwTypeError(isolate, "Failed to register NumberFormat");
-        return;
-    };
+    } };
 
     // Create the result object
     const result = v8.v8_Object_New(isolate) orelse {
-        registry.remove(idx);
+        var doomed = state;
+        doomed.deinit();
         conv.throwTypeError(isolate, "Failed to create NumberFormat object");
         return;
     };
+    defer release(result);
+    if (!adopt(isolate, result, state)) return;
 
-    // Store the registry index
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__nf_idx__", 10) orelse {
-        registry.remove(idx);
-        conv.throwTypeError(isolate, "Failed to create index key");
-        return;
-    };
-    const idx_value = v8.v8_Number_New(isolate, @floatFromInt(idx));
-    _ = v8.v8_Object_Set(result, context, @ptrCast(idx_key), @ptrCast(idx_value));
-
-    // Add methods
-    addNumberFormatMethod(isolate, context, result, "format", numberFormatFormatCallback) catch {
-        registry.remove(idx);
-        return;
-    };
-    addNumberFormatMethod(isolate, context, result, "formatToParts", numberFormatToPartsCallback) catch {
-        registry.remove(idx);
-        return;
-    };
-    addNumberFormatMethod(isolate, context, result, "resolvedOptions", numberFormatResolvedOptionsCallback) catch {
-        registry.remove(idx);
-        return;
-    };
-
-    // Setup weak callback to clean up registry entry when JS object is GC'd
-    setupWeakCallback(isolate, result, .number_format, idx, allocator);
+    defineMethod(isolate, context, result, "format", numberFormatFormatCallback);
+    defineMethod(isolate, context, result, "formatToParts", numberFormatToPartsCallback);
+    defineMethod(isolate, context, result, "resolvedOptions", numberFormatResolvedOptionsCallback);
 
     info.setReturnValue(@ptrCast(result));
 }
 
-fn addNumberFormatMethod(
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-    obj: *v8.Object,
-    name: []const u8,
-    callback: *const fn (*const v8.FunctionCallbackInfo) callconv(.c) void,
-) !void {
-    const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, @ptrCast(obj)) orelse return error.Failed;
-    const fn_obj = v8.v8_FunctionTemplate_GetFunction(fn_template, context) orelse return error.Failed;
-    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return error.Failed;
-    _ = v8.v8_Object_Set(obj, context, @ptrCast(key), @ptrCast(fn_obj));
-}
-
-/// Get the NumberFormat registry index from an object
-fn getNumberFormatIndex(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object) ?usize {
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__nf_idx__", 10) orelse return null;
-    defer v8.v8_String_Dispose(idx_key);
-    const idx_value = v8.v8_Object_Get(obj, context, @ptrCast(idx_key)) orelse return null;
-
-    if (!v8.v8_Value_IsNumber(idx_value)) return null;
-
-    const num = v8.v8_Value_NumberValue(idx_value, context);
-    if (num < 0) return null;
-    return @intFromFloat(num);
+/// `info[0]` when it is a number, else 0.
+fn numberArgument(info: *const v8.FunctionCallbackInfo, context: *v8.Context) f64 {
+    if (info.length() == 0) return 0;
+    const num_arg = info.get(0);
+    defer release(num_arg);
+    if (!v8.v8_Value_IsNumber(num_arg)) return 0;
+    return v8.v8_Value_NumberValue(num_arg, context);
 }
 
 // ============================================================================
@@ -1600,7 +1388,7 @@ fn getNumberFormatIndex(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Obj
 fn formatNumber(
     buf: []u8,
     value: f64,
-    entry: *const NumberFormatRegistry.Entry,
+    entry: *const NumberFormatEntry,
 ) []const u8 {
     const locale_data = entry.locale_data orelse cldr_embedded.getLocale("en").?;
     const symbols = locale_data.number_symbols;
@@ -1791,39 +1579,19 @@ fn numberFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.c)
     };
     defer v8.v8_Context_Dispose(context);
 
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getNumberFormatIndex(isolate, context, this_obj) orelse {
+    const entry = thisState(.number_format, info) orelse {
         conv.throwTypeError(isolate, "Invalid NumberFormat object");
         return;
     };
 
-    const registry = getOrInitNumberFormatRegistry();
-    const entry = registry.get(idx) orelse {
-        conv.throwTypeError(isolate, "NumberFormat not found in registry");
-        return;
-    };
-
     // Get number argument
-    var value: f64 = 0;
-    if (info.length() > 0) {
-        const num_arg = info.get(0);
-        if (v8.v8_Value_IsNumber(num_arg)) {
-            value = v8.v8_Value_NumberValue(num_arg, context);
-        }
-    }
+    const value = numberArgument(info, context);
 
     // Format the number
     var buf: [256]u8 = undefined;
     const formatted = formatNumber(&buf, value, entry);
 
-    // Create V8 string result
-    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse {
-        conv.throwTypeError(isolate, "Failed to create result string");
-        return;
-    };
-
-    info.setReturnValue(@ptrCast(result_str));
+    returnString(info, isolate, formatted);
 }
 
 // ============================================================================
@@ -1839,33 +1607,21 @@ fn numberFormatToPartsCallback(info: *const v8.FunctionCallbackInfo) callconv(.c
     };
     defer v8.v8_Context_Dispose(context);
 
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getNumberFormatIndex(isolate, context, this_obj) orelse {
+    const entry = thisState(.number_format, info) orelse {
         conv.throwTypeError(isolate, "Invalid NumberFormat object");
         return;
     };
 
-    const registry = getOrInitNumberFormatRegistry();
-    const entry = registry.get(idx) orelse {
-        conv.throwTypeError(isolate, "NumberFormat not found");
-        return;
-    };
-
     // Get number argument
-    var value: f64 = 0;
-    if (info.length() > 0) {
-        const num_arg = info.get(0);
-        if (v8.v8_Value_IsNumber(num_arg)) {
-            value = v8.v8_Value_NumberValue(num_arg, context);
-        }
-    }
+    var value = numberArgument(info, context);
 
     const locale_data = entry.locale_data orelse cldr_embedded.getLocale("en").?;
     const symbols = locale_data.number_symbols;
 
-    // Create parts array
-    const result_array = v8.v8_Array_New(isolate, 10);
+    // Create parts array: as long as its parts (a length made up front left
+    // holes after the last part)
+    const result_array = v8.v8_Array_New(isolate, 0);
+    defer release(result_array);
     var part_idx: u32 = 0;
 
     // Handle negative
@@ -1933,16 +1689,8 @@ fn numberFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) cal
     };
     defer v8.v8_Context_Dispose(context);
 
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getNumberFormatIndex(isolate, context, this_obj) orelse {
+    const entry = thisState(.number_format, info) orelse {
         conv.throwTypeError(isolate, "Invalid NumberFormat object");
-        return;
-    };
-
-    const registry = getOrInitNumberFormatRegistry();
-    const entry = registry.get(idx) orelse {
-        conv.throwTypeError(isolate, "NumberFormat not found");
         return;
     };
 
@@ -1951,6 +1699,7 @@ fn numberFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) cal
         conv.throwTypeError(isolate, "Failed to create options object");
         return;
     };
+    defer release(result);
 
     // Set properties
     setStringProperty(isolate, context, result, "locale", entry.locale);
@@ -1977,24 +1726,14 @@ fn numberFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) cal
     }
 
     // Set numeric properties
-    setNumberProperty(isolate, context, result, "minimumIntegerDigits", entry.minimum_integer_digits);
-    setNumberProperty(isolate, context, result, "minimumFractionDigits", entry.minimum_fraction_digits);
-    setNumberProperty(isolate, context, result, "maximumFractionDigits", entry.maximum_fraction_digits);
+    setNumberProperty(isolate, context, result, "minimumIntegerDigits", @floatFromInt(entry.minimum_integer_digits));
+    setNumberProperty(isolate, context, result, "minimumFractionDigits", @floatFromInt(entry.minimum_fraction_digits));
+    setNumberProperty(isolate, context, result, "maximumFractionDigits", @floatFromInt(entry.maximum_fraction_digits));
 
     // Set useGrouping
-    const grouping_key = v8.v8_String_NewFromUtf8(isolate, "useGrouping", 11) orelse return;
-    defer v8.v8_String_Dispose(grouping_key);
-    const grouping_val = v8.v8_Boolean_New(isolate, entry.use_grouping);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(grouping_key), @ptrCast(grouping_val));
+    setBooleanProperty(isolate, context, result, "useGrouping", entry.use_grouping);
 
     info.setReturnValue(@ptrCast(result));
-}
-
-fn setNumberProperty(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, key: []const u8, value: u8) void {
-    const k = v8.v8_String_NewFromUtf8(isolate, key.ptr, @intCast(key.len)) orelse return;
-    defer v8.v8_String_Dispose(k);
-    const v = v8.v8_Number_New(isolate, @floatFromInt(value));
-    _ = v8.v8_Object_Set(obj, context, @ptrCast(k), @ptrCast(v));
 }
 
 // ============================================================================
@@ -2003,24 +1742,8 @@ fn setNumberProperty(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object
 
 /// Callback for `Intl.NumberFormat.supportedLocalesOf(locales)`
 fn numberFormatSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-        conv.throwTypeError(isolate, "Failed to get context");
-        return;
-    };
-    defer v8.v8_Context_Dispose(context);
-
     // Return all supported locale tags (same as DateTimeFormat)
-    const tags = cldr_embedded.locale_tags;
-    const result = v8.v8_Array_New(isolate, @intCast(tags.len));
-
-    for (tags, 0..) |tag, i| {
-        const tag_str = v8.v8_String_NewFromUtf8(isolate, tag.ptr, @intCast(tag.len)) orelse continue;
-        defer v8.v8_String_Dispose(tag_str);
-        _ = v8.v8_Array_Set(result, context, @intCast(i), @ptrCast(tag_str));
-    }
-
-    info.setReturnValue(@ptrCast(result));
+    supportedLocalesOfCallback(info);
 }
 
 // ============================================================================
@@ -2036,116 +1759,20 @@ const CollatorSensitivity = enum { base, accent, case, variant };
 /// Collator caseFirst enum
 const CollatorCaseFirst = enum { upper, lower, false };
 
-/// Internal storage for Collator instances
-const CollatorRegistry = struct {
-    const Entry = struct {
-        locale: []const u8,
-        usage: CollatorUsage,
-        sensitivity: CollatorSensitivity,
-        ignore_punctuation: bool,
-        numeric: bool,
-        case_first: CollatorCaseFirst,
-        allocator: std.mem.Allocator,
-
-        fn deinit(self: *Entry) void {
-            self.allocator.free(self.locale);
-        }
-    };
-
-    /// Heap entries, each with the isolate that made it: a pointer `get`
-    /// hands out stays good while another thread's `register` grows the list
-    /// (each Intl object's entry is used only by its own agent's thread; the
-    /// list is shared), and an agent's end frees only its own (`deinitFor`).
-    entries: std.ArrayList(?Slot) = .empty,
-    free_list: std.ArrayList(usize) = .empty,
+/// A Collator's internal slots
+const CollatorEntry = struct {
+    locale: []const u8,
+    usage: CollatorUsage,
+    sensitivity: CollatorSensitivity,
+    ignore_punctuation: bool,
+    numeric: bool,
+    case_first: CollatorCaseFirst,
     allocator: std.mem.Allocator,
-    mutex: std.Io.Mutex = .init,
 
-    fn init(allocator: std.mem.Allocator) CollatorRegistry {
-        return .{
-            .allocator = allocator,
-        };
+    fn deinit(self: *CollatorEntry) void {
+        self.allocator.free(self.locale);
     }
-
-    fn deinit(self: *CollatorRegistry) void {
-        for (self.entries.items) |slot_opt| {
-            if (slot_opt) |slot| {
-                slot.entry.deinit();
-                self.allocator.destroy(slot.entry);
-            }
-        }
-        self.entries.deinit(self.allocator);
-        self.free_list.deinit(self.allocator);
-    }
-
-    fn register(self: *CollatorRegistry, entry: Entry) !usize {
-        const owned = try self.allocator.create(Entry);
-        errdefer self.allocator.destroy(owned);
-        owned.* = entry;
-
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (self.free_list.items.len > 0) {
-            const idx = self.free_list.pop().?;
-            self.entries.items[idx] = .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() };
-            return idx;
-        }
-
-        const idx = self.entries.items.len;
-        try self.entries.append(self.allocator, .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() });
-        return idx;
-    }
-
-    fn get(self: *CollatorRegistry, idx: usize) ?*Entry {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (idx >= self.entries.items.len) return null;
-        const slot = self.entries.items[idx] orelse return null;
-        return slot.entry;
-    }
-
-    fn remove(self: *CollatorRegistry, idx: usize) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (idx >= self.entries.items.len) return;
-        if (self.entries.items[idx]) |slot| {
-            slot.entry.deinit();
-            self.allocator.destroy(slot.entry);
-            self.entries.items[idx] = null;
-            self.free_list.append(self.allocator, idx) catch {};
-        }
-    }
-
-    /// Free the entries `isolate` made - its agent is ending - and no other.
-    fn deinitFor(self: *@This(), isolate: ?*v8.Isolate) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        for (self.entries.items, 0..) |slot_opt, idx| {
-            const slot = slot_opt orelse continue;
-            if (slot.isolate != isolate) continue;
-            slot.entry.deinit();
-            self.allocator.destroy(slot.entry);
-            self.entries.items[idx] = null;
-            self.free_list.append(self.allocator, idx) catch {};
-        }
-    }
-
-    const Slot = struct {
-        entry: *Entry,
-        isolate: ?*v8.Isolate,
-    };
 };
-
-/// Made with the process, not on first use: the first use can come from
-/// two threads at once (a Browser's and a worker's, docs/instances.md).
-var collator_registry: CollatorRegistry = .{ .allocator = std.heap.page_allocator };
-
-fn getOrInitCollatorRegistry() *CollatorRegistry {
-    return &collator_registry;
-}
 
 // ============================================================================
 // Collator Constructor Callback
@@ -2162,17 +1789,7 @@ fn collatorConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c
 
     // Get locale argument
     var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
+    const locale: []const u8 = stringArgument(info, 0, context, &locale_buf) orelse "en";
 
     // Parse options
     var usage: CollatorUsage = .sort;
@@ -2181,125 +1798,66 @@ fn collatorConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c
     var numeric: bool = false;
     var case_first: CollatorCaseFirst = .false;
 
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
+    const options = objectArgument(info, 1);
+    defer release(options);
+    if (options) |options_obj| {
+        // usage
+        var u_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "usage", &u_buf)) |u| {
+            if (std.mem.eql(u8, u, "sort")) usage = .sort else if (std.mem.eql(u8, u, "search")) usage = .search;
+        }
 
-            // usage
-            const usage_key = v8.v8_String_NewFromUtf8(isolate, "usage", 5);
-            if (usage_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var u_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &u_buf)) |u| {
-                            if (std.mem.eql(u8, u, "sort")) usage = .sort else if (std.mem.eql(u8, u, "search")) usage = .search;
-                        }
-                    }
-                }
-            }
+        // sensitivity
+        var s_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "sensitivity", &s_buf)) |s| {
+            if (std.mem.eql(u8, s, "base")) sensitivity = .base else if (std.mem.eql(u8, s, "accent")) sensitivity = .accent else if (std.mem.eql(u8, s, "case")) sensitivity = .case else if (std.mem.eql(u8, s, "variant")) sensitivity = .variant;
+        }
 
-            // sensitivity
-            const sens_key = v8.v8_String_NewFromUtf8(isolate, "sensitivity", 11);
-            if (sens_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var s_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
-                            if (std.mem.eql(u8, s, "base")) sensitivity = .base else if (std.mem.eql(u8, s, "accent")) sensitivity = .accent else if (std.mem.eql(u8, s, "case")) sensitivity = .case else if (std.mem.eql(u8, s, "variant")) sensitivity = .variant;
-                        }
-                    }
-                }
-            }
+        // ignorePunctuation
+        if (booleanOption(isolate, context, options_obj, "ignorePunctuation")) |b| ignore_punctuation = b;
 
-            // ignorePunctuation
-            const punct_key = v8.v8_String_NewFromUtf8(isolate, "ignorePunctuation", 17);
-            if (punct_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsBoolean(v)) {
-                        ignore_punctuation = v8.v8_Value_BooleanValue(v, isolate);
-                    }
-                }
-            }
+        // numeric
+        if (booleanOption(isolate, context, options_obj, "numeric")) |b| numeric = b;
 
-            // numeric
-            const numeric_key = v8.v8_String_NewFromUtf8(isolate, "numeric", 7);
-            if (numeric_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsBoolean(v)) {
-                        numeric = v8.v8_Value_BooleanValue(v, isolate);
-                    }
-                }
-            }
-
-            // caseFirst
-            const case_first_key = v8.v8_String_NewFromUtf8(isolate, "caseFirst", 9);
-            if (case_first_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var cf_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &cf_buf)) |cf| {
-                            if (std.mem.eql(u8, cf, "upper")) case_first = .upper else if (std.mem.eql(u8, cf, "lower")) case_first = .lower else if (std.mem.eql(u8, cf, "false")) case_first = .false;
-                        }
-                    }
-                }
-            }
+        // caseFirst
+        var cf_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "caseFirst", &cf_buf)) |cf| {
+            if (std.mem.eql(u8, cf, "upper")) case_first = .upper else if (std.mem.eql(u8, cf, "lower")) case_first = .lower else if (std.mem.eql(u8, cf, "false")) case_first = .false;
         }
     }
 
-    // Create and register collator entry
-    const registry = getOrInitCollatorRegistry();
-    const entry = CollatorRegistry.Entry{
-        .locale = std.heap.page_allocator.dupe(u8, locale) catch {
-            conv.throwTypeError(isolate, "Failed to allocate locale");
-            return;
-        },
+    const objects = agentObjects(isolate) orelse {
+        conv.throwTypeError(isolate, "Intl objects need an agent");
+        return;
+    };
+    const allocator = objects.allocator;
+    const locale_copy = allocator.dupe(u8, locale) catch {
+        conv.throwTypeError(isolate, "Failed to allocate locale");
+        return;
+    };
+    const state: State = .{ .collator = .{
+        .locale = locale_copy,
         .usage = usage,
         .sensitivity = sensitivity,
         .ignore_punctuation = ignore_punctuation,
         .numeric = numeric,
         .case_first = case_first,
-        .allocator = std.heap.page_allocator,
-    };
-
-    const idx = registry.register(entry) catch {
-        conv.throwTypeError(isolate, "Failed to register Collator");
-        return;
-    };
+        .allocator = allocator,
+    } };
 
     // Create the Collator object
     const collator_obj = v8.v8_Object_New(isolate) orelse {
+        var doomed = state;
+        doomed.deinit();
         conv.throwTypeError(isolate, "Failed to create Collator object");
         return;
     };
+    defer release(collator_obj);
+    if (!adopt(isolate, collator_obj, state)) return;
 
-    // Store the index
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__collatorIdx", 13) orelse return;
-    defer v8.v8_String_Dispose(idx_key);
-    const idx_val = v8.v8_Integer_New(isolate, @intCast(idx));
-    _ = v8.v8_Object_Set(collator_obj, context, @ptrCast(idx_key), @ptrCast(idx_val));
-
-    // Add compare method (uses 'this' to get the collator object)
-    const compare_key = v8.v8_String_NewFromUtf8(isolate, "compare", 7) orelse return;
-    defer v8.v8_String_Dispose(compare_key);
-    const compare_fn = v8.v8_FunctionTemplate_New(isolate, collatorCompareCallback, null) orelse return;
-    const compare_fn_obj = v8.v8_FunctionTemplate_GetFunction(compare_fn, context) orelse return;
-    _ = v8.v8_Object_Set(collator_obj, context, @ptrCast(compare_key), @ptrCast(compare_fn_obj));
-
-    // Add resolvedOptions method (uses 'this' to get the collator object)
-    const opts_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
-    defer v8.v8_String_Dispose(opts_key);
-    const opts_fn = v8.v8_FunctionTemplate_New(isolate, collatorResolvedOptionsCallback, null) orelse return;
-    const opts_fn_obj = v8.v8_FunctionTemplate_GetFunction(opts_fn, context) orelse return;
-    _ = v8.v8_Object_Set(collator_obj, context, @ptrCast(opts_key), @ptrCast(opts_fn_obj));
-
-    // Setup weak callback to clean up registry entry when JS object is GC'd
-    setupWeakCallback(isolate, collator_obj, .collator, idx, std.heap.page_allocator);
+    // compare and resolvedOptions use 'this' to find the collator's state
+    defineMethod(isolate, context, collator_obj, "compare", collatorCompareCallback);
+    defineMethod(isolate, context, collator_obj, "resolvedOptions", collatorResolvedOptionsCallback);
 
     info.setReturnValue(@ptrCast(collator_obj));
 }
@@ -2309,7 +1867,7 @@ fn collatorConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c
 // ============================================================================
 
 /// Compare two strings with locale awareness
-fn collatorCompare(entry: *const CollatorRegistry.Entry, a: []const u8, b: []const u8) i32 {
+fn collatorCompare(entry: *const CollatorEntry, a: []const u8, b: []const u8) i32 {
     // For base sensitivity, we only compare the base characters (ignore case and accents)
     // For now, use a simple comparison with sensitivity handling
 
@@ -2363,69 +1921,30 @@ fn compareIgnoreCase(a: []const u8, b: []const u8) i32 {
 fn collatorCompareCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
+        returnInteger(info, isolate, 0);
         return;
     };
     defer v8.v8_Context_Dispose(context);
 
-    // Get the collator object (this)
-    const this_obj: *v8.Object = @ptrCast(info.getThis());
-    defer v8.v8_Object_Dispose(this_obj);
-
-    // Get the collator index
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__collatorIdx", 13) orelse {
-        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
-        return;
-    };
-
-    const idx_val = v8.v8_Object_Get(this_obj, context, @ptrCast(idx_key)) orelse {
-        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
-        return;
-    };
-
-    if (!v8.v8_Value_IsNumber(idx_val)) {
-        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
-        return;
-    }
-
-    const idx: usize = @intFromFloat(v8.v8_Value_NumberValue(idx_val, context));
-
-    const registry = getOrInitCollatorRegistry();
-    const entry = registry.get(idx) orelse {
-        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
+    // The collator's state, through 'this'
+    const entry = thisState(.collator, info) orelse {
+        returnInteger(info, isolate, 0);
         return;
     };
 
     // Get the two string arguments
     if (info.length() < 2) {
-        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
+        returnInteger(info, isolate, 0);
         return;
     }
 
     var a_buf: [1024]u8 = undefined;
     var b_buf: [1024]u8 = undefined;
-
-    const a_arg = info.get(0);
-    const b_arg = info.get(1);
-
-    var a_str: []const u8 = "";
-    var b_str: []const u8 = "";
-
-    if (v8.v8_Value_IsString(a_arg)) {
-        if (readV8String(v8.v8_Value_ToString(a_arg, context), context, &a_buf)) |s| {
-            a_str = s;
-        }
-    }
-
-    if (v8.v8_Value_IsString(b_arg)) {
-        if (readV8String(v8.v8_Value_ToString(b_arg, context), context, &b_buf)) |s| {
-            b_str = s;
-        }
-    }
+    const a_str = stringArgument(info, 0, context, &a_buf) orelse "";
+    const b_str = stringArgument(info, 1, context, &b_buf) orelse "";
 
     // Compare the strings
-    const result = collatorCompare(entry, a_str, b_str);
-    info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, result)));
+    returnInteger(info, isolate, collatorCompare(entry, a_str, b_str));
 }
 
 // ============================================================================
@@ -2441,86 +1960,32 @@ fn collatorResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callcon
     };
     defer v8.v8_Context_Dispose(context);
 
-    // Get the collator object (this)
-    const this_obj: *v8.Object = @ptrCast(info.getThis());
-    defer v8.v8_Object_Dispose(this_obj);
-
-    // Get the collator index
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__collatorIdx", 13) orelse return;
-    defer v8.v8_String_Dispose(idx_key);
-    const idx_val = v8.v8_Object_Get(this_obj, context, @ptrCast(idx_key)) orelse return;
-
-    if (!v8.v8_Value_IsNumber(idx_val)) return;
-
-    const idx: usize = @intFromFloat(v8.v8_Value_NumberValue(idx_val, context));
-
-    const registry = getOrInitCollatorRegistry();
-    const entry = registry.get(idx) orelse return;
+    // The collator's state, through 'this'
+    const entry = thisState(.collator, info) orelse return;
 
     // Create result object
     const result = v8.v8_Object_New(isolate) orelse return;
+    defer release(result);
 
-    // locale
-    const locale_key = v8.v8_String_NewFromUtf8(isolate, "locale", 6) orelse return;
-    defer v8.v8_String_Dispose(locale_key);
-    const locale_val = v8.v8_String_NewFromUtf8(isolate, entry.locale.ptr, @intCast(entry.locale.len)) orelse return;
-    defer v8.v8_String_Dispose(locale_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(locale_key), @ptrCast(locale_val));
-
-    // usage
-    const usage_key = v8.v8_String_NewFromUtf8(isolate, "usage", 5) orelse return;
-    defer v8.v8_String_Dispose(usage_key);
-    const usage_str = switch (entry.usage) {
+    setStringProperty(isolate, context, result, "locale", entry.locale);
+    setStringProperty(isolate, context, result, "usage", switch (entry.usage) {
         .sort => "sort",
         .search => "search",
-    };
-    const usage_val = v8.v8_String_NewFromUtf8(isolate, usage_str.ptr, @intCast(usage_str.len)) orelse return;
-    defer v8.v8_String_Dispose(usage_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(usage_key), @ptrCast(usage_val));
-
-    // sensitivity
-    const sens_key = v8.v8_String_NewFromUtf8(isolate, "sensitivity", 11) orelse return;
-    defer v8.v8_String_Dispose(sens_key);
-    const sens_str = switch (entry.sensitivity) {
+    });
+    setStringProperty(isolate, context, result, "sensitivity", switch (entry.sensitivity) {
         .base => "base",
         .accent => "accent",
         .case => "case",
         .variant => "variant",
-    };
-    const sens_val = v8.v8_String_NewFromUtf8(isolate, sens_str.ptr, @intCast(sens_str.len)) orelse return;
-    defer v8.v8_String_Dispose(sens_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(sens_key), @ptrCast(sens_val));
-
-    // ignorePunctuation
-    const punct_key = v8.v8_String_NewFromUtf8(isolate, "ignorePunctuation", 17) orelse return;
-    defer v8.v8_String_Dispose(punct_key);
-    const punct_val = v8.v8_Boolean_New(isolate, entry.ignore_punctuation);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(punct_key), @ptrCast(punct_val));
-
-    // numeric
-    const numeric_key = v8.v8_String_NewFromUtf8(isolate, "numeric", 7) orelse return;
-    defer v8.v8_String_Dispose(numeric_key);
-    const numeric_val = v8.v8_Boolean_New(isolate, entry.numeric);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(numeric_key), @ptrCast(numeric_val));
-
-    // caseFirst
-    const case_first_key = v8.v8_String_NewFromUtf8(isolate, "caseFirst", 9) orelse return;
-    defer v8.v8_String_Dispose(case_first_key);
-    const case_first_str = switch (entry.case_first) {
+    });
+    setBooleanProperty(isolate, context, result, "ignorePunctuation", entry.ignore_punctuation);
+    setBooleanProperty(isolate, context, result, "numeric", entry.numeric);
+    setStringProperty(isolate, context, result, "caseFirst", switch (entry.case_first) {
         .upper => "upper",
         .lower => "lower",
         .false => "false",
-    };
-    const case_first_val = v8.v8_String_NewFromUtf8(isolate, case_first_str.ptr, @intCast(case_first_str.len)) orelse return;
-    defer v8.v8_String_Dispose(case_first_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(case_first_key), @ptrCast(case_first_val));
-
-    // collation
-    const collation_key = v8.v8_String_NewFromUtf8(isolate, "collation", 9) orelse return;
-    defer v8.v8_String_Dispose(collation_key);
-    const collation_val = v8.v8_String_NewFromUtf8(isolate, "default", 7) orelse return;
-    defer v8.v8_String_Dispose(collation_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(collation_key), @ptrCast(collation_val));
+    });
+    setStringProperty(isolate, context, result, "collation", "default");
 
     info.setReturnValue(@ptrCast(result));
 }
@@ -2531,24 +1996,8 @@ fn collatorResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callcon
 
 /// Callback for `Intl.Collator.supportedLocalesOf(locales)`
 fn collatorSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-        conv.throwTypeError(isolate, "Failed to get context");
-        return;
-    };
-    defer v8.v8_Context_Dispose(context);
-
     // Return all supported locale tags (same as other Intl objects)
-    const tags = cldr_embedded.locale_tags;
-    const result = v8.v8_Array_New(isolate, @intCast(tags.len));
-
-    for (tags, 0..) |tag, i| {
-        const tag_str = v8.v8_String_NewFromUtf8(isolate, tag.ptr, @intCast(tag.len)) orelse continue;
-        defer v8.v8_String_Dispose(tag_str);
-        _ = v8.v8_Array_Set(result, context, @intCast(i), @ptrCast(tag_str));
-    }
-
-    info.setReturnValue(@ptrCast(result));
+    supportedLocalesOfCallback(info);
 }
 
 // ============================================================================
@@ -2633,30 +2082,16 @@ fn numberToLocaleStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.
 
     // Get the number value from 'this'
     // For Number.prototype methods, 'this' can be a primitive or boxed Number
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const number = v8.v8_Value_NumberValue(@ptrCast(this_val), context);
+    const number = receiverNumber(info, context);
     if (std.math.isNan(number)) {
         // If we got NaN and the original wasn't a number, return "NaN"
-        const nan_str = v8.v8_String_NewFromUtf8(isolate, "NaN", 3) orelse return;
-        defer v8.v8_String_Dispose(nan_str);
-        info.setReturnValue(@ptrCast(nan_str));
+        returnString(info, isolate, "NaN");
         return;
     }
 
     // Get locale argument (optional)
     var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
+    const locale: []const u8 = stringArgument(info, 0, context, &locale_buf) orelse "en";
 
     // Get locale data (fallback to English if locale not found)
     const locale_data = resolveLocale(locale) orelse cldr_embedded.getLocale("en").?;
@@ -2668,58 +2103,56 @@ fn numberToLocaleStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.
     var maximum_fraction_digits: u8 = 3;
     const use_grouping: bool = true;
 
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
-
-            // style
-            const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5);
-            if (style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var s_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
-                            if (std.mem.eql(u8, s, "currency")) {
-                                style = .currency;
-                                minimum_fraction_digits = 2;
-                                maximum_fraction_digits = 2;
-                            } else if (std.mem.eql(u8, s, "percent")) {
-                                style = .percent;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // currency
-            const currency_key = v8.v8_String_NewFromUtf8(isolate, "currency", 8);
-            if (currency_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var c_buf: [8]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &c_buf)) |c| {
-                            currency = c;
-                        }
-                    }
-                }
+    // Outlives the options block: `currency` points into it.
+    var c_buf: [8]u8 = undefined;
+    const options = objectArgument(info, 1);
+    defer release(options);
+    if (options) |options_obj| {
+        // style
+        var s_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "style", &s_buf)) |s| {
+            if (std.mem.eql(u8, s, "currency")) {
+                style = .currency;
+                minimum_fraction_digits = 2;
+                maximum_fraction_digits = 2;
+            } else if (std.mem.eql(u8, s, "percent")) {
+                style = .percent;
             }
         }
+
+        // currency
+        if (stringOption(isolate, context, options_obj, "currency", &c_buf)) |c| currency = c;
     }
 
     // Format the number
     var buf: [128]u8 = undefined;
     const formatted = formatNumberForLocale(&buf, number, style, currency, use_grouping, minimum_fraction_digits, maximum_fraction_digits, locale_data);
 
-    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
-    defer v8.v8_String_Dispose(result_str);
-    info.setReturnValue(@ptrCast(result_str));
+    returnString(info, isolate, formatted);
 }
 
-/// Callback for `Date.prototype.toLocaleString(locales, options)`
-fn dateToLocaleStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+/// The receiver as a number: its [[NumberData]], or a Date's time value
+/// (valueOf); NaN for anything else.
+fn receiverNumber(info: *const v8.FunctionCallbackInfo, context: *v8.Context) f64 {
+    const this_val = info.getThis();
+    defer release(this_val);
+    return v8.v8_Value_NumberValue(@ptrCast(this_val), context);
+}
+
+/// `options.dateStyle` (`name` "dateStyle") or `options.timeStyle`, of the
+/// options bag `info[1]`, when it names a style.
+fn styleOptionArgument(comptime Style: type, info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, context: *v8.Context, name: []const u8) ?Style {
+    const options = objectArgument(info, 1) orelse return null;
+    defer release(options);
+    var s_buf: [16]u8 = undefined;
+    const s = stringOption(isolate, context, options, name, &s_buf) orelse return null;
+    return parseStyle(Style, s);
+}
+
+/// What Date.prototype.toLocaleString, toLocaleDateString and
+/// toLocaleTimeString share: `this` formatted with the date and time styles
+/// asked for, each defaulting as given (null: not shown).
+fn dateToLocale(info: *const v8.FunctionCallbackInfo, default_date: ?DateStyle, default_time: ?TimeStyle) void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
         conv.throwTypeError(isolate, "Failed to get context");
@@ -2729,70 +2162,28 @@ fn dateToLocaleStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c)
 
     // Get the date value from 'this'
     // Date objects have an internal [[DateValue]] accessible via valueOf()
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const timestamp = v8.v8_Value_NumberValue(@ptrCast(this_val), context);
+    const timestamp = receiverNumber(info, context);
     if (std.math.isNan(timestamp)) {
-        const invalid_str = v8.v8_String_NewFromUtf8(isolate, "Invalid Date", 12) orelse return;
-        defer v8.v8_String_Dispose(invalid_str);
-        info.setReturnValue(@ptrCast(invalid_str));
+        returnString(info, isolate, "Invalid Date");
         return;
     }
 
     // Get locale argument (optional)
     var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
+    const locale: []const u8 = stringArgument(info, 0, context, &locale_buf) orelse "en";
 
     // Get locale data (fallback to English if locale not found)
     const locale_data = resolveLocale(locale) orelse cldr_embedded.getLocale("en").?;
 
-    // Parse options for dateStyle and timeStyle
-    var date_style: ?DateStyle = .medium;
-    var time_style: ?TimeStyle = .medium;
-
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
-
-            // dateStyle
-            const date_style_key = v8.v8_String_NewFromUtf8(isolate, "dateStyle", 9);
-            if (date_style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var s_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
-                            if (std.mem.eql(u8, s, "full")) date_style = .full else if (std.mem.eql(u8, s, "long")) date_style = .long else if (std.mem.eql(u8, s, "medium")) date_style = .medium else if (std.mem.eql(u8, s, "short")) date_style = .short;
-                        }
-                    }
-                }
-            }
-
-            // timeStyle
-            const time_style_key = v8.v8_String_NewFromUtf8(isolate, "timeStyle", 9);
-            if (time_style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var s_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
-                            if (std.mem.eql(u8, s, "full")) time_style = .full else if (std.mem.eql(u8, s, "long")) time_style = .long else if (std.mem.eql(u8, s, "medium")) time_style = .medium else if (std.mem.eql(u8, s, "short")) time_style = .short;
-                        }
-                    }
-                }
-            }
-        }
+    // The styles: an option replaces a default only where that part is shown
+    // (toLocaleDateString reads no timeStyle, toLocaleTimeString no dateStyle).
+    var date_style = default_date;
+    var time_style = default_time;
+    if (default_date != null) {
+        if (styleOptionArgument(DateStyle, info, isolate, context, "dateStyle")) |style| date_style = style;
+    }
+    if (default_time != null) {
+        if (styleOptionArgument(TimeStyle, info, isolate, context, "timeStyle")) |style| time_style = style;
     }
 
     // Format the date with local timezone
@@ -2801,151 +2192,24 @@ fn dateToLocaleStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c)
     var buf: [256]u8 = undefined;
     const formatted = formatDateTime(&buf, dt, locale_data, date_style, time_style);
 
-    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
-    defer v8.v8_String_Dispose(result_str);
-    info.setReturnValue(@ptrCast(result_str));
+    returnString(info, isolate, formatted);
+}
+
+/// Callback for `Date.prototype.toLocaleString(locales, options)`
+fn dateToLocaleStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    dateToLocale(info, .medium, .medium);
 }
 
 /// Callback for `Date.prototype.toLocaleDateString(locales, options)`
 fn dateToLocaleDateStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-        conv.throwTypeError(isolate, "Failed to get context");
-        return;
-    };
-    defer v8.v8_Context_Dispose(context);
-
-    // Get the date value from 'this'
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const timestamp = v8.v8_Value_NumberValue(@ptrCast(this_val), context);
-    if (std.math.isNan(timestamp)) {
-        const invalid_str = v8.v8_String_NewFromUtf8(isolate, "Invalid Date", 12) orelse return;
-        defer v8.v8_String_Dispose(invalid_str);
-        info.setReturnValue(@ptrCast(invalid_str));
-        return;
-    }
-
-    // Get locale argument (optional)
-    var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
-
-    // Get locale data (fallback to English if locale not found)
-    const locale_data = resolveLocale(locale) orelse cldr_embedded.getLocale("en").?;
-
-    // Parse options for dateStyle (default to medium, no time)
-    var date_style: ?DateStyle = .medium;
-
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
-
-            const date_style_key = v8.v8_String_NewFromUtf8(isolate, "dateStyle", 9);
-            if (date_style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var s_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
-                            if (std.mem.eql(u8, s, "full")) date_style = .full else if (std.mem.eql(u8, s, "long")) date_style = .long else if (std.mem.eql(u8, s, "medium")) date_style = .medium else if (std.mem.eql(u8, s, "short")) date_style = .short;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Format date only (no time) with local timezone
-    const tz_offset = getLocalTimezoneOffset(isolate, context);
-    const dt = DateTime.fromTimestampMillisWithOffset(@intFromFloat(timestamp), tz_offset);
-    var buf: [256]u8 = undefined;
-    const formatted = formatDateTime(&buf, dt, locale_data, date_style, null);
-
-    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
-    defer v8.v8_String_Dispose(result_str);
-    info.setReturnValue(@ptrCast(result_str));
+    // dateStyle (default to medium, no time)
+    dateToLocale(info, .medium, null);
 }
 
 /// Callback for `Date.prototype.toLocaleTimeString(locales, options)`
 fn dateToLocaleTimeStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-        conv.throwTypeError(isolate, "Failed to get context");
-        return;
-    };
-    defer v8.v8_Context_Dispose(context);
-
-    // Get the date value from 'this'
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const timestamp = v8.v8_Value_NumberValue(@ptrCast(this_val), context);
-    if (std.math.isNan(timestamp)) {
-        const invalid_str = v8.v8_String_NewFromUtf8(isolate, "Invalid Date", 12) orelse return;
-        defer v8.v8_String_Dispose(invalid_str);
-        info.setReturnValue(@ptrCast(invalid_str));
-        return;
-    }
-
-    // Get locale argument (optional)
-    var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
-
-    // Get locale data (fallback to English if locale not found)
-    const locale_data = resolveLocale(locale) orelse cldr_embedded.getLocale("en").?;
-
-    // Parse options for timeStyle (default to medium, no date)
-    var time_style: ?TimeStyle = .medium;
-
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
-
-            const time_style_key = v8.v8_String_NewFromUtf8(isolate, "timeStyle", 9);
-            if (time_style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var s_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
-                            if (std.mem.eql(u8, s, "full")) time_style = .full else if (std.mem.eql(u8, s, "long")) time_style = .long else if (std.mem.eql(u8, s, "medium")) time_style = .medium else if (std.mem.eql(u8, s, "short")) time_style = .short;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Format time only (no date) with local timezone
-    const tz_offset = getLocalTimezoneOffset(isolate, context);
-    const dt = DateTime.fromTimestampMillisWithOffset(@intFromFloat(timestamp), tz_offset);
-    var buf: [256]u8 = undefined;
-    const formatted = formatDateTime(&buf, dt, locale_data, null, time_style);
-
-    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
-    defer v8.v8_String_Dispose(result_str);
-    info.setReturnValue(@ptrCast(result_str));
+    // timeStyle (default to medium, no date)
+    dateToLocale(info, null, .medium);
 }
 
 /// Register toLocaleString methods on built-in prototypes
@@ -3029,85 +2293,20 @@ const PluralRulesType = enum {
     ordinal,
 };
 
-/// PluralRules registry entry
-const PluralRulesRegistry = struct {
-    const Entry = struct {
-        locale: []const u8,
-        locale_data: ?*const cldr.LocaleData,
-        type: PluralRulesType,
-        minimum_integer_digits: u8,
-        minimum_fraction_digits: u8,
-        maximum_fraction_digits: u8,
-        allocator: std.mem.Allocator,
-    };
-
-    entries: std.AutoHashMap(usize, Held),
-    next_id: usize,
+/// A PluralRules' internal slots
+const PluralRulesEntry = struct {
+    locale: []const u8,
+    locale_data: ?*const cldr.LocaleData,
+    type: PluralRulesType,
+    minimum_integer_digits: u8,
+    minimum_fraction_digits: u8,
+    maximum_fraction_digits: u8,
     allocator: std.mem.Allocator,
-    /// Protects `entries` and `next_id`: Intl objects are made and collected
-    /// on every thread that runs script (a Browser's and each worker's,
-    /// docs/instances.md). Held for one map operation. An entry is a value:
-    /// `lookup` hands out a copy, whose strings stay until the object's own
-    /// thread removes the entry.
-    mutex: std.Io.Mutex = .init,
 
-    fn add(self: *PluralRulesRegistry, entry: Entry) !usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const id = self.next_id;
-        self.next_id += 1;
-        try self.entries.put(id, .{ .entry = entry, .isolate = v8.v8_Isolate_GetCurrent() });
-        return id;
-    }
-
-    fn lookup(self: *PluralRulesRegistry, id: usize) ?Entry {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const held = self.entries.get(id) orelse return null;
-        return held.entry;
-    }
-
-    /// Free the entries `isolate` made - its agent is ending - and no other.
-    fn deinitFor(self: *PluralRulesRegistry, isolate: ?*v8.Isolate) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        var doomed: std.ArrayListUnmanaged(usize) = .empty;
-        defer doomed.deinit(self.allocator);
-        var iter = self.entries.iterator();
-        while (iter.next()) |kv| {
-            if (kv.value_ptr.isolate != isolate) continue;
-            doomed.append(self.allocator, kv.key_ptr.*) catch continue;
-        }
-        for (doomed.items) |id| {
-            const kv = self.entries.fetchRemove(id) orelse continue;
-            kv.value.entry.allocator.free(kv.value.entry.locale);
-        }
-    }
-
-    /// An entry, with the isolate that made it.
-    const Held = struct {
-        entry: Entry,
-        isolate: ?*v8.Isolate,
-    };
-
-    fn drop(self: *PluralRulesRegistry, id: usize) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        _ = self.entries.remove(id);
+    fn deinit(self: *PluralRulesEntry) void {
+        self.allocator.free(self.locale);
     }
 };
-
-/// Made with the process, not on first use: the first use can come from
-/// two threads at once (a Browser's and a worker's, docs/instances.md).
-var plural_rules_registry: PluralRulesRegistry = .{
-    .entries = std.AutoHashMap(usize, PluralRulesRegistry.Held).init(std.heap.page_allocator),
-    .next_id = 1,
-    .allocator = std.heap.page_allocator,
-};
-
-fn getOrInitPluralRulesRegistry() *PluralRulesRegistry {
-    return &plural_rules_registry;
-}
 
 /// Get plural category for a number (simplified CLDR rules)
 fn getPluralCategory(n: f64, locale: []const u8, rule_type: PluralRulesType) PluralCategory {
@@ -3179,17 +2378,7 @@ fn pluralRulesConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv
 
     // Parse locale
     var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
+    const locale: []const u8 = stringArgument(info, 0, context, &locale_buf) orelse "en";
 
     // Parse options
     var rule_type: PluralRulesType = .cardinal;
@@ -3197,37 +2386,26 @@ fn pluralRulesConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv
     const minimum_fraction_digits: u8 = 0;
     const maximum_fraction_digits: u8 = 3;
 
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
-
-            // type
-            const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4);
-            if (type_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v_val| {
-                    if (v8.v8_Value_IsString(v_val)) {
-                        var t_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &t_buf)) |t| {
-                            if (std.mem.eql(u8, t, "ordinal")) rule_type = .ordinal;
-                        }
-                    }
-                }
-            }
+    const options = objectArgument(info, 1);
+    defer release(options);
+    if (options) |options_obj| {
+        // type
+        var t_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "type", &t_buf)) |t| {
+            if (std.mem.eql(u8, t, "ordinal")) rule_type = .ordinal;
         }
     }
 
-    // Store in registry
-    const registry = getOrInitPluralRulesRegistry();
-    const allocator = std.heap.page_allocator;
-
+    const objects = agentObjects(isolate) orelse {
+        conv.throwTypeError(isolate, "Intl objects need an agent");
+        return;
+    };
+    const allocator = objects.allocator;
     const locale_copy = allocator.dupe(u8, locale) catch {
         conv.throwTypeError(isolate, "Out of memory");
         return;
     };
-
-    const entry = PluralRulesRegistry.Entry{
+    const state: State = .{ .plural_rules = .{
         .locale = locale_copy,
         .locale_data = resolveLocale(locale),
         .type = rule_type,
@@ -3235,41 +2413,20 @@ fn pluralRulesConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv
         .minimum_fraction_digits = minimum_fraction_digits,
         .maximum_fraction_digits = maximum_fraction_digits,
         .allocator = allocator,
-    };
-
-    const id = registry.add(entry) catch {
-        conv.throwTypeError(isolate, "Failed to store PluralRules");
-        return;
-    };
+    } };
 
     // Create result object with methods
     const result_obj = v8.v8_Object_New(isolate) orelse {
+        var doomed = state;
+        doomed.deinit();
         conv.throwTypeError(isolate, "Failed to create result object");
         return;
     };
+    defer release(result_obj);
+    if (!adopt(isolate, result_obj, state)) return;
 
-    // Store ID in internal field
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__pr_id__", 9) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Number_New(isolate, @floatFromInt(id));
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(id_key), @ptrCast(id_val));
-
-    // Add select method
-    const select_fn = v8.v8_FunctionTemplate_New(isolate, pluralRulesSelectCallback, null) orelse return;
-    const select_fn_obj = v8.v8_FunctionTemplate_GetFunction(select_fn, context) orelse return;
-    const select_key = v8.v8_String_NewFromUtf8(isolate, "select", 6) orelse return;
-    defer v8.v8_String_Dispose(select_key);
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(select_key), @ptrCast(select_fn_obj));
-
-    // Add resolvedOptions method
-    const resolved_fn = v8.v8_FunctionTemplate_New(isolate, pluralRulesResolvedOptionsCallback, null) orelse return;
-    const resolved_fn_obj = v8.v8_FunctionTemplate_GetFunction(resolved_fn, context) orelse return;
-    const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
-    defer v8.v8_String_Dispose(resolved_key);
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
-
-    // Setup weak callback to clean up registry entry when JS object is GC'd
-    setupWeakCallback(isolate, result_obj, .plural_rules, id, allocator);
+    defineMethod(isolate, context, result_obj, "select", pluralRulesSelectCallback);
+    defineMethod(isolate, context, result_obj, "resolvedOptions", pluralRulesResolvedOptionsCallback);
 
     info.setReturnValue(@ptrCast(result_obj));
 }
@@ -3280,37 +2437,20 @@ fn pluralRulesSelectCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) 
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    // Get ID from this object
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__pr_id__", 9) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
-    if (!v8.v8_Value_IsNumber(id_val)) return;
-
-    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
-
-    const registry = getOrInitPluralRulesRegistry();
-    const entry = registry.lookup(id) orelse return;
+    const entry = thisState(.plural_rules, info) orelse return;
 
     // Get number argument
     if (info.length() < 1) {
-        const result_str = v8.v8_String_NewFromUtf8(isolate, "other", 5) orelse return;
-        defer v8.v8_String_Dispose(result_str);
-        info.setReturnValue(@ptrCast(result_str));
+        returnString(info, isolate, "other");
         return;
     }
 
     const num_arg = info.get(0);
+    defer release(num_arg);
     const num = v8.v8_Value_NumberValue(num_arg, context);
 
     // Get plural category
-    const category = getPluralCategory(num, entry.locale, entry.type);
-    const category_str = category.toString();
-
-    const result_str = v8.v8_String_NewFromUtf8(isolate, category_str.ptr, @intCast(category_str.len)) orelse return;
-    defer v8.v8_String_Dispose(result_str);
-    info.setReturnValue(@ptrCast(result_str));
+    returnString(info, isolate, getPluralCategory(num, entry.locale, entry.type).toString());
 }
 
 /// Intl.PluralRules.prototype.resolvedOptions callback
@@ -3319,67 +2459,25 @@ fn pluralRulesResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) call
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    // Get ID from this object
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__pr_id__", 9) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
-    if (!v8.v8_Value_IsNumber(id_val)) return;
-
-    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
-
-    const registry = getOrInitPluralRulesRegistry();
-    const entry = registry.lookup(id) orelse return;
+    const entry = thisState(.plural_rules, info) orelse return;
 
     // Create result object
     const result = v8.v8_Object_New(isolate) orelse return;
+    defer release(result);
 
-    // locale
-    const locale_key = v8.v8_String_NewFromUtf8(isolate, "locale", 6) orelse return;
-    defer v8.v8_String_Dispose(locale_key);
-    const locale_val = v8.v8_String_NewFromUtf8(isolate, entry.locale.ptr, @intCast(entry.locale.len)) orelse return;
-    defer v8.v8_String_Dispose(locale_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(locale_key), @ptrCast(locale_val));
-
-    // type
-    const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4) orelse return;
-    defer v8.v8_String_Dispose(type_key);
-    const type_str: []const u8 = if (entry.type == .ordinal) "ordinal" else "cardinal";
-    const type_val = v8.v8_String_NewFromUtf8(isolate, type_str.ptr, @intCast(type_str.len)) orelse return;
-    defer v8.v8_String_Dispose(type_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(type_key), @ptrCast(type_val));
-
-    // minimumIntegerDigits
-    const mid_key = v8.v8_String_NewFromUtf8(isolate, "minimumIntegerDigits", 20) orelse return;
-    defer v8.v8_String_Dispose(mid_key);
-    const mid_val = v8.v8_Number_New(isolate, @floatFromInt(entry.minimum_integer_digits));
-    _ = v8.v8_Object_Set(result, context, @ptrCast(mid_key), @ptrCast(mid_val));
-
-    // minimumFractionDigits
-    const mfd_key = v8.v8_String_NewFromUtf8(isolate, "minimumFractionDigits", 21) orelse return;
-    defer v8.v8_String_Dispose(mfd_key);
-    const mfd_val = v8.v8_Number_New(isolate, @floatFromInt(entry.minimum_fraction_digits));
-    _ = v8.v8_Object_Set(result, context, @ptrCast(mfd_key), @ptrCast(mfd_val));
-
-    // maximumFractionDigits
-    const xfd_key = v8.v8_String_NewFromUtf8(isolate, "maximumFractionDigits", 21) orelse return;
-    defer v8.v8_String_Dispose(xfd_key);
-    const xfd_val = v8.v8_Number_New(isolate, @floatFromInt(entry.maximum_fraction_digits));
-    _ = v8.v8_Object_Set(result, context, @ptrCast(xfd_key), @ptrCast(xfd_val));
+    setStringProperty(isolate, context, result, "locale", entry.locale);
+    setStringProperty(isolate, context, result, "type", if (entry.type == .ordinal) "ordinal" else "cardinal");
+    setNumberProperty(isolate, context, result, "minimumIntegerDigits", @floatFromInt(entry.minimum_integer_digits));
+    setNumberProperty(isolate, context, result, "minimumFractionDigits", @floatFromInt(entry.minimum_fraction_digits));
+    setNumberProperty(isolate, context, result, "maximumFractionDigits", @floatFromInt(entry.maximum_fraction_digits));
 
     // pluralCategories
-    const categories_key = v8.v8_String_NewFromUtf8(isolate, "pluralCategories", 16) orelse return;
-    defer v8.v8_String_Dispose(categories_key);
     const categories = v8.v8_Array_New(isolate, 6);
-
     const cat_strs = [_][]const u8{ "zero", "one", "two", "few", "many", "other" };
     for (cat_strs, 0..) |cat_str, idx| {
-        const cat_val = v8.v8_String_NewFromUtf8(isolate, cat_str.ptr, @intCast(cat_str.len)) orelse continue;
-        defer v8.v8_String_Dispose(cat_val);
-        _ = v8.v8_Array_Set(categories, context, @intCast(idx), @ptrCast(cat_val));
+        setElementOwned(context, categories, @intCast(idx), v8.v8_String_NewFromUtf8(isolate, cat_str.ptr, @intCast(cat_str.len)));
     }
-    _ = v8.v8_Object_Set(result, context, @ptrCast(categories_key), @ptrCast(categories));
+    setOwned(isolate, context, result, "pluralCategories", categories);
 
     info.setReturnValue(@ptrCast(result));
 }
@@ -3457,83 +2555,18 @@ const RelativeTimeNumeric = enum {
     auto,
 };
 
-/// RelativeTimeFormat registry entry
-const RelativeTimeFormatRegistry = struct {
-    const Entry = struct {
-        locale: []const u8,
-        locale_data: ?*const cldr.LocaleData,
-        style: RelativeTimeStyle,
-        numeric: RelativeTimeNumeric,
-        allocator: std.mem.Allocator,
-    };
-
-    entries: std.AutoHashMap(usize, Held),
-    next_id: usize,
+/// A RelativeTimeFormat's internal slots
+const RelativeTimeFormatEntry = struct {
+    locale: []const u8,
+    locale_data: ?*const cldr.LocaleData,
+    style: RelativeTimeStyle,
+    numeric: RelativeTimeNumeric,
     allocator: std.mem.Allocator,
-    /// Protects `entries` and `next_id`: Intl objects are made and collected
-    /// on every thread that runs script (a Browser's and each worker's,
-    /// docs/instances.md). Held for one map operation. An entry is a value:
-    /// `lookup` hands out a copy, whose strings stay until the object's own
-    /// thread removes the entry.
-    mutex: std.Io.Mutex = .init,
 
-    fn add(self: *RelativeTimeFormatRegistry, entry: Entry) !usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const id = self.next_id;
-        self.next_id += 1;
-        try self.entries.put(id, .{ .entry = entry, .isolate = v8.v8_Isolate_GetCurrent() });
-        return id;
-    }
-
-    fn lookup(self: *RelativeTimeFormatRegistry, id: usize) ?Entry {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const held = self.entries.get(id) orelse return null;
-        return held.entry;
-    }
-
-    /// Free the entries `isolate` made - its agent is ending - and no other.
-    fn deinitFor(self: *RelativeTimeFormatRegistry, isolate: ?*v8.Isolate) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        var doomed: std.ArrayListUnmanaged(usize) = .empty;
-        defer doomed.deinit(self.allocator);
-        var iter = self.entries.iterator();
-        while (iter.next()) |kv| {
-            if (kv.value_ptr.isolate != isolate) continue;
-            doomed.append(self.allocator, kv.key_ptr.*) catch continue;
-        }
-        for (doomed.items) |id| {
-            const kv = self.entries.fetchRemove(id) orelse continue;
-            kv.value.entry.allocator.free(kv.value.entry.locale);
-        }
-    }
-
-    /// An entry, with the isolate that made it.
-    const Held = struct {
-        entry: Entry,
-        isolate: ?*v8.Isolate,
-    };
-
-    fn drop(self: *RelativeTimeFormatRegistry, id: usize) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        _ = self.entries.remove(id);
+    fn deinit(self: *RelativeTimeFormatEntry) void {
+        self.allocator.free(self.locale);
     }
 };
-
-/// Made with the process, not on first use: the first use can come from
-/// two threads at once (a Browser's and a worker's, docs/instances.md).
-var relative_time_format_registry: RelativeTimeFormatRegistry = .{
-    .entries = std.AutoHashMap(usize, RelativeTimeFormatRegistry.Held).init(std.heap.page_allocator),
-    .next_id = 1,
-    .allocator = std.heap.page_allocator,
-};
-
-fn getOrInitRelativeTimeFormatRegistry() *RelativeTimeFormatRegistry {
-    return &relative_time_format_registry;
-}
 
 /// Format relative time (simplified implementation)
 fn formatRelativeTime(buf: []u8, value: f64, unit: RelativeTimeUnit, locale: []const u8, numeric: RelativeTimeNumeric) []const u8 {
@@ -3647,107 +2680,57 @@ fn relativeTimeFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) c
 
     // Parse locale
     var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
+    const locale: []const u8 = stringArgument(info, 0, context, &locale_buf) orelse "en";
 
     // Parse options
     var style: RelativeTimeStyle = .long;
     var numeric: RelativeTimeNumeric = .always;
 
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
+    const options = objectArgument(info, 1);
+    defer release(options);
+    if (options) |options_obj| {
+        // style
+        var s_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "style", &s_buf)) |s| {
+            if (std.mem.eql(u8, s, "short")) style = .short else if (std.mem.eql(u8, s, "narrow")) style = .narrow;
+        }
 
-            // style
-            const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5);
-            if (style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v_val| {
-                    if (v8.v8_Value_IsString(v_val)) {
-                        var s_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &s_buf)) |s| {
-                            if (std.mem.eql(u8, s, "short")) style = .short else if (std.mem.eql(u8, s, "narrow")) style = .narrow;
-                        }
-                    }
-                }
-            }
-
-            // numeric
-            const numeric_key = v8.v8_String_NewFromUtf8(isolate, "numeric", 7);
-            if (numeric_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v_val| {
-                    if (v8.v8_Value_IsString(v_val)) {
-                        var n_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &n_buf)) |n| {
-                            if (std.mem.eql(u8, n, "auto")) numeric = .auto;
-                        }
-                    }
-                }
-            }
+        // numeric
+        var n_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "numeric", &n_buf)) |n| {
+            if (std.mem.eql(u8, n, "auto")) numeric = .auto;
         }
     }
 
-    // Store in registry
-    const registry = getOrInitRelativeTimeFormatRegistry();
-    const allocator = std.heap.page_allocator;
-
+    const objects = agentObjects(isolate) orelse {
+        conv.throwTypeError(isolate, "Intl objects need an agent");
+        return;
+    };
+    const allocator = objects.allocator;
     const locale_copy = allocator.dupe(u8, locale) catch {
         conv.throwTypeError(isolate, "Out of memory");
         return;
     };
-
-    const entry = RelativeTimeFormatRegistry.Entry{
+    const state: State = .{ .relative_time_format = .{
         .locale = locale_copy,
         .locale_data = resolveLocale(locale),
         .style = style,
         .numeric = numeric,
         .allocator = allocator,
-    };
-
-    const id = registry.add(entry) catch {
-        conv.throwTypeError(isolate, "Failed to store RelativeTimeFormat");
-        return;
-    };
+    } };
 
     // Create result object with methods
     const result_obj = v8.v8_Object_New(isolate) orelse {
+        var doomed = state;
+        doomed.deinit();
         conv.throwTypeError(isolate, "Failed to create result object");
         return;
     };
+    defer release(result_obj);
+    if (!adopt(isolate, result_obj, state)) return;
 
-    // Store ID
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__rtf_id__", 10) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Number_New(isolate, @floatFromInt(id));
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(id_key), @ptrCast(id_val));
-
-    // Add format method
-    const format_fn = v8.v8_FunctionTemplate_New(isolate, relativeTimeFormatFormatCallback, null) orelse return;
-    const format_fn_obj = v8.v8_FunctionTemplate_GetFunction(format_fn, context) orelse return;
-    const format_key = v8.v8_String_NewFromUtf8(isolate, "format", 6) orelse return;
-    defer v8.v8_String_Dispose(format_key);
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(format_key), @ptrCast(format_fn_obj));
-
-    // Add resolvedOptions method
-    const resolved_fn = v8.v8_FunctionTemplate_New(isolate, relativeTimeFormatResolvedOptionsCallback, null) orelse return;
-    const resolved_fn_obj = v8.v8_FunctionTemplate_GetFunction(resolved_fn, context) orelse return;
-    const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
-    defer v8.v8_String_Dispose(resolved_key);
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
-
-    // Setup weak callback to clean up registry entry when JS object is GC'd
-    setupWeakCallback(isolate, result_obj, .relative_time_format, id, allocator);
+    defineMethod(isolate, context, result_obj, "format", relativeTimeFormatFormatCallback);
+    defineMethod(isolate, context, result_obj, "resolvedOptions", relativeTimeFormatResolvedOptionsCallback);
 
     info.setReturnValue(@ptrCast(result_obj));
 }
@@ -3758,18 +2741,7 @@ fn relativeTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callco
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    // Get ID from this object
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__rtf_id__", 10) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
-    if (!v8.v8_Value_IsNumber(id_val)) return;
-
-    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
-
-    const registry = getOrInitRelativeTimeFormatRegistry();
-    const entry = registry.lookup(id) orelse return;
+    const entry = thisState(.relative_time_format, info) orelse return;
 
     // Get arguments: value, unit
     if (info.length() < 2) {
@@ -3777,10 +2749,13 @@ fn relativeTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callco
         return;
     }
 
-    const value = v8.v8_Value_NumberValue(info.get(0), context);
+    const value_arg = info.get(0);
+    defer release(value_arg);
+    const value = v8.v8_Value_NumberValue(value_arg, context);
 
     var unit_buf: [16]u8 = undefined;
     const unit_arg = info.get(1);
+    defer release(unit_arg);
     if (!v8.v8_Value_IsString(unit_arg)) {
         conv.throwTypeError(isolate, "Unit must be a string");
         return;
@@ -3798,11 +2773,7 @@ fn relativeTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callco
 
     // Format
     var buf: [128]u8 = undefined;
-    const formatted = formatRelativeTime(&buf, value, unit, entry.locale, entry.numeric);
-
-    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
-    defer v8.v8_String_Dispose(result_str);
-    info.setReturnValue(@ptrCast(result_str));
+    returnString(info, isolate, formatRelativeTime(&buf, value, unit, entry.locale, entry.numeric));
 }
 
 /// Intl.RelativeTimeFormat.prototype.resolvedOptions callback
@@ -3811,55 +2782,20 @@ fn relativeTimeFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInf
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    // Get ID from this object
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__rtf_id__", 10) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
-    if (!v8.v8_Value_IsNumber(id_val)) return;
-
-    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
-
-    const registry = getOrInitRelativeTimeFormatRegistry();
-    const entry = registry.lookup(id) orelse return;
+    const entry = thisState(.relative_time_format, info) orelse return;
 
     // Create result object
     const result = v8.v8_Object_New(isolate) orelse return;
+    defer release(result);
 
-    // locale
-    const locale_key = v8.v8_String_NewFromUtf8(isolate, "locale", 6) orelse return;
-    defer v8.v8_String_Dispose(locale_key);
-    const locale_val = v8.v8_String_NewFromUtf8(isolate, entry.locale.ptr, @intCast(entry.locale.len)) orelse return;
-    defer v8.v8_String_Dispose(locale_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(locale_key), @ptrCast(locale_val));
-
-    // style
-    const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5) orelse return;
-    defer v8.v8_String_Dispose(style_key);
-    const style_str: []const u8 = switch (entry.style) {
+    setStringProperty(isolate, context, result, "locale", entry.locale);
+    setStringProperty(isolate, context, result, "style", switch (entry.style) {
         .long => "long",
         .short => "short",
         .narrow => "narrow",
-    };
-    const style_val = v8.v8_String_NewFromUtf8(isolate, style_str.ptr, @intCast(style_str.len)) orelse return;
-    defer v8.v8_String_Dispose(style_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(style_key), @ptrCast(style_val));
-
-    // numeric
-    const numeric_key = v8.v8_String_NewFromUtf8(isolate, "numeric", 7) orelse return;
-    defer v8.v8_String_Dispose(numeric_key);
-    const numeric_str: []const u8 = if (entry.numeric == .auto) "auto" else "always";
-    const numeric_val = v8.v8_String_NewFromUtf8(isolate, numeric_str.ptr, @intCast(numeric_str.len)) orelse return;
-    defer v8.v8_String_Dispose(numeric_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(numeric_key), @ptrCast(numeric_val));
-
-    // numberingSystem
-    const ns_key = v8.v8_String_NewFromUtf8(isolate, "numberingSystem", 15) orelse return;
-    defer v8.v8_String_Dispose(ns_key);
-    const ns_val = v8.v8_String_NewFromUtf8(isolate, "latn", 4) orelse return;
-    defer v8.v8_String_Dispose(ns_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(ns_key), @ptrCast(ns_val));
+    });
+    setStringProperty(isolate, context, result, "numeric", if (entry.numeric == .auto) "auto" else "always");
+    setStringProperty(isolate, context, result, "numberingSystem", "latn");
 
     info.setReturnValue(@ptrCast(result));
 }
@@ -3887,83 +2823,18 @@ const ListFormatStyle = enum {
     narrow,
 };
 
-/// ListFormat registry entry
-const ListFormatRegistry = struct {
-    const Entry = struct {
-        locale: []const u8,
-        locale_data: ?*const cldr.LocaleData,
-        type: ListFormatType,
-        style: ListFormatStyle,
-        allocator: std.mem.Allocator,
-    };
-
-    entries: std.AutoHashMap(usize, Held),
-    next_id: usize,
+/// A ListFormat's internal slots
+const ListFormatEntry = struct {
+    locale: []const u8,
+    locale_data: ?*const cldr.LocaleData,
+    type: ListFormatType,
+    style: ListFormatStyle,
     allocator: std.mem.Allocator,
-    /// Protects `entries` and `next_id`: Intl objects are made and collected
-    /// on every thread that runs script (a Browser's and each worker's,
-    /// docs/instances.md). Held for one map operation. An entry is a value:
-    /// `lookup` hands out a copy, whose strings stay until the object's own
-    /// thread removes the entry.
-    mutex: std.Io.Mutex = .init,
 
-    fn add(self: *ListFormatRegistry, entry: Entry) !usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const id = self.next_id;
-        self.next_id += 1;
-        try self.entries.put(id, .{ .entry = entry, .isolate = v8.v8_Isolate_GetCurrent() });
-        return id;
-    }
-
-    fn lookup(self: *ListFormatRegistry, id: usize) ?Entry {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const held = self.entries.get(id) orelse return null;
-        return held.entry;
-    }
-
-    /// Free the entries `isolate` made - its agent is ending - and no other.
-    fn deinitFor(self: *ListFormatRegistry, isolate: ?*v8.Isolate) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        var doomed: std.ArrayListUnmanaged(usize) = .empty;
-        defer doomed.deinit(self.allocator);
-        var iter = self.entries.iterator();
-        while (iter.next()) |kv| {
-            if (kv.value_ptr.isolate != isolate) continue;
-            doomed.append(self.allocator, kv.key_ptr.*) catch continue;
-        }
-        for (doomed.items) |id| {
-            const kv = self.entries.fetchRemove(id) orelse continue;
-            kv.value.entry.allocator.free(kv.value.entry.locale);
-        }
-    }
-
-    /// An entry, with the isolate that made it.
-    const Held = struct {
-        entry: Entry,
-        isolate: ?*v8.Isolate,
-    };
-
-    fn drop(self: *ListFormatRegistry, id: usize) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        _ = self.entries.remove(id);
+    fn deinit(self: *ListFormatEntry) void {
+        self.allocator.free(self.locale);
     }
 };
-
-/// Made with the process, not on first use: the first use can come from
-/// two threads at once (a Browser's and a worker's, docs/instances.md).
-var list_format_registry: ListFormatRegistry = .{
-    .entries = std.AutoHashMap(usize, ListFormatRegistry.Held).init(std.heap.page_allocator),
-    .next_id = 1,
-    .allocator = std.heap.page_allocator,
-};
-
-fn getOrInitListFormatRegistry() *ListFormatRegistry {
-    return &list_format_registry;
-}
 
 /// Format a list
 fn formatList(allocator: std.mem.Allocator, items: []const []const u8, format_type: ListFormatType, locale: []const u8) ![]u8 {
@@ -4015,7 +2886,10 @@ fn formatList(allocator: std.mem.Allocator, items: []const []const u8, format_ty
         }
     }
 
-    return result[0..idx];
+    // The caller frees what it is given: hand back exactly what was allocated.
+    if (allocator.resize(result, idx)) return result[0..idx];
+    defer allocator.free(result);
+    return allocator.dupe(u8, result[0..idx]);
 }
 
 fn getListConjunction(locale: []const u8, format_type: ListFormatType) []const u8 {
@@ -4038,107 +2912,57 @@ fn listFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(
 
     // Parse locale
     var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
+    const locale: []const u8 = stringArgument(info, 0, context, &locale_buf) orelse "en";
 
     // Parse options
     var format_type: ListFormatType = .conjunction;
     var style: ListFormatStyle = .long;
 
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
+    const options = objectArgument(info, 1);
+    defer release(options);
+    if (options) |options_obj| {
+        // type
+        var t_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "type", &t_buf)) |t| {
+            if (std.mem.eql(u8, t, "disjunction")) format_type = .disjunction else if (std.mem.eql(u8, t, "unit")) format_type = .unit;
+        }
 
-            // type
-            const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4);
-            if (type_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v_val| {
-                    if (v8.v8_Value_IsString(v_val)) {
-                        var t_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &t_buf)) |t| {
-                            if (std.mem.eql(u8, t, "disjunction")) format_type = .disjunction else if (std.mem.eql(u8, t, "unit")) format_type = .unit;
-                        }
-                    }
-                }
-            }
-
-            // style
-            const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5);
-            if (style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v_val| {
-                    if (v8.v8_Value_IsString(v_val)) {
-                        var s_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &s_buf)) |s| {
-                            if (std.mem.eql(u8, s, "short")) style = .short else if (std.mem.eql(u8, s, "narrow")) style = .narrow;
-                        }
-                    }
-                }
-            }
+        // style
+        var s_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "style", &s_buf)) |s| {
+            if (std.mem.eql(u8, s, "short")) style = .short else if (std.mem.eql(u8, s, "narrow")) style = .narrow;
         }
     }
 
-    // Store in registry
-    const registry = getOrInitListFormatRegistry();
-    const allocator = std.heap.page_allocator;
-
+    const objects = agentObjects(isolate) orelse {
+        conv.throwTypeError(isolate, "Intl objects need an agent");
+        return;
+    };
+    const allocator = objects.allocator;
     const locale_copy = allocator.dupe(u8, locale) catch {
         conv.throwTypeError(isolate, "Out of memory");
         return;
     };
-
-    const entry = ListFormatRegistry.Entry{
+    const state: State = .{ .list_format = .{
         .locale = locale_copy,
         .locale_data = resolveLocale(locale),
         .type = format_type,
         .style = style,
         .allocator = allocator,
-    };
-
-    const id = registry.add(entry) catch {
-        conv.throwTypeError(isolate, "Failed to store ListFormat");
-        return;
-    };
+    } };
 
     // Create result object with methods
     const result_obj = v8.v8_Object_New(isolate) orelse {
+        var doomed = state;
+        doomed.deinit();
         conv.throwTypeError(isolate, "Failed to create result object");
         return;
     };
+    defer release(result_obj);
+    if (!adopt(isolate, result_obj, state)) return;
 
-    // Store ID
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__lf_id__", 9) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Number_New(isolate, @floatFromInt(id));
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(id_key), @ptrCast(id_val));
-
-    // Add format method
-    const format_fn = v8.v8_FunctionTemplate_New(isolate, listFormatFormatCallback, null) orelse return;
-    const format_fn_obj = v8.v8_FunctionTemplate_GetFunction(format_fn, context) orelse return;
-    const format_key = v8.v8_String_NewFromUtf8(isolate, "format", 6) orelse return;
-    defer v8.v8_String_Dispose(format_key);
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(format_key), @ptrCast(format_fn_obj));
-
-    // Add resolvedOptions method
-    const resolved_fn = v8.v8_FunctionTemplate_New(isolate, listFormatResolvedOptionsCallback, null) orelse return;
-    const resolved_fn_obj = v8.v8_FunctionTemplate_GetFunction(resolved_fn, context) orelse return;
-    const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
-    defer v8.v8_String_Dispose(resolved_key);
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
-
-    // Setup weak callback to clean up registry entry when JS object is GC'd
-    setupWeakCallback(isolate, result_obj, .list_format, id, allocator);
+    defineMethod(isolate, context, result_obj, "format", listFormatFormatCallback);
+    defineMethod(isolate, context, result_obj, "resolvedOptions", listFormatResolvedOptionsCallback);
 
     info.setReturnValue(@ptrCast(result_obj));
 }
@@ -4149,28 +2973,16 @@ fn listFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) v
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    // Get ID from this object
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__lf_id__", 9) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
-    if (!v8.v8_Value_IsNumber(id_val)) return;
-
-    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
-
-    const registry = getOrInitListFormatRegistry();
-    const entry = registry.lookup(id) orelse return;
+    const entry = thisState(.list_format, info) orelse return;
 
     // Get array argument
     if (info.length() < 1) {
-        const empty_str = v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
-        defer v8.v8_String_Dispose(empty_str);
-        info.setReturnValue(@ptrCast(empty_str));
+        returnString(info, isolate, "");
         return;
     }
 
     const list_arg = info.get(0);
+    defer release(list_arg);
     if (!v8.v8_Value_IsArray(list_arg)) {
         conv.throwTypeError(isolate, "ListFormat.format requires an array");
         return;
@@ -4180,14 +2992,12 @@ fn listFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) v
     const len = v8.v8_Array_Length(arr);
 
     if (len == 0) {
-        const empty_str = v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
-        defer v8.v8_String_Dispose(empty_str);
-        info.setReturnValue(@ptrCast(empty_str));
+        returnString(info, isolate, "");
         return;
     }
 
     // Collect strings from array
-    const allocator = std.heap.page_allocator;
+    const allocator = entry.allocator;
     var items = allocator.alloc([]const u8, len) catch {
         conv.throwTypeError(isolate, "Out of memory");
         return;
@@ -4205,21 +3015,9 @@ fn listFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) v
             items[i] = "";
             continue;
         };
-        if (v8.v8_Value_IsString(elem)) {
-            if (readV8String(v8.v8_Value_ToString(elem, context), context, &string_bufs[i])) |s| {
-                items[i] = s;
-            } else {
-                items[i] = "";
-            }
-        } else {
-            // Convert to string
-            const str = v8.v8_Value_ToString(elem, context);
-            if (readV8String(str, context, &string_bufs[i])) |s| {
-                items[i] = s;
-            } else {
-                items[i] = "";
-            }
-        }
+        defer release(elem);
+        // A string as it is, anything else converted to one
+        items[i] = readV8String(v8.v8_Value_ToString(elem, context), context, &string_bufs[i]) orelse "";
     }
 
     // Format list
@@ -4229,9 +3027,7 @@ fn listFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) v
     };
     defer allocator.free(formatted);
 
-    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
-    defer v8.v8_String_Dispose(result_str);
-    info.setReturnValue(@ptrCast(result_str));
+    returnString(info, isolate, formatted);
 }
 
 /// Intl.ListFormat.prototype.resolvedOptions callback
@@ -4240,52 +3036,23 @@ fn listFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callc
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    // Get ID from this object
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__lf_id__", 9) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
-    if (!v8.v8_Value_IsNumber(id_val)) return;
-
-    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
-
-    const registry = getOrInitListFormatRegistry();
-    const entry = registry.lookup(id) orelse return;
+    const entry = thisState(.list_format, info) orelse return;
 
     // Create result object
     const result = v8.v8_Object_New(isolate) orelse return;
+    defer release(result);
 
-    // locale
-    const locale_key = v8.v8_String_NewFromUtf8(isolate, "locale", 6) orelse return;
-    defer v8.v8_String_Dispose(locale_key);
-    const locale_val = v8.v8_String_NewFromUtf8(isolate, entry.locale.ptr, @intCast(entry.locale.len)) orelse return;
-    defer v8.v8_String_Dispose(locale_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(locale_key), @ptrCast(locale_val));
-
-    // type
-    const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4) orelse return;
-    defer v8.v8_String_Dispose(type_key);
-    const type_str: []const u8 = switch (entry.type) {
+    setStringProperty(isolate, context, result, "locale", entry.locale);
+    setStringProperty(isolate, context, result, "type", switch (entry.type) {
         .conjunction => "conjunction",
         .disjunction => "disjunction",
         .unit => "unit",
-    };
-    const type_val = v8.v8_String_NewFromUtf8(isolate, type_str.ptr, @intCast(type_str.len)) orelse return;
-    defer v8.v8_String_Dispose(type_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(type_key), @ptrCast(type_val));
-
-    // style
-    const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5) orelse return;
-    defer v8.v8_String_Dispose(style_key);
-    const style_str2: []const u8 = switch (entry.style) {
+    });
+    setStringProperty(isolate, context, result, "style", switch (entry.style) {
         .long => "long",
         .short => "short",
         .narrow => "narrow",
-    };
-    const style_val = v8.v8_String_NewFromUtf8(isolate, style_str2.ptr, @intCast(style_str2.len)) orelse return;
-    defer v8.v8_String_Dispose(style_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(style_key), @ptrCast(style_val));
+    });
 
     info.setReturnValue(@ptrCast(result));
 }
@@ -4312,84 +3079,19 @@ const DisplayNamesType = enum {
 /// DisplayNames fallback mode
 const DisplayNamesFallback = enum { code, none };
 
-/// DisplayNames registry entry
-const DisplayNamesRegistry = struct {
-    const Entry = struct {
-        locale: []const u8,
-        locale_data: ?*const cldr.LocaleData,
-        type: DisplayNamesType,
-        style: ListFormatStyle,
-        fallback: DisplayNamesFallback,
-        allocator: std.mem.Allocator,
-    };
-
-    entries: std.AutoHashMap(usize, Held),
-    next_id: usize,
+/// A DisplayNames' internal slots
+const DisplayNamesEntry = struct {
+    locale: []const u8,
+    locale_data: ?*const cldr.LocaleData,
+    type: DisplayNamesType,
+    style: ListFormatStyle,
+    fallback: DisplayNamesFallback,
     allocator: std.mem.Allocator,
-    /// Protects `entries` and `next_id`: Intl objects are made and collected
-    /// on every thread that runs script (a Browser's and each worker's,
-    /// docs/instances.md). Held for one map operation. An entry is a value:
-    /// `lookup` hands out a copy, whose strings stay until the object's own
-    /// thread removes the entry.
-    mutex: std.Io.Mutex = .init,
 
-    fn add(self: *DisplayNamesRegistry, entry: Entry) !usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const id = self.next_id;
-        self.next_id += 1;
-        try self.entries.put(id, .{ .entry = entry, .isolate = v8.v8_Isolate_GetCurrent() });
-        return id;
-    }
-
-    fn lookup(self: *DisplayNamesRegistry, id: usize) ?Entry {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const held = self.entries.get(id) orelse return null;
-        return held.entry;
-    }
-
-    /// Free the entries `isolate` made - its agent is ending - and no other.
-    fn deinitFor(self: *DisplayNamesRegistry, isolate: ?*v8.Isolate) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        var doomed: std.ArrayListUnmanaged(usize) = .empty;
-        defer doomed.deinit(self.allocator);
-        var iter = self.entries.iterator();
-        while (iter.next()) |kv| {
-            if (kv.value_ptr.isolate != isolate) continue;
-            doomed.append(self.allocator, kv.key_ptr.*) catch continue;
-        }
-        for (doomed.items) |id| {
-            const kv = self.entries.fetchRemove(id) orelse continue;
-            kv.value.entry.allocator.free(kv.value.entry.locale);
-        }
-    }
-
-    /// An entry, with the isolate that made it.
-    const Held = struct {
-        entry: Entry,
-        isolate: ?*v8.Isolate,
-    };
-
-    fn drop(self: *DisplayNamesRegistry, id: usize) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        _ = self.entries.remove(id);
+    fn deinit(self: *DisplayNamesEntry) void {
+        self.allocator.free(self.locale);
     }
 };
-
-/// Made with the process, not on first use: the first use can come from
-/// two threads at once (a Browser's and a worker's, docs/instances.md).
-var display_names_registry: DisplayNamesRegistry = .{
-    .entries = std.AutoHashMap(usize, DisplayNamesRegistry.Held).init(std.heap.page_allocator),
-    .next_id = 1,
-    .allocator = std.heap.page_allocator,
-};
-
-fn getOrInitDisplayNamesRegistry() *DisplayNamesRegistry {
-    return &display_names_registry;
-}
 
 /// Get display name for a code
 fn getDisplayName(code: []const u8, display_type: DisplayNamesType, locale: []const u8) ?[]const u8 {
@@ -4514,123 +3216,65 @@ fn displayNamesConstructorCallback(info: *const v8.FunctionCallbackInfo) callcon
 
     // Parse locale
     var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
+    const locale: []const u8 = stringArgument(info, 0, context, &locale_buf) orelse "en";
 
     // Parse options (required for type)
     var display_type: DisplayNamesType = .language;
     var style: ListFormatStyle = .long;
     var fallback: DisplayNamesFallback = .code;
 
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
+    const options = objectArgument(info, 1);
+    defer release(options);
+    if (options) |options_obj| {
+        // type (required)
+        var t_buf: [32]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "type", &t_buf)) |t| {
+            if (std.mem.eql(u8, t, "language")) display_type = .language else if (std.mem.eql(u8, t, "region")) display_type = .region else if (std.mem.eql(u8, t, "script")) display_type = .script else if (std.mem.eql(u8, t, "currency")) display_type = .currency else if (std.mem.eql(u8, t, "calendar")) display_type = .calendar else if (std.mem.eql(u8, t, "dateTimeField")) display_type = .dateTimeField;
+        }
 
-            // type (required)
-            const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4);
-            if (type_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v_val| {
-                    if (v8.v8_Value_IsString(v_val)) {
-                        var t_buf: [32]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &t_buf)) |t| {
-                            if (std.mem.eql(u8, t, "language")) display_type = .language else if (std.mem.eql(u8, t, "region")) display_type = .region else if (std.mem.eql(u8, t, "script")) display_type = .script else if (std.mem.eql(u8, t, "currency")) display_type = .currency else if (std.mem.eql(u8, t, "calendar")) display_type = .calendar else if (std.mem.eql(u8, t, "dateTimeField")) display_type = .dateTimeField;
-                        }
-                    }
-                }
-            }
+        // style
+        var s_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "style", &s_buf)) |s| {
+            if (std.mem.eql(u8, s, "short")) style = .short else if (std.mem.eql(u8, s, "narrow")) style = .narrow;
+        }
 
-            // style
-            const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5);
-            if (style_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v_val| {
-                    if (v8.v8_Value_IsString(v_val)) {
-                        var s_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &s_buf)) |s| {
-                            if (std.mem.eql(u8, s, "short")) style = .short else if (std.mem.eql(u8, s, "narrow")) style = .narrow;
-                        }
-                    }
-                }
-            }
-
-            // fallback
-            const fallback_key = v8.v8_String_NewFromUtf8(isolate, "fallback", 8);
-            if (fallback_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v_val| {
-                    if (v8.v8_Value_IsString(v_val)) {
-                        var f_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &f_buf)) |f| {
-                            if (std.mem.eql(u8, f, "none")) fallback = .none;
-                        }
-                    }
-                }
-            }
+        // fallback
+        var f_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "fallback", &f_buf)) |f| {
+            if (std.mem.eql(u8, f, "none")) fallback = .none;
         }
     }
 
-    // Store in registry
-    const registry = getOrInitDisplayNamesRegistry();
-    const allocator = std.heap.page_allocator;
-
+    const objects = agentObjects(isolate) orelse {
+        conv.throwTypeError(isolate, "Intl objects need an agent");
+        return;
+    };
+    const allocator = objects.allocator;
     const locale_copy = allocator.dupe(u8, locale) catch {
         conv.throwTypeError(isolate, "Out of memory");
         return;
     };
-
-    const entry = DisplayNamesRegistry.Entry{
+    const state: State = .{ .display_names = .{
         .locale = locale_copy,
         .locale_data = resolveLocale(locale),
         .type = display_type,
         .style = style,
         .fallback = fallback,
         .allocator = allocator,
-    };
-
-    const id = registry.add(entry) catch {
-        conv.throwTypeError(isolate, "Failed to store DisplayNames");
-        return;
-    };
+    } };
 
     // Create result object with methods
     const result_obj = v8.v8_Object_New(isolate) orelse {
+        var doomed = state;
+        doomed.deinit();
         conv.throwTypeError(isolate, "Failed to create result object");
         return;
     };
+    defer release(result_obj);
+    if (!adopt(isolate, result_obj, state)) return;
 
-    // Store ID
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__dn_id__", 9) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Number_New(isolate, @floatFromInt(id));
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(id_key), @ptrCast(id_val));
-
-    // Add of method
-    const of_fn = v8.v8_FunctionTemplate_New(isolate, displayNamesOfCallback, null) orelse return;
-    const of_fn_obj = v8.v8_FunctionTemplate_GetFunction(of_fn, context) orelse return;
-    const of_key = v8.v8_String_NewFromUtf8(isolate, "of", 2) orelse return;
-    defer v8.v8_String_Dispose(of_key);
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(of_key), @ptrCast(of_fn_obj));
-
-    // Add resolvedOptions method
-    const resolved_fn = v8.v8_FunctionTemplate_New(isolate, displayNamesResolvedOptionsCallback, null) orelse return;
-    const resolved_fn_obj = v8.v8_FunctionTemplate_GetFunction(resolved_fn, context) orelse return;
-    const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
-    defer v8.v8_String_Dispose(resolved_key);
-    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
-
-    // Setup weak callback to clean up registry entry when JS object is GC'd
-    setupWeakCallback(isolate, result_obj, .display_names, id, allocator);
+    defineMethod(isolate, context, result_obj, "of", displayNamesOfCallback);
+    defineMethod(isolate, context, result_obj, "resolvedOptions", displayNamesResolvedOptionsCallback);
 
     info.setReturnValue(@ptrCast(result_obj));
 }
@@ -4641,49 +3285,35 @@ fn displayNamesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) voi
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    // Get ID from this object
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__dn_id__", 9) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
-    if (!v8.v8_Value_IsNumber(id_val)) return;
-
-    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
-
-    const registry = getOrInitDisplayNamesRegistry();
-    const entry = registry.lookup(id) orelse return;
+    const entry = thisState(.display_names, info) orelse return;
 
     // Get code argument
     if (info.length() < 1) {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        returnUndefined(info);
         return;
     }
 
     var code_buf: [32]u8 = undefined;
     const code_arg = info.get(0);
+    defer release(code_arg);
     if (!v8.v8_Value_IsString(code_arg)) {
         conv.throwTypeError(isolate, "Code must be a string");
         return;
     }
 
     const code = readV8String(v8.v8_Value_ToString(code_arg, context), context, &code_buf) orelse {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        returnUndefined(info);
         return;
     };
 
     // Get display name
     if (getDisplayName(code, entry.type, entry.locale)) |name| {
-        const result_str = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return;
-        defer v8.v8_String_Dispose(result_str);
-        info.setReturnValue(@ptrCast(result_str));
+        returnString(info, isolate, name);
     } else if (entry.fallback == .code) {
         // Return the code itself as fallback
-        const result_str = v8.v8_String_NewFromUtf8(isolate, code.ptr, @intCast(code.len)) orelse return;
-        defer v8.v8_String_Dispose(result_str);
-        info.setReturnValue(@ptrCast(result_str));
+        returnString(info, isolate, code);
     } else {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        returnUndefined(info);
     }
 }
 
@@ -4693,63 +3323,27 @@ fn displayNamesResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) cal
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    // Get ID from this object
-    const this_val = info.getThis();
-    defer v8.v8_Object_Dispose(this_val);
-    const id_key = v8.v8_String_NewFromUtf8(isolate, "__dn_id__", 9) orelse return;
-    defer v8.v8_String_Dispose(id_key);
-    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
-    if (!v8.v8_Value_IsNumber(id_val)) return;
-
-    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
-
-    const registry = getOrInitDisplayNamesRegistry();
-    const entry = registry.lookup(id) orelse return;
+    const entry = thisState(.display_names, info) orelse return;
 
     // Create result object
     const result = v8.v8_Object_New(isolate) orelse return;
+    defer release(result);
 
-    // locale
-    const locale_key = v8.v8_String_NewFromUtf8(isolate, "locale", 6) orelse return;
-    defer v8.v8_String_Dispose(locale_key);
-    const locale_val = v8.v8_String_NewFromUtf8(isolate, entry.locale.ptr, @intCast(entry.locale.len)) orelse return;
-    defer v8.v8_String_Dispose(locale_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(locale_key), @ptrCast(locale_val));
-
-    // type
-    const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4) orelse return;
-    defer v8.v8_String_Dispose(type_key);
-    const dn_type_str: []const u8 = switch (entry.type) {
+    setStringProperty(isolate, context, result, "locale", entry.locale);
+    setStringProperty(isolate, context, result, "type", switch (entry.type) {
         .language => "language",
         .region => "region",
         .script => "script",
         .currency => "currency",
         .calendar => "calendar",
         .dateTimeField => "dateTimeField",
-    };
-    const type_val = v8.v8_String_NewFromUtf8(isolate, dn_type_str.ptr, @intCast(dn_type_str.len)) orelse return;
-    defer v8.v8_String_Dispose(type_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(type_key), @ptrCast(type_val));
-
-    // style
-    const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5) orelse return;
-    defer v8.v8_String_Dispose(style_key);
-    const dn_style_str: []const u8 = switch (entry.style) {
+    });
+    setStringProperty(isolate, context, result, "style", switch (entry.style) {
         .long => "long",
         .short => "short",
         .narrow => "narrow",
-    };
-    const style_val = v8.v8_String_NewFromUtf8(isolate, dn_style_str.ptr, @intCast(dn_style_str.len)) orelse return;
-    defer v8.v8_String_Dispose(style_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(style_key), @ptrCast(style_val));
-
-    // fallback
-    const fallback_key = v8.v8_String_NewFromUtf8(isolate, "fallback", 8) orelse return;
-    defer v8.v8_String_Dispose(fallback_key);
-    const fallback_str: []const u8 = if (entry.fallback == .code) "code" else "none";
-    const fallback_val = v8.v8_String_NewFromUtf8(isolate, fallback_str.ptr, @intCast(fallback_str.len)) orelse return;
-    defer v8.v8_String_Dispose(fallback_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(fallback_key), @ptrCast(fallback_val));
+    });
+    setStringProperty(isolate, context, result, "fallback", if (entry.fallback == .code) "code" else "none");
 
     info.setReturnValue(@ptrCast(result));
 }
@@ -4773,125 +3367,16 @@ const SegmenterGranularity = enum {
     sentence,
 };
 
-/// Internal storage for Segmenter instances
-const SegmenterRegistry = struct {
-    const Entry = struct {
-        locale: []const u8,
-        granularity: SegmenterGranularity,
-        allocator: std.mem.Allocator,
-
-        fn deinit(self: *Entry) void {
-            self.allocator.free(self.locale);
-        }
-    };
-
-    /// Heap entries, each with the isolate that made it: a pointer `get`
-    /// hands out stays good while another thread's `register` grows the list
-    /// (each Intl object's entry is used only by its own agent's thread; the
-    /// list is shared), and an agent's end frees only its own (`deinitFor`).
-    entries: std.ArrayList(?Slot) = .empty,
-    free_list: std.ArrayList(usize) = .empty,
+/// A Segmenter's internal slots
+const SegmenterEntry = struct {
+    locale: []const u8,
+    granularity: SegmenterGranularity,
     allocator: std.mem.Allocator,
-    mutex: std.Io.Mutex = .init,
 
-    fn init(allocator: std.mem.Allocator) SegmenterRegistry {
-        return .{
-            .allocator = allocator,
-        };
+    fn deinit(self: *SegmenterEntry) void {
+        self.allocator.free(self.locale);
     }
-
-    fn deinit(self: *SegmenterRegistry) void {
-        for (self.entries.items) |slot_opt| {
-            if (slot_opt) |slot| {
-                slot.entry.deinit();
-                self.allocator.destroy(slot.entry);
-            }
-        }
-        self.entries.deinit(self.allocator);
-        self.free_list.deinit(self.allocator);
-    }
-
-    fn register(self: *SegmenterRegistry, entry: Entry) !usize {
-        const owned = try self.allocator.create(Entry);
-        errdefer self.allocator.destroy(owned);
-        owned.* = entry;
-
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (self.free_list.items.len > 0) {
-            const idx = self.free_list.pop().?;
-            self.entries.items[idx] = .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() };
-            return idx;
-        }
-
-        const idx = self.entries.items.len;
-        try self.entries.append(self.allocator, .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() });
-        return idx;
-    }
-
-    fn get(self: *SegmenterRegistry, idx: usize) ?*Entry {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (idx >= self.entries.items.len) return null;
-        const slot = self.entries.items[idx] orelse return null;
-        return slot.entry;
-    }
-
-    fn remove(self: *SegmenterRegistry, idx: usize) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (idx >= self.entries.items.len) return;
-        if (self.entries.items[idx]) |slot| {
-            slot.entry.deinit();
-            self.allocator.destroy(slot.entry);
-            self.entries.items[idx] = null;
-            self.free_list.append(self.allocator, idx) catch {};
-        }
-    }
-
-    /// Free the entries `isolate` made - its agent is ending - and no other.
-    fn deinitFor(self: *@This(), isolate: ?*v8.Isolate) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        for (self.entries.items, 0..) |slot_opt, idx| {
-            const slot = slot_opt orelse continue;
-            if (slot.isolate != isolate) continue;
-            slot.entry.deinit();
-            self.allocator.destroy(slot.entry);
-            self.entries.items[idx] = null;
-            self.free_list.append(self.allocator, idx) catch {};
-        }
-    }
-
-    const Slot = struct {
-        entry: *Entry,
-        isolate: ?*v8.Isolate,
-    };
 };
-
-/// Made with the process, not on first use: the first use can come from
-/// two threads at once (a Browser's and a worker's, docs/instances.md).
-var segmenter_registry: SegmenterRegistry = .{ .allocator = std.heap.page_allocator };
-
-fn getOrInitSegmenterRegistry() *SegmenterRegistry {
-    return &segmenter_registry;
-}
-
-/// Get the Segmenter registry index from an object
-fn getSegmenterIndex(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object) ?usize {
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__seg_idx__", 11) orelse return null;
-    defer v8.v8_String_Dispose(idx_key);
-    const idx_value = v8.v8_Object_Get(obj, context, @ptrCast(idx_key)) orelse return null;
-
-    if (!v8.v8_Value_IsNumber(idx_value)) return null;
-
-    const num = v8.v8_Value_NumberValue(idx_value, context);
-    if (num < 0) return null;
-    return @intFromFloat(num);
-}
 
 /// Callback for `new Intl.Segmenter(locales, options)`
 fn segmenterConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
@@ -4904,103 +3389,58 @@ fn segmenterConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.
 
     // Get locale argument
     var locale_buf: [64]u8 = undefined;
-    var locale: []const u8 = "en";
-
-    if (info.length() > 0) {
-        const locale_arg = info.get(0);
-        if (v8.v8_Value_IsString(locale_arg)) {
-            const str = v8.v8_Value_ToString(locale_arg, context);
-            if (readV8String(str, context, &locale_buf)) |loc| {
-                locale = loc;
-            }
-        }
-    }
+    const locale: []const u8 = stringArgument(info, 0, context, &locale_buf) orelse "en";
 
     // Parse options
     var granularity: SegmenterGranularity = .grapheme;
 
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
-
-            // granularity
-            const gran_key = v8.v8_String_NewFromUtf8(isolate, "granularity", 11);
-            if (gran_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsString(v)) {
-                        var g_buf: [16]u8 = undefined;
-                        if (readV8String(v8.v8_Value_ToString(v, context), context, &g_buf)) |g| {
-                            if (std.mem.eql(u8, g, "grapheme")) granularity = .grapheme else if (std.mem.eql(u8, g, "word")) granularity = .word else if (std.mem.eql(u8, g, "sentence")) granularity = .sentence;
-                        }
-                    }
-                }
-            }
+    const options = objectArgument(info, 1);
+    defer release(options);
+    if (options) |options_obj| {
+        // granularity
+        var g_buf: [16]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "granularity", &g_buf)) |g| {
+            if (std.mem.eql(u8, g, "grapheme")) granularity = .grapheme else if (std.mem.eql(u8, g, "word")) granularity = .word else if (std.mem.eql(u8, g, "sentence")) granularity = .sentence;
         }
     }
 
-    // Create entry in registry
-    const registry = getOrInitSegmenterRegistry();
-    const allocator = std.heap.page_allocator;
-
+    const objects = agentObjects(isolate) orelse {
+        conv.throwTypeError(isolate, "Intl objects need an agent");
+        return;
+    };
+    const allocator = objects.allocator;
     const locale_copy = allocator.dupe(u8, locale) catch {
         conv.throwTypeError(isolate, "Out of memory");
         return;
     };
-
-    const entry = SegmenterRegistry.Entry{
+    const state: State = .{ .segmenter = .{
         .locale = locale_copy,
         .granularity = granularity,
         .allocator = allocator,
-    };
-
-    const idx = registry.register(entry) catch {
-        allocator.free(locale_copy);
-        conv.throwTypeError(isolate, "Failed to register Segmenter");
-        return;
-    };
+    } };
 
     // Create the result object
     const result = v8.v8_Object_New(isolate) orelse {
-        registry.remove(idx);
+        var doomed = state;
+        doomed.deinit();
         conv.throwTypeError(isolate, "Failed to create Segmenter object");
         return;
     };
+    defer release(result);
+    if (!adopt(isolate, result, state)) return;
 
-    // Store the registry index (hidden property)
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__seg_idx__", 11) orelse {
-        registry.remove(idx);
-        conv.throwTypeError(isolate, "Failed to create index key");
-        return;
-    };
-    const idx_value = v8.v8_Number_New(isolate, @floatFromInt(idx));
-    _ = v8.v8_Object_Set(result, context, @ptrCast(idx_key), @ptrCast(idx_value));
-
-    // Add methods
-    addSegmenterMethod(isolate, context, result, "segment", segmenterSegmentCallback) catch {
-        registry.remove(idx);
-        return;
-    };
-    addSegmenterMethod(isolate, context, result, "resolvedOptions", segmenterResolvedOptionsCallback) catch {
-        registry.remove(idx);
-        return;
-    };
+    defineMethod(isolate, context, result, "segment", segmenterSegmentCallback);
+    defineMethod(isolate, context, result, "resolvedOptions", segmenterResolvedOptionsCallback);
 
     info.setReturnValue(@ptrCast(result));
 }
 
-fn addSegmenterMethod(
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-    obj: *v8.Object,
-    name: []const u8,
-    callback: *const fn (*const v8.FunctionCallbackInfo) callconv(.c) void,
-) !void {
-    const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, @ptrCast(obj)) orelse return error.Failed;
-    const fn_obj = v8.v8_FunctionTemplate_GetFunction(fn_template, context) orelse return error.Failed;
-    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return error.Failed;
-    _ = v8.v8_Object_Set(obj, context, @ptrCast(key), @ptrCast(fn_obj));
+fn granularityName(granularity: SegmenterGranularity) []const u8 {
+    return switch (granularity) {
+        .grapheme => "grapheme",
+        .word => "word",
+        .sentence => "sentence",
+    };
 }
 
 /// Callback for `segmenter.segment(text)`
@@ -5013,16 +3453,8 @@ fn segmenterSegmentCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) v
     };
     defer v8.v8_Context_Dispose(context);
 
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getSegmenterIndex(isolate, context, this_obj) orelse {
+    const entry = thisState(.segmenter, info) orelse {
         conv.throwTypeError(isolate, "Invalid Segmenter object");
-        return;
-    };
-
-    const registry = getOrInitSegmenterRegistry();
-    const entry = registry.get(idx) orelse {
-        conv.throwTypeError(isolate, "Segmenter not found in registry");
         return;
     };
 
@@ -5034,6 +3466,7 @@ fn segmenterSegmentCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) v
 
     var text_buf: [4096]u8 = undefined;
     const text_arg = info.get(0);
+    defer release(text_arg);
     if (!v8.v8_Value_IsString(text_arg)) {
         conv.throwTypeError(isolate, "segment() argument must be a string");
         return;
@@ -5049,77 +3482,49 @@ fn segmenterSegmentCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) v
         conv.throwTypeError(isolate, "Failed to create Segments object");
         return;
     };
+    defer release(segments_obj);
 
-    // Store text in the Segments object
-    const text_key = v8.v8_String_NewFromUtf8(isolate, "__text__", 8) orelse return;
-    defer v8.v8_String_Dispose(text_key);
-    const text_val = v8.v8_String_NewFromUtf8(isolate, text.ptr, @intCast(text.len)) orelse return;
-    defer v8.v8_String_Dispose(text_val);
-    _ = v8.v8_Object_Set(segments_obj, context, @ptrCast(text_key), @ptrCast(text_val));
-
-    // Store granularity
-    const gran_key = v8.v8_String_NewFromUtf8(isolate, "__granularity__", 15) orelse return;
-    defer v8.v8_String_Dispose(gran_key);
-    const gran_str: []const u8 = switch (entry.granularity) {
-        .grapheme => "grapheme",
-        .word => "word",
-        .sentence => "sentence",
-    };
-    const gran_val = v8.v8_String_NewFromUtf8(isolate, gran_str.ptr, @intCast(gran_str.len)) orelse return;
-    defer v8.v8_String_Dispose(gran_val);
-    _ = v8.v8_Object_Set(segments_obj, context, @ptrCast(gran_key), @ptrCast(gran_val));
+    // Store text and granularity in the Segments object
+    setStringProperty(isolate, context, segments_obj, "__text__", text);
+    setStringProperty(isolate, context, segments_obj, "__granularity__", granularityName(entry.granularity));
 
     // Add containing() method
-    addSegmenterMethod(isolate, context, segments_obj, "containing", segmentsContainingCallback) catch return;
+    defineMethod(isolate, context, segments_obj, "containing", segmentsContainingCallback);
 
     // Add [Symbol.iterator]() method for iterable protocol
     // For simplicity, we'll iterate and return an array that JS can iterate
     // A full implementation would create a proper iterator object
-    const iter_fn = v8.v8_FunctionTemplate_New(isolate, segmentsIteratorCallback, @ptrCast(segments_obj)) orelse return;
-    const iter_fn_obj = v8.v8_FunctionTemplate_GetFunction(iter_fn, context) orelse return;
+    const iter_fn = v8.v8_Function_NewWithData(context, segmentsIteratorCallback, null, 0) orelse return;
+    defer release(iter_fn);
 
     // Get Symbol.iterator
-    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
-    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
-    // handle; the global object itself stays rooted by the context.
-    // Not applied in context_manager.zig, which hands its global to
-    // `WindowImpl.setBoundV8Global` and so keeps it.
     const global = v8.v8_Context_Global(context) orelse return;
-    defer v8.v8_Object_Dispose(global);
+    defer release(global);
     const symbol_key = v8.v8_String_NewFromUtf8(isolate, "Symbol", 6) orelse return;
-    defer v8.v8_String_Dispose(symbol_key);
+    defer release(symbol_key);
     const symbol_obj = v8.v8_Object_Get(global, context, @ptrCast(symbol_key)) orelse return;
+    defer release(symbol_obj);
     if (!v8.v8_Value_IsObject(symbol_obj)) return;
     const iter_symbol_key = v8.v8_String_NewFromUtf8(isolate, "iterator", 8) orelse return;
-    defer v8.v8_String_Dispose(iter_symbol_key);
+    defer release(iter_symbol_key);
     const iter_symbol = v8.v8_Object_Get(@ptrCast(symbol_obj), context, @ptrCast(iter_symbol_key)) orelse return;
+    defer release(iter_symbol);
 
-    _ = v8.v8_Object_Set(segments_obj, context, @ptrCast(iter_symbol), @ptrCast(iter_fn_obj));
+    _ = v8.v8_Object_Set(segments_obj, context, @ptrCast(iter_symbol), @ptrCast(iter_fn));
 
     info.setReturnValue(@ptrCast(segments_obj));
 }
 
-/// Callback for Segments[Symbol.iterator]()
-/// Returns an iterator object with next() method
-fn segmentsIteratorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
+/// The text and granularity a Segments object (`this`) was made with; null
+/// when it has none. The text is read into `text_buf`.
+fn segmentsOf(info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, context: *v8.Context, text_buf: []u8) ?struct { text: []const u8, granularity: segmenter_module.Granularity } {
     const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
+    defer release(this_obj);
 
-    // Get text and granularity from Segments object
-    var text_buf: [4096]u8 = undefined;
-    const text_key = v8.v8_String_NewFromUtf8(isolate, "__text__", 8) orelse return;
-    defer v8.v8_String_Dispose(text_key);
-    const text_val = v8.v8_Object_Get(this_obj, context, @ptrCast(text_key)) orelse return;
-    const text = readV8String(v8.v8_Value_ToString(text_val, context), context, &text_buf) orelse return;
+    const text = stringProperty(isolate, context, this_obj, "__text__", text_buf) orelse return null;
 
     var gran_buf: [16]u8 = undefined;
-    const gran_key = v8.v8_String_NewFromUtf8(isolate, "__granularity__", 15) orelse return;
-    defer v8.v8_String_Dispose(gran_key);
-    const gran_val = v8.v8_Object_Get(this_obj, context, @ptrCast(gran_key)) orelse return;
-    const gran_str = readV8String(v8.v8_Value_ToString(gran_val, context), context, &gran_buf) orelse return;
+    const gran_str = stringProperty(isolate, context, this_obj, "__granularity__", &gran_buf) orelse return null;
 
     // Determine granularity
     const granularity: segmenter_module.Granularity = if (std.mem.eql(u8, gran_str, "word"))
@@ -5128,70 +3533,63 @@ fn segmentsIteratorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) v
         .sentence
     else
         .grapheme;
+    return .{ .text = text, .granularity = granularity };
+}
+
+/// `obj[name]` converted to a string (ToString), its UTF-8 in `buf`.
+fn stringProperty(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, name: []const u8, buf: []u8) ?[]const u8 {
+    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return null;
+    defer release(key);
+    const value = v8.v8_Object_Get(obj, context, @ptrCast(key)) orelse return null;
+    defer release(value);
+    return readV8String(v8.v8_Value_ToString(value, context), context, buf);
+}
+
+/// `{ segment, index, input, isWordLike? }` for `seg` of `text`: an owned
+/// Global.
+fn segmentDataObject(isolate: *v8.Isolate, context: *v8.Context, seg: anytype, text: []const u8) ?*v8.Object {
+    const seg_obj = v8.v8_Object_New(isolate) orelse return null;
+    setStringProperty(isolate, context, seg_obj, "segment", seg.segment);
+    setNumberProperty(isolate, context, seg_obj, "index", @floatFromInt(seg.index));
+    setStringProperty(isolate, context, seg_obj, "input", text);
+    // isWordLike property (only for word granularity)
+    if (seg.is_word_like) |is_word_like| setBooleanProperty(isolate, context, seg_obj, "isWordLike", is_word_like);
+    return seg_obj;
+}
+
+/// Callback for Segments[Symbol.iterator]()
+/// Returns an iterator object with next() method
+fn segmentsIteratorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer v8.v8_Context_Dispose(context);
+
+    // Get text and granularity from Segments object
+    var text_buf: [4096]u8 = undefined;
+    const of = segmentsOf(info, isolate, context, &text_buf) orelse return;
 
     // Create iterator object that pre-computes all segments
     // (Full implementation would lazily compute)
     const iter_obj = v8.v8_Object_New(isolate) orelse return;
+    defer release(iter_obj);
 
     // Collect all segments into an array
-    const allocator = std.heap.page_allocator;
-    const text_copy = allocator.dupe(u8, text) catch return;
-    defer allocator.free(text_copy);
-
-    var segments = segmenter_module.Segments.init(text_copy, granularity);
+    var segments = segmenter_module.Segments.init(of.text, of.granularity);
     const segments_arr = v8.v8_Array_New(isolate, 0);
     var arr_idx: u32 = 0;
 
     while (segments.next()) |seg| {
-        const seg_obj = v8.v8_Object_New(isolate) orelse continue;
-
-        // segment property
-        const seg_key = v8.v8_String_NewFromUtf8(isolate, "segment", 7) orelse continue;
-        defer v8.v8_String_Dispose(seg_key);
-        const seg_val = v8.v8_String_NewFromUtf8(isolate, seg.segment.ptr, @intCast(seg.segment.len)) orelse continue;
-        defer v8.v8_String_Dispose(seg_val);
-        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(seg_key), @ptrCast(seg_val));
-
-        // index property
-        const idx_key = v8.v8_String_NewFromUtf8(isolate, "index", 5) orelse continue;
-        defer v8.v8_String_Dispose(idx_key);
-        const idx_val = v8.v8_Number_New(isolate, @floatFromInt(seg.index));
-        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(idx_key), @ptrCast(idx_val));
-
-        // input property
-        const input_key = v8.v8_String_NewFromUtf8(isolate, "input", 5) orelse continue;
-        defer v8.v8_String_Dispose(input_key);
-        const input_val = v8.v8_String_NewFromUtf8(isolate, text_copy.ptr, @intCast(text_copy.len)) orelse continue;
-        defer v8.v8_String_Dispose(input_val);
-        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(input_key), @ptrCast(input_val));
-
-        // isWordLike property (only for word granularity)
-        if (seg.is_word_like) |is_word_like| {
-            const iwl_key = v8.v8_String_NewFromUtf8(isolate, "isWordLike", 10) orelse continue;
-            defer v8.v8_String_Dispose(iwl_key);
-            const iwl_val = v8.v8_Boolean_New(isolate, is_word_like);
-            _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(iwl_key), @ptrCast(iwl_val));
-        }
-
-        _ = v8.v8_Array_Set(segments_arr, context, arr_idx, @ptrCast(seg_obj));
+        const seg_obj = segmentDataObject(isolate, context, seg, of.text) orelse continue;
+        setElementOwned(context, segments_arr, arr_idx, seg_obj);
         arr_idx += 1;
     }
 
     // Store array and current index in iterator
-    const arr_key = v8.v8_String_NewFromUtf8(isolate, "__arr__", 7) orelse return;
-    defer v8.v8_String_Dispose(arr_key);
-    _ = v8.v8_Object_Set(iter_obj, context, @ptrCast(arr_key), @ptrCast(segments_arr));
-
-    const pos_key = v8.v8_String_NewFromUtf8(isolate, "__pos__", 7) orelse return;
-    defer v8.v8_String_Dispose(pos_key);
-    _ = v8.v8_Object_Set(iter_obj, context, @ptrCast(pos_key), @ptrCast(v8.v8_Number_New(isolate, 0)));
+    setOwned(isolate, context, iter_obj, "__arr__", segments_arr);
+    setNumberProperty(isolate, context, iter_obj, "__pos__", 0);
 
     // Add next() method
-    const next_fn = v8.v8_FunctionTemplate_New(isolate, segmentsIteratorNextCallback, @ptrCast(iter_obj)) orelse return;
-    const next_fn_obj = v8.v8_FunctionTemplate_GetFunction(next_fn, context) orelse return;
-    const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return;
-    defer v8.v8_String_Dispose(next_key);
-    _ = v8.v8_Object_Set(iter_obj, context, @ptrCast(next_key), @ptrCast(next_fn_obj));
+    defineMethod(isolate, context, iter_obj, "next", segmentsIteratorNextCallback);
 
     info.setReturnValue(@ptrCast(iter_obj));
 }
@@ -5202,45 +3600,40 @@ fn segmentsIteratorNextCallback(info: *const v8.FunctionCallbackInfo) callconv(.
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
     const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
+    defer release(this_obj);
 
     // Get array and position
     const arr_key = v8.v8_String_NewFromUtf8(isolate, "__arr__", 7) orelse return;
-    defer v8.v8_String_Dispose(arr_key);
+    defer release(arr_key);
     const arr_val = v8.v8_Object_Get(this_obj, context, @ptrCast(arr_key)) orelse return;
+    defer release(arr_val);
     if (!v8.v8_Value_IsArray(arr_val)) return;
     const arr: *v8.Array = @ptrCast(arr_val);
     const len = v8.v8_Array_Length(arr);
 
     const pos_key = v8.v8_String_NewFromUtf8(isolate, "__pos__", 7) orelse return;
-    defer v8.v8_String_Dispose(pos_key);
+    defer release(pos_key);
     const pos_val = v8.v8_Object_Get(this_obj, context, @ptrCast(pos_key)) orelse return;
+    defer release(pos_val);
     const pos: u32 = @intFromFloat(v8.v8_Value_NumberValue(pos_val, context));
 
     // Create iterator result
     const result = v8.v8_Object_New(isolate) orelse return;
+    defer release(result);
 
     if (pos >= len) {
         // Done
-        const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
-        defer v8.v8_String_Dispose(done_key);
-        _ = v8.v8_Object_Set(result, context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
-        const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
-        defer v8.v8_String_Dispose(value_key);
-        _ = v8.v8_Object_Set(result, context, @ptrCast(value_key), @ptrCast(v8.v8_Undefined(isolate)));
+        setBooleanProperty(isolate, context, result, "done", true);
+        setOwned(isolate, context, result, "value", v8.v8_Undefined(isolate));
     } else {
         // Get current segment
         const seg_val = v8.v8_Array_Get(context, arr, pos) orelse return;
 
-        const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
-        defer v8.v8_String_Dispose(done_key);
-        _ = v8.v8_Object_Set(result, context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, false)));
-        const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
-        defer v8.v8_String_Dispose(value_key);
-        _ = v8.v8_Object_Set(result, context, @ptrCast(value_key), @ptrCast(seg_val));
+        setBooleanProperty(isolate, context, result, "done", false);
+        setOwned(isolate, context, result, "value", seg_val);
 
         // Increment position
-        _ = v8.v8_Object_Set(this_obj, context, @ptrCast(pos_key), @ptrCast(v8.v8_Number_New(isolate, @floatFromInt(pos + 1))));
+        setNumberProperty(isolate, context, this_obj, "__pos__", @floatFromInt(pos + 1));
     }
 
     info.setReturnValue(@ptrCast(result));
@@ -5251,84 +3644,32 @@ fn segmentsContainingCallback(info: *const v8.FunctionCallbackInfo) callconv(.c)
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
 
     // Get index argument
     if (info.length() < 1) {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        returnUndefined(info);
         return;
     }
 
     const index_arg = info.get(0);
+    defer release(index_arg);
     if (!v8.v8_Value_IsNumber(index_arg)) {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        returnUndefined(info);
         return;
     }
     const index: usize = @intFromFloat(v8.v8_Value_NumberValue(index_arg, context));
 
     // Get text and granularity
     var text_buf: [4096]u8 = undefined;
-    const text_key = v8.v8_String_NewFromUtf8(isolate, "__text__", 8) orelse return;
-    defer v8.v8_String_Dispose(text_key);
-    const text_val = v8.v8_Object_Get(this_obj, context, @ptrCast(text_key)) orelse return;
-    const text = readV8String(v8.v8_Value_ToString(text_val, context), context, &text_buf) orelse return;
-
-    var gran_buf: [16]u8 = undefined;
-    const gran_key = v8.v8_String_NewFromUtf8(isolate, "__granularity__", 15) orelse return;
-    defer v8.v8_String_Dispose(gran_key);
-    const gran_val = v8.v8_Object_Get(this_obj, context, @ptrCast(gran_key)) orelse return;
-    const gran_str = readV8String(v8.v8_Value_ToString(gran_val, context), context, &gran_buf) orelse return;
-
-    // Determine granularity
-    const granularity: segmenter_module.Granularity = if (std.mem.eql(u8, gran_str, "word"))
-        .word
-    else if (std.mem.eql(u8, gran_str, "sentence"))
-        .sentence
-    else
-        .grapheme;
+    const of = segmentsOf(info, isolate, context, &text_buf) orelse return;
 
     // Find segment containing the index
-    const allocator = std.heap.page_allocator;
-    const text_copy = allocator.dupe(u8, text) catch return;
-    defer allocator.free(text_copy);
-
-    var segments = segmenter_module.Segments.init(text_copy, granularity);
+    var segments = segmenter_module.Segments.init(of.text, of.granularity);
 
     if (segments.containing(index)) |seg| {
-        const seg_obj = v8.v8_Object_New(isolate) orelse return;
-
-        // segment property
-        const seg_key_str = v8.v8_String_NewFromUtf8(isolate, "segment", 7) orelse return;
-        defer v8.v8_String_Dispose(seg_key_str);
-        const seg_val_str = v8.v8_String_NewFromUtf8(isolate, seg.segment.ptr, @intCast(seg.segment.len)) orelse return;
-        defer v8.v8_String_Dispose(seg_val_str);
-        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(seg_key_str), @ptrCast(seg_val_str));
-
-        // index property
-        const idx_key_str = v8.v8_String_NewFromUtf8(isolate, "index", 5) orelse return;
-        defer v8.v8_String_Dispose(idx_key_str);
-        const idx_val_num = v8.v8_Number_New(isolate, @floatFromInt(seg.index));
-        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(idx_key_str), @ptrCast(idx_val_num));
-
-        // input property
-        const input_key = v8.v8_String_NewFromUtf8(isolate, "input", 5) orelse return;
-        defer v8.v8_String_Dispose(input_key);
-        const input_val = v8.v8_String_NewFromUtf8(isolate, text_copy.ptr, @intCast(text_copy.len)) orelse return;
-        defer v8.v8_String_Dispose(input_val);
-        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(input_key), @ptrCast(input_val));
-
-        // isWordLike property (only for word granularity)
-        if (seg.is_word_like) |is_word_like| {
-            const iwl_key = v8.v8_String_NewFromUtf8(isolate, "isWordLike", 10) orelse return;
-            defer v8.v8_String_Dispose(iwl_key);
-            const iwl_val = v8.v8_Boolean_New(isolate, is_word_like);
-            _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(iwl_key), @ptrCast(iwl_val));
-        }
-
-        info.setReturnValue(@ptrCast(seg_obj));
+        returnOwned(info, segmentDataObject(isolate, context, seg, of.text));
     } else {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        returnUndefined(info);
     }
 }
 
@@ -5341,16 +3682,8 @@ fn segmenterResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callco
     };
     defer v8.v8_Context_Dispose(context);
 
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getSegmenterIndex(isolate, context, this_obj) orelse {
+    const entry = thisState(.segmenter, info) orelse {
         conv.throwTypeError(isolate, "Invalid Segmenter object");
-        return;
-    };
-
-    const registry = getOrInitSegmenterRegistry();
-    const entry = registry.get(idx) orelse {
-        conv.throwTypeError(isolate, "Segmenter not found");
         return;
     };
 
@@ -5359,17 +3692,10 @@ fn segmenterResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callco
         conv.throwTypeError(isolate, "Failed to create options object");
         return;
     };
+    defer release(result);
 
-    // Set locale
     setStringProperty(isolate, context, result, "locale", entry.locale);
-
-    // Set granularity
-    const gran_str: []const u8 = switch (entry.granularity) {
-        .grapheme => "grapheme",
-        .word => "word",
-        .sentence => "sentence",
-    };
-    setStringProperty(isolate, context, result, "granularity", gran_str);
+    setStringProperty(isolate, context, result, "granularity", granularityName(entry.granularity));
 
     info.setReturnValue(@ptrCast(result));
 }
@@ -5384,129 +3710,34 @@ fn segmenterSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) cal
 // Phase 3: Intl.Locale
 // ============================================================================
 
-/// Internal storage for Locale instances
-const LocaleRegistry = struct {
-    const Entry = struct {
-        locale_tag: []const u8,
-        language: []const u8,
-        script: ?[]const u8,
-        region: ?[]const u8,
-        calendar: ?[]const u8,
-        collation: ?[]const u8,
-        hour_cycle: ?[]const u8,
-        numbering_system: ?[]const u8,
-        case_first: ?[]const u8,
-        numeric: bool,
-        base_name: []const u8,
-        allocator: std.mem.Allocator,
-
-        fn deinit(self: *Entry) void {
-            self.allocator.free(self.locale_tag);
-            self.allocator.free(self.language);
-            if (self.script) |s| self.allocator.free(s);
-            if (self.region) |r| self.allocator.free(r);
-            if (self.calendar) |c| self.allocator.free(c);
-            if (self.collation) |c| self.allocator.free(c);
-            if (self.hour_cycle) |h| self.allocator.free(h);
-            if (self.numbering_system) |n| self.allocator.free(n);
-            if (self.case_first) |c| self.allocator.free(c);
-            self.allocator.free(self.base_name);
-        }
-    };
-
-    /// Heap entries: a pointer `get` hands out stays good while another
-    /// thread's `register` grows the map.
-    entries: std.AutoHashMapUnmanaged(usize, Held) = .empty,
-    next_id: usize = 0,
+/// A Locale's internal slots
+const LocaleEntry = struct {
+    locale_tag: []const u8,
+    language: []const u8,
+    script: ?[]const u8,
+    region: ?[]const u8,
+    calendar: ?[]const u8,
+    collation: ?[]const u8,
+    hour_cycle: ?[]const u8,
+    numbering_system: ?[]const u8,
+    case_first: ?[]const u8,
+    numeric: bool,
+    base_name: []const u8,
     allocator: std.mem.Allocator,
-    mutex: std.Io.Mutex = .init,
 
-    fn deinit(self: *LocaleRegistry) void {
-        var iter = self.entries.valueIterator();
-        while (iter.next()) |held| {
-            held.entry.deinit();
-            self.allocator.destroy(held.entry);
-        }
-        self.entries.deinit(self.allocator);
-    }
-
-    /// Free the entries `isolate` made - its agent is ending - and no other.
-    fn deinitFor(self: *LocaleRegistry, isolate: ?*v8.Isolate) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        var doomed: std.ArrayListUnmanaged(usize) = .empty;
-        defer doomed.deinit(self.allocator);
-        var iter = self.entries.iterator();
-        while (iter.next()) |kv| {
-            if (kv.value_ptr.isolate != isolate) continue;
-            doomed.append(self.allocator, kv.key_ptr.*) catch continue;
-        }
-        for (doomed.items) |id| {
-            const kv = self.entries.fetchRemove(id) orelse continue;
-            kv.value.entry.deinit();
-            self.allocator.destroy(kv.value.entry);
-        }
-    }
-
-    /// An entry, with the isolate that made it.
-    const Held = struct {
-        entry: *Entry,
-        isolate: ?*v8.Isolate,
-    };
-
-    fn register(self: *LocaleRegistry, entry: Entry) !usize {
-        const owned = try self.allocator.create(Entry);
-        errdefer self.allocator.destroy(owned);
-        owned.* = entry;
-
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        const id = self.next_id;
-        self.next_id += 1;
-        try self.entries.put(self.allocator, id, .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() });
-        return id;
-    }
-
-    fn get(self: *LocaleRegistry, id: usize) ?*Entry {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        const held = self.entries.get(id) orelse return null;
-        return held.entry;
-    }
-
-    fn remove(self: *LocaleRegistry, id: usize) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-
-        if (self.entries.fetchRemove(id)) |kv| {
-            kv.value.entry.deinit();
-            self.allocator.destroy(kv.value.entry);
-        }
+    fn deinit(self: *LocaleEntry) void {
+        self.allocator.free(self.locale_tag);
+        self.allocator.free(self.language);
+        if (self.script) |s| self.allocator.free(s);
+        if (self.region) |r| self.allocator.free(r);
+        if (self.calendar) |c| self.allocator.free(c);
+        if (self.collation) |c| self.allocator.free(c);
+        if (self.hour_cycle) |h| self.allocator.free(h);
+        if (self.numbering_system) |n| self.allocator.free(n);
+        if (self.case_first) |c| self.allocator.free(c);
+        self.allocator.free(self.base_name);
     }
 };
-
-/// Made with the process, not on first use: the first use can come from
-/// two threads at once (a Browser's and a worker's, docs/instances.md).
-var locale_registry: LocaleRegistry = .{ .allocator = std.heap.page_allocator };
-
-fn getOrInitLocaleRegistry() *LocaleRegistry {
-    return &locale_registry;
-}
-
-/// Get the Locale registry index from an object
-fn getLocaleIndex(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object) ?usize {
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__locale_idx__", 14) orelse return null;
-    defer v8.v8_String_Dispose(idx_key);
-    const idx_value = v8.v8_Object_Get(obj, context, @ptrCast(idx_key)) orelse return null;
-
-    if (!v8.v8_Value_IsNumber(idx_value)) return null;
-
-    const num = v8.v8_Value_NumberValue(idx_value, context);
-    if (num < 0) return null;
-    return @intFromFloat(num);
-}
 
 /// Callback for `new Intl.Locale(tag, options)`
 fn localeConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
@@ -5525,6 +3756,7 @@ fn localeConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) 
 
     var tag_buf: [128]u8 = undefined;
     const tag_arg = info.get(0);
+    defer release(tag_arg);
     if (!v8.v8_Value_IsString(tag_arg)) {
         conv.throwTypeError(isolate, "First argument must be a string");
         return;
@@ -5535,7 +3767,11 @@ fn localeConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) 
         return;
     };
 
-    const allocator = std.heap.page_allocator;
+    const objects = agentObjects(isolate) orelse {
+        conv.throwTypeError(isolate, "Intl objects need an agent");
+        return;
+    };
+    const allocator = objects.allocator;
 
     // Parse the locale tag using our Zig parser
     const locale_parser = @import("intl").locale;
@@ -5553,42 +3789,16 @@ fn localeConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) 
     var case_first: ?[]const u8 = null;
     var numeric: bool = false;
 
-    if (info.length() > 1) {
-        const options_arg = info.get(1);
-        if (v8.v8_Value_IsObject(options_arg) and !v8.v8_Value_IsNullOrUndefined(options_arg)) {
-            const options_obj: *v8.Object = @ptrCast(options_arg);
-
-            // calendar
-            if (getStringOption(isolate, context, options_obj, "calendar")) |val| {
-                calendar = allocator.dupe(u8, val) catch null;
-            }
-            // collation
-            if (getStringOption(isolate, context, options_obj, "collation")) |val| {
-                collation = allocator.dupe(u8, val) catch null;
-            }
-            // hourCycle
-            if (getStringOption(isolate, context, options_obj, "hourCycle")) |val| {
-                hour_cycle = allocator.dupe(u8, val) catch null;
-            }
-            // numberingSystem
-            if (getStringOption(isolate, context, options_obj, "numberingSystem")) |val| {
-                numbering_system = allocator.dupe(u8, val) catch null;
-            }
-            // caseFirst
-            if (getStringOption(isolate, context, options_obj, "caseFirst")) |val| {
-                case_first = allocator.dupe(u8, val) catch null;
-            }
-            // numeric
-            const numeric_key = v8.v8_String_NewFromUtf8(isolate, "numeric", 7);
-            if (numeric_key) |key| {
-                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
-                if (val) |v| {
-                    if (v8.v8_Value_IsBoolean(v)) {
-                        numeric = v8.v8_Value_BooleanValue(v, isolate);
-                    }
-                }
-            }
-        }
+    const options = objectArgument(info, 1);
+    defer release(options);
+    if (options) |options_obj| {
+        var buf: [64]u8 = undefined;
+        if (stringOption(isolate, context, options_obj, "calendar", &buf)) |val| calendar = allocator.dupe(u8, val) catch null;
+        if (stringOption(isolate, context, options_obj, "collation", &buf)) |val| collation = allocator.dupe(u8, val) catch null;
+        if (stringOption(isolate, context, options_obj, "hourCycle", &buf)) |val| hour_cycle = allocator.dupe(u8, val) catch null;
+        if (stringOption(isolate, context, options_obj, "numberingSystem", &buf)) |val| numbering_system = allocator.dupe(u8, val) catch null;
+        if (stringOption(isolate, context, options_obj, "caseFirst", &buf)) |val| case_first = allocator.dupe(u8, val) catch null;
+        if (booleanOption(isolate, context, options_obj, "numeric")) |b| numeric = b;
     }
 
     // Override from unicode extensions if not provided in options
@@ -5605,321 +3815,166 @@ fn localeConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) 
         numbering_system = allocator.dupe(u8, parsed.unicode_extensions.numbering_system.?) catch null;
     }
     if (parsed.unicode_extensions.case_first) |cf| {
+        // The tag's -kf- wins over the option: the one the option made goes.
+        if (case_first) |previous| allocator.free(previous);
         case_first = allocator.dupe(u8, cf.toString()) catch null;
     }
     if (parsed.unicode_extensions.numeric) |n| {
         numeric = n;
     }
 
-    // Build the base name (language[-script][-region])
-    const base_name = parsed.toBaseName(allocator) catch {
-        conv.throwTypeError(isolate, "Out of memory");
-        return;
-    };
-
-    // Build the full locale tag
-    const locale_tag = parsed.toString(allocator) catch {
-        allocator.free(base_name);
-        conv.throwTypeError(isolate, "Out of memory");
-        return;
-    };
-
-    // Create registry entry
-    const registry = getOrInitLocaleRegistry();
-    const entry = LocaleRegistry.Entry{
-        .locale_tag = locale_tag,
-        .language = allocator.dupe(u8, parsed.language) catch {
-            allocator.free(locale_tag);
-            allocator.free(base_name);
-            conv.throwTypeError(isolate, "Out of memory");
-            return;
-        },
-        .script = if (parsed.script) |s| allocator.dupe(u8, s) catch null else null,
-        .region = if (parsed.region) |r| allocator.dupe(u8, r) catch null else null,
+    // Everything the entry would own, freed if it is never made.
+    var entry: LocaleEntry = .{
+        .locale_tag = &.{},
+        .language = &.{},
+        .script = null,
+        .region = null,
         .calendar = calendar,
         .collation = collation,
         .hour_cycle = hour_cycle,
         .numbering_system = numbering_system,
         .case_first = case_first,
         .numeric = numeric,
-        .base_name = base_name,
+        .base_name = &.{},
         .allocator = allocator,
     };
-
-    const idx = registry.register(entry) catch {
-        conv.throwTypeError(isolate, "Failed to register Locale");
+    if (!fillLocaleNames(&entry, &parsed)) {
+        entry.deinit();
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    }
+    // Build the base name (language[-script][-region])
+    entry.base_name = parsed.toBaseName(allocator) catch {
+        entry.deinit();
+        conv.throwTypeError(isolate, "Out of memory");
         return;
     };
 
-    // Create the result object
-    const result = v8.v8_Object_New(isolate) orelse {
-        registry.remove(idx);
-        conv.throwTypeError(isolate, "Failed to create Locale object");
-        return;
-    };
-
-    // Store the registry index
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__locale_idx__", 14) orelse {
-        registry.remove(idx);
-        conv.throwTypeError(isolate, "Failed to create index key");
-        return;
-    };
-    const idx_value = v8.v8_Number_New(isolate, @floatFromInt(idx));
-    _ = v8.v8_Object_Set(result, context, @ptrCast(idx_key), @ptrCast(idx_value));
-
-    // Add property getters
-    addLocaleGetter(isolate, context, result, "baseName", localeGetBaseName) catch {};
-    addLocaleGetter(isolate, context, result, "language", localeGetLanguage) catch {};
-    addLocaleGetter(isolate, context, result, "script", localeGetScript) catch {};
-    addLocaleGetter(isolate, context, result, "region", localeGetRegion) catch {};
-    addLocaleGetter(isolate, context, result, "calendar", localeGetCalendar) catch {};
-    addLocaleGetter(isolate, context, result, "collation", localeGetCollation) catch {};
-    addLocaleGetter(isolate, context, result, "hourCycle", localeGetHourCycle) catch {};
-    addLocaleGetter(isolate, context, result, "numberingSystem", localeGetNumberingSystem) catch {};
-    addLocaleGetter(isolate, context, result, "caseFirst", localeGetCaseFirst) catch {};
-    addLocaleGetter(isolate, context, result, "numeric", localeGetNumeric) catch {};
-
-    // Add methods
-    addLocaleMethod(isolate, context, result, "maximize", localeMaximize) catch {};
-    addLocaleMethod(isolate, context, result, "minimize", localeMinimize) catch {};
-    addLocaleMethod(isolate, context, result, "toString", localeToString) catch {};
-    addLocaleMethod(isolate, context, result, "getCalendars", localeGetCalendars) catch {};
-    addLocaleMethod(isolate, context, result, "getCollations", localeGetCollations) catch {};
-    addLocaleMethod(isolate, context, result, "getHourCycles", localeGetHourCycles) catch {};
-    addLocaleMethod(isolate, context, result, "getNumberingSystems", localeGetNumberingSystems) catch {};
-    addLocaleMethod(isolate, context, result, "getTimeZones", localeGetTimeZones) catch {};
-    addLocaleMethod(isolate, context, result, "getTextInfo", localeGetTextInfo) catch {};
-    addLocaleMethod(isolate, context, result, "getWeekInfo", localeGetWeekInfo) catch {};
-
+    const result = newLocaleObject(isolate, context, entry) orelse return;
+    defer release(result);
     info.setReturnValue(@ptrCast(result));
 }
 
-fn getStringOption(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, key_name: []const u8) ?[]const u8 {
-    const key = v8.v8_String_NewFromUtf8(isolate, key_name.ptr, @intCast(key_name.len)) orelse return null;
-    defer v8.v8_String_Dispose(key);
-    const val = v8.v8_Object_Get(obj, context, @ptrCast(key)) orelse return null;
-    if (!v8.v8_Value_IsString(val)) return null;
-
-    var buf: [64]u8 = undefined;
-    return readV8String(v8.v8_Value_ToString(val, context), context, &buf);
+/// The entry's tag, language, script and region, from `parsed`, made with
+/// the entry's allocator; false when one could not be (the entry stays
+/// whole for deinit: what was not made is empty).
+fn fillLocaleNames(entry: *LocaleEntry, parsed: *const @import("intl").locale.Locale) bool {
+    const allocator = entry.allocator;
+    entry.locale_tag = parsed.toString(allocator) catch return false;
+    entry.language = allocator.dupe(u8, parsed.language) catch return false;
+    entry.script = if (parsed.script) |s| allocator.dupe(u8, s) catch null else null;
+    entry.region = if (parsed.region) |r| allocator.dupe(u8, r) catch null else null;
+    return true;
 }
 
-fn addLocaleGetter(
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-    obj: *v8.Object,
-    name: []const u8,
-    callback: *const fn (*const v8.FunctionCallbackInfo) callconv(.c) void,
-) !void {
-    const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, @ptrCast(obj)) orelse return error.Failed;
-    const fn_obj = v8.v8_FunctionTemplate_GetFunction(fn_template, context) orelse return error.Failed;
-    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return error.Failed;
-    _ = v8.v8_Object_Set(obj, context, @ptrCast(key), @ptrCast(fn_obj));
+/// A new Locale object holding `entry` (which it takes over), with its
+/// accessors and methods: an owned Global, or null - a TypeError thrown,
+/// `entry` freed.
+fn newLocaleObject(isolate: *v8.Isolate, context: *v8.Context, entry: LocaleEntry) ?*v8.Object {
+    const state: State = .{ .locale = entry };
+    const result = v8.v8_Object_New(isolate) orelse {
+        var doomed = state;
+        doomed.deinit();
+        conv.throwTypeError(isolate, "Failed to create Locale object");
+        return null;
+    };
+    if (!adopt(isolate, result, state)) {
+        release(result);
+        return null;
+    }
+
+    // Property getters
+    defineMethod(isolate, context, result, "baseName", localeGetBaseName);
+    defineMethod(isolate, context, result, "language", localeGetLanguage);
+    defineMethod(isolate, context, result, "script", localeGetScript);
+    defineMethod(isolate, context, result, "region", localeGetRegion);
+    defineMethod(isolate, context, result, "calendar", localeGetCalendar);
+    defineMethod(isolate, context, result, "collation", localeGetCollation);
+    defineMethod(isolate, context, result, "hourCycle", localeGetHourCycle);
+    defineMethod(isolate, context, result, "numberingSystem", localeGetNumberingSystem);
+    defineMethod(isolate, context, result, "caseFirst", localeGetCaseFirst);
+    defineMethod(isolate, context, result, "numeric", localeGetNumeric);
+
+    // Methods
+    defineMethod(isolate, context, result, "maximize", localeMaximize);
+    defineMethod(isolate, context, result, "minimize", localeMinimize);
+    defineMethod(isolate, context, result, "toString", localeToString);
+    defineMethod(isolate, context, result, "getCalendars", localeGetCalendars);
+    defineMethod(isolate, context, result, "getCollations", localeGetCollations);
+    defineMethod(isolate, context, result, "getHourCycles", localeGetHourCycles);
+    defineMethod(isolate, context, result, "getNumberingSystems", localeGetNumberingSystems);
+    defineMethod(isolate, context, result, "getTimeZones", localeGetTimeZones);
+    defineMethod(isolate, context, result, "getTextInfo", localeGetTextInfo);
+    defineMethod(isolate, context, result, "getWeekInfo", localeGetWeekInfo);
+
+    return result;
 }
 
-fn addLocaleMethod(
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-    obj: *v8.Object,
-    name: []const u8,
-    callback: *const fn (*const v8.FunctionCallbackInfo) callconv(.c) void,
-) !void {
-    const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, @ptrCast(obj)) orelse return error.Failed;
-    const fn_obj = v8.v8_FunctionTemplate_GetFunction(fn_template, context) orelse return error.Failed;
-    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return error.Failed;
-    _ = v8.v8_Object_Set(obj, context, @ptrCast(key), @ptrCast(fn_obj));
+/// The receiver's Locale field `field` as the call's result: a string, or
+/// undefined when the field is absent.
+fn returnLocaleField(info: *const v8.FunctionCallbackInfo, comptime field: []const u8) void {
+    const isolate = info.getIsolate();
+    const entry = thisState(.locale, info) orelse return;
+    const value = @field(entry, field);
+    if (@typeInfo(@TypeOf(value)) == .optional) {
+        if (value) |s| returnString(info, isolate, s) else returnUndefined(info);
+    } else {
+        returnString(info, isolate, value);
+    }
 }
 
 // Property getters
 fn localeGetBaseName(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    const result = v8.v8_String_NewFromUtf8(isolate, entry.base_name.ptr, @intCast(entry.base_name.len)) orelse return;
-    defer v8.v8_String_Dispose(result);
-    info.setReturnValue(@ptrCast(result));
+    returnLocaleField(info, "base_name");
 }
 
 fn localeGetLanguage(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    const result = v8.v8_String_NewFromUtf8(isolate, entry.language.ptr, @intCast(entry.language.len)) orelse return;
-    defer v8.v8_String_Dispose(result);
-    info.setReturnValue(@ptrCast(result));
+    returnLocaleField(info, "language");
 }
 
 fn localeGetScript(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    if (entry.script) |script| {
-        const result = v8.v8_String_NewFromUtf8(isolate, script.ptr, @intCast(script.len)) orelse return;
-        defer v8.v8_String_Dispose(result);
-        info.setReturnValue(@ptrCast(result));
-    } else {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-    }
+    returnLocaleField(info, "script");
 }
 
 fn localeGetRegion(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    if (entry.region) |region| {
-        const result = v8.v8_String_NewFromUtf8(isolate, region.ptr, @intCast(region.len)) orelse return;
-        defer v8.v8_String_Dispose(result);
-        info.setReturnValue(@ptrCast(result));
-    } else {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-    }
+    returnLocaleField(info, "region");
 }
 
 fn localeGetCalendar(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    if (entry.calendar) |calendar| {
-        const result = v8.v8_String_NewFromUtf8(isolate, calendar.ptr, @intCast(calendar.len)) orelse return;
-        defer v8.v8_String_Dispose(result);
-        info.setReturnValue(@ptrCast(result));
-    } else {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-    }
+    returnLocaleField(info, "calendar");
 }
 
 fn localeGetCollation(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    if (entry.collation) |collation| {
-        const result = v8.v8_String_NewFromUtf8(isolate, collation.ptr, @intCast(collation.len)) orelse return;
-        defer v8.v8_String_Dispose(result);
-        info.setReturnValue(@ptrCast(result));
-    } else {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-    }
+    returnLocaleField(info, "collation");
 }
 
 fn localeGetHourCycle(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    if (entry.hour_cycle) |hc| {
-        const result = v8.v8_String_NewFromUtf8(isolate, hc.ptr, @intCast(hc.len)) orelse return;
-        defer v8.v8_String_Dispose(result);
-        info.setReturnValue(@ptrCast(result));
-    } else {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-    }
+    returnLocaleField(info, "hour_cycle");
 }
 
 fn localeGetNumberingSystem(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    if (entry.numbering_system) |ns| {
-        const result = v8.v8_String_NewFromUtf8(isolate, ns.ptr, @intCast(ns.len)) orelse return;
-        defer v8.v8_String_Dispose(result);
-        info.setReturnValue(@ptrCast(result));
-    } else {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-    }
+    returnLocaleField(info, "numbering_system");
 }
 
 fn localeGetCaseFirst(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    if (entry.case_first) |cf| {
-        const result = v8.v8_String_NewFromUtf8(isolate, cf.ptr, @intCast(cf.len)) orelse return;
-        defer v8.v8_String_Dispose(result);
-        info.setReturnValue(@ptrCast(result));
-    } else {
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-    }
+    returnLocaleField(info, "case_first");
 }
 
 fn localeGetNumeric(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    const result = v8.v8_Boolean_New(isolate, entry.numeric);
-    info.setReturnValue(@ptrCast(result));
+    const entry = thisState(.locale, info) orelse return;
+    returnBoolean(info, isolate, entry.numeric);
 }
 
-// Helper to create a new Locale object from a parsed locale
-// This replicates the object creation logic from localeConstructorCallback
+/// A new Locale object from a parsed locale: its names from `parsed`, its
+/// Unicode extension options from `original_entry` (the receiver's).
 fn createLocaleObject(
     isolate: *v8.Isolate,
     context: *v8.Context,
     parsed: *const @import("intl").locale.Locale,
-    original_entry: *const LocaleRegistry.Entry,
-    allocator: std.mem.Allocator,
+    original_entry: *const LocaleEntry,
 ) ?*v8.Object {
-    // Build the locale tag
-    const locale_tag = parsed.toString(allocator) catch return null;
-    errdefer allocator.free(locale_tag);
+    const allocator = original_entry.allocator;
 
     // Build base name (language-script-region)
     var base_name_buf: [64]u8 = undefined;
@@ -5958,212 +4013,94 @@ fn createLocaleObject(
         }
     }
 
-    const base_name = allocator.dupe(u8, base_name_buf[0..base_name_len]) catch {
-        allocator.free(locale_tag);
-        return null;
-    };
-    errdefer allocator.free(base_name);
-
-    // Create registry entry - preserve Unicode extension options from original
-    const registry = getOrInitLocaleRegistry();
-    const entry = LocaleRegistry.Entry{
-        .locale_tag = locale_tag,
-        .language = allocator.dupe(u8, parsed.language) catch {
-            allocator.free(locale_tag);
-            allocator.free(base_name);
-            return null;
-        },
-        .script = if (parsed.script) |s| allocator.dupe(u8, s) catch null else null,
-        .region = if (parsed.region) |r| allocator.dupe(u8, r) catch null else null,
+    // Preserve Unicode extension options from the original
+    var entry: LocaleEntry = .{
+        .locale_tag = &.{},
+        .language = &.{},
+        .script = null,
+        .region = null,
         .calendar = if (original_entry.calendar) |c| allocator.dupe(u8, c) catch null else null,
         .collation = if (original_entry.collation) |c| allocator.dupe(u8, c) catch null else null,
         .hour_cycle = if (original_entry.hour_cycle) |h| allocator.dupe(u8, h) catch null else null,
         .numbering_system = if (original_entry.numbering_system) |n| allocator.dupe(u8, n) catch null else null,
         .case_first = if (original_entry.case_first) |c| allocator.dupe(u8, c) catch null else null,
         .numeric = original_entry.numeric,
-        .base_name = base_name,
+        .base_name = &.{},
         .allocator = allocator,
     };
-
-    const new_idx = registry.register(entry) catch {
-        allocator.free(locale_tag);
-        allocator.free(base_name);
+    if (!fillLocaleNames(&entry, parsed)) {
+        entry.deinit();
+        return null;
+    }
+    entry.base_name = allocator.dupe(u8, base_name_buf[0..base_name_len]) catch {
+        entry.deinit();
         return null;
     };
 
-    // Create the result object
-    const result = v8.v8_Object_New(isolate) orelse {
-        registry.remove(new_idx);
-        return null;
-    };
-
-    // Store the registry index
-    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__locale_idx__", 14) orelse {
-        registry.remove(new_idx);
-        return null;
-    };
-    const idx_value = v8.v8_Number_New(isolate, @floatFromInt(new_idx));
-    _ = v8.v8_Object_Set(result, context, @ptrCast(idx_key), @ptrCast(idx_value));
-
-    // Add property getters
-    addLocaleGetter(isolate, context, result, "baseName", localeGetBaseName) catch {};
-    addLocaleGetter(isolate, context, result, "language", localeGetLanguage) catch {};
-    addLocaleGetter(isolate, context, result, "script", localeGetScript) catch {};
-    addLocaleGetter(isolate, context, result, "region", localeGetRegion) catch {};
-    addLocaleGetter(isolate, context, result, "calendar", localeGetCalendar) catch {};
-    addLocaleGetter(isolate, context, result, "collation", localeGetCollation) catch {};
-    addLocaleGetter(isolate, context, result, "hourCycle", localeGetHourCycle) catch {};
-    addLocaleGetter(isolate, context, result, "numberingSystem", localeGetNumberingSystem) catch {};
-    addLocaleGetter(isolate, context, result, "caseFirst", localeGetCaseFirst) catch {};
-    addLocaleGetter(isolate, context, result, "numeric", localeGetNumeric) catch {};
-
-    // Add methods
-    addLocaleMethod(isolate, context, result, "maximize", localeMaximize) catch {};
-    addLocaleMethod(isolate, context, result, "minimize", localeMinimize) catch {};
-    addLocaleMethod(isolate, context, result, "toString", localeToString) catch {};
-    addLocaleMethod(isolate, context, result, "getCalendars", localeGetCalendars) catch {};
-    addLocaleMethod(isolate, context, result, "getCollations", localeGetCollations) catch {};
-    addLocaleMethod(isolate, context, result, "getHourCycles", localeGetHourCycles) catch {};
-    addLocaleMethod(isolate, context, result, "getNumberingSystems", localeGetNumberingSystems) catch {};
-    addLocaleMethod(isolate, context, result, "getTimeZones", localeGetTimeZones) catch {};
-    addLocaleMethod(isolate, context, result, "getTextInfo", localeGetTextInfo) catch {};
-    addLocaleMethod(isolate, context, result, "getWeekInfo", localeGetWeekInfo) catch {};
-
-    return result;
+    return newLocaleObject(isolate, context, entry);
 }
 
 // Methods
 fn localeMaximize(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    const allocator = std.heap.page_allocator;
-    const locale_parser = @import("intl").locale;
-
-    // Parse and maximize
-    var parsed = locale_parser.Locale.parse(allocator, entry.locale_tag) catch return;
-    defer parsed.deinit();
-    parsed.maximize() catch return;
-
-    // Create new Locale object directly
-    const new_locale = createLocaleObject(isolate, context, &parsed, entry, allocator) orelse return;
-    info.setReturnValue(@ptrCast(new_locale));
+    localeAdjusted(info, .maximize);
 }
 
 fn localeMinimize(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    localeAdjusted(info, .minimize);
+}
+
+/// maximize() and minimize(): a new Locale of the receiver's tag, adjusted.
+fn localeAdjusted(info: *const v8.FunctionCallbackInfo, comptime how: enum { maximize, minimize }) void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
+    const entry = thisState(.locale, info) orelse return;
 
-    const allocator = std.heap.page_allocator;
     const locale_parser = @import("intl").locale;
 
-    // Parse and minimize
-    var parsed = locale_parser.Locale.parse(allocator, entry.locale_tag) catch return;
+    // Parse and adjust
+    var parsed = locale_parser.Locale.parse(entry.allocator, entry.locale_tag) catch return;
     defer parsed.deinit();
-    parsed.minimize();
+    switch (how) {
+        .maximize => parsed.maximize() catch return,
+        .minimize => parsed.minimize(),
+    }
 
     // Create new Locale object directly
-    const new_locale = createLocaleObject(isolate, context, &parsed, entry, allocator) orelse return;
-    info.setReturnValue(@ptrCast(new_locale));
+    returnOwned(info, createLocaleObject(isolate, context, &parsed, entry));
 }
 
 fn localeToString(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    returnLocaleField(info, "locale_tag");
+}
+
+/// `values` as the call's result, an array of strings.
+fn returnLocaleList(info: *const v8.FunctionCallbackInfo, values: []const []const u8) void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
-
-    const result = v8.v8_String_NewFromUtf8(isolate, entry.locale_tag.ptr, @intCast(entry.locale_tag.len)) orelse return;
-    defer v8.v8_String_Dispose(result);
-    info.setReturnValue(@ptrCast(result));
+    returnStringArray(info, isolate, context, values);
 }
 
 fn localeGetCalendars(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-
     // Return common calendars (actual per-locale data would come from CLDR)
-    const calendars = [_][]const u8{ "gregory", "buddhist", "chinese", "coptic", "ethiopic", "hebrew", "indian", "islamic", "islamic-civil", "japanese", "persian" };
-    const arr = v8.v8_Array_New(isolate, @intCast(calendars.len));
-    for (calendars, 0..) |cal, i| {
-        const str = v8.v8_String_NewFromUtf8(isolate, cal.ptr, @intCast(cal.len)) orelse continue;
-        defer v8.v8_String_Dispose(str);
-        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
-    }
-    info.setReturnValue(@ptrCast(arr));
+    returnLocaleList(info, &.{ "gregory", "buddhist", "chinese", "coptic", "ethiopic", "hebrew", "indian", "islamic", "islamic-civil", "japanese", "persian" });
 }
 
 fn localeGetCollations(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-
-    const collations = [_][]const u8{ "standard", "search", "phonebk", "pinyin", "stroke" };
-    const arr = v8.v8_Array_New(isolate, @intCast(collations.len));
-    for (collations, 0..) |col, i| {
-        const str = v8.v8_String_NewFromUtf8(isolate, col.ptr, @intCast(col.len)) orelse continue;
-        defer v8.v8_String_Dispose(str);
-        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
-    }
-    info.setReturnValue(@ptrCast(arr));
+    returnLocaleList(info, &.{ "standard", "search", "phonebk", "pinyin", "stroke" });
 }
 
 fn localeGetHourCycles(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-
-    const hour_cycles = [_][]const u8{ "h11", "h12", "h23", "h24" };
-    const arr = v8.v8_Array_New(isolate, @intCast(hour_cycles.len));
-    for (hour_cycles, 0..) |hc, i| {
-        const str = v8.v8_String_NewFromUtf8(isolate, hc.ptr, @intCast(hc.len)) orelse continue;
-        defer v8.v8_String_Dispose(str);
-        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
-    }
-    info.setReturnValue(@ptrCast(arr));
+    returnLocaleList(info, &.{ "h11", "h12", "h23", "h24" });
 }
 
 fn localeGetNumberingSystems(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-
-    const systems = [_][]const u8{ "latn", "arab", "arabext", "beng", "deva", "fullwide", "gujr", "guru", "hanidec", "khmr", "knda", "laoo", "mlym", "mong", "mymr", "orya", "tamldec", "telu", "thai", "tibt" };
-    const arr = v8.v8_Array_New(isolate, @intCast(systems.len));
-    for (systems, 0..) |sys, i| {
-        const str = v8.v8_String_NewFromUtf8(isolate, sys.ptr, @intCast(sys.len)) orelse continue;
-        defer v8.v8_String_Dispose(str);
-        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
-    }
-    info.setReturnValue(@ptrCast(arr));
+    returnLocaleList(info, &.{ "latn", "arab", "arabext", "beng", "deva", "fullwide", "gujr", "guru", "hanidec", "khmr", "knda", "laoo", "mlym", "mong", "mymr", "orya", "tamldec", "telu", "thai", "tibt" });
 }
 
 fn localeGetTimeZones(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
+    const entry = thisState(.locale, info) orelse return;
 
     // Return time zones based on region (simplified)
     var time_zones: []const []const u8 = &[_][]const u8{};
@@ -6188,30 +4125,21 @@ fn localeGetTimeZones(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
 
     if (time_zones.len == 0) {
         // Return undefined for locales without region
-        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        returnUndefined(info);
         return;
     }
 
-    const arr = v8.v8_Array_New(isolate, @intCast(time_zones.len));
-    for (time_zones, 0..) |tz, i| {
-        const str = v8.v8_String_NewFromUtf8(isolate, tz.ptr, @intCast(tz.len)) orelse continue;
-        defer v8.v8_String_Dispose(str);
-        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
-    }
-    info.setReturnValue(@ptrCast(arr));
+    returnLocaleList(info, time_zones);
 }
 
 fn localeGetTextInfo(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
+    const entry = thisState(.locale, info) orelse return;
 
     const result = v8.v8_Object_New(isolate) orelse return;
+    defer release(result);
 
     // Determine text direction based on language
     const direction: []const u8 = if (std.mem.eql(u8, entry.language, "ar") or
@@ -6221,12 +4149,7 @@ fn localeGetTextInfo(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
         "rtl"
     else
         "ltr";
-
-    const dir_key = v8.v8_String_NewFromUtf8(isolate, "direction", 9) orelse return;
-    defer v8.v8_String_Dispose(dir_key);
-    const dir_val = v8.v8_String_NewFromUtf8(isolate, direction.ptr, @intCast(direction.len)) orelse return;
-    defer v8.v8_String_Dispose(dir_val);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(dir_key), @ptrCast(dir_val));
+    setStringProperty(isolate, context, result, "direction", direction);
 
     info.setReturnValue(@ptrCast(result));
 }
@@ -6235,17 +4158,14 @@ fn localeGetWeekInfo(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
-    const registry = getOrInitLocaleRegistry();
-    const entry = registry.get(idx) orelse return;
+    const entry = thisState(.locale, info) orelse return;
 
     const result = v8.v8_Object_New(isolate) orelse return;
+    defer release(result);
 
     // Default values (would come from CLDR supplemental data)
     var first_day: u8 = 1; // Monday
-    var weekend: []const u8 = "6,7"; // Sat, Sun
+    var weekend: [2]u8 = .{ 6, 7 }; // Sat, Sun
     const min_days: u8 = 4;
 
     // Customize based on region
@@ -6262,32 +4182,17 @@ fn localeGetWeekInfo(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             std.mem.eql(u8, region, "EG"))
         {
             first_day = 6; // Saturday
-            weekend = "5,6"; // Fri, Sat
+            weekend = .{ 5, 6 }; // Fri, Sat
         }
     }
 
-    const first_key = v8.v8_String_NewFromUtf8(isolate, "firstDay", 8) orelse return;
-    defer v8.v8_String_Dispose(first_key);
-    const first_val = v8.v8_Number_New(isolate, @floatFromInt(first_day));
-    _ = v8.v8_Object_Set(result, context, @ptrCast(first_key), @ptrCast(first_val));
-
-    const min_key = v8.v8_String_NewFromUtf8(isolate, "minimalDays", 11) orelse return;
-    defer v8.v8_String_Dispose(min_key);
-    const min_val = v8.v8_Number_New(isolate, @floatFromInt(min_days));
-    _ = v8.v8_Object_Set(result, context, @ptrCast(min_key), @ptrCast(min_val));
+    setNumberProperty(isolate, context, result, "firstDay", @floatFromInt(first_day));
+    setNumberProperty(isolate, context, result, "minimalDays", @floatFromInt(min_days));
 
     // Create weekend array
     const weekend_arr = v8.v8_Array_New(isolate, 2);
-    if (std.mem.eql(u8, weekend, "5,6")) {
-        _ = v8.v8_Array_Set(weekend_arr, context, 0, @ptrCast(v8.v8_Number_New(isolate, 5)));
-        _ = v8.v8_Array_Set(weekend_arr, context, 1, @ptrCast(v8.v8_Number_New(isolate, 6)));
-    } else {
-        _ = v8.v8_Array_Set(weekend_arr, context, 0, @ptrCast(v8.v8_Number_New(isolate, 6)));
-        _ = v8.v8_Array_Set(weekend_arr, context, 1, @ptrCast(v8.v8_Number_New(isolate, 7)));
-    }
-    const weekend_key = v8.v8_String_NewFromUtf8(isolate, "weekend", 7) orelse return;
-    defer v8.v8_String_Dispose(weekend_key);
-    _ = v8.v8_Object_Set(result, context, @ptrCast(weekend_key), @ptrCast(weekend_arr));
+    for (weekend, 0..) |day, i| setElementOwned(context, weekend_arr, @intCast(i), v8.v8_Number_New(isolate, @floatFromInt(day)));
+    setOwned(isolate, context, result, "weekend", weekend_arr);
 
     info.setReturnValue(@ptrCast(result));
 }
@@ -6309,6 +4214,7 @@ fn supportedValuesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) 
 
     var key_buf: [32]u8 = undefined;
     const key_arg = info.get(0);
+    defer release(key_arg);
     if (!v8.v8_Value_IsString(key_arg)) {
         conv.throwRangeError(isolate, "Invalid key");
         return;
@@ -6345,13 +4251,7 @@ fn supportedValuesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) 
 }
 
 fn createStringArray(isolate: *v8.Isolate, context: *v8.Context, values: []const []const u8, info: *const v8.FunctionCallbackInfo) void {
-    const arr = v8.v8_Array_New(isolate, @intCast(values.len));
-    for (values, 0..) |val, i| {
-        const str = v8.v8_String_NewFromUtf8(isolate, val.ptr, @intCast(val.len)) orelse continue;
-        defer v8.v8_String_Dispose(str);
-        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
-    }
-    info.setReturnValue(@ptrCast(arr));
+    returnStringArray(info, isolate, context, values);
 }
 
 // ============================================================================
@@ -6528,27 +4428,6 @@ pub fn registerExternalReferences() void {
     ext_refs.registerCallbackRuntime(segmenterResolvedOptionsCallback);
     ext_refs.registerCallbackRuntime(segmenterSupportedLocalesOfCallback);
 }
-
-/// Free the Intl registry entries of the agent that is ending - the current
-/// isolate's: context_manager.deinit runs this inside the agent's end, with
-/// its isolate entered. Only its own: every agent's entries share these
-/// registries, and a worker on a thread of its own ends as its thread's host
-/// agent while the page's Intl objects live on (docs/instances.md).
-/// Note: With weak callbacks enabled, most entries should already be cleaned
-/// up via GC. This is a safety net for any entries that weren't GC'd.
-pub fn deinitAllRegistries() void {
-    const isolate = v8.v8_Isolate_GetCurrent();
-    dtf_registry.deinitFor(isolate);
-    nf_registry.deinitFor(isolate);
-    collator_registry.deinitFor(isolate);
-    plural_rules_registry.deinitFor(isolate);
-    relative_time_format_registry.deinitFor(isolate);
-    list_format_registry.deinitFor(isolate);
-    display_names_registry.deinitFor(isolate);
-    locale_registry.deinitFor(isolate);
-    segmenter_registry.deinitFor(isolate);
-}
-
 // ============================================================================
 // Tests
 // ============================================================================

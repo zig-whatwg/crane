@@ -223,15 +223,6 @@ src/runtime/engines/v8/external_references.zig runtime_refs 1 G P-const decl:ab5
 src/runtime/engines/v8/interface.zig V8Interface.iterator_template_cache 1 G I/engine decl:a44990951971294c
 src/runtime/engines/v8/interface.zig V8Interface.iterator_template_cache_generation 1 G I/engine decl:1dfcee87d8da8735
 src/runtime/engines/v8/interface.zig V8Interface.iterator_template_cache_isolate 1 G I/engine decl:481c2b765f747506
-src/runtime/engines/v8/intl_binding.zig collator_registry 1 G I/engine decl:6a659aab695410b7
-src/runtime/engines/v8/intl_binding.zig display_names_registry 1 G I/engine decl:dc5ced51a48c23bf
-src/runtime/engines/v8/intl_binding.zig dtf_registry 1 G I/engine decl:46942d68afb4bd6a
-src/runtime/engines/v8/intl_binding.zig list_format_registry 1 G I/engine decl:fa1f96f990d7037e
-src/runtime/engines/v8/intl_binding.zig locale_registry 1 G I/engine decl:cf4187c5a3e32396
-src/runtime/engines/v8/intl_binding.zig nf_registry 1 G I/engine decl:9d51c63649025eff
-src/runtime/engines/v8/intl_binding.zig plural_rules_registry 1 G I/engine decl:5ec65694b232bc99
-src/runtime/engines/v8/intl_binding.zig relative_time_format_registry 1 G I/engine decl:f468f91e5e277a07
-src/runtime/engines/v8/intl_binding.zig segmenter_registry 1 G I/engine decl:7b5756805a969209
 src/runtime/engines/v8/isolate_lifecycle.zig handler_count 1 G H decl:3796f88280404836
 src/runtime/engines/v8/isolate_lifecycle.zig handlers 1 G H decl:f837b83d9da26fef
 src/runtime/engines/v8/isolate_lifecycle.zig initialized 1 G H decl:4b877655cb3bb361
