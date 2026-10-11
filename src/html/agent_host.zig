@@ -20,6 +20,12 @@ pub const AgentHost = struct {
     /// thread, and released before the agent ends
     /// (`rejected_promises.releaseAgent`) - so empty here at `deinit`.
     rejections: std.ArrayListUnmanaged(*anyopaque) = .empty,
+    /// The agent cluster a dedicated worker's agent is in - its owner's
+    /// (HTML "obtain a worker/worklet agent" step 3) - as the worker host
+    /// records it when it obtains the agent (html.agent_clusters.ofRealm on
+    /// the owner's thread); 0 when none is known. Read by
+    /// html.agent_clusters.agentClusterOf.
+    agent_cluster: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator) AgentHost {
         return .{

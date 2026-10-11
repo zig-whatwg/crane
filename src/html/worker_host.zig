@@ -65,6 +65,9 @@ const message_ports = @import("dom").message_ports;
 const trusted_types = @import("dom").trusted_types;
 const code_generation = @import("code_generation.zig");
 
+// The agent cluster a dedicated worker's agent is in: its owner's.
+const agent_clusters = @import("agent_clusters.zig");
+
 // A realm's fetches in flight, released when the realm goes.
 const async_fetch = @import("fetch").algorithms.async_fetch;
 
@@ -791,6 +794,11 @@ pub const WorkerHost = struct {
             .cookie_jar = start.cookie_jar,
             .time_origin_ns = start.time_origin_ns,
         };
+        // "Obtain a worker/worklet agent" step 3: a dedicated worker's agent
+        // is in its owner's agent cluster, which a WebAssembly.Module it
+        // serializes is bound to and one it receives is checked against
+        // (html.agent_clusters.agentClusterOf).
+        self.agent_host.agent_cluster = start.agent_cluster;
         thread_host.host = self;
         hosts.append(std.heap.page_allocator, self) catch {};
         const agent = try engine.createAgent(.{
@@ -2236,6 +2244,7 @@ const worker_hooks: engine.HostHooks = .{
     .ensureCanCompileStrings = code_generation.hooks.ensureCanCompileStrings,
     .getCodeForEval = code_generation.hooks.getCodeForEval,
     .ensureCanCompileWasmBytes = code_generation.hooks.ensureCanCompileWasmBytes,
+    .agentClusterOf = @import("agent_clusters.zig").agentClusterOf,
 };
 
 /// A worker's module evaluation promise, waiting to settle. Its host
@@ -2743,6 +2752,13 @@ const ThreadHost = struct {
         inside_end: ?*port_channels.End,
         time_origin_ns: ?i64,
         shared: ?SharedScope,
+        /// The agent cluster of a DEDICATED worker's agent: its owner's
+        /// ("obtain a worker/worklet agent" step 3 - isTopLevel is false, so
+        /// the agent is in outside settings' agent cluster), read on the
+        /// owner's thread (html.agent_clusters.ofRealm). 0 for a shared
+        /// worker, whose agent starts a cluster of its own (isTopLevel), or
+        /// when the owner's is not known.
+        agent_cluster: u64,
     };
 
     fn create(allocator: Allocator, start: *const WorkerStart) !*ThreadHost {
@@ -2767,6 +2783,9 @@ const ThreadHost = struct {
                 .inside_end = start.inside_end,
                 .time_origin_ns = start.time_origin_ns,
                 .shared = start.shared,
+                // On the owner's thread, in its realm: the owner's agent
+                // cluster, for a dedicated worker.
+                .agent_cluster = if (start.shared == null) agent_clusters.ofRealm(start.owner_realm) else 0,
             },
         };
         return self;
