@@ -28,12 +28,25 @@ const runtime = @import("runtime");
 
 pub const Error = error{ InvalidStateError, OutOfMemory };
 
+/// An element's names, BORROWED from it: its namespace, namespace prefix and
+/// local name, which "create an element" sets and nothing changes for the
+/// element's life - so a reader may keep the slices as long as the element.
+pub const ElementNames = struct {
+    namespace: ?[]const u8,
+    prefix: ?[]const u8,
+    local_name: []const u8,
+};
+
 /// What Element supplies.
 pub const ElementSteps = struct {
     /// Set `element`'s namespace and local name.
     set_names: *const fn (element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) Error!void,
     /// Borrow the is value assigned by "create an element", for serialization.
     is_value: ?*const fn (*runtime.Instance) ?[]const u8 = null,
+    /// Borrow the names "create an element" set (a live collection's
+    /// filter reads them for every element it visits, so not through the
+    /// IDL getters, which copy each one).
+    names: ?*const fn (*runtime.Instance) ?ElementNames = null,
 };
 
 /// What DocumentType supplies.
@@ -81,6 +94,14 @@ pub fn installNode(steps: NodeSteps) void {
 pub fn setElementNames(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) Error!void {
     const steps = node_steps.element orelse return error.InvalidStateError;
     return steps.set_names(element, namespace, local_name);
+}
+
+/// `element`'s names, borrowed (see `ElementNames`); null for a node that is
+/// not an element.
+pub fn elementNames(element: *runtime.Instance) ?ElementNames {
+    const steps = node_steps.element orelse return null;
+    const read = steps.names orelse return null;
+    return read(element);
 }
 
 pub fn elementIsValue(element: *runtime.Instance) ?[]const u8 {

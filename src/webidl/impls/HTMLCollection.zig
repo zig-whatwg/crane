@@ -65,6 +65,8 @@ pub const InternalState = struct {
     /// Filter function for matching elements (for getElementsByClassName, etc.)
     filter_tag: ?runtime.DOMString = null,
     filter_class: ?runtime.DOMString = null,
+    /// getElementsByTagName(NS)'s filter (`NameFilter`); its strings are owned.
+    name_filter: NameFilter = .{},
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -75,6 +77,7 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         self.elements.deinit();
+        self.name_filter.deinit(self.allocator);
         if (self.filter_tag) |*tag| {
             tag.deinit(self.allocator);
         }
@@ -262,6 +265,174 @@ fn refillElementChildren(collection: *runtime.Instance, root: *runtime.Instance)
     return true;
 }
 
+/// The filters of DOM's "list of elements with qualified name" and "list of
+/// elements with namespace and local name" (getElementsByTagName and
+/// getElementsByTagNameNS), fixed when the collection is made: the spec
+/// reads whether root's node document is an HTML document in its steps, so
+/// a list made in an HTML document keeps lowercasing for HTML elements after
+/// its root moves to an XML one (dom/nodes/Element-getElementsByTagName-
+/// change-document-HTMLNess.html).
+const NameFilter = struct {
+    mode: Mode = .none,
+    /// The qualified name or the local name, as given; owned.
+    name: ?[]u8 = null,
+    /// The qualified name in ASCII lowercase, for `.html_qualified`; owned.
+    lower: ?[]u8 = null,
+    /// The namespace, for `.namespace` and `.both` (null: no namespace); owned.
+    namespace: ?[]u8 = null,
+
+    const Mode = enum {
+        none,
+        /// Every descendant element ("*", or "*" and "*").
+        any,
+        /// Qualified name `name` (not an HTML document).
+        qualified,
+        /// An HTML element whose qualified name is `lower`, or any other
+        /// whose qualified name is `name` (an HTML document).
+        html_qualified,
+        /// Local name `name`, any namespace (namespace "*").
+        local,
+        /// Namespace `namespace`, any local name (local name "*").
+        namespace,
+        /// Namespace `namespace` and local name `name`.
+        both,
+    };
+
+    fn deinit(self: *NameFilter, allocator: std.mem.Allocator) void {
+        if (self.name) |name| allocator.free(name);
+        if (self.lower) |lower| allocator.free(lower);
+        if (self.namespace) |namespace| allocator.free(namespace);
+        self.* = .{};
+    }
+
+    fn matches(self: *const NameFilter, names: dom.node_creation.ElementNames) bool {
+        return switch (self.mode) {
+            .none => false,
+            .any => true,
+            .qualified => qualifiedNameIs(names, self.name.?),
+            .html_qualified => if (sameOptional(names.namespace, html_namespace))
+                qualifiedNameIs(names, self.lower.?)
+            else
+                qualifiedNameIs(names, self.name.?),
+            .local => std.mem.eql(u8, names.local_name, self.name.?),
+            .namespace => sameOptional(names.namespace, self.namespace),
+            .both => sameOptional(names.namespace, self.namespace) and std.mem.eql(u8, names.local_name, self.name.?),
+        };
+    }
+};
+
+const html_namespace: []const u8 = "http://www.w3.org/1999/xhtml";
+
+/// Whether the element's qualified name - "prefix:local" with a prefix,
+/// else its local name - is `wanted`, compared without building it.
+fn qualifiedNameIs(names: dom.node_creation.ElementNames, wanted: []const u8) bool {
+    const prefix = names.prefix orelse return std.mem.eql(u8, names.local_name, wanted);
+    return wanted.len == prefix.len + 1 + names.local_name.len and
+        std.mem.startsWith(u8, wanted, prefix) and wanted[prefix.len] == ':' and
+        std.mem.endsWith(u8, wanted, names.local_name);
+}
+
+fn sameOptional(a: ?[]const u8, b: ?[]const u8) bool {
+    if (a) |left| return if (b) |right| std.mem.eql(u8, left, right) else false;
+    return b == null;
+}
+
+/// `dom.live_collections`' qualified-name filter: DOM's "list of elements
+/// with qualified name `qualifiedName`" for `root`.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-getelementsbytagname
+fn makeQualifiedName(collection: *runtime.Instance, root: *runtime.Instance, qualified_name: []const u8) error{OutOfMemory}!void {
+    const internal = getInternal(collection) orelse return;
+    internal.name_filter.deinit(internal.allocator);
+    // 1. "If qualifiedName is U+002A (*), then return an HTMLCollection
+    //    rooted at root, whose filter matches only descendant elements."
+    if (std.mem.eql(u8, qualified_name, "*")) {
+        internal.name_filter.mode = .any;
+    } else {
+        const name = try internal.allocator.dupe(u8, qualified_name);
+        internal.name_filter.name = name;
+        // 2. "Otherwise, if root's node document is an HTML document":
+        //    an HTML element's qualified name is compared with qualifiedName
+        //    in ASCII lowercase, any other's with qualifiedName as given.
+        if (inHtmlDocument(root)) {
+            const lower = try internal.allocator.alloc(u8, qualified_name.len);
+            internal.name_filter.lower = std.ascii.lowerString(lower, qualified_name);
+            internal.name_filter.mode = .html_qualified;
+        } else {
+            // 3. "Otherwise ... whose qualified name is qualifiedName."
+            internal.name_filter.mode = .qualified;
+        }
+    }
+    makeLive(collection, root, &refillNames);
+}
+
+/// `dom.live_collections`' namespace-and-local-name filter: DOM's "list of
+/// elements with namespace `namespace` and local name `localName`".
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-getelementsbytagnamens
+fn makeNamespaceLocalName(collection: *runtime.Instance, root: *runtime.Instance, namespace_in: ?[]const u8, local_name: []const u8) error{OutOfMemory}!void {
+    const internal = getInternal(collection) orelse return;
+    internal.name_filter.deinit(internal.allocator);
+    // 1. "If namespace is the empty string, then set it to null."
+    const namespace: ?[]const u8 = if (namespace_in) |ns| (if (ns.len == 0) null else ns) else null;
+    const any_namespace = if (namespace) |ns| std.mem.eql(u8, ns, "*") else false;
+    const any_local = std.mem.eql(u8, local_name, "*");
+    if (any_namespace and any_local) {
+        // 2. Both "*": every descendant element.
+        internal.name_filter.mode = .any;
+    } else if (any_namespace) {
+        // 3. Namespace "*": local name localName.
+        internal.name_filter.name = try internal.allocator.dupe(u8, local_name);
+        internal.name_filter.mode = .local;
+    } else {
+        if (namespace) |ns| internal.name_filter.namespace = try internal.allocator.dupe(u8, ns);
+        if (any_local) {
+            // 4. Local name "*": namespace namespace.
+            internal.name_filter.mode = .namespace;
+        } else {
+            // 5. Namespace namespace and local name localName.
+            internal.name_filter.name = try internal.allocator.dupe(u8, local_name);
+            internal.name_filter.mode = .both;
+        }
+    }
+    makeLive(collection, root, &refillNames);
+}
+
+/// Whether `root`'s node document is an HTML document.
+fn inHtmlDocument(root: *runtime.Instance) bool {
+    const document = live_collections.nodeDocument(root) orelse return false;
+    return dom.document_internals.getDocumentType(document) == .html;
+}
+
+/// `root`'s descendant elements, in tree order, that the name filter
+/// matches. The walk follows the tree's own links, and reads each element's
+/// names borrowed (dom.node_creation.elementNames), so a refill copies
+/// nothing per element.
+fn refillNames(collection: *runtime.Instance, root: *runtime.Instance) bool {
+    const internal = getInternal(collection) orelse return false;
+    const root_base = dom.instance_bridge.getNodeBase(@ptrCast(root)) orelse return false;
+    var current = root_base.first_child;
+    while (current) |node| : (current = nextBaseInTreeOrder(node, root_base)) {
+        if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
+        const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse continue));
+        const names = dom.node_creation.elementNames(element) orelse continue;
+        if (!internal.name_filter.matches(names)) continue;
+        addElement(collection, element) catch return false;
+    }
+    return true;
+}
+
+/// The tree node after `node` in tree order within `root`'s descendants.
+fn nextBaseInTreeOrder(node: *dom.NodeBase, root: *dom.NodeBase) ?*dom.NodeBase {
+    if (node.first_child) |child| return child;
+    var current = node;
+    while (current != root) {
+        if (current.next_sibling) |sibling| return sibling;
+        current = current.parent_node orelse return null;
+    }
+    return null;
+}
+
 /// `dom.live_collections`' class-names filter: DOM's "list of elements with
 /// class names `classNames`" for `root`, for a non-empty set of classes.
 ///
@@ -408,7 +579,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls make a collection live through dom.live_collections.
-    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .document_elements = &makeDocumentElements, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .table = &makeTable, .root = &liveRoot });
+    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .qualified_name = &makeQualifiedName, .namespace_local_name = &makeNamespaceLocalName, .document_elements = &makeDocumentElements, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .table = &makeTable, .root = &liveRoot });
 }
 
 /// Initialize instance (creates the instance)

@@ -3222,10 +3222,13 @@ pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime
 
 /// Operation: getElementsByTagNameNS
 pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = namespace;
-    _ = localName;
-    return error.NotImplemented;
+    // DOM: "return the list of elements with namespace namespace and local
+    // name localName for this" - a LIVE collection (dom.live_collections).
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
+    errdefer interfaces.HTMLCollection.deinit(collection);
+    try live_collections.elementsWithNamespaceAndLocalName(collection, instance, if (namespace) |ns| ns.asSlice() else null, localName.asSlice());
+    return collection;
 }
 
 /// Operation: elementsFromPoint
@@ -3432,68 +3435,19 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
 }
 
 /// Operation: getElementsByTagName
-/// DOM §4.4 - Returns a live HTMLCollection of elements with matching tag name
 /// Spec: https://dom.spec.whatwg.org/#dom-document-getelementsbytagname
 ///
-/// Steps:
-/// 1. If qualifiedName is "*", return a collection of all descendant elements
-/// 2. Otherwise, return a collection of descendant elements whose qualified name is
-///    qualifiedName (case-insensitively for HTML documents)
+/// "The getElementsByTagName(qualifiedName) method steps are to return the
+/// list of elements with qualified name qualifiedName for this" - a LIVE
+/// collection (dom.live_collections), which holds this document (refcount
+/// design 5h). It was a snapshot that compared local names ignoring case for
+/// every element of an HTML document.
 pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const qname = qualifiedName.asSlice();
-
-    // Create an HTMLCollection to hold results
-    // Use interface instead of impl (per Golden Rule #13)
     const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
     errdefer interfaces.HTMLCollection.deinit(collection);
-
-    // Traverse tree and collect matching elements
-    try collectElementsByTagName(instance, qname, internal.doc_type == .html, collection);
-
+    try live_collections.elementsWithQualifiedName(collection, instance, qualifiedName.asSlice());
     return collection;
-}
-
-/// Helper: Recursively collect elements by tag name
-fn collectElementsByTagName(
-    node: *runtime.Instance,
-    target_name: []const u8,
-    is_html: bool,
-    collection: *runtime.Instance,
-) ImplError!void {
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const ElementImpl = @import("Element.zig");
-    const wildcard = std.mem.eql(u8, target_name, "*");
-
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            var matches = wildcard;
-
-            if (!wildcard) {
-                // Get element's tag name and compare
-                if (ElementImpl.getInternal(c)) |elem_internal| {
-                    const elem_name = elem_internal.local_name.asSlice();
-                    if (is_html) {
-                        // Case-insensitive comparison for HTML
-                        matches = std.ascii.eqlIgnoreCase(elem_name, target_name);
-                    } else {
-                        matches = std.mem.eql(u8, elem_name, target_name);
-                    }
-                }
-            }
-
-            if (matches) {
-                HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
-            }
-        }
-
-        // Recursively search descendants
-        try collectElementsByTagName(c, target_name, is_html, collection);
-
-        child = NodeImpl.getNextSibling(c);
-    }
 }
 
 /// Operation: evaluate

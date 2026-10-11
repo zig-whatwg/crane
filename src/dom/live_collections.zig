@@ -181,6 +181,12 @@ pub const Implementation = struct {
     /// Make `collection` DOM's "list of elements with class names
     /// `class_names`" for `root` (a non-empty set of classes).
     class_names: *const fn (collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) error{OutOfMemory}!void,
+    /// Make `collection` DOM's "list of elements with qualified name
+    /// `qualified_name`" for `root`.
+    qualified_name: *const fn (collection: *runtime.Instance, root: *runtime.Instance, qualified_name: []const u8) error{OutOfMemory}!void,
+    /// Make `collection` DOM's "list of elements with namespace `namespace`
+    /// and local name `local_name`" for `root`.
+    namespace_local_name: *const fn (collection: *runtime.Instance, root: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) error{OutOfMemory}!void,
     document_elements: *const fn (collection: *runtime.Instance, document: *runtime.Instance, filter: DocumentFilter) void,
     form_controls: *const fn (*runtime.Instance, *runtime.Instance, bool) void,
     select_options: *const fn (*runtime.Instance, *runtime.Instance, bool) void,
@@ -212,6 +218,28 @@ pub fn elementChildren(collection: *runtime.Instance, root: *runtime.Instance) !
 pub fn elementsWithClassNames(collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) !void {
     const impl = implementation orelse return error.NotSupported;
     try impl.class_names(collection, root, class_names);
+}
+
+/// Make `collection` - just created, empty - DOM's "list of elements with
+/// qualified name `qualified_name`" for `root`: live, over `root`'s
+/// descendant elements; in an HTML document an HTML element's qualified name
+/// is compared with `qualified_name` in ASCII lowercase. Whether the document
+/// is an HTML document is read now, once, as the spec's steps do.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-getelementsbytagname
+pub fn elementsWithQualifiedName(collection: *runtime.Instance, root: *runtime.Instance, qualified_name: []const u8) !void {
+    const impl = implementation orelse return error.NotSupported;
+    try impl.qualified_name(collection, root, qualified_name);
+}
+
+/// Make `collection` - just created, empty - DOM's "list of elements with
+/// namespace `namespace` and local name `local_name`" for `root` (live; "*"
+/// in either matches any; an empty namespace is null).
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-getelementsbytagnamens
+pub fn elementsWithNamespaceAndLocalName(collection: *runtime.Instance, root: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) !void {
+    const impl = implementation orelse return error.NotSupported;
+    try impl.namespace_local_name(collection, root, namespace, local_name);
 }
 
 /// The live document collection for HTML's corresponding tree accessor.
@@ -246,6 +274,8 @@ test "elementChildren without an installed implementation reports NotSupported" 
     var object: runtime.Instance = undefined;
     try std.testing.expectError(error.NotSupported, elementChildren(&object, &object));
     try std.testing.expectError(error.NotSupported, elementsWithClassNames(&object, &object, "a"));
+    try std.testing.expectError(error.NotSupported, elementsWithQualifiedName(&object, &object, "a"));
+    try std.testing.expectError(error.NotSupported, elementsWithNamespaceAndLocalName(&object, &object, null, "a"));
     try std.testing.expectError(error.NotSupported, documentElements(&object, &object, .images));
     try std.testing.expectError(error.NotSupported, selectOptions(&object, &object, false));
     try std.testing.expectEqual(null, rootOf(&object));
