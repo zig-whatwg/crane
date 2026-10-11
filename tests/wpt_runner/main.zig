@@ -1331,6 +1331,9 @@ fn run(init: std.process.Init) !u8 {
         @tagName(wpt_options.crane_modules_mode),
         @tagName(wpt_options.c_libraries_mode),
     });
+    if (!options.isChild() or options.wantsSupervisor()) {
+        if (runner_allocator.tracesNote(builtin.mode, want_traces)) |note| print("wpt_runner: {s}\n", .{note});
+    }
 
     if (options.allocator_self_check) {
         const check = runner_allocator.selfCheck();

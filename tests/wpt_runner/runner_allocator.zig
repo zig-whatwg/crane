@@ -54,6 +54,21 @@ pub fn wantsTraces(value: ?[]const u8) bool {
     return v.len != 0 and v[0] != '0';
 }
 
+/// What a `CRANE_LEAK_TRACES=1` run in an optimized runner must say first, or
+/// null. DebugAllocator starts a trace at the allocator's caller
+/// (`@returnAddress()` in std.mem.Allocator's alloc/dupe), and in an
+/// optimized build those are inlined into Crane's code, which is inlined into
+/// the binding callback: the trace starts at a return address above the
+/// allocation site - in V8's builtins, where the unwinder repeats one frame -
+/// and names nothing. Measured on FileAPI/FileReaderSync.worker.js (6 leaks
+/// in both modes): Debug names packageData and the FileReaderSync member,
+/// ReleaseSafe six frames of _Builtins_CallApiCallbackGeneric. The counts are
+/// the same in every mode; only the traces need the Debug runner.
+pub fn tracesNote(mode: std.builtin.OptimizeMode, want_traces: bool) ?[]const u8 {
+    if (!want_traces or mode == .Debug) return null;
+    return "CRANE_LEAK_TRACES in an optimized runner: inlined allocations are traced from their callers' return addresses and the traces name no allocation site; build the Debug runner (-Dwpt-runner-optimize=Debug) for traces. Leak and double-free reports are complete in every mode.";
+}
+
 /// Error-level reports DebugAllocator has logged in this process (a double
 /// free, an invalid free, each leaked address at deinit). DebugAllocator logs
 /// and carries on, so this count is the only trace of a report besides the log
@@ -128,6 +143,13 @@ test "a clean run deinits clean under the sweep allocator" {
     const bytes = try a.alloc(u8, 64);
     a.free(bytes);
     try testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "an optimized runner says its leak traces name no allocation site; Debug says nothing" {
+    try testing.expect(tracesNote(.Debug, true) == null);
+    try testing.expect(tracesNote(.ReleaseSafe, false) == null);
+    try testing.expect(tracesNote(.ReleaseSafe, true) != null);
+    try testing.expect(tracesNote(.ReleaseFast, true) != null);
 }
 
 test "CRANE_LEAK_TRACES: set and not starting with 0" {
