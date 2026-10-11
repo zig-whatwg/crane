@@ -487,7 +487,7 @@ The generated interface X.zig          ->  its own impl (the one allowed referen
    descendant), from anywhere. IDL constants too: `interfaces.Node.get_DOCUMENT_NODE()`.
    Interfaces are the stable API and carry CEReactions, validation and the other
    cross-cutting concerns; a direct impl call bypasses all of it.
-2. **No IDL member: a hook the owner installs.** Setting a node's document,
+2. **No IDL member: a hook the owner installs** - except facts given at construction (node document, node type), which travel as construction arguments through the generated construction chain (the user, 2026-10-11; tmp/plans/impls-boundary-design.md). Setting a node's document,
    joining a live range to its document, setting up a traverser, making a
    collection live, an element's form reset steps - the owning impl installs the
    step into a hook module in `src/dom/` (`node_document.zig`,
