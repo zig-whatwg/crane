@@ -108,35 +108,10 @@ test "native TransformStream setUp deinitializes its transformer once at every f
     warm.join();
     try success.result;
     try testing.expect(success.allocations > 0);
+    // Every allocation fails once, a hard check each: the wrapper-cache
+    // inserts too, which fail their wrap since rc4 (aa10618fb1). Whatever a
+    // failed setUp built and did not wrap is freed by the step that built it.
     for (0..success.allocations) |index| {
-        // Q25's scratch probe recorded each FIRST injected failure and the
-        // allocation balance after context teardown. Only its leaking cache
-        // failures are blocked here; balanced cache trials 2, 3 and 11, and
-        // every non-cache failure, remain hard checks. Remove all exclusions
-        // when rc4's adapter fix lands. A changed allocation layout must not
-        // silently skip another failure.
-        const blocked: ?[]const u8 = switch (index) {
-            // TODO(rc4: template_registry.zig cache.set OOM): writable stream.
-            5 => "wrapper_cache.zig:1624 via streams_writable.zig:1216",
-            // TODO(rc4: template_registry.zig cache.set OOM): writable controller.
-            7 => "wrapper_cache.zig:1624 via streams_writable.zig:879",
-            // TODO(rc4: template_registry.zig cache.set OOM): AbortController.
-            10 => "wrapper_cache.zig:1624 via streams_writable.zig:896",
-            // TODO(rc4: template_registry.zig cache.set OOM): readable stream.
-            13 => "wrapper_cache.zig:1624 via streams_readable.zig:426",
-            // TODO(rc4: template_registry.zig cache.set OOM): readable controller entry.
-            15 => "wrapper_cache.zig:1624 via streams_readable.zig:1033",
-            // TODO(rc4: template_registry.zig cache.set OOM): readable controller map growth.
-            16 => "wrapper_cache.zig:1654 hash_map.put during readable controller wrapping",
-            // TODO(rc4: template_registry.zig cache.set OOM): transform controller.
-            19 => "wrapper_cache.zig:1624 via streams_transform.zig:283",
-            else => null,
-        };
-        if (blocked) |site| {
-            try testing.expectEqual(@as(usize, 20), success.allocations);
-            std.debug.print("BLOCKED: setUp OOM trial {d}, template_registry.zig cache.set OOM (rc4), {s}\n", .{ index, site });
-            continue;
-        }
         var trial: Trial = .{ .fail_after = index };
         const thread = try std.Thread.spawn(.{}, Trial.run, .{&trial});
         thread.join();

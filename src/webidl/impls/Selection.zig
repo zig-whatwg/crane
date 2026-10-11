@@ -20,6 +20,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const infra = @import("infra");
 const Selection = interfaces.Selection;
 const dom = @import("dom");
 const boundary_points = dom.boundary_points;
@@ -78,8 +79,12 @@ pub const InternalState = struct {
     /// Range under the selection. Blink: SelectionEditor::Trace visits
     /// cached_range_. The selection's own wrapper lives as long as the
     /// selection: its document keeps it (Document's `selection_kept`).
+    ///
+    /// Read only through `liveRange`: the edge keeps the Range from the
+    /// collector, not from the end of its own realm.
     range: ?*runtime.Instance = null,
-    /// Teardown net for the traced range, which the collector may free first.
+    /// The range's slab generation when it became this selection's range:
+    /// `liveRange`'s teardown net.
     range_generation: u64 = 0,
 
     /// The document this selection belongs to, retained by a traced edge.
@@ -97,10 +102,7 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState, selection: *runtime.Instance) void {
-        if (self.range) |range| {
-            const link: Link = .{ .instance = range, .generation = self.range_generation };
-            if (link.isLive()) dom.selection.associateRange(range, selection, false);
-        }
+        if (liveRange(self)) |range| dom.selection.associateRange(range, selection, false);
         // Don't free the range - its wrapper owns it. The edge to it goes
         // with this selection's wrapper; nothing to end here, which may run
         // while the collector does (engine.forgetTracedChild must not).
@@ -113,11 +115,16 @@ pub const InternalState = struct {
     /// it, keeping the range while it is one (see `range`).
     fn setRange(self: *InternalState, selection: *runtime.Instance, range: ?*runtime.Instance, direction: Direction) void {
         const before = snapshot(self);
-        if (self.range != range) {
-            if (self.range) |old| {
-                const link: Link = .{ .instance = old, .generation = self.range_generation };
-                if (link.isLive()) dom.selection.associateRange(old, selection, false);
-            }
+        const current = liveRange(self);
+        if (current == null and self.range != null) {
+            // Freed under the selection: nothing to dissociate, and its slot
+            // may hold another object - possibly `range` - now.
+            self.range = null;
+            self.range_generation = 0;
+            if (range == null) engine.forgetTracedChild(selection, range_slot);
+        }
+        if (current != range) {
+            if (current) |old| dom.selection.associateRange(old, selection, false);
             self.range = range;
             if (range) |r| {
                 self.range_generation = runtime.SlabAllocator.generationOf(r);
@@ -135,6 +142,28 @@ pub const InternalState = struct {
 
 /// The member a selection keeps its range in (engine.traceChild).
 const range_slot: engine.TracedSlot = .{ .name = "range" };
+
+/// The selection's range: null when it has none, or when the Range was freed
+/// under it. Every reader goes through this, so a dead range reads as an
+/// empty selection ("the selection is empty"), never as the freed Range.
+///
+/// The traced edge keeps the Range from the collector, but not past the end
+/// of the Range's own realm: a Range made by a frame's constructor
+/// (`new frame.contentWindow.Range()`), moved into this document by setStart
+/// and added here, belongs to the frame's wrapper cache, and the frame's
+/// realm's end frees what that cache holds. While the page lives that end
+/// waits: a removed or navigated frame's realm is only detached, and the
+/// Range's wrapper - kept by this edge - keeps it (crane/sf2-selection-frame-
+/// realm-range.html). It comes with the page's end, which ends a frame's
+/// realm before its parent's, and whenever a realm ends without detaching;
+/// tests/html/selection_range_realm_end_test.zig ends it under a live
+/// selection. So this is a teardown net, not the behaviour: Blink's
+/// SelectionEditor traces cached_range_, and nothing frees it first.
+fn liveRange(internal: *const InternalState) ?*runtime.Instance {
+    const range = internal.range orelse return null;
+    if (runtime.SlabAllocator.generationOf(range) != internal.range_generation) return null;
+    return range;
+}
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
@@ -186,7 +215,7 @@ pub fn installHooks() void {
 
 fn rangeMutated(selection: *runtime.Instance, range: *runtime.Instance, containers_changed: bool) void {
     const internal = getInternal(selection) orelse return;
-    if (internal.range != range) return;
+    if (liveRange(internal) != range) return;
     const b = boundaries(internal) orelse return;
     // An offset-only setter cannot change its container's document. Adoption
     // separately updates Range ownership; offset changes still queue an event.
@@ -218,7 +247,7 @@ fn associatedDocument(internal: *const InternalState) ?*runtime.Instance {
 
 /// Read the live range instead of a second copy of its boundary points.
 fn boundaries(internal: *const InternalState) ?dom.range_boundaries.Boundaries {
-    return dom.range_boundaries.of(internal.range orelse return null);
+    return dom.range_boundaries.of(liveRange(internal) orelse return null);
 }
 
 fn visibleBoundaries(internal: *const InternalState) ?dom.range_boundaries.Boundaries {
@@ -300,7 +329,7 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Returns the direction of selection: "none", "forward", or "backward"
 pub fn get_direction(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.range == null) return .initInterned("none");
+    if (liveRange(internal) == null) return .initInterned("none");
     return .initInterned(switch (internal.direction) {
         .none => "none",
         .forward => "forward",
@@ -318,7 +347,7 @@ pub fn get_direction(instance: *runtime.Instance) anyerror!runtime.DOMString {
 pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (index != 0 or visibleBoundaries(internal) == null) return error.IndexSizeError;
-    return internal.range.?;
+    return liveRange(internal).?;
 }
 
 /// Selection API - addRange(range)
@@ -348,7 +377,7 @@ pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) anye
 pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
     if (range.stateAs(interfaces.Range.State) == null) return error.TypeError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.range != range) return error.NotFoundError;
+    if (liveRange(internal) != range) return error.NotFoundError;
     try call_removeAllRanges(instance);
 }
 
@@ -620,38 +649,45 @@ fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResu
         else => return err,
     };
     defer text.deinit(node.ctx.allocator);
+    // The data is WTF-8 and offsets are UTF-16 code units (DOM node length):
+    // walk the bytes a code point at a time from the offset's byte, and count
+    // the code units back at the end. Word boundaries are ASCII, so every
+    // other code point is a word character - one an offset splits included
+    // (between the two halves of a surrogate pair).
     const data = text.asSlice();
-    const data_len = try interfaces.CharacterData.get_length(node);
-    // Follow-up after the utf16 lane lands: convert code-unit positions with
-    // infra.wtf8.byteOffsetOfCodeUnit before indexing the WTF-8 bytes here.
+    const at = infra.wtf8.positionOfCodeUnit(data, offset);
 
     if (forward) {
-        // Find end of current word, then start of next word
-        var pos = offset;
+        // Find end of current word, then start of next word. From inside a
+        // pair, its low half is the rest of the current word's character.
+        var pos = if (at.mid_pair) nextCodePoint(data, at.byte) else at.byte;
 
         // Skip current word (non-whitespace)
-        while (pos < data_len and !isWordBoundary(data[pos])) : (pos += 1) {}
+        while (pos < data.len and !isWordBoundaryAt(data, pos)) pos = nextCodePoint(data, pos);
 
-        // Skip whitespace between words
-        while (pos < data_len and isWordBoundary(data[pos])) : (pos += 1) {}
+        // Skip whitespace between words (ASCII: one byte each)
+        while (pos < data.len and isWordBoundaryAt(data, pos)) : (pos += 1) {}
 
-        if (pos >= data_len) {
+        if (pos >= data.len) {
             // Reached end of this text node, try next
             if (try getNextTextPosition(node)) |next| {
                 return next;
             }
         }
 
-        return .{ .node = node, .offset = pos };
+        return .{ .node = node, .offset = codeUnitsBefore(data, pos) };
     } else {
-        // Find start of current/previous word
-        var pos = offset;
+        // Find start of current/previous word. From inside a pair, its high
+        // half (before the offset) ends a word: no boundary to skip first.
+        var pos = at.byte;
 
         // Skip whitespace going backward
-        while (pos > 0 and isWordBoundary(data[pos - 1])) : (pos -= 1) {}
+        if (!at.mid_pair) {
+            while (pos > 0 and isWordBoundaryAt(data, pos - 1)) : (pos -= 1) {}
+        }
 
         // Skip word going backward
-        while (pos > 0 and !isWordBoundary(data[pos - 1])) : (pos -= 1) {}
+        while (pos > 0 and !isWordBoundaryAt(data, pos - 1)) pos = previousCodePoint(data, pos);
 
         if (pos == 0 and offset == 0) {
             // Already at start, try previous text node
@@ -660,8 +696,35 @@ fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResu
             }
         }
 
-        return .{ .node = node, .offset = pos };
+        return .{ .node = node, .offset = codeUnitsBefore(data, pos) };
     }
+}
+
+/// Whether the byte at `pos` of WTF-8 `data` is a word boundary: one of the
+/// ASCII boundaries (`isWordBoundary`). A byte of a multi-byte sequence never is.
+fn isWordBoundaryAt(data: []const u8, pos: usize) bool {
+    return data[pos] < 0x80 and isWordBoundary(data[pos]);
+}
+
+/// The byte offset after the code point that starts at `pos` of WTF-8 `data`
+/// (a stray continuation byte counts as one), never past the end.
+fn nextCodePoint(data: []const u8, pos: usize) usize {
+    const lead = data[pos];
+    const len: usize = if (lead < 0xC0) 1 else if (lead < 0xE0) 2 else if (lead < 0xF0) 3 else 4;
+    return @min(pos + len, data.len);
+}
+
+/// The byte offset of the code point that ends at `pos` (> 0) of WTF-8 `data`.
+fn previousCodePoint(data: []const u8, pos: usize) usize {
+    var i = pos - 1;
+    while (i > 0 and (data[i] & 0xC0) == 0x80) i -= 1;
+    return i;
+}
+
+/// The UTF-16 code units of `data` before byte offset `pos`, a code point
+/// boundary.
+fn codeUnitsBefore(data: []const u8, pos: usize) u32 {
+    return @intCast(infra.wtf8.codeUnitLength(data[0..pos]));
 }
 
 /// Move to document boundary
@@ -829,7 +892,7 @@ pub fn call_deleteFromDocument(instance: *runtime.Instance) anyerror!void {
     defer if (!std.meta.eql(before, snapshot(internal))) {
         scheduleSelectionchange(instance) catch {};
     };
-    try Range.call_deleteContents(internal.range.?);
+    try Range.call_deleteContents(liveRange(internal).?);
 }
 
 /// Selection API - containsNode(node, allowPartialContainment)
@@ -1055,18 +1118,16 @@ const DomTree = struct {
 /// Allocator.free's memset on the literal's read-only page.
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
-    const range = internal.range orelse return "";
+    const range = liveRange(internal) orelse return "";
     const text = try Range.serialize(range);
     defer if (text.len > 0) range.ctx.allocator.free(text);
     if (text.len == 0) return "";
     return instance.ctx.allocator.dupe(u8, text);
 }
 
-/// DOM node length through the owning interfaces: CharacterData length,
-/// child count otherwise, and zero for attributes and doctypes.
-/// TODO(CharacterData length: UTF-16 units, see codex-selection Q7): the
-/// shared getter currently counts bytes; keep Selection and Range in the
-/// same units until the DOM-core fix lands.
+/// DOM node length through the owning interfaces: CharacterData length (in
+/// UTF-16 code units, as Range's), child count otherwise, and zero for
+/// attributes and doctypes.
 fn nodeLength(node: *runtime.Instance) !u32 {
     return switch (try interfaces.Node.get_nodeType(node)) {
         2, 10 => 0,
