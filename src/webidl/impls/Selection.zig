@@ -84,6 +84,8 @@ pub const InternalState = struct {
     /// cached_range_. The selection's own wrapper lives as long as the
     /// selection: its document keeps it (Document's `selection_kept`).
     range: ?*runtime.Instance = null,
+    /// Teardown net for the traced range, which the collector may free first.
+    range_generation: u64 = 0,
 
     /// The document this selection belongs to, retained by a traced edge.
     /// Its generation is only the teardown safety net.
@@ -99,11 +101,16 @@ pub const InternalState = struct {
         };
     }
 
-    pub fn deinit(self: *InternalState) void {
+    pub fn deinit(self: *InternalState, selection: *runtime.Instance) void {
+        if (self.range) |range| {
+            const link: Link = .{ .instance = range, .generation = self.range_generation };
+            if (link.isLive()) dom.selection.associateRange(range, selection, false);
+        }
         // Don't free the range - its wrapper owns it. The edge to it goes
         // with this selection's wrapper; nothing to end here, which may run
         // while the collector does (engine.forgetTracedChild must not).
         self.range = null;
+        self.range_generation = 0;
         self.document = null;
     }
 
@@ -112,11 +119,19 @@ pub const InternalState = struct {
     fn setRange(self: *InternalState, selection: *runtime.Instance, range: ?*runtime.Instance, direction: Direction) void {
         const before = snapshot(self);
         if (self.range != range) {
+            if (self.range) |old| {
+                const link: Link = .{ .instance = old, .generation = self.range_generation };
+                if (link.isLive()) dom.selection.associateRange(old, selection, false);
+            }
             self.range = range;
-            if (range) |r|
-                engine.traceChild(selection, r, range_slot)
-            else
+            if (range) |r| {
+                self.range_generation = runtime.SlabAllocator.generationOf(r);
+                engine.traceChild(selection, r, range_slot);
+                dom.selection.associateRange(r, selection, true);
+            } else {
+                self.range_generation = 0;
                 engine.forgetTracedChild(selection, range_slot);
+            }
         }
         self.direction = direction;
         if (!std.meta.eql(before, snapshot(self))) scheduleSelectionchange(selection) catch {};
@@ -157,7 +172,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        internal.deinit(instance);
 
         // Return the block itself, not just what it points to.
         // `internal.deinit()` releases the strings and lists the state
@@ -173,7 +188,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Install the association hook once, at process startup.
 pub fn installHooks() void {
-    dom.selection.install(.{ .bind_document = &bindDocument });
+    dom.selection.install(.{ .bind_document = &bindDocument, .range_mutated = &rangeMutated });
+}
+
+fn rangeMutated(selection: *runtime.Instance, range: *runtime.Instance, containers_changed: bool) void {
+    const internal = getInternal(selection) orelse return;
+    if (internal.range != range) return;
+    const b = boundaries(internal) orelse return;
+    // An offset-only setter cannot change its container's document. Adoption
+    // separately updates Range ownership; offset changes still queue an event.
+    if (containers_changed and (!isInDocument(internal, b.start_container) or !isInDocument(internal, b.end_container))) {
+        // Browsers dissociate a live Range that leaves the document; moving
+        // it back does not restore the selection (codex-selection Q17).
+        // Blink Range::RemoveFromSelectionIfInDifferentRoot (core/dom/range.cc),
+        // Gecko nsRange::NotifySelectionListenersAfterRangeSet (dom/base/nsRange.cpp),
+        // WebKit Range::updateAssociatedSelection/updateDocument (WebCore/dom/Range.cpp).
+        internal.setRange(selection, null, .none);
+        return;
+    }
+    scheduleSelectionchange(selection) catch {};
 }
 
 fn bindDocument(selection: *runtime.Instance, document: *runtime.Instance) void {
