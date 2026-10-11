@@ -343,19 +343,20 @@ pub fn main(init: std.process.Init) !void {
 
     // `--c-alloc` swaps Zig's DebugAllocator for malloc.
     //
-    // This is a control, not a mode. DebugAllocator retains freed pages so it can
-    // detect use-after-free, so it never returns memory to the OS - which would
-    // make RSS climb across a create/discard loop with nothing leaking, and this
-    // benchmark's whole job is to decide whether something is leaking. Every other
-    // pool here has plateaued while RSS keeps rising, so the allocator is the
-    // remaining suspect. Under malloc the same run is measured against an allocator
-    // that does return pages, and `mstats()` already reports it.
+    // This is a control, not a mode: the same run measured against an allocator
+    // `mstats()` reports, so growth that follows the allocator rather than the
+    // workload shows as the difference between the two. DebugAllocator returns a
+    // page once every slot in it is freed. What made it look like it never did
+    // was its stack traces: in Debug it captured one per alloc and per free, and
+    // Zig 0.16's capture leaks ~830 B a time on aarch64-macos into a std.debug
+    // arena nothing reports - 660 B of RSS per `e.hasAttribute("title")`, with
+    // nothing leaking. It captures none now (`options.allocator_config`).
     var use_c_alloc = false;
     for (args[1..]) |a| {
         if (std.mem.eql(u8, a, "--c-alloc")) use_c_alloc = true;
     }
 
-    var debug_gpa: std.heap.DebugAllocator(.{}) = .init;
+    var debug_gpa: std.heap.DebugAllocator(options.allocator_config) = .init;
     defer _ = debug_gpa.deinit();
 
     counting = .{ .child = if (use_c_alloc) std.heap.c_allocator else debug_gpa.allocator() };

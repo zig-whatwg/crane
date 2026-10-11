@@ -545,6 +545,31 @@ pub fn getterValueIsOwned(comptime T: type) bool {
     return info == .@"enum";
 }
 
+/// Whether an attribute setter's value, converted as a `T` that
+/// `argHandleIsCopied` does not accept, leaves the handle it was converted
+/// from referred to by nothing - so that the binding, which owns it
+/// (`info.get` allocates), releases it. Read off the VALUE, as
+/// `keptArgumentHandle` reads an operation argument's:
+///
+/// - a type `argumentHandleIsKeptInValue` accepts (an `any`, an `object`
+///   union arm, a buffer source): when `keptArgumentHandle` finds none - a
+///   primitive, a string copied out, null;
+/// - any other nullable type: when the value is null. `conv.fromV8Value`
+///   answers null for null and undefined, and an optional callback
+///   (EventHandler) for a value that is not a function, before converting
+///   anything - so nothing was made that could refer to the handle.
+///
+/// Everything else keeps the conservative answer (false: the value may
+/// refer to the handle). An object assigned to an `any` attribute is one:
+/// whether a setter keeps it has not been read setter by setter, as the
+/// operations' `any` arguments were (`releaseAnyArgument`).
+pub fn setterValueLeavesHandle(comptime T: type, value: T) bool {
+    if (comptime argHandleIsCopied(T)) return false;
+    if (comptime argumentHandleIsKeptInValue(T)) return keptArgumentHandle(T, value) == null;
+    if (comptime @typeInfo(T) == .optional) return value == null;
+    return false;
+}
+
 /// Free the text of a JSValue string result an impl handed over owned
 /// (`owned` true) - the one arm whose memory is the impl's allocation rather
 /// than an engine handle. The same rule as the operation path: every result
@@ -3180,9 +3205,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     // Type check failed - not an instance of this interface
                                     if (is_lenient_this) {
                                         // [LegacyLenientThis] - return undefined per WebIDL §4.3.10
-                                        if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                            info.setReturnValue(undef);
-                                        }
+                                        conv.setReturnUndefined(info);
                                         return;
                                     }
                                     // Regular attribute - fall through to throw TypeError
@@ -3221,9 +3244,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     }
                                     // [LegacyLenientThis] - return undefined instead of throwing
                                     if (is_lenient_this) {
-                                        if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                            info.setReturnValue(undef);
-                                        }
+                                        conv.setReturnUndefined(info);
                                         return;
                                     }
                                 }
@@ -3251,9 +3272,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
                         {
                             // Instance was freed - return undefined to prevent crash
-                            if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                info.setReturnValue(undef);
-                            }
+                            conv.setReturnUndefined(info);
                             return;
                         }
 
@@ -3262,7 +3281,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (!implementsInterface(instance)) {
                             const lenient = comptime isLenientThisProperty(if (std.mem.startsWith(u8, getter_name, "get_")) getter_name[4..] else getter_name);
                             if (lenient) {
-                                if (v8.v8_Undefined(isolate_inner)) |undef| info.setReturnValue(undef);
+                                conv.setReturnUndefined(info);
                             } else {
                                 error_realm.throwTypeError("Illegal invocation");
                             }
@@ -3276,9 +3295,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             (ctx_as_int & 0xFFFF000000000000) == 0xaaaa000000000000 or ctx_as_int == 0)
                         {
                             // Instance was freed - return undefined to prevent crash
-                            if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                info.setReturnValue(undef);
-                            }
+                            conv.setReturnUndefined(info);
                             return;
                         }
 
@@ -3289,9 +3306,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             (allocator_vtable_int & 0xFFFF000000000000) == 0xaaaa000000000000 or allocator_vtable_int == 0)
                         {
                             // ContextData was freed - return undefined to prevent crash
-                            if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                info.setReturnValue(undef);
-                            }
+                            conv.setReturnUndefined(info);
                             return;
                         }
 
@@ -3337,9 +3352,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                 if (err == error.NotImplemented) {
                                     // For WPT constructor tests, don't throw for unimplemented properties
                                     // when they are accessed during global object enumeration
-                                    if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                        info.setReturnValue(undef);
-                                    }
+                                    conv.setReturnUndefined(info);
                                     return;
                                 }
                                 // CRITICAL: For cross-origin SecurityError, throw in the CALLER's context
@@ -7400,54 +7413,6 @@ pub fn V8Interface(comptime Interface: type) type {
             return conv.newStringFromWtf8(isolate, entry.value) orelse return null;
         }
 
-        /// toString() callback for stringifier support
-        /// Calls the impl's serialize() function if available to get string representation
-        fn toStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-            const isolate = info.getIsolate();
-
-            // Get 'this' object
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
-            // Get the Zig instance from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-            if (instance_ptr) |ptr| {
-                // Safety check for invalid pointers
-                const ptr_as_int = @intFromPtr(ptr);
-                if (ptr_as_int < 0x1000) {
-                    info.setReturnValue(v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return);
-                    return;
-                }
-                const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
-
-                // Try to get the impl module to call serialize()
-                // Generated interfaces import their impl as <Name>Impl
-                const impl_name = interface_name ++ "Impl";
-                if (@hasDecl(Interface, impl_name)) {
-                    const ImplType = @field(Interface, impl_name);
-                    if (@hasDecl(ImplType, "serialize")) {
-                        const result = ImplType.serialize(instance) catch {
-                            info.setReturnValue(v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return);
-                            return;
-                        };
-
-                        // WTF-8: its lone surrogates kept (conv.newStringFromWtf8).
-                        const v8_str = conv.newStringFromWtf8(isolate, result) orelse {
-                            info.setReturnValue(v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return);
-                            return;
-                        };
-                        info.setReturnValue(v8_str);
-                        return;
-                    }
-                }
-            }
-
-            // Fallback: return "[object InterfaceName]"
-            var buf: [128]u8 = undefined;
-            const fallback = std.fmt.bufPrint(&buf, "[object {s}]", .{interface_name}) catch interface_name;
-            info.setReturnValue(v8.v8_String_NewFromUtf8(isolate, fallback.ptr, @intCast(fallback.len)) orelse return);
-        }
-
         const IteratorKind = enum { entries, keys, values };
 
         /// Get %IteratorPrototype% from the JavaScript realm. OWNED.
@@ -8393,9 +8358,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // Type check failed - not an instance of this interface
                                 if (is_lenient_this) {
                                     // [LegacyLenientThis] - silently return per WebIDL §4.3.10
-                                    if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                        info.setReturnValue(undef);
-                                    }
+                                    conv.setReturnUndefined(info);
                                     return;
                                 }
                                 // Regular attribute - fall through to throw TypeError
@@ -8434,9 +8397,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                 }
                                 // [LegacyLenientThis] - silently return instead of throwing
                                 if (is_lenient_this) {
-                                    if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                        info.setReturnValue(undef);
-                                    }
+                                    conv.setReturnUndefined(info);
                                     return;
                                 }
                             }
@@ -8514,15 +8475,20 @@ pub fn V8Interface(comptime Interface: type) type {
                         // For enum types, silently ignore invalid values (no-op)
                         if (@typeInfo(ValueType) == .@"enum" and err == error.TypeError) {
                             // Return undefined without calling setter - this is spec-compliant behavior
-                            if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                info.setReturnValue(undef);
-                            }
+                            conv.setReturnUndefined(info);
                             return;
                         }
                         conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
                         return;
                     };
                     defer freeConvertedValue(ValueType, allocator, zig_value);
+                    // A value that does not refer to the handle it was
+                    // converted from - a null, a primitive `any` - leaves it
+                    // to no one: release it here. Kept, `el.onclick = null`
+                    // and `el.hidden = false` were a Global per assignment.
+                    if (comptime !value_is_copied) {
+                        if (setterValueLeavesHandle(ValueType, zig_value)) value_handed_over = false;
+                    }
 
                     // A restricted `double` or `float` (`restricted_floats`):
                     // NaN and the infinities are a TypeError, before the
@@ -8547,11 +8513,8 @@ pub fn V8Interface(comptime Interface: type) type {
                         zig_setter(instance, zig_value);
                     }
 
-                    // Setter succeeded - return undefined (copied; release ours)
-                    if (v8.v8_Undefined(isolate_inner)) |undef| {
-                        info.setReturnValue(undef);
-                        v8.v8_Value_Dispose(undef);
-                    }
+                    // Setter succeeded - return undefined
+                    conv.setReturnUndefined(info);
                 }
             }.callback;
         }
@@ -8674,9 +8637,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // The setter should NOT throw even if [[Set]] returns false
 
                     // Return undefined
-                    if (v8.v8_Undefined(isolate_inner)) |undef| {
-                        info.setReturnValue(undef);
-                    }
+                    conv.setReturnUndefined(info);
                 }
             };
         }

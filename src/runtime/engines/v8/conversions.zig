@@ -2603,13 +2603,17 @@ pub fn toV8Value(
     // Handle error unions
     if (type_info == .error_union) {
         const unwrapped = value catch |err| {
-            // Convert error to V8 exception
+            // Convert error to V8 exception. The message is read into the
+            // Error (v8_Exception_Error makes a Local of it) and released:
+            // kept, it was a Global per failed call.
             const err_name = @errorName(err);
             const err_msg = v8.v8_String_NewFromUtf8(isolate, err_name.ptr, @intCast(err_name.len)) orelse {
                 // Fallback to generic error if string creation fails
                 const fallback = v8.v8_String_NewFromUtf8(isolate, "Error".ptr, 5).?;
+                defer v8.v8_String_Dispose(fallback);
                 return @ptrCast(v8.v8_Exception_Error(fallback));
             };
+            defer v8.v8_String_Dispose(err_msg);
             return @ptrCast(v8.v8_Exception_Error(err_msg));
         };
         const PayloadType = type_info.error_union.payload;
@@ -2922,18 +2926,20 @@ pub fn setReturnValue(
     info.setReturnValue(v8_value);
 }
 
-/// Set undefined as return value
+/// Set undefined as return value. No handle is made for it: the setter's
+/// null case is V8's ReturnValue::SetUndefined. Made through toV8Undefined,
+/// the Global was never released - one per void namespace call.
 pub fn setReturnUndefined(info: *const v8.FunctionCallbackInfo) void {
-    const isolate = info.getIsolate();
-    const v8_value = toV8Undefined(isolate);
-    info.setReturnValue(v8_value);
+    v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueGlobal(info, null);
 }
 
-/// Set null as return value
+/// Set null as return value. setReturnValue copies the handle into the
+/// call's return slot, so the one made here is released after it.
 pub fn setReturnNull(info: *const v8.FunctionCallbackInfo) void {
     const isolate = info.getIsolate();
     const v8_value = toV8Null(isolate);
     info.setReturnValue(v8_value);
+    v8.v8_Value_Dispose(v8_value);
 }
 
 // ============================================================================
