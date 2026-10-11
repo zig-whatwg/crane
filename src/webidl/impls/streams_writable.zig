@@ -893,8 +893,16 @@ pub fn setUpController(realm: Realm, stream_instance: *runtime.Instance, control
         // controller's AbortController under it (the worker variant of
         // encoding/streams/decode-bad-chunks.any.js crashed on the next
         // stream's setup).
+        const ac_generation = runtime.SlabAllocator.generationOf(ac);
         controller.abort_keepalive[0] = js.clone(.{ .value = .{ .instance = ac }, .realm = realm.ctx }) catch null;
-        if (interfaces.AbortController.get_signal(ac)) |signal| {
+        if (controller.abort_keepalive[0] == null) {
+            // Not held, it cannot stay this controller's: a weak wrapper may
+            // be collected under it. And with no wrapper - a failed wrap
+            // fails the clone (template_registry.wrapInstanceAsV8Object) -
+            // nothing else frees it or its signal.
+            controller.abort_controller = null;
+            ac.releaseIfUnwrapped(ac_generation);
+        } else if (interfaces.AbortController.get_signal(ac)) |signal| {
             controller.abort_keepalive[1] = js.clone(.{ .value = .{ .instance = signal }, .realm = realm.ctx }) catch null;
         } else |_| {}
     }
@@ -1210,12 +1218,29 @@ fn signalAbort(realm: Realm, controller: *Controller, reason: Value) void {
 /// CreateWritableStream(startAlgorithm, writeAlgorithm, closeAlgorithm,
 /// abortAlgorithm, highWaterMark, sizeAlgorithm). The stream is wrapped
 /// before it is returned, so the wrapper cache owns it like one script made.
+///
+/// `sink` and `size` are this call's, failure included: the controller owns
+/// them once it exists (ClearAlgorithms or its teardown releases them), and
+/// they are released here if it never does. What is not wrapped when a step
+/// fails - a wrap that failed (template_registry.wrapInstanceAsV8Object) - is
+/// freed here, since nothing else will; what is wrapped is the wrapper
+/// cache's.
 pub fn createWritableStream(realm: Realm, ctx: runtime.Context, sink: Sink, hwm: f64, size: SizeAlgorithm) !*runtime.Instance {
+    var owns_algorithms = true;
+    errdefer if (owns_algorithms) {
+        sink.vtable.deinit(sink.ctx, ctx.allocator);
+        if (size == .callback) js.dispose(size.callback);
+    };
     // Steps 2-3: Let stream be a new WritableStream; InitializeWritableStream.
     const stream_instance = try newStream(ctx);
+    const stream_generation = runtime.SlabAllocator.generationOf(stream_instance);
+    errdefer stream_instance.releaseIfUnwrapped(stream_generation);
     _ = try realm.wrap(stream_instance);
     // Steps 4-5: a new controller, set up with the given algorithms.
     const controller_instance = try newController(ctx, stream_instance, sink, hwm, size);
+    owns_algorithms = false;
+    const controller_generation = runtime.SlabAllocator.generationOf(controller_instance);
+    errdefer controller_instance.releaseIfUnwrapped(controller_generation);
     try setUpController(realm, stream_instance, controller_instance);
     return stream_instance;
 }

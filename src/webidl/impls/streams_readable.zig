@@ -420,12 +420,29 @@ pub fn newReader(ctx: runtime.Context, kind: ReaderKind) !*runtime.Instance {
 /// CreateReadableStream(startAlgorithm, pullAlgorithm, cancelAlgorithm,
 /// highWaterMark, sizeAlgorithm). Wrapped before it is returned, so the
 /// wrapper cache owns it like one script made.
+///
+/// `source` and `size` are this call's, failure included - every caller
+/// leaves them to it: the controller owns them once it exists (ClearAlgorithms
+/// or its teardown releases them), and they are released here if it never
+/// does. What is not wrapped when a step fails - a wrap that failed
+/// (template_registry.wrapInstanceAsV8Object) - is freed here, since nothing
+/// else will; what is wrapped is the wrapper cache's.
 pub fn createReadableStream(realm: Realm, ctx: runtime.Context, source: Source, hwm: f64, size: sw.SizeAlgorithm) !*runtime.Instance {
+    var owns_algorithms = true;
+    errdefer if (owns_algorithms) {
+        source.vtable.deinit(source.ctx, ctx.allocator);
+        if (size == .callback) js.dispose(size.callback);
+    };
     // Steps 4-5: a new, initialized ReadableStream.
     const stream_instance = try newStream(ctx);
+    const stream_generation = runtime.SlabAllocator.generationOf(stream_instance);
+    errdefer stream_instance.releaseIfUnwrapped(stream_generation);
     _ = try realm.wrap(stream_instance);
     // Steps 6-7: a new controller, set up with the given algorithms.
     const controller = try newDefaultController(ctx, stream_instance, source, hwm, size);
+    owns_algorithms = false;
+    const controller_generation = runtime.SlabAllocator.generationOf(controller);
+    errdefer controller.releaseIfUnwrapped(controller_generation);
     try setUpDefaultController(realm, stream_instance, controller);
     return stream_instance;
 }
