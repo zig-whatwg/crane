@@ -332,7 +332,8 @@ pub fn wrapInstanceAsV8Object(
     // Window instances ARE the V8 global object in their realm.
     // When contentWindow is accessed from another realm, we need to return
     // the actual V8 global (which has DOMRectReadOnly, etc. on it).
-    if (std.mem.eql(u8, interface_name, "Window")) {
+    // The length first (conversions.instanceToV8Checked says why).
+    if (interface_name.len == "Window".len and std.mem.eql(u8, interface_name, "Window")) {
         const WindowImpl = @import("impls").Window;
         if (WindowImpl.getBoundV8Global(instance)) |bound_global| {
             // Return the bound global directly - this is the key for cross-realm!
@@ -607,52 +608,63 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 // Legacy Platform Object Detection
 // ============================================================================
 
-/// Known legacy platform object interfaces that have indexed or named property access.
-/// These require Proxy wrapping to ensure correct [[OwnPropertyKeys]] enumeration order.
+/// The legacy platform objects that support NAMED properties - an interface
+/// whose binding has a named property getter, its own or inherited (WebIDL
+/// 3.9), or Crane's own: CSSStyleDeclaration's camelCase CSS properties
+/// (call_namedItem / call_setNamedItem). Their
+/// wrapper is a Proxy, so that [[OwnPropertyKeys]] answers in WebIDL's order
+/// (3.9.6: supported indices, then supported names, then own string keys,
+/// then symbols): V8 lists a named interceptor's names AFTER the object's
+/// own string keys (KeyAccumulator::CollectOwnPropertyNames, 13.1 keys.cc).
 ///
-/// WebIDL 3.9: a legacy platform object is one that supports indexed or named
-/// properties - an interface with an indexed or named property getter, its
-/// own or inherited. Nothing else belongs here: HTMLTableSectionElement
-/// ("has rows collection" - but `rows` is an attribute), Selection and
-/// MimeType have neither, and wrapping them only cost them the proxy's
-/// semantics (HTMLTableRowsCollection and HTMLTableCellsCollection are not
-/// interfaces at all).
+/// A legacy platform object with an indexed getter and no named one - NodeList
+/// and RadioNodeList, DOMTokenList, DOMStringList, DOMRectList,
+/// StyleSheetList, CSSRuleList, MediaList, FileList, TouchList,
+/// DataTransferItemList - is NOT wrapped (tests/v8/indexed_property_semantics_
+/// test.zig checks that none of them has a named getter). V8's own order is already
+/// WebIDL's for it: an object's elements, then its indexed interceptor's
+/// indices, then its own string keys, then symbols - and it can have no own
+/// elements, since its indexed definer rejects every array index (3.9.3
+/// [[DefineOwnProperty]] step 1, no indexed setter). Unwrapped, V8 reaches its
+/// indexed interceptor from the inline cache (LoadIndexedInterceptorIC) where
+/// a proxy went through the runtime on every `list[i]`
+/// (Runtime_GetPropertyWithReceiver, JSProxy::GetProperty) and every `i in
+/// list` called the proxy's `has` trap, which looked up and called
+/// Reflect.has: 55% of an Array.prototype.indexOf over a NodeList (gc_bench
+/// profile, 2026-10-11; NodeList-static-length-getter-tampered-indexOf-*.html
+/// do ~2.5e8 of them). And its [[Set]] and [[DefineOwnProperty]] are then
+/// V8's with the interceptors, as WebIDL says: a sloppy-mode `list[0] = x`
+/// fails quietly and Object.defineProperty(list, "0", ...) throws a
+/// TypeError, where the proxy's set trap threw in sloppy mode too and its
+/// defineProperty trap (Reflect.defineProperty) answered success
+/// (webidl/ecmascript-binding/legacy-platform-object/DefineOwnProperty.html).
+///
+/// HTMLTableSectionElement ("has rows collection" - but `rows` is an
+/// attribute), Selection and MimeType have neither kind of getter, and
+/// wrapping them only cost them the proxy's semantics.
 const legacy_platform_objects = [_][]const u8{
-    // DOM Collections with indexed/named access
-    "NodeList",
     "HTMLCollection",
-    "NamedNodeMap",
-    "DOMTokenList",
-    "DOMStringList",
-    "DOMRectList",
-    "StyleSheetList",
-    "CSSRuleList",
-    "CSSStyleDeclaration",
-    "MediaList",
-    // Form-related collections
     "HTMLFormControlsCollection",
     "HTMLOptionsCollection",
-    "RadioNodeList",
-    // File API
-    "FileList",
-    // Storage
+    "NamedNodeMap",
     "Storage",
-    // Plugin-related (legacy)
     "Plugin",
     "PluginArray",
     "MimeTypeArray",
-    // Touch events
-    "TouchList",
-    // Data transfer
-    "DataTransferItemList",
+    // Named properties of Crane's binding, not of the IDL. Unwrapped, V8 runs
+    // its named setter interceptor before a prototype accessor, so
+    // `style.cssText = ...` set an unknown property "css-text" instead
+    // (content-security-policy/style-src/style-src-inline-style-with-csstext
+    // .html); the proxy's set trap finds the accessor first.
+    "CSSStyleDeclaration",
     // NOTE: Window is NOT included here because it's the global object
     // and wrapping it in a Proxy breaks method invocation semantics.
     // Window's OwnPropertyKeys order needs special handling in V8 C++.
 };
 
-/// Check if an interface name represents a legacy platform object.
-/// Legacy platform objects need Proxy wrapping for correct OwnPropertyKeys behavior.
-fn isLegacyPlatformObject(interface_name: []const u8) bool {
+/// Whether an interface's wrapper is a Proxy: a legacy platform object with
+/// named properties (see legacy_platform_objects).
+pub fn isLegacyPlatformObject(interface_name: []const u8) bool {
     for (legacy_platform_objects) |lpo_name| {
         if (std.mem.eql(u8, interface_name, lpo_name)) {
             return true;
