@@ -165,6 +165,20 @@ pub fn deinit(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
+/// Install the association hook once, at process startup.
+pub fn installHooks() void {
+    dom.selection.install(.{ .bind_document = &bindDocument });
+}
+
+fn bindDocument(selection: *runtime.Instance, document: *runtime.Instance) void {
+    const internal = getInternal(selection) orelse return;
+    if (internal.document) |link| if (link.isLive() and link.instance == document) return;
+    // Document has wrapped the Selection through KeptChild.handOut first.
+    // Two traced edges permit the document/selection cycle to collect.
+    engine.traceChild(selection, document, .{ .name = "document" });
+    internal.document = Link.to(document);
+}
+
 fn associatedDocument(internal: *const InternalState) ?*runtime.Instance {
     const link = internal.document orelse return null;
     return if (link.isLive()) link.instance else null;

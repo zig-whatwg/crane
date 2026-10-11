@@ -64,6 +64,7 @@ pub const message_ports = @import("message_ports.zig");
 /// ports share.
 pub const port_channels = @import("port_channels.zig");
 pub const cloning_steps = @import("cloning_steps.zig");
+pub const selection = @import("selection.zig");
 pub const range_boundaries = @import("range_boundaries.zig");
 pub const node_document = @import("node_document.zig");
 pub const template_contents = @import("template_contents.zig");

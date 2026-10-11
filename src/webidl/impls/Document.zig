@@ -4027,6 +4027,9 @@ pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!*runtim
 pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
 
+    // Selection API: a document without a browsing context has no selection.
+    if (internal.destroyed or internal.default_view == null) return null;
+
     // The document's one selection, made on first use.
     const selection = internal.selection orelse blk: {
         const made = interfaces.Selection.init(internal.allocator, instance.ctx) catch |err| {
@@ -4042,6 +4045,7 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     // It is this document's for the document's whole life, whatever script
     // keeps of it (`KeptChild`).
     internal.selection_kept.handOut(instance, selection, .{ .name = "selection" });
+    @import("dom").selection.bindDocument(selection, instance);
     return selection;
 }
 
