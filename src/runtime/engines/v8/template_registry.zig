@@ -332,7 +332,8 @@ pub fn wrapInstanceAsV8Object(
     // Window instances ARE the V8 global object in their realm.
     // When contentWindow is accessed from another realm, we need to return
     // the actual V8 global (which has DOMRectReadOnly, etc. on it).
-    if (std.mem.eql(u8, interface_name, "Window")) {
+    // The length first (conversions.instanceToV8Checked says why).
+    if (interface_name.len == "Window".len and std.mem.eql(u8, interface_name, "Window")) {
         const WindowImpl = @import("impls").Window;
         if (WindowImpl.getBoundV8Global(instance)) |bound_global| {
             // Return the bound global directly - this is the key for cross-realm!
