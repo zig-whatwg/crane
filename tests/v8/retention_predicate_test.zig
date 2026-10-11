@@ -399,3 +399,55 @@ test "anyConversionKeepsHandle - only a .handle keeps the argument's handle" {
     try std.testing.expect(!anyKeeps(webidl.Opt(runtime.JSValue), webidl.Opt(runtime.JSValue).notPassed()));
     try std.testing.expect(!anyKeeps(webidl.Opt(runtime.JSValue), webidl.Opt(runtime.JSValue).passed(runtime.JSValue.jsUndefined)));
 }
+
+// ---------------------------------------------------------------------------
+// `setterValueLeavesHandle` - may an attribute setter release its value's
+// handle once the value is converted, for a type whose conversion does not
+// always copy? TRUE releases it, so every answer the value cannot prove must
+// be FALSE.
+
+const leaves = v8.interface_mod.setterValueLeavesHandle;
+
+test "setterValueLeavesHandle - a primitive or null any refers to nothing" {
+    try std.testing.expect(leaves(runtime.JSValue, runtime.JSValue.jsNull));
+    try std.testing.expect(leaves(runtime.JSValue, .{ .boolean = false }));
+    try std.testing.expect(leaves(runtime.JSValue, .{ .string = .{ .data = "x", .owned = false } }));
+    try std.testing.expect(leaves(?runtime.JSValue, null));
+    try std.testing.expect(leaves(?runtime.JSValue, .{ .number = 1 }));
+}
+
+test "setterValueLeavesHandle - an object any is the handle itself: kept" {
+    var dummy: u64 = 0;
+    const handle_value: runtime.JSValue = .{ .handle = .{ .ptr = @ptrCast(&dummy) } };
+    try std.testing.expect(!leaves(runtime.JSValue, handle_value));
+    try std.testing.expect(!leaves(?runtime.JSValue, handle_value));
+}
+
+test "setterValueLeavesHandle - a null EventHandler made nothing; a function is kept" {
+    // typedefs.EventHandler, reconstructed: `?EventHandlerNonNull`, a
+    // function pointer (the typedefs module is not this test's import).
+    const EventHandler = ?*const fn (event: *runtime.Instance) runtime.JSValue;
+    try std.testing.expect(leaves(EventHandler, null));
+    var dummy: u64 = 0;
+    const function: EventHandler = @ptrCast(@alignCast(&dummy));
+    try std.testing.expect(!leaves(EventHandler, function));
+}
+
+test "setterValueLeavesHandle - a copied type is released elsewhere, and answers no" {
+    // argHandleIsCopied's types are released whatever their value
+    // (makeSetterCallback's value_is_copied); this predicate is never theirs.
+    try std.testing.expect(!leaves(runtime.DOMString, runtime.DOMString.empty));
+    try std.testing.expect(!leaves(?i32, null));
+}
+
+test "setterValueLeavesHandle - an unknown type defaults to KEPT" {
+    // The default must be FALSE: a type nobody listed keeps its handle and the
+    // old leak, which costs memory and never correctness.
+    var dummy: u64 = 0;
+    const SomethingNew = struct { a: u32, b: *anyopaque };
+    try std.testing.expect(!leaves(SomethingNew, .{ .a = 0, .b = @ptrCast(&dummy) }));
+    const Shape = union(enum) { value: runtime.JSValue, text: runtime.DOMString };
+    try std.testing.expect(!leaves(Shape, .{ .text = runtime.DOMString.empty }));
+    const Dictionary = struct { detail: ?runtime.JSValue = null };
+    try std.testing.expect(!leaves(Dictionary, .{}));
+}

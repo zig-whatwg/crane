@@ -92,6 +92,10 @@ fn resultIsOwned(comptime T: type, result: T) bool {
         else => {},
     }
     if (T == runtime.JSValue) return result != .instance;
+    // The undefined `conv.toV8Value` makes for a void payload (an
+    // `anyerror!void` that succeeded) is made for the call. Kept, every
+    // `console.groupEnd()` left one.
+    if (T == void) return true;
     return @import("interface.zig").getterValueIsOwned(T);
 }
 
@@ -447,6 +451,19 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     // Track JS argument index separately from param index
                     var js_arg_idx: c_int = 0;
 
+                    // Every `info.get(i)` is an owned Global, and the
+                    // arguments are the call's, BORROWED by the impl as an
+                    // interface operation's are (AGENTS.md "The engine
+                    // boundary", rule 3): what a conversion copied out was
+                    // released as it converted (`convertArgReleasing`), and
+                    // the rest - an `any`'s `.handle` - goes once the call
+                    // returns (`releaseArguments`). Kept, each argument was a
+                    // Global for the agent's life: `CSS.escape("a")` left 32
+                    // bytes of global handles per call (lane callleak).
+                    // `converted` counts the parameters whose value is set.
+                    var converted: usize = 0;
+                    defer releaseArguments(&args, converted, allocator);
+
                     // Extract each argument based on its type
                     inline for (fn_type_info.params, 0..) |param, i| {
                         const ParamType = param.type.?;
@@ -480,6 +497,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
 
                             args[i] = global_context.?;
                             impl_context = global_context.?;
+                            converted = i + 1;
                             // runtime.Context doesn't consume a JS argument
                             continue;
                         }
@@ -516,13 +534,17 @@ pub fn V8Namespace(comptime Namespace: type) type {
                             };
                             for (0..remaining_args) |j| {
                                 const v8_value = info.get(@intCast(js_arg_idx + @as(c_int, @intCast(j))));
-                                // Convert V8 value to runtime.JSValue using proper conversion
-                                arg_slice[j] = conv.fromV8Value(runtime.JSValue, allocator, isolate, context, v8_value) catch {
+                                // Convert V8 value to runtime.JSValue using proper conversion.
+                                // A primitive's handle goes here; an object's `.handle`
+                                // is the element's until the call is over.
+                                arg_slice[j] = interface.convertArgReleasing(runtime.JSValue, allocator, isolate, context, v8_value) catch {
+                                    for (arg_slice[0..j]) |done| interface.releaseAnyArgument(runtime.JSValue, done);
                                     conv.throwTypeError(isolate, "Failed to convert value to JSValue");
                                     return;
                                 };
                             }
                             args[i] = arg_slice;
+                            converted = i + 1;
                             js_arg_idx += @intCast(remaining_args);
                             continue;
                         }
@@ -554,9 +576,12 @@ pub fn V8Namespace(comptime Namespace: type) type {
                             continue;
                         }
 
-                        // Regular typed argument - extract and convert
+                        // Regular typed argument - extract and convert. Its
+                        // handle goes as the operation path's does: at once
+                        // for a conversion that copies (and on a failed one),
+                        // after the call for one whose value refers to it.
                         const v8_value = info.get(js_arg_idx);
-                        args[i] = conv.fromV8Value(
+                        args[i] = interface.convertArgReleasing(
                             ParamType,
                             allocator,
                             isolate,
@@ -567,6 +592,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                             conv.throwTypeError(isolate, "Type error in argument");
                             return;
                         };
+                        converted = i + 1;
                         js_arg_idx += 1;
                     }
 
@@ -600,6 +626,40 @@ pub fn V8Namespace(comptime Namespace: type) type {
             };
 
             return Wrapper.callback;
+        }
+
+        /// Release what the first `converted` arguments of a call still hold
+        /// once it has returned: what `interface.freeArgument` releases for
+        /// an operation's argument (an `any`'s `.handle`, a buffer source's
+        /// reference, a callback's wrapper), and each element of a variadic
+        /// `any`. The impls are BORROWERS: every namespace operation taking
+        /// an `any` was read for a keeper (2026-10-11) - console's print the
+        /// value and drop it (an object as "[object]"; table, dir and dirxml
+        /// ignore theirs), CSS's are NotImplemented stubs, TestUtils.gc takes
+        /// none, and WebAssembly is the engine's own (never bound here).
+        ///
+        /// A parameter handed the raw handle (`anyopaque`, a ConsoleValue
+        /// slice) is not released: no namespace takes one today, and such an
+        /// impl's use of the handle cannot be read off its value.
+        fn releaseArguments(args: anytype, converted: usize, allocator: std.mem.Allocator) void {
+            const params = @typeInfo(@typeInfo(@TypeOf(args)).pointer.child).@"struct".fields;
+            inline for (params, 0..) |field, i| {
+                const P = field.type;
+                if (i < converted) {
+                    if (comptime P == runtime.Context or P == []const runtime.ConsoleValue or
+                        P == []const *const anyopaque or P == *anyopaque or P == *const anyopaque)
+                    {
+                        // Not a converted argument, or one whose handle is the impl's to read.
+                    } else if (comptime P == []const runtime.JSValue) {
+                        for (args.*[i]) |value| interface.releaseAnyArgument(runtime.JSValue, value);
+                    } else {
+                        // `allocator` is the call's arena, which the
+                        // conversions allocated from: freeing into it is
+                        // harmless, and the arena goes after this.
+                        interface.freeArgument(P, allocator, args.*[i]);
+                    }
+                }
+            }
         }
     };
 }
