@@ -245,6 +245,18 @@ test "splitText splits at a code-unit offset, through a pair if asked" {
     }.body);
 }
 
+test "wholeText joins a pair split across adjacent Text nodes" {
+    try run(struct {
+        fn body(f: *Fixture) !void {
+            const first = try f.text("x" ++ hi_d83d);
+            _ = try f.text(lo_de00 ++ "y");
+            var whole = try interfaces.Text.get_wholeText(first);
+            defer whole.deinit(first.ctx.allocator);
+            try testing.expectEqualSlices(u8, "x" ++ grinning ++ "y", whole.asSlice());
+        }
+    }.body);
+}
+
 test "normalize joins the halves and moves a range by code units" {
     try run(struct {
         fn body(f: *Fixture) !void {
