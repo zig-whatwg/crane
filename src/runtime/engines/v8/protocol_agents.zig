@@ -21,6 +21,7 @@ const protocol_modules = @import("protocol_modules.zig");
 const isolate_lifecycle = @import("isolate_lifecycle.zig");
 const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
+const intl_binding = @import("intl_binding.zig");
 const isolate_templates = @import("isolate_templates.zig");
 const template_registry = @import("template_registry.zig");
 const context_manager = @import("context_manager.zig");
@@ -135,6 +136,11 @@ const AgentRecord = struct {
     /// template_registry.cache_generation when it was made: a later
     /// generation means the template registry was rebuilt, and so must it be.
     window_properties_generation: u64 = 0,
+    /// The agent's live Intl objects' internal slots (intl_binding.Objects):
+    /// made by its first Intl construction, on the agent's thread; freed by
+    /// its end. The adapter's per-isolate state is the agent's (instances
+    /// B2), as the nine process-wide Intl registries it replaces were not.
+    intl_objects: ?*intl_binding.Objects = null,
 };
 
 /// The agent's PatternMatcher, made on its first use; null for an isolate
@@ -144,6 +150,15 @@ pub fn patternMatcherOf(isolate: *ffi.Isolate) ?*ffi.PatternMatcher {
     const record = recordOf(isolate) orelse return null;
     if (record.pattern_matcher == null) record.pattern_matcher = ffi.v8_PatternMatcher_New();
     return record.pattern_matcher;
+}
+
+/// The agent's Intl objects, made on their first use with the agent's
+/// allocator; null for an isolate createAgent did not make, or when there is
+/// no memory for them. Called on the agent's own thread only.
+pub fn intlObjectsOf(isolate: *ffi.Isolate) ?*intl_binding.Objects {
+    const record = recordOf(isolate) orelse return null;
+    if (record.intl_objects == null) record.intl_objects = intl_binding.Objects.create(record.allocator) catch null;
+    return record.intl_objects;
 }
 
 var agents_lock: std.Io.Mutex = .init;
@@ -311,9 +326,14 @@ pub fn endAgent(agent: *Agent) void {
     const pattern_matcher = if (record) |r| r.pattern_matcher else null;
     const window_properties = if (record) |r| r.window_properties_template else null;
     const deferred_teardown = if (record) |r| r.deferred_teardown else null;
+    const intl_objects = if (record) |r| r.intl_objects else null;
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
+    // Its Intl objects' internal slots, whichever kind of agent it is: their
+    // weak handles are this isolate's, disarmed here before the collections
+    // below could reach a freed cell.
+    if (intl_objects) |objects| objects.destroy();
     // Its utility context and compiled patterns: handles of this isolate,
     // released before it is disposed.
     ffi.v8_PatternMatcher_Delete(pattern_matcher);

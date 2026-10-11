@@ -48,7 +48,6 @@ const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const V8EventLoop = @import("event_loop.zig").V8EventLoop;
 const v8_engine = @import("engine.zig");
-const intl_binding = @import("intl_binding.zig");
 const fetch = @import("fetch");
 const iface_bindings_mod = @import("interface_bindings.zig");
 const helpers = @import("webidl").helpers;
@@ -302,11 +301,9 @@ pub fn deinit() void {
         state.is_tearing_down = true;
 
         // Phase: Static Registries (cleanup before context-specific resources)
-        // Clean up Intl registries (safety net for entries not GC'd)
-        // This must be done before contexts are destroyed since weak callbacks
-        // may still reference registry data
+        // (The Intl objects' state is the agent's: protocol_agents.endAgent
+        // frees it.)
         coordinator.cleanupPhase(.static_registries);
-        intl_binding.deinitAllRegistries();
 
         // Clean up ObservableArray static registry
         // This is a safety net for states not cleaned up via V8 GC weak callbacks
