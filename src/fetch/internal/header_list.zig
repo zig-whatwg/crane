@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const parsing = @import("parsing.zig");
 
 /// A header is a tuple that consists of a name and value.
 /// Spec: https://fetch.spec.whatwg.org/#concept-header
@@ -187,8 +188,8 @@ pub const HeaderList = struct {
 
             // Step 5.2: If position is not past end and code point is "
             if (position < input.len and input[position] == '"') {
-                // Collect HTTP quoted string
-                const quoted = try collectHttpQuotedString(allocator, input, &position);
+                // Step 5.2.1 uses extract-value=false: retain quotes and escapes.
+                const quoted = try parsing.collectHttpQuotedString(allocator, input, &position, false);
                 defer allocator.free(quoted);
                 try temporary_value.appendSlice(allocator, quoted);
 
@@ -202,7 +203,11 @@ pub const HeaderList = struct {
             const trimmed = trimHttpWhitespace(temporary_value.items);
 
             // Step 5.4: Append temporaryValue to values
-            try values.append(allocator, try allocator.dupe(u8, trimmed));
+            {
+                const copy = try allocator.dupe(u8, trimmed);
+                errdefer allocator.free(copy);
+                try values.append(allocator, copy);
+            }
 
             // Step 5.5: Set temporaryValue to empty string
             temporary_value.clearRetainingCapacity();
@@ -410,50 +415,6 @@ pub const HeaderList = struct {
     // =========================================================================
     // Helper functions
     // =========================================================================
-
-    /// Collect an HTTP quoted string from input starting at position.
-    /// Spec: https://fetch.spec.whatwg.org/#collect-an-http-quoted-string
-    fn collectHttpQuotedString(allocator: Allocator, input: []const u8, position: *usize) ![]const u8 {
-        var result: std.ArrayListUnmanaged(u8) = .empty;
-        errdefer result.deinit(allocator);
-
-        // Step 1: Assert position is at "
-        std.debug.assert(position.* < input.len and input[position.*] == '"');
-
-        // Step 2: Advance past opening quote
-        position.* += 1;
-
-        // Step 3: While true
-        while (true) {
-            // Collect code points that are not " or \
-            while (position.* < input.len and input[position.*] != '"' and input[position.*] != '\\') {
-                try result.append(allocator, input[position.*]);
-                position.* += 1;
-            }
-
-            if (position.* >= input.len) {
-                break;
-            }
-
-            const quote_or_backslash = input[position.*];
-            position.* += 1;
-
-            if (quote_or_backslash == '\\') {
-                if (position.* < input.len) {
-                    try result.append(allocator, input[position.*]);
-                    position.* += 1;
-                } else {
-                    try result.append(allocator, '\\');
-                    break;
-                }
-            } else {
-                // quote_or_backslash == '"'
-                break;
-            }
-        }
-
-        return try result.toOwnedSlice(allocator);
-    }
 
     /// Trim HTTP tab or space (0x09, 0x20) from start and end of value.
     fn trimHttpWhitespace(value: []const u8) []const u8 {
@@ -721,7 +682,7 @@ test "HeaderList: getDecodeSplit with quotes" {
     }
 
     try std.testing.expectEqual(@as(usize, 2), values.len);
-    try std.testing.expectEqualStrings("1,2", values[0]);
+    try std.testing.expectEqualStrings("\"1,2\"", values[0]);
     try std.testing.expectEqualStrings("3", values[1]);
 }
 

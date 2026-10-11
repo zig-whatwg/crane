@@ -50,6 +50,8 @@ pub fn extractMimeType(allocator: std.mem.Allocator, headers: *const HeaderList)
         const current = &mime_type.?;
         // 4. If mimeType's essence is not essence, then:
         if (essence == null or !std.mem.eql(u16, essence.?, temporary_essence)) {
+            // The essence transfers below, after the fallible charset copy.
+            errdefer allocator.free(temporary_essence);
             // 1. Set charset to null.
             if (charset) |c| allocator.free(c);
             charset = null;
