@@ -25,6 +25,6 @@
    - A traced WPT run (`CRANE_LEAK_TRACES=1`) grows by up to about 830 B per capture, and makes two captures per allocation-and-free pair (gc_bench measured 660 B for a call that made one of each). Its RSS, footprint and OOMs are not results, and a long file can exhaust memory on traces alone. Keep traced runs to small files, as the lessons on traced runs already say. Its leak REPORT is unaffected: the arena is mmap, which `leaks` and the DebugAllocator never count.
    - `zig build test` binaries grow the same way through `std.testing.allocator`'s 10 frames, and nothing in the repo can change std's test allocator. A test that loops over many allocations can take a lot of memory: budget for it, never read it as a leak.
 3. Confirm any "per-call RSS" claim under `--c-alloc` before chasing it. The leak is real only if it also shows in malloc or in `global_handle_bytes`.
-4. Upstream: the leak is in Zig's std, not in Crane. An issue text is in tmp/plans/lane-callleak-handoff.md.
+4. It is a known Zig 0.16 artifact of DebugAllocator's stack traces, worked around here (no traces in gc_bench) and not reported upstream (the user's decision, 2026-10-11). Revisit it when Crane moves past Zig 0.16.
 
 **Takeaway**: **RSS growth that only a DebugAllocator shows is the allocator's own bookkeeping until a malloc control shows it too. Before reading a per-call leak off RSS, run the same body under `--c-alloc`, and read `global_handle_bytes`, not a hand-kept counter, for handles.**
