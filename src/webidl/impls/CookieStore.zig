@@ -153,77 +153,39 @@ pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) a
 //
 // Cookie Store "process cookie changes": whenever the user agent's cookie
 // store changes - through fetch, a navigation, document.cookie, a WebSocket
-// handshake or this API - every Window's CookieStore whose creation URL
-// observes the change gets a `change` event, queued as a global task. Here
-// each live CookieStore registers with its jar (`listenToJar`); the jar's
-// change hook (`jarChanged`) records the change with every store on that
-// jar and queues each one's task; the task (`fireChangeEvent`) keeps the
-// changes observable for the store's URL and fires them.
+// handshake or this API, on any of the Browser's threads - every Window's
+// CookieStore whose creation URL observes the change gets a `change` event,
+// queued as a global task. Each live CookieStore listens to its Browser's
+// jar (dom.cookie_change_listeners, a supplement of the Browser's scope,
+// which is the jar's change hook); the listeners tell it of each change on
+// its own realm's thread (`deliverChange`), which records the change and
+// queues its task; the task (`fireChangeEvent`) keeps the changes
+// observable for the store's URL and fires them.
 // ============================================================================
 
-/// A CookieStore that hears its jar: the instance, its slab generation when
-/// it registered (an address is not an identity), and the jar.
-const Listening = struct {
-    instance: *runtime.Instance,
-    generation: u64,
-    jar: *CookieJar,
-};
+const CookieChangeListeners = @import("dom").cookie_change_listeners.CookieChangeListeners;
 
-/// Every CookieStore on this thread that hears a jar. The jar never points
-/// at a store - its hook is `jarChanged`, with the jar as context - so a
-/// store and the jar can end in either order.
-threadlocal var listening: std.ArrayListUnmanaged(Listening) = .empty;
-
-/// Register `instance` with the jar its relevant settings object reaches,
-/// and give that jar the hook. A store with no jar hears nothing.
+/// Listen to the jar of the Browser `instance`'s realm belongs to. A store a
+/// Browser did not make (a test realm's) hears nothing.
 fn listenToJar(instance: *runtime.Instance) void {
-    const client = clientOf(instance) orelse return;
-    listening.append(std.heap.page_allocator, .{
-        .instance = instance,
-        .generation = runtime.SlabAllocator.generationOf(instance),
-        .jar = client.jar,
-    }) catch {
+    const listeners = CookieChangeListeners.of(instance.ctx) orelse return;
+    listeners.listen(instance, &deliverChange) catch {
         log.warn("a CookieStore will fire no change events: out of memory", .{});
-        return;
     };
-    client.jar.on_change = .{ .callback = &jarChanged, .context = client.jar };
 }
 
 fn unlistenToJar(instance: *runtime.Instance) void {
-    var i: usize = 0;
-    while (i < listening.items.len) {
-        if (listening.items[i].instance == instance) {
-            _ = listening.swapRemove(i);
-        } else {
-            i += 1;
-        }
-    }
+    const listeners = CookieChangeListeners.existingOf(instance.ctx) orelse return;
+    listeners.unlisten(instance);
 }
 
-/// Whether `instance`, as it was at `generation`, still hears a jar.
-fn stillListening(instance: *runtime.Instance, generation: u64) bool {
-    for (listening.items) |entry| {
-        if (entry.instance == instance and entry.generation == generation) return true;
-    }
-    return false;
-}
-
-/// The jar's change hook: `cookie` (borrowed) was inserted or removed.
-/// HttpOnly cookies are never observable to script.
-fn jarChanged(context: ?*anyopaque, change_type: cookiestore.CookieChangeType, cookie: *const Cookie) void {
-    if (cookie.http_only) return;
-    const jar: *CookieJar = @ptrCast(@alignCast(context.?));
-    // By index: a store's task can run here and now (a realm with no loop),
-    // and its script can make or end a CookieStore.
-    var i: usize = 0;
-    while (i < listening.items.len) : (i += 1) {
-        const entry = listening.items[i];
-        if (entry.jar != jar) continue;
-        if (runtime.SlabAllocator.generationOf(entry.instance) != entry.generation) continue;
-        const internal = getInternalState(entry.instance) orelse continue;
-        internal.change_observer.recordChange(change_type, cookie.*) catch continue;
-        scheduleChangeEvent(entry.instance, internal);
-    }
+/// The listeners' delivery, on `instance`'s realm's thread: `cookie`
+/// (borrowed) was inserted or removed. Recorded with the store, and its
+/// task queued.
+fn deliverChange(instance: *runtime.Instance, change_type: cookiestore.CookieChangeType, cookie: *const Cookie) void {
+    const internal = getInternalState(instance) orelse return;
+    internal.change_observer.recordChange(change_type, cookie.*) catch return;
+    scheduleChangeEvent(instance, internal);
 }
 
 /// Step 1.4: queue a global task on the DOM manipulation task source to
@@ -235,6 +197,8 @@ fn scheduleChangeEvent(instance: *runtime.Instance, internal: *InternalState) vo
         .instance = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
         .allocator = internal.allocator,
+        // Read now, while the store is alive: the task may find it gone.
+        .listeners = CookieChangeListeners.existingOf(instance.ctx),
     };
     internal.change_task_queued = true;
     // A CookieStore's realm is a Window's ([Exposed=(ServiceWorker,Window)],
@@ -256,11 +220,18 @@ const ChangeTask = struct {
     instance: *runtime.Instance,
     generation: u64,
     allocator: std.mem.Allocator,
+    /// The store's Browser's listeners: whether it still listens says
+    /// whether it is still there. They outlive every task of the Browser.
+    listeners: ?*CookieChangeListeners,
 
     fn run(context: ?*anyopaque) void {
         const self: *ChangeTask = @ptrCast(@alignCast(context.?));
         const instance = self.instance;
-        const alive = stillListening(instance, self.generation);
+        const listeners = self.listeners orelse {
+            self.allocator.destroy(self);
+            return;
+        };
+        const alive = listeners.isListening(instance, self.generation);
         self.allocator.destroy(self);
         if (!alive) return;
         // Entered from the event loop, not from script: the realm's task.

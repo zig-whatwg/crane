@@ -129,17 +129,16 @@ pub const Browser = struct {
     /// Whether isolate was created from a snapshot (affects context initialization)
     used_snapshot: bool,
     /// The user agent's cookie jar: one for every window, frame and worker
-    /// this Browser runs. Fetch sends and stores through it, and
-    /// document.cookie and cookieStore read and write it; a realm reaches it
-    /// through its settings object (dom.global_settings.cookieJarOf).
+    /// this Browser runs - a supplement of its scope, which ends with it.
+    /// Fetch sends and stores through it, and document.cookie and
+    /// cookieStore read and write it; a realm reaches it through its
+    /// settings object (dom.global_settings.cookieJarOf). Its change hook is
+    /// the Browser's CookieStore listeners (dom.cookie_change_listeners).
     ///
-    /// SINGLE-THREADED, and unlocked: every realm that reaches it runs on
-    /// this Browser's thread - a worker's tasks run as timers on the page's
-    /// loop (html/worker_host.zig), and fetch reads and writes the jar from
-    /// its algorithms, never from the network layer's callbacks. Whoever
-    /// moves a worker, or any fetch step, onto another thread must lock
-    /// this jar first.
-    cookie_jar: cookiestore.CookieJar,
+    /// Reached from the Browser's window thread and every worker's: whoever
+    /// reads or writes it holds its lock (CookieJar, "One jar serves every
+    /// thread of a Browser").
+    cookie_jar: *cookiestore.CookieJar,
     /// The Browser's scope: its per-Browser state, as supplements every realm
     /// of it reaches (ContextData.browser_scope; docs/instances.md rule 2) -
     /// its live workers (html.WorkerRegistry). Ends after every realm and
@@ -234,6 +233,12 @@ pub const Browser = struct {
         // The host's media backend, which every realm of this Browser reads
         // (html.media_runtime.MediaHost), set before any realm exists.
         (try scope.of(@import("html").media_runtime.MediaHost)).backend = config.media_backend;
+        // The user agent's cookie jar, and the CookieStores that hear it:
+        // the listeners are its change hook from before any realm can change
+        // it. (The jar first: supplements end in reverse, so the listeners
+        // go before the jar they hear.)
+        const cookie_jar = try scope.of(cookiestore.CookieJar);
+        (try scope.of(@import("dom").cookie_change_listeners.CookieChangeListeners)).hearJar(cookie_jar);
 
         // Allocate browser struct
         const browser = try allocator.create(Browser);
@@ -249,7 +254,7 @@ pub const Browser = struct {
             .initialized = true,
             .event_loop = event_loop,
             .used_snapshot = used_snapshot,
-            .cookie_jar = cookiestore.CookieJar.init(allocator),
+            .cookie_jar = cookie_jar,
             .scope = scope,
         };
 
@@ -284,8 +289,6 @@ pub const Browser = struct {
         // The page's fetches still in flight release what they hold - a
         // promise, and through it the realm - while the isolate lives.
         _ = @import("fetch").algorithms.async_fetch.sweep();
-        // Nothing that could reach the jar is left.
-        self.cookie_jar.deinit();
 
         // Flush and cleanup storage
         self.storage.flush() catch {};
@@ -418,7 +421,7 @@ pub const Browser = struct {
             self.allocator,
             agent,
             self.storage,
-            &self.cookie_jar,
+            self.cookie_jar,
             serialized orelse url,
             self.event_loop,
             context_type,

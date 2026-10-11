@@ -291,3 +291,73 @@ fn indexedDBIsNotSharedAcrossBrowsers() !void {
 test "IndexedDB: a database one Browser made does not exist in the next" {
     try onThread(indexedDBIsNotSharedAcrossBrowsers, .{});
 }
+
+// ============================================================================
+// Cookies: the Browser's jar, and the CookieStores that hear it
+// ============================================================================
+
+const cookiestore = @import("cookiestore");
+
+/// A page in a secure context (a loopback origin is potentially
+/// trustworthy): cookieStore is [SecureContext].
+const cookie_page_url = "http://127.0.0.1/page.html";
+
+fn openCookiePage(browser: *browser_mod.Browser) !void {
+    try browser.navigateWithOptions(cookie_page_url, .window, .{ .skip_load = true });
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body></body>", .{ .base_url = cookie_page_url });
+}
+
+/// A response's `Set-Cookie` stored on a thread that is not the page's - as
+/// a dedicated worker's fetch stores one, on the worker's thread.
+fn storeOnAnotherThread(jar: *cookiestore.CookieJar, header: []const u8) !void {
+    _ = try cookiestore.parseAndStoreCookie(testing.allocator, jar, header, "/", .{
+        .is_secure = false,
+        .host = "127.0.0.1",
+        .http_only_allowed = true,
+    });
+}
+
+fn cookieStoreHearsEveryThread() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try openCookiePage(browser);
+    try expectScript(browser,
+        \\globalThis.heard = [];
+        \\cookieStore.addEventListener('change', event => {
+        \\  for (const item of event.changed) heard.push(item.name + '=' + item.value);
+        \\});
+        \\true
+    );
+    try onThread(storeOnAnotherThread, .{ browser.cookie_jar, "w=1; Path=/" });
+    try waitFor(browser, "heard.length > 0");
+    try expectScript(browser, "heard.join() === 'w=1'");
+    // And the page's own thread, as before.
+    try expectScript(browser, "document.cookie = 'p=2; path=/'; true");
+    try waitFor(browser, "heard.length > 1");
+    try expectScript(browser, "heard.join() === 'w=1,p=2'");
+}
+
+test "cookies: a page's cookieStore hears a cookie stored on another of its Browser's threads" {
+    try onThread(cookieStoreHearsEveryThread, .{});
+}
+
+fn cookiesEndWithTheirBrowser() !void {
+    {
+        const browser = try startBrowser();
+        defer browser.deinit();
+        try openPage(browser);
+        try expectScript(browser, "document.cookie = 'k=a; path=/'; document.cookie === 'k=a'");
+        // The same Browser's next page of the origin shares the jar.
+        try openPage(browser);
+        try expectScript(browser, "document.cookie === 'k=a'");
+    }
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try openPage(browser);
+    try expectScript(browser, "document.cookie === ''");
+}
+
+test "cookies: a Browser's jar ends with it - the next Browser sees none of its cookies" {
+    try onThread(cookiesEndWithTheirBrowser, .{});
+}
