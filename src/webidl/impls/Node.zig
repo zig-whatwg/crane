@@ -1040,12 +1040,6 @@ pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(diction
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = internal.node_base orelse return instance;
 
-    // If composed is true and this is in a shadow tree, get the composed root
-    // TODO: Handle shadow DOM composed root when ShadowRoot is implemented
-    if (options.was_passed) {
-        _ = options.value.composed;
-    }
-
     // Walk up the tree to find the root using NodeBase
     var current_base = node_base;
     while (current_base.parent_node) |parent_base| {
@@ -1054,7 +1048,17 @@ pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(diction
 
     // Convert root NodeBase back to Instance
     const root_opaque = instance_bridge.getInstance(current_base) orelse return instance;
-    return @ptrCast(@alignCast(root_opaque));
+    var root: *runtime.Instance = @ptrCast(@alignCast(root_opaque));
+    // DOM: the shadow-including root is a shadow root's host's
+    // shadow-including root, otherwise the ordinary root. Slot assignment
+    // does not change either ancestry relation.
+    if (options.was_passed and (options.value.composed orelse false)) {
+        while (root.stateAs(interfaces.ShadowRoot.State) != null) {
+            const host = try interfaces.ShadowRoot.get_host(root);
+            root = try call_getRootNode(host, .notPassed());
+        }
+    }
+    return root;
 }
 
 /// Operation: contains
