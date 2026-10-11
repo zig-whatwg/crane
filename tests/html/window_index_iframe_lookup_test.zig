@@ -15,13 +15,21 @@ const testing = std.testing;
 const engine = @import("engine");
 const h = @import("refcount_holders_helpers.zig");
 
-fn liveObjectGlobals() !i64 {
+fn counterValue(name: []const u8) !i64 {
     const counters = try engine.diagnosticCounters(testing.allocator);
     defer testing.allocator.free(counters);
     for (counters) |counter| {
-        if (std.mem.eql(u8, counter.name, "live_object_globals")) return counter.value;
+        if (std.mem.eql(u8, counter.name, name)) return counter.value;
     }
     return error.NoCounter;
+}
+
+fn liveObjectGlobals() !i64 {
+    return counterValue("live_object_globals");
+}
+
+fn liveContextGlobals() !i64 {
+    return counterValue("live_context_globals");
 }
 
 /// Live object Globals after 20 iframes are added, each looked up as
@@ -65,4 +73,23 @@ fn lookupLetsItsListGo() !void {
 
 test "window[i] lets go of the iframe list it reads" {
     try h.onFreshThread(lookupLetsItsListGo);
+}
+
+fn indexedReadsLeaveNoGlobal() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    try page.run("globalThis.frame = document.body.appendChild(document.createElement('iframe')); void window[0];");
+    const before = try liveObjectGlobals() + try liveContextGlobals();
+    try page.run("for (let i = 0; i < 500; i++) { void window[0]; void window[1]; }");
+    const after = try liveObjectGlobals() + try liveContextGlobals();
+    // 1,000 indexed reads: the getter's context and global handles are its
+    // own and released, so the count does not grow with the reads.
+    if (after - before > 20) {
+        std.debug.print("live object and context Globals: {d} -> {d} over 1,000 indexed reads\n", .{ before, after });
+        return error.LeakedGlobals;
+    }
+}
+
+test "window[i] leaves no Global behind" {
+    try h.onFreshThread(indexedReadsLeaveNoGlobal);
 }
