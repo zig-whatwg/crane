@@ -94,9 +94,10 @@ pub const obtainStorageBottleMap = standard.obtainStorageBottleMap;
 pub const obtainLocalStorageBottleMap = standard.obtainLocalStorageBottleMap;
 pub const obtainSessionStorageBottleMap = standard.obtainSessionStorageBottleMap;
 pub const getStorageEstimate = standard.getStorageEstimate;
-pub const initGlobalStorageShed = standard.initGlobalStorageShed;
-pub const getGlobalStorageShed = standard.getGlobalStorageShed;
-pub const deinitGlobalStorageShed = standard.deinitGlobalStorageShed;
+pub const getBucketFileSystem = standard.getBucketFileSystem;
+/// The user agent's storage shed and bucket file systems: one per Browser, a
+/// supplement of its scope (docs/instances.md).
+pub const UserAgentStorage = standard.UserAgentStorage;
 
 // StorageManager interface (Phase 3.10)
 pub const storage_manager = @import("storage_manager.zig");

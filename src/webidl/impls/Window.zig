@@ -1754,11 +1754,15 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     // popup's traversable starting with a copy of its opener's shed.
     const context_id = internal.browsing_context.getTop().id;
 
+    // The shed is the Browser's (its scope's supplement): a realm no Browser
+    // made has none - "the user agent is configured to not allow" storage.
+    const user_agent_storage = @import("dom").browser_state.userAgentStorageOf(instance.ctx) orelse return error.SecurityError;
+
     // Create the backend storage for this origin and browsing context
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
-    backend.* = getSessionStorageBackend(internal.allocator, context_id, internal.origin) catch |err| {
+    backend.* = getSessionStorageBackend(internal.allocator, user_agent_storage, context_id, internal.origin) catch |err| {
         // Note: errdefer above handles cleanup, just return the error
         return switch (err) {
             web_storage.StorageError.SecurityError => error.SecurityError,
@@ -1799,11 +1803,17 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
         return storage_instance;
     }
 
+    // HTML 12.2.3 step 2's local storage bottle map, in the user agent's
+    // storage shed - the Browser's this Window's realm belongs to (its
+    // scope's supplement), never another Browser's. A realm no Browser made
+    // has none: "the user agent is configured to not allow" storage.
+    const user_agent_storage = @import("dom").browser_state.userAgentStorageOf(instance.ctx) orelse return error.SecurityError;
+
     // Create the backend storage for this origin
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
-    backend.* = getLocalStorageBackend(internal.allocator, internal.origin) catch |err| {
+    backend.* = getLocalStorageBackend(internal.allocator, user_agent_storage, internal.origin) catch |err| {
         // The errdefer above destroys the block. Destroyed here as well, every
         // read in an opaque origin (SecurityError: a sandboxed frame without
         // allow-same-origin) freed it twice.

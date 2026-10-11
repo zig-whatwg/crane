@@ -18,8 +18,9 @@
 //! ```zig
 //! const storage = @import("html").storage;
 //!
-//! // Get localStorage for an origin
-//! var local = try storage.getLocalStorage(allocator, "https://example.com");
+//! // Get localStorage for an origin, in a Browser's user agent storage
+//! // (the supplement of its scope every realm of it reaches)
+//! var local = try storage.getLocalStorage(allocator, user_agent_storage, "https://example.com");
 //! defer local.deinit();
 //!
 //! // Store and retrieve values
@@ -27,7 +28,7 @@
 //! const value = local.getItem("key"); // "value"
 //!
 //! // Get sessionStorage for a browsing context
-//! var session = try storage.getSessionStorage(allocator, context_id, "https://example.com");
+//! var session = try storage.getSessionStorage(allocator, user_agent_storage, context_id, "https://example.com");
 //! defer session.deinit();
 //! ```
 //!
@@ -465,8 +466,13 @@ pub const StorageEvent = struct {
 
 /// Get localStorage for an origin
 /// HTML Standard § 12.2.3 - localStorage getter
+///
+/// `user_agent_storage` is the user agent's storage shed - the Browser's
+/// the realm belongs to (storage.UserAgentStorage, a supplement of its
+/// scope), never another Browser's.
 pub fn getLocalStorage(
     allocator: std.mem.Allocator,
+    user_agent_storage: *storage_standard.UserAgentStorage,
     origin: []const u8,
 ) StorageError!Storage {
     // Step 1-2: Check for opaque origin
@@ -476,7 +482,7 @@ pub fn getLocalStorage(
 
     // Step 3: Obtain local storage bottle map
     const proxy_map_result = storage_standard.obtainLocalStorageBottleMap(
-        allocator,
+        user_agent_storage,
         origin,
         .localStorage,
     ) catch return error.OutOfMemory;
@@ -494,6 +500,7 @@ pub fn getLocalStorage(
 /// Each top-level browsing context gets its own session storage.
 pub fn getSessionStorage(
     allocator: std.mem.Allocator,
+    user_agent_storage: *storage_standard.UserAgentStorage,
     browsing_context_id: u64,
     origin: []const u8,
 ) StorageError!Storage {
@@ -514,7 +521,7 @@ pub fn getSessionStorage(
     // Note: The spec says session storage is tied to traversable navigable
     // Here we approximate this with browsing_context_id
     const proxy_map_result = storage_standard.obtainSessionStorageBottleMap(
-        allocator,
+        user_agent_storage,
         session_key,
         .sessionStorage,
     ) catch return error.OutOfMemory;
@@ -532,12 +539,11 @@ pub fn getSessionStorage(
 test "Storage - basic operations" {
     const allocator = std.testing.allocator;
 
-    // Clean up any existing global state
-    storage_standard.deinitGlobalStorageShed(allocator);
-    defer storage_standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = storage_standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
     // Get localStorage
-    var storage = try getLocalStorage(allocator, "https://example.com");
+    var storage = try getLocalStorage(allocator, &user_agent_storage, "https://example.com");
     defer storage.deinit();
 
     // Initially empty
@@ -564,10 +570,10 @@ test "Storage - basic operations" {
 test "Storage - setItem update" {
     const allocator = std.testing.allocator;
 
-    storage_standard.deinitGlobalStorageShed(allocator);
-    defer storage_standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = storage_standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var storage = try getLocalStorage(allocator, "https://example.com");
+    var storage = try getLocalStorage(allocator, &user_agent_storage, "https://example.com");
     defer storage.deinit();
 
     // Set initial value
@@ -583,10 +589,10 @@ test "Storage - setItem update" {
 test "Storage - setItem same value no-op" {
     const allocator = std.testing.allocator;
 
-    storage_standard.deinitGlobalStorageShed(allocator);
-    defer storage_standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = storage_standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var storage = try getLocalStorage(allocator, "https://example.com");
+    var storage = try getLocalStorage(allocator, &user_agent_storage, "https://example.com");
     defer storage.deinit();
 
     try storage.setItem("key", "value");
@@ -599,10 +605,10 @@ test "Storage - setItem same value no-op" {
 test "Storage - clear" {
     const allocator = std.testing.allocator;
 
-    storage_standard.deinitGlobalStorageShed(allocator);
-    defer storage_standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = storage_standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var storage = try getLocalStorage(allocator, "https://example.com");
+    var storage = try getLocalStorage(allocator, &user_agent_storage, "https://example.com");
     defer storage.deinit();
 
     try storage.setItem("key1", "value1");
@@ -617,10 +623,10 @@ test "Storage - clear" {
 test "Storage - quota enforcement" {
     const allocator = std.testing.allocator;
 
-    storage_standard.deinitGlobalStorageShed(allocator);
-    defer storage_standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = storage_standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var storage = try getLocalStorage(allocator, "https://example.com");
+    var storage = try getLocalStorage(allocator, &user_agent_storage, "https://example.com");
     defer storage.deinit();
 
     // Set a very small quota for testing
@@ -637,15 +643,15 @@ test "Storage - quota enforcement" {
 test "Storage - opaque origin security error" {
     const allocator = std.testing.allocator;
 
-    storage_standard.deinitGlobalStorageShed(allocator);
-    defer storage_standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = storage_standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
     // Empty origin should fail
-    const result1 = getLocalStorage(allocator, "");
+    const result1 = getLocalStorage(allocator, &user_agent_storage, "");
     try std.testing.expectError(error.SecurityError, result1);
 
     // "null" origin should fail
-    const result2 = getLocalStorage(allocator, "null");
+    const result2 = getLocalStorage(allocator, &user_agent_storage, "null");
     try std.testing.expectError(error.SecurityError, result2);
 }
 

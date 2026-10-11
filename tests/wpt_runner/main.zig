@@ -1475,10 +1475,6 @@ fn run(init: std.process.Init) !u8 {
     // Execute tests (prints progress and summary)
     try executeTests(allocator, discovery, options, &report, server, &deadline);
 
-    // Clean up global storage resources
-    const storage = @import("storage");
-    storage.deinitGlobalStorageShed(allocator);
-
     // Clean up global blob URL store
     const file_mod = @import("file");
     file_mod.deinitGlobalBlobURLStore(allocator);

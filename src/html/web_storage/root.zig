@@ -24,6 +24,10 @@ pub const StorageEventBroadcaster = web_storage.StorageEventBroadcaster;
 pub const StorageType = web_storage.StorageType;
 pub const StorageError = web_storage.StorageError;
 
+/// The user agent's storage shed the getters read: one per Browser, a
+/// supplement of its scope (docs/instances.md).
+pub const UserAgentStorage = @import("storage").UserAgentStorage;
+
 // Re-export getter functions
 pub const getLocalStorage = web_storage.getLocalStorage;
 pub const getSessionStorage = web_storage.getSessionStorage;

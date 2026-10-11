@@ -76,10 +76,11 @@ pub const StorageManager = struct {
         }
     }
 
-    /// Set the origin for this StorageManager
+    /// Set the origin for this StorageManager, whose shelves are in
+    /// `user_agent_storage` - the Browser's (a supplement of its scope).
     /// This must be called to enable storage operations for an origin.
     /// Typically called when associating with a document's origin.
-    pub fn setOrigin(self: *Self, origin: []const u8) !void {
+    pub fn setOrigin(self: *Self, user_agent_storage: *standard.UserAgentStorage, origin: []const u8) !void {
         // Clean up any existing origin
         if (self.origin_owned) {
             if (self.origin) |old_origin| {
@@ -96,7 +97,7 @@ pub const StorageManager = struct {
         self.origin_owned = true;
 
         // Create backend storage manager for this origin
-        self.backend = try BackendStorageManager.init(self.allocator, origin_copy);
+        self.backend = try BackendStorageManager.init(self.allocator, user_agent_storage, origin_copy);
     }
 
     /// Check if storage is persisted
@@ -186,15 +187,14 @@ test "StorageManager - estimate without origin" {
 test "StorageManager - setOrigin enables storage" {
     const allocator = std.testing.allocator;
 
-    // Clean up global storage shed before test
-    standard.deinitGlobalStorageShed(allocator);
-    defer standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
     var storage_mgr = StorageManager.init(allocator);
     defer storage_mgr.deinit();
 
     // Set origin
-    try storage_mgr.setOrigin("https://example.com");
+    try storage_mgr.setOrigin(&user_agent_storage, "https://example.com");
 
     // Now operations work with the origin
     try std.testing.expectEqualStrings("https://example.com", storage_mgr.getOrigin().?);

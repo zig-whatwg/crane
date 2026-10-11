@@ -323,9 +323,6 @@ src/service_worker/client.zig Client.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/job.zig Job.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/registration.zig Registration.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/service_worker.zig ServiceWorker.next_id 1 G P-res decl:1dfcee87d8da8735
-src/storage/quota.zig global_config 1 G I/profile decl:2be66457602efcb0
-src/storage/standard.zig global_bucket_manager 1 G I/profile decl:747163131fca0084
-src/storage/standard.zig global_local_storage_shed 1 G I/profile decl:c95c7e834fa1dc16
 src/storage/storage_manager.zig StorageManager.permission_callback 1 G H decl:7f841d1bca0027f1
 src/streams/internal/message_port.zig MessagePort.generatePortId.S.counter 1 G X decl:1dfcee87d8da8735
 src/streams/internal/read_into_request.zig sentinel_storage 1 G P-const decl:f33e1c60fc8c8315
