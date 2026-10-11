@@ -625,10 +625,10 @@ fn packageSteps(instance: *runtime.Instance, method: fetch_body.Method, bytes: [
         // formData(): the entries this's Content-Type says how to parse
         // bytes into.
         .form_data => {
-            const content_type = internal.response.header_list.get(allocator, "content-type") catch null;
-            defer if (content_type) |ct| allocator.free(ct);
+            var mime_type = try fetch.internal.mime.extractMimeType(allocator, &internal.response.header_list);
+            defer if (mime_type) |*mime| mime.deinit();
             const FormDataImpl = @import("FormData.zig");
-            const form_data = try fetch_body.parseFormData(allocator, content_type, bytes);
+            const form_data = try fetch_body.parseFormData(allocator, if (mime_type) |*mime| mime else null, bytes);
             errdefer form_data.deinit();
             return FormDataImpl.createFromInternal(allocator, instance.ctx, form_data);
         },
