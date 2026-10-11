@@ -78,8 +78,12 @@ pub const InternalState = struct {
     /// Range under the selection. Blink: SelectionEditor::Trace visits
     /// cached_range_. The selection's own wrapper lives as long as the
     /// selection: its document keeps it (Document's `selection_kept`).
+    ///
+    /// Read only through `liveRange`: the edge keeps the Range from the
+    /// collector, not from the end of its own realm.
     range: ?*runtime.Instance = null,
-    /// Teardown net for the traced range, which the collector may free first.
+    /// The range's slab generation when it became this selection's range:
+    /// `liveRange`'s teardown net.
     range_generation: u64 = 0,
 
     /// The document this selection belongs to, retained by a traced edge.
@@ -97,10 +101,7 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState, selection: *runtime.Instance) void {
-        if (self.range) |range| {
-            const link: Link = .{ .instance = range, .generation = self.range_generation };
-            if (link.isLive()) dom.selection.associateRange(range, selection, false);
-        }
+        if (liveRange(self)) |range| dom.selection.associateRange(range, selection, false);
         // Don't free the range - its wrapper owns it. The edge to it goes
         // with this selection's wrapper; nothing to end here, which may run
         // while the collector does (engine.forgetTracedChild must not).
@@ -113,11 +114,16 @@ pub const InternalState = struct {
     /// it, keeping the range while it is one (see `range`).
     fn setRange(self: *InternalState, selection: *runtime.Instance, range: ?*runtime.Instance, direction: Direction) void {
         const before = snapshot(self);
-        if (self.range != range) {
-            if (self.range) |old| {
-                const link: Link = .{ .instance = old, .generation = self.range_generation };
-                if (link.isLive()) dom.selection.associateRange(old, selection, false);
-            }
+        const current = liveRange(self);
+        if (current == null and self.range != null) {
+            // Freed under the selection: nothing to dissociate, and its slot
+            // may hold another object - possibly `range` - now.
+            self.range = null;
+            self.range_generation = 0;
+            if (range == null) engine.forgetTracedChild(selection, range_slot);
+        }
+        if (current != range) {
+            if (current) |old| dom.selection.associateRange(old, selection, false);
             self.range = range;
             if (range) |r| {
                 self.range_generation = runtime.SlabAllocator.generationOf(r);
@@ -135,6 +141,28 @@ pub const InternalState = struct {
 
 /// The member a selection keeps its range in (engine.traceChild).
 const range_slot: engine.TracedSlot = .{ .name = "range" };
+
+/// The selection's range: null when it has none, or when the Range was freed
+/// under it. Every reader goes through this, so a dead range reads as an
+/// empty selection ("the selection is empty"), never as the freed Range.
+///
+/// The traced edge keeps the Range from the collector, but not past the end
+/// of the Range's own realm: a Range made by a frame's constructor
+/// (`new frame.contentWindow.Range()`), moved into this document by setStart
+/// and added here, belongs to the frame's wrapper cache, and the frame's
+/// realm's end frees what that cache holds. While the page lives that end
+/// waits: a removed or navigated frame's realm is only detached, and the
+/// Range's wrapper - kept by this edge - keeps it (crane/sf2-selection-frame-
+/// realm-range.html). It comes with the page's end, which ends a frame's
+/// realm before its parent's, and whenever a realm ends without detaching;
+/// tests/html/selection_range_realm_end_test.zig ends it under a live
+/// selection. So this is a teardown net, not the behaviour: Blink's
+/// SelectionEditor traces cached_range_, and nothing frees it first.
+fn liveRange(internal: *const InternalState) ?*runtime.Instance {
+    const range = internal.range orelse return null;
+    if (runtime.SlabAllocator.generationOf(range) != internal.range_generation) return null;
+    return range;
+}
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
@@ -188,7 +216,7 @@ pub fn installHooks() void {
 
 fn rangeMutated(selection: *runtime.Instance, range: *runtime.Instance, containers_changed: bool) void {
     const internal = getInternal(selection) orelse return;
-    if (internal.range != range) return;
+    if (liveRange(internal) != range) return;
     const b = boundaries(internal) orelse return;
     // An offset-only setter cannot change its container's document. Adoption
     // separately updates Range ownership; offset changes still queue an event.
@@ -220,7 +248,7 @@ fn associatedDocument(internal: *const InternalState) ?*runtime.Instance {
 
 /// Read the live range instead of a second copy of its boundary points.
 fn boundaries(internal: *const InternalState) ?dom.range_boundaries.Boundaries {
-    return dom.range_boundaries.of(internal.range orelse return null);
+    return dom.range_boundaries.of(liveRange(internal) orelse return null);
 }
 
 fn visibleBoundaries(internal: *const InternalState) ?dom.range_boundaries.Boundaries {
@@ -302,7 +330,7 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Returns the direction of selection: "none", "forward", or "backward"
 pub fn get_direction(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.range == null) return .initInterned("none");
+    if (liveRange(internal) == null) return .initInterned("none");
     return .initInterned(switch (internal.direction) {
         .none => "none",
         .forward => "forward",
@@ -320,7 +348,7 @@ pub fn get_direction(instance: *runtime.Instance) anyerror!runtime.DOMString {
 pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (index != 0 or visibleBoundaries(internal) == null) return error.IndexSizeError;
-    return internal.range.?;
+    return liveRange(internal).?;
 }
 
 /// Selection API - addRange(range)
@@ -350,7 +378,7 @@ pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) anye
 pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
     if (range.stateAs(interfaces.Range.State) == null) return error.TypeError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.range != range) return error.NotFoundError;
+    if (liveRange(internal) != range) return error.NotFoundError;
     try call_removeAllRanges(instance);
 }
 
@@ -831,7 +859,7 @@ pub fn call_deleteFromDocument(instance: *runtime.Instance) anyerror!void {
     defer if (!std.meta.eql(before, snapshot(internal))) {
         scheduleSelectionchange(instance) catch {};
     };
-    try Range.call_deleteContents(internal.range.?);
+    try Range.call_deleteContents(liveRange(internal).?);
 }
 
 /// Selection API - containsNode(node, allowPartialContainment)
@@ -1057,7 +1085,7 @@ const DomTree = struct {
 /// Allocator.free's memset on the literal's read-only page.
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
-    const range = internal.range orelse return "";
+    const range = liveRange(internal) orelse return "";
     const text = try Range.serialize(range);
     defer if (text.len > 0) range.ctx.allocator.free(text);
     if (text.len == 0) return "";
