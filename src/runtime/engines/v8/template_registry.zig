@@ -609,7 +609,9 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 // ============================================================================
 
 /// The legacy platform objects that support NAMED properties - an interface
-/// with a named property getter, its own or inherited (WebIDL 3.9). Their
+/// whose binding has a named property getter, its own or inherited (WebIDL
+/// 3.9), or Crane's own: CSSStyleDeclaration's camelCase CSS properties
+/// (call_namedItem / call_setNamedItem). Their
 /// wrapper is a Proxy, so that [[OwnPropertyKeys]] answers in WebIDL's order
 /// (3.9.6: supported indices, then supported names, then own string keys,
 /// then symbols): V8 lists a named interceptor's names AFTER the object's
@@ -617,8 +619,9 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 ///
 /// A legacy platform object with an indexed getter and no named one - NodeList
 /// and RadioNodeList, DOMTokenList, DOMStringList, DOMRectList,
-/// StyleSheetList, CSSRuleList, CSSStyleDeclaration, MediaList, FileList,
-/// TouchList, DataTransferItemList - is NOT wrapped. V8's own order is already
+/// StyleSheetList, CSSRuleList, MediaList, FileList, TouchList,
+/// DataTransferItemList - is NOT wrapped (tests/v8/indexed_property_semantics_
+/// test.zig checks that none of them has a named getter). V8's own order is already
 /// WebIDL's for it: an object's elements, then its indexed interceptor's
 /// indices, then its own string keys, then symbols - and it can have no own
 /// elements, since its indexed definer rejects every array index (3.9.3
@@ -648,6 +651,12 @@ const legacy_platform_objects = [_][]const u8{
     "Plugin",
     "PluginArray",
     "MimeTypeArray",
+    // Named properties of Crane's binding, not of the IDL. Unwrapped, V8 runs
+    // its named setter interceptor before a prototype accessor, so
+    // `style.cssText = ...` set an unknown property "css-text" instead
+    // (content-security-policy/style-src/style-src-inline-style-with-csstext
+    // .html); the proxy's set trap finds the accessor first.
+    "CSSStyleDeclaration",
     // NOTE: Window is NOT included here because it's the global object
     // and wrapping it in a Proxy breaks method invocation semantics.
     // Window's OwnPropertyKeys order needs special handling in V8 C++.
@@ -655,7 +664,7 @@ const legacy_platform_objects = [_][]const u8{
 
 /// Whether an interface's wrapper is a Proxy: a legacy platform object with
 /// named properties (see legacy_platform_objects).
-fn isLegacyPlatformObject(interface_name: []const u8) bool {
+pub fn isLegacyPlatformObject(interface_name: []const u8) bool {
     for (legacy_platform_objects) |lpo_name| {
         if (std.mem.eql(u8, interface_name, lpo_name)) {
             return true;

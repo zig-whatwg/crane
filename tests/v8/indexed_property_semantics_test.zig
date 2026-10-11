@@ -469,3 +469,68 @@ test "an attribute read makes no handle for its receiver and leaves none" {
         return error.HandlesMade;
     }
 }
+
+test "an attribute of a CSSStyleDeclaration is set through its setter, not its named properties" {
+    const page = try Page.open();
+    defer page.close();
+    // Crane's binding gives CSSStyleDeclaration named properties (the
+    // camelCase CSS properties, call_namedItem / call_setNamedItem). V8 runs
+    // an object's named setter interceptor before a prototype's accessor, so
+    // unwrapped, `style.cssText = ...` went to the named setter (an unknown
+    // property "css-text") and cssText's own setter never ran:
+    // content-security-policy/style-src/style-src-inline-style-with-
+    // csstext.html failed. Its wrapper stays a proxy, whose set trap finds the
+    // prototype's accessor first. (The declaration is read back through a
+    // camelCase name: in this bare realm the named getter also answers ""
+    // for `length`, `cssText` and the method names - a separate quirk.)
+    try page.expect(
+        \\(() => {
+        \\  const el = new Document().implementation.createHTMLDocument('').createElement('div');
+        \\  el.style.cssText = 'margin-left: 2px;';
+        \\  return el.style.marginLeft;
+        \\})()
+    , "2px");
+}
+
+/// Whether `Interface`'s binding installs a named property handler: the
+/// predicate interface.zig's createTemplate uses.
+fn hasNamedGetter(comptime Interface: type) bool {
+    if (@hasDecl(Interface, "call_getNamedItem") or @hasDecl(Interface, "call_namedItem")) return true;
+    if (!@hasDecl(Interface, "call_getter")) return false;
+    const params = @typeInfo(@TypeOf(Interface.call_getter)).@"fn".params;
+    return params.len >= 2 and params[1].type == runtime.DOMString;
+}
+
+test "a legacy platform object is a proxy exactly when its binding has named properties" {
+    // template_registry wraps a legacy platform object in a proxy only when
+    // its binding has named properties (V8 lists a named interceptor's names
+    // after own keys; WebIDL 3.9.6 wants them before). An indexed-only one is
+    // plain: V8's own [[OwnPropertyKeys]], [[Set]] and [[DefineOwnProperty]]
+    // are WebIDL's for it. A named getter added to one of these - from the
+    // IDL or Crane's own supplementary definitions, as CSSStyleDeclaration's
+    // camelCase properties are - must move it to the proxied list.
+    const template_registry = @import("v8").template_registry;
+    const indexed_only = .{ "NodeList", "RadioNodeList", "DOMTokenList", "DOMStringList", "DOMRectList", "StyleSheetList", "CSSRuleList", "MediaList", "FileList", "TouchList", "DataTransferItemList" };
+    inline for (indexed_only) |name| {
+        if (comptime hasNamedGetter(@field(interfaces, name))) {
+            std.debug.print("{s} has a named getter: it must be wrapped in the proxy\n", .{name});
+            return error.NamedGetterUnproxied;
+        }
+        try std.testing.expect(!template_registry.isLegacyPlatformObject(name));
+    }
+    const named = .{ "HTMLCollection", "HTMLFormControlsCollection", "HTMLOptionsCollection", "NamedNodeMap", "Storage", "Plugin", "PluginArray", "MimeTypeArray", "CSSStyleDeclaration" };
+    inline for (named) |name| try std.testing.expect(template_registry.isLegacyPlatformObject(name));
+}
+
+test "primitiveGetterResult: numbers and booleans only, and its default is the conversion path" {
+    // The allowlist that sends an attribute getter's result straight into
+    // the return slot. Its default - every type not named - is the old
+    // conversion path, which makes and releases its handles itself: an
+    // optional (its null is a value of its own), a string, an enum, an
+    // instance, a JSValue.
+    const primitive = @import("v8").interface_mod.primitiveGetterResult;
+    inline for (.{ u8, u16, u32, i8, i16, i32, u64, i64, f32, f64, bool }) |T| try std.testing.expect(primitive(T));
+    inline for (.{ ?u32, ?f64, ?bool, runtime.DOMString, ?runtime.DOMString, []const u8, *runtime.Instance, ?*runtime.Instance, runtime.JSValue, enum { a, b }, u128, f16, void }) |T| {
+        try std.testing.expect(!primitive(T));
+    }
+}
