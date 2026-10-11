@@ -158,6 +158,15 @@ pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     return agents.get(isolate);
 }
 
+/// HostHooks.agentClusterOf for `realm` of the agent whose isolate this is:
+/// the realm's agent cluster key, or 0 - no cluster known, nothing checked -
+/// for an agent without the hook, or an isolate createAgent did not make.
+pub fn agentClusterOf(isolate: *ffi.Isolate, realm: Context) u64 {
+    const record = recordOf(isolate) orelse return 0;
+    const call = record.hooks.agentClusterOf orelse return 0;
+    return call(record.host, realm);
+}
+
 /// HostHooks.htmlConstructor [html_constructor] of the agent whose isolate
 /// this is, with the host it is handed - what an [HTMLConstructor]
 /// interface's construction runs (interface.zig). Null for an agent without

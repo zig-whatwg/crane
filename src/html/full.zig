@@ -190,6 +190,10 @@ pub const rejected_promises = @import("rejected_promises.zig");
 /// HostEnsureCanCompileWasmBytes: CSP over eval, Function and WebAssembly.
 pub const code_generation = @import("code_generation.zig");
 
+/// HTML's agent clusters, as the engine reads them (HostHooks.agentClusterOf):
+/// what a WebAssembly.Module's serialization is bound to.
+pub const agent_clusters = @import("agent_clusters.zig");
+
 /// Script runner for coordinating script scheduling
 pub const script_runner = @import("script_runner.zig");
 

@@ -535,6 +535,18 @@ pub const HostHooks = struct {
     /// WebAssembly.CompileError (a compile that returns a promise rejects
     /// with one).
     ensureCanCompileWasmBytes: ?*const fn (host: ?*anyopaque, realm: Context) bool = null,
+    /// The ECMAScript agent cluster of `realm`'s agent, as HTML allocates
+    /// them (8.1.2 "obtain a similar-origin window agent", "obtain a
+    /// worker/worklet agent"): an opaque key, equal for two realms exactly
+    /// when their agents are in one agent cluster, and never 0. Called on
+    /// `realm`'s own thread, while serializing a value bound to its agent
+    /// cluster - a WebAssembly.Module's [[AgentCluster]] (WebAssembly Web API
+    /// section 3, serialization step 3) - and while deserializing one, whose
+    /// step 3 throws a "DataCloneError" DOMException when targetRealm's
+    /// agent cluster is another. Runs no script. Not installed (or for an
+    /// agent the host keeps no clusters for): no realm of the agent names an
+    /// agent cluster, and nothing is checked.
+    agentClusterOf: ?*const fn (host: ?*anyopaque, realm: Context) u64 = null,
     /// HTML 3.2.3 "HTML element constructors" [html_constructor]: the
     /// overridden constructor steps of an [HTMLConstructor] interface (its
     /// generated `Meta.html_constructor`), split across the seam. The engine

@@ -80,6 +80,7 @@ const window_agent_hooks: engine.HostHooks = blk: {
     hooks.getCodeForEval = html.code_generation.hooks.getCodeForEval;
     hooks.ensureCanCompileWasmBytes = html.code_generation.hooks.ensureCanCompileWasmBytes;
     if (engine.capabilities.html_constructor != .unsupported) hooks.htmlConstructor = html.custom_element_constructor.construct;
+    hooks.agentClusterOf = html.agent_clusters.agentClusterOf;
     break :blk hooks;
 };
 

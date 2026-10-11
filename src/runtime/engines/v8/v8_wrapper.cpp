@@ -11547,7 +11547,125 @@ struct HostObjectSteps {
 };
 // ---- end lane: serializable ----
 
+/// What a structured serialization needs to know beyond the value - HTML's
+/// forStorage, and the current realm's agent cluster (the host's
+/// engine.HostHooks.agentClusterOf; 0 when the host keeps none).
+struct StructuredSerializeOptions {
+    bool for_storage;
+    uint64_t agent_cluster;
+};
+
 } // extern "C"
+
+// HostEnsureCanCompileWasmBytes, as the agent's AllowWasmCodeGenerationCallback
+// asks it (defined with the code generation checks below).
+static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String> source);
+
+// ============================================================================
+// The serialized form: V8's payload, behind an envelope of the adapter's own
+// ============================================================================
+//
+// What a serialization cannot write into V8's stream travels in front of it:
+// each WebAssembly.Module's bytes (WebAssembly Web API section 3: the
+// serialization steps keep [[Bytes]] and [[AgentCluster]]; V8 writes only a
+// transfer id for a module, Delegate::GetWasmModuleTransferId). A
+// serialization with nothing of that kind is V8's payload alone, which starts
+// with V8's version tag (0xFF): forStorage records - IndexedDB's, on disk -
+// never carry the envelope, so their format is V8's and nothing else.
+//
+//   u8      kEnvelopeTag
+//   u8      kEnvelopeVersion
+//   u64 LE  [[AgentCluster]] of the realm that serialized (0: none known)
+//   u32 LE  module count, then each module's u32 LE length and wire bytes
+//   ...     V8's payload
+//
+// Everything is inline - no pointer into an isolate, a realm or a thread - so
+// a message is read on any thread, as often as it is delivered (a
+// BroadcastChannel delivers one serialization to every channel), and freed as
+// the bytes it is. The deserialization steps compile a module from its bytes
+// in the target realm; V8's NativeModuleCache (keyed by the wire bytes) shares
+// the compiled code with the sender's module while that is alive, which is the
+// reuse the spec's note recommends.
+//
+// Stated gap: a module compiled with compile options (builtins,
+// importedStringConstants) is recompiled without them - the spec's [[Bytes]]
+// carries none, and V8's public API compiles bytes only without
+// (WasmModuleObject::Compile).
+
+static constexpr uint8_t kEnvelopeTag = 0xC2;
+static constexpr uint8_t kEnvelopeVersion = 1;
+
+/// What travels in the envelope.
+struct SerializationAttachments {
+    uint64_t agent_cluster = 0;
+    std::vector<std::vector<uint8_t>> wasm_modules;
+
+    bool empty() const { return wasm_modules.empty(); }
+};
+
+static void appendLE(std::vector<uint8_t>& out, uint64_t value, int bytes) {
+    for (int i = 0; i < bytes; i++) out.push_back(static_cast<uint8_t>(value >> (8 * i)));
+}
+
+static bool readLE(const uint8_t*& cursor, const uint8_t* end, int bytes, uint64_t* value) {
+    if (end - cursor < bytes) return false;
+    uint64_t result = 0;
+    for (int i = 0; i < bytes; i++) result |= static_cast<uint64_t>(cursor[i]) << (8 * i);
+    cursor += bytes;
+    *value = result;
+    return true;
+}
+
+/// `payload` (V8's, `size` bytes) behind the envelope of `attachments`, in a
+/// malloc'd buffer v8_Free_SerializedBuffer frees; `payload` is freed. Null
+/// when out of memory (`payload` freed too).
+static uint8_t* wrapInEnvelope(const SerializationAttachments& attachments, uint8_t* payload, size_t size, size_t* out_size) {
+    std::vector<uint8_t> header;
+    header.push_back(kEnvelopeTag);
+    header.push_back(kEnvelopeVersion);
+    appendLE(header, attachments.agent_cluster, 8);
+    appendLE(header, attachments.wasm_modules.size(), 4);
+    for (const auto& bytes : attachments.wasm_modules) {
+        appendLE(header, bytes.size(), 4);
+        header.insert(header.end(), bytes.begin(), bytes.end());
+    }
+    uint8_t* whole = static_cast<uint8_t*>(malloc(header.size() + size));
+    if (!whole) {
+        free(payload);
+        return nullptr;
+    }
+    memcpy(whole, header.data(), header.size());
+    memcpy(whole + header.size(), payload, size);
+    free(payload);
+    *out_size = header.size() + size;
+    return whole;
+}
+
+/// Split `data` into its attachments and V8's payload. False for an envelope
+/// that is malformed; a serialization without one is all payload.
+static bool openEnvelope(const uint8_t* data, size_t size, SerializationAttachments* attachments, const uint8_t** payload, size_t* payload_size) {
+    if (size == 0 || data[0] != kEnvelopeTag) {
+        *payload = data;
+        *payload_size = size;
+        return true;
+    }
+    const uint8_t* cursor = data + 1;
+    const uint8_t* end = data + size;
+    uint64_t version = 0, count = 0;
+    if (!readLE(cursor, end, 1, &version) || version != kEnvelopeVersion) return false;
+    if (!readLE(cursor, end, 8, &attachments->agent_cluster)) return false;
+    if (!readLE(cursor, end, 4, &count)) return false;
+    for (uint64_t i = 0; i < count; i++) {
+        uint64_t length = 0;
+        if (!readLE(cursor, end, 4, &length)) return false;
+        if (static_cast<uint64_t>(end - cursor) < length) return false;
+        attachments->wasm_modules.emplace_back(cursor, cursor + length);
+        cursor += length;
+    }
+    *payload = cursor;
+    *payload_size = static_cast<size_t>(end - cursor);
+    return true;
+}
 
 /// HTML StructuredSerializeInternal throws a "DataCloneError" DOMException for
 /// a value it cannot serialize. V8's own default is a plain Error, so the
@@ -11562,8 +11680,16 @@ struct HostObjectSteps {
 /// outside a cross-origin-isolated agent cluster.
 class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
  public:
-    explicit DataCloneErrorDelegate(Isolate* isolate, const HostObjectSteps* host = nullptr)
-        : isolate_(isolate), host_(host) {}
+    explicit DataCloneErrorDelegate(Isolate* isolate, const HostObjectSteps* host = nullptr, const StructuredSerializeOptions* options = nullptr)
+        : isolate_(isolate), host_(host) {
+        if (options) {
+            for_storage_ = options->for_storage;
+            attachments_.agent_cluster = options->agent_cluster;
+        }
+    }
+
+    /// What the serialization put in its envelope: its modules' bytes.
+    const SerializationAttachments& attachments() const { return attachments_; }
 
     /// The serializer this delegate serves: WriteHostObject hands it to the
     /// host's steps, which write into it. Set right after the serializer is
@@ -11623,10 +11749,34 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
         return Nothing<uint32_t>();
     }
 
+    /// WebAssembly Web API section 3, a Module's serialization steps. V8 has
+    /// done StructuredSerializeInternal's memory (a module met twice is a
+    /// back-reference, value-serializer.cc WriteJSReceiver), so this runs once
+    /// per module of the value.
+    ///   1. If forStorage is true, throw a "DataCloneError" DOMException.
+    ///   2. serialized.[[Bytes]]: the sub-serialization of value.[[Bytes]] -
+    ///      its wire bytes, in the envelope.
+    ///   3. serialized.[[AgentCluster]]: the current realm's agent cluster -
+    ///      the envelope's, one for the whole serialization.
+    /// V8 writes the module as this transfer id, the bytes' index.
+    Maybe<uint32_t> GetWasmModuleTransferId(Isolate* isolate, Local<WasmModuleObject> module) override {
+        // 1.
+        if (for_storage_) {
+            ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A WebAssembly.Module cannot be serialized for storage."));
+            return Nothing<uint32_t>();
+        }
+        // 2.
+        MemorySpan<const uint8_t> bytes = module->GetCompiledModule().GetWireBytesRef();
+        attachments_.wasm_modules.emplace_back(bytes.data(), bytes.data() + bytes.size());
+        return Just(static_cast<uint32_t>(attachments_.wasm_modules.size() - 1));
+    }
+
  private:
     Isolate* isolate_;
     const HostObjectSteps* host_;
     ValueSerializer* serializer_ = nullptr;
+    bool for_storage_ = false;
+    SerializationAttachments attachments_;
 };
 
 /// Throw HTML's "DataCloneError" DOMException in the current context, with
@@ -11670,8 +11820,42 @@ static void throwDeserializationError(Isolate* isolate, Local<String> message) {
 /// ImageData's data).
 class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate {
  public:
-    explicit HostObjectDeserializerDelegate(const HostObjectSteps* host) : host_(host) {}
+    explicit HostObjectDeserializerDelegate(const HostObjectSteps* host, const SerializationAttachments* attachments = nullptr, uint64_t agent_cluster = 0)
+        : host_(host), attachments_(attachments), agent_cluster_(agent_cluster) {}
     void SetDeserializer(ValueDeserializer* deserializer) { deserializer_ = deserializer; }
+
+    /// WebAssembly Web API section 3, a Module's deserialization steps, in
+    /// the target realm (the current context):
+    ///   1-2. bytes: serialized.[[Bytes]] - the envelope's, by transfer id.
+    ///   3. If targetRealm's agent cluster is not serialized.[[AgentCluster]],
+    ///      throw a "DataCloneError" DOMException. (0 on either side: a host
+    ///      that keeps no agent clusters, which checks nothing.)
+    ///   4. Compile a WebAssembly module from bytes - whose step 1 in the CSP
+    ///      integration is HostEnsureCanCompileWasmBytes(targetRealm), which
+    ///      reports a "wasm-eval" violation and throws a CompileError when a
+    ///      policy blocks it.
+    /// Both throws run no script (V8 deserializes in a
+    /// DisallowJavascriptExecutionScope): the caller reports the failure - a
+    /// messageerror.
+    MaybeLocal<WasmModuleObject> GetWasmModuleFromId(Isolate* isolate, uint32_t transfer_id) override {
+        if (attachments_ == nullptr || transfer_id >= attachments_->wasm_modules.size()) {
+            throwDeserializationError(isolate, String::NewFromUtf8Literal(isolate, "DataCloneError: a WebAssembly.Module's bytes are missing."));
+            return MaybeLocal<WasmModuleObject>();
+        }
+        // 3.
+        if (attachments_->agent_cluster != 0 && agent_cluster_ != 0 && attachments_->agent_cluster != agent_cluster_) {
+            throwDeserializationError(isolate, String::NewFromUtf8Literal(isolate, "DataCloneError: a WebAssembly.Module cannot be received in another agent cluster."));
+            return MaybeLocal<WasmModuleObject>();
+        }
+        // 4.
+        Local<Context> context = isolate->GetCurrentContext();
+        if (context.IsEmpty() || !ProtocolAllowWasmCodeGeneration(context, String::Empty(isolate))) {
+            throwDeserializationError(isolate, String::NewFromUtf8Literal(isolate, "CompileError: WebAssembly compilation is blocked in the target realm."));
+            return MaybeLocal<WasmModuleObject>();
+        }
+        const std::vector<uint8_t>& bytes = attachments_->wasm_modules[transfer_id];
+        return WasmModuleObject::Compile(isolate, MemorySpan<const uint8_t>(bytes.data(), bytes.size()));
+    }
 
     MaybeLocal<Object> ReadHostObject(Isolate* isolate) override {
         if (host_ == nullptr || host_->read == nullptr || deserializer_ == nullptr) {
@@ -11696,6 +11880,8 @@ class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate 
 
  private:
     const HostObjectSteps* host_;
+    const SerializationAttachments* attachments_;
+    uint64_t agent_cluster_;
     ValueDeserializer* deserializer_ = nullptr;
 };
 
@@ -11856,6 +12042,11 @@ static uint8_t* serializeWithTransfer(
     uint8_t* data = buffer.first;
     size_t size = buffer.second;
 
+    // What V8's stream cannot hold - the modules' bytes - goes in front of it.
+    if (data != nullptr && size > 0 && delegate && !delegate->attachments().empty()) {
+        data = wrapInEnvelope(delegate->attachments(), data, size, &size);
+    }
+
     if (data == nullptr || size == 0) {
         for (auto& d : copied_data) {
             if (d.first) free(d.first);
@@ -11903,6 +12094,9 @@ uint8_t* v8_Value_SerializeWithTransfer_CrossIsolate(
 /// `host` (nullable) is how a platform object is serialized: its interface's
 /// serialization steps, through the host's `write` (HostObjectSteps). With
 /// none, every platform object throws DataCloneError.
+///
+/// `options`: forStorage (a WebAssembly.Module then throws DataCloneError),
+/// and the current realm's agent cluster, which a module's record keeps.
 uint8_t* v8_Value_StructuredSerializeWithTransfer(
     Global<Value>* value,
     Global<Value>** transfer_list,
@@ -11910,9 +12104,10 @@ uint8_t* v8_Value_StructuredSerializeWithTransfer(
     size_t* out_size,
     ArrayBufferTransferData* out_arraybuffer_data,
     int* error_code,
-    const HostObjectSteps* host
+    const HostObjectSteps* host,
+    const StructuredSerializeOptions* options
 ) {
-    DataCloneErrorDelegate delegate(Isolate::GetCurrent(), host);
+    DataCloneErrorDelegate delegate(Isolate::GetCurrent(), host, options);
     return serializeWithTransfer(value, transfer_list, transfer_count, out_size,
                                  out_arraybuffer_data, error_code, &delegate);
 }
@@ -11929,6 +12124,8 @@ uint8_t* v8_Value_StructuredSerializeWithTransfer(
 /// @param host - nullable: how a platform object is deserialized (its
 ///               interface's deserialization steps, through the host's
 ///               `read`); with none, a serialized platform object fails
+/// @param agent_cluster - the target realm's agent cluster (0: none known),
+///               which a WebAssembly.Module's record must name
 /// @return Global<Value>* to the deserialized value in current isolate
 Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
     const uint8_t* serialized_data,
@@ -11936,11 +12133,21 @@ Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
     const ArrayBufferTransferData* arraybuffer_data,
     size_t arraybuffer_count,
     int* error_code,
-    const HostObjectSteps* host
+    const HostObjectSteps* host,
+    uint64_t agent_cluster
 ) {
     if (error_code) *error_code = 0;
 
     if (!serialized_data || serialized_size == 0) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    // The envelope's attachments, and V8's payload behind them.
+    SerializationAttachments attachments;
+    const uint8_t* payload = nullptr;
+    size_t payload_size = 0;
+    if (!openEnvelope(serialized_data, serialized_size, &attachments, &payload, &payload_size) || payload_size == 0) {
         if (error_code) *error_code = 2;
         return nullptr;
     }
@@ -11961,8 +12168,8 @@ Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
     }
 
     // Create ValueDeserializer
-    HostObjectDeserializerDelegate delegate(host);
-    ValueDeserializer deserializer(isolate, serialized_data, serialized_size, &delegate);
+    HostObjectDeserializerDelegate delegate(host, &attachments, agent_cluster);
+    ValueDeserializer deserializer(isolate, payload, payload_size, &delegate);
     delegate.SetDeserializer(&deserializer);
 
     // Create new ArrayBuffers in this isolate from the transferred data

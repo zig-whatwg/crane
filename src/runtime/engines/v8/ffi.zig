@@ -916,6 +916,9 @@ pub extern fn v8_Value_SerializeWithTransfer_CrossIsolate(
 /// `host` (nullable): how a platform object is serialized - its interface's
 /// serialization steps (HostObjectSteps.write). With none, every platform
 /// object throws DataCloneError.
+///
+/// `options`: forStorage (a WebAssembly.Module then throws DataCloneError),
+/// and the current realm's agent cluster, which a module's record keeps.
 pub extern fn v8_Value_StructuredSerializeWithTransfer(
     value: *Value,
     transfer_list: [*]*Value,
@@ -924,7 +927,16 @@ pub extern fn v8_Value_StructuredSerializeWithTransfer(
     out_arraybuffer_data: [*]ArrayBufferTransferData,
     error_code: *c_int,
     host: ?*const HostObjectSteps,
+    options: *const StructuredSerializeOptions,
 ) ?[*]u8;
+
+/// What a structured serialization needs beyond the value: HTML's
+/// forStorage, and the current realm's agent cluster (the host's
+/// HostHooks.agentClusterOf; 0 when the host keeps none).
+pub const StructuredSerializeOptions = extern struct {
+    for_storage: bool,
+    agent_cluster: u64,
+};
 
 /// Deserialize V8 structured clone data with ArrayBuffer transfer.
 /// This is called in the DESTINATION isolate to recreate values.
@@ -937,6 +949,8 @@ pub extern fn v8_Value_StructuredSerializeWithTransfer(
 ///   host: nullable - how a platform object is deserialized (its interface's
 ///         deserialization steps, HostObjectSteps.read); with none, a
 ///         serialized platform object fails
+///   agent_cluster: the target realm's agent cluster (0: none known), which a
+///         WebAssembly.Module's record must name
 /// Returns: Global<Value>* to the deserialized value in current isolate
 pub extern fn v8_Value_DeserializeWithTransfer_CrossIsolate(
     serialized_data: [*]const u8,
@@ -945,6 +959,7 @@ pub extern fn v8_Value_DeserializeWithTransfer_CrossIsolate(
     arraybuffer_count: usize,
     error_code: *c_int,
     host: ?*const HostObjectSteps,
+    agent_cluster: u64,
 ) ?*Value;
 
 /// Free serialized buffer from v8_Value_SerializeWithTransfer_CrossIsolate

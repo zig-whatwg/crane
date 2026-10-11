@@ -2236,6 +2236,7 @@ const worker_hooks: engine.HostHooks = .{
     .ensureCanCompileStrings = code_generation.hooks.ensureCanCompileStrings,
     .getCodeForEval = code_generation.hooks.getCodeForEval,
     .ensureCanCompileWasmBytes = code_generation.hooks.ensureCanCompileWasmBytes,
+    .agentClusterOf = @import("agent_clusters.zig").agentClusterOf,
 };
 
 /// A worker's module evaluation promise, waiting to settle. Its host
