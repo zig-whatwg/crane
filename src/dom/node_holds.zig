@@ -37,12 +37,25 @@
 //!   node it holds (pholds' O(stack depth) walk).
 //!
 //! A rescue is an edge from the holder's wrapper to the root's
-//! (engine.traceChild into "node-holds:root", then a dense array traced in
+//! (engine.keepOpaqueRoot into "node-holds:root", then a dense array traced in
 //! "node-holds:roots"), never a root of its own: a holder and a tree that
 //! reach each other still collect together. A holder script has not seen yet
 //! (a record still queued) holds its edges strongly in its realm's wrapper
 //! cache until it is wrapped, and lets them go in its teardown
 //! (forgetTracedChild) when it is freed unwrapped.
+//!
+//! REFERENCE COUNTING, STEP 5 (tmp/plans/refcount-design.md section 7; lane
+//! rc5): every hold is also a COUNTED reference on its node
+//! (`refcount.holderRef`), taken when the hold is linked and released when it
+//! is unlinked - WebKit's ChildListRecord and StaticNodeList hold `Ref<Node>`.
+//! SHADOW MODE: the counts decide nothing yet; frees are still the
+//! collector's, so this module's chain, its rescues and its generation net
+//! stay what keeps a held node safe until step 7, and a node freed under its
+//! hold has its reference FORGOTTEN (`nodeReleased`), never released. The
+//! design retires the chain and the rescues in step 9b; keepOpaqueRoot is
+//! their identity edge, and wrapping a root that has no wrapper yet is the
+//! shadow-mode net that closes keepOpaqueRoot's stated gap
+//! (crane/rc5-record-node-wrapped-later.html).
 //!
 //! Design: tmp/plans/lane-nodeholds-handoff.md; the parser's half,
 //! tmp/plans/parser-holds-design.md and
@@ -57,9 +70,12 @@ const engine = @import("engine");
 const NodeBase = @import("node_base.zig").NodeBase;
 const instance_bridge = @import("instance_bridge.zig");
 const template_contents = @import("template_contents.zig");
+const refcount = @import("refcount.zig");
 
 /// One holder's hold on one node: a link in the node's chain
-/// (`NodeBase.holds`). Embedded by its holder and never moved while linked.
+/// (`NodeBase.holds`), and one counted reference on the node
+/// (`refcount.holderRef`) for as long as it is linked. Embedded by its
+/// holder and never moved while linked.
 pub const Hold = struct {
     /// The held node; null when this hold holds nothing (released, or a null
     /// member such as a record's absent sibling).
@@ -70,7 +86,10 @@ pub const Hold = struct {
     /// every hold in it is skipped the same way, never walked.
     generation: u64 = 0,
     base: *NodeBase = undefined,
-    holder: *Holder = undefined,
+    /// The marked holder whose removal rescues this hold names; null for a
+    /// `MemberHold`, whose owner keeps the member's own wrapper and needs no
+    /// rescue.
+    holder: ?*Holder = null,
     prev: ?*Hold = null,
     next: ?*Hold = null,
 
@@ -91,7 +110,7 @@ pub const Hold = struct {
         return runtime.SlabAllocator.generationOf(node) == generation;
     }
 
-    fn link(self: *Hold, holder: *Holder, node: *runtime.Instance, base: *NodeBase) void {
+    fn link(self: *Hold, holder: ?*Holder, node: *runtime.Instance, base: *NodeBase) void {
         self.* = .{
             .node = node,
             .generation = runtime.SlabAllocator.generationOf(node),
@@ -102,26 +121,32 @@ pub const Hold = struct {
         };
         if (base.holds) |head| head.prev = self;
         base.holds = self;
+        refcount.holderRef(base);
     }
 
     fn unlink(self: *Hold) void {
         const node = self.node orelse return;
         self.node = null;
-        // A dead node's chain is never walked again: leave it.
+        // A dead node's chain is never walked again: leave it - and its
+        // reference, which went with it (forgotten, never released).
         if (!stillHeld(node, self.generation)) return;
         if (self.prev) |prev| prev.next = self.next else self.base.holds = self.next;
         if (self.next) |next| next.prev = self.prev;
         self.prev = null;
         self.next = null;
+        refcount.holderDeref(self.base);
     }
 };
 
 /// `node`'s storage is going (Node.deinit and the final registry sweep,
 /// beside the release of its registered observers, just before its NodeBase
-/// is freed): every hold on it now holds nothing. Its holders read null from
-/// then on and skip it when they let go - a teardown net for the ways a node
-/// is freed outside the collector (its realm's coordinated teardown, the
-/// final registry sweep), where its slab generation can stay live.
+/// is freed): every hold on it now holds nothing, and its counted reference
+/// is FORGOTTEN - it went with the node, and is never released. Its holders
+/// read null from then on and skip it when they let go - a teardown net for
+/// the ways a node is freed outside the collector (its realm's coordinated
+/// teardown, the final registry sweep), where its slab generation can stay
+/// live. Shadow mode only: once counts decide (step 7) a held node is never
+/// freed under its holder.
 ///
 /// Touches only the native hold records - no engine call, no allocation - so
 /// it may run inside any teardown, including one a collector's finalizer
@@ -136,6 +161,87 @@ pub fn nodeReleased(node: *NodeBase) void {
         held.next = null;
     }
 }
+
+/// `owner`'s wrapper keeps `member`'s opaque root, in `slot`
+/// (engine.keepOpaqueRoot: an edge to `member`'s own wrapper, else to its
+/// tree's wrapped root). SHADOW-MODE NET, deleted with the chain in step 9b: a
+/// node with no wrapper is wrapped first (engine.traceChild makes it). Until
+/// counts decide, the collector frees a tree whose wrappers die, and
+/// keepOpaqueRoot keeps nothing for a tree with no wrapper - so a tree script
+/// wraps only later, through the holder, and drops again, was freed under it
+/// (keepOpaqueRoot's stated gap; crane/rc5-record-node-wrapped-later.html).
+/// A member that is not a node is kept as engine.traceChild keeps it.
+pub fn keepMember(owner: *runtime.Instance, member: *runtime.Instance, slot: engine.TracedSlot) void {
+    keepMemberOf(owner, member, instance_bridge.getNodeBase(@ptrCast(member)) != null, slot);
+}
+
+/// `keepMember`, told whether `member` is a node.
+fn keepMemberOf(owner: *runtime.Instance, member: *runtime.Instance, is_node: bool, slot: engine.TracedSlot) void {
+    if (!owner.ctx.hasEngine() or !member.ctx.hasEngine()) return;
+    if (is_node and !engine.hasWrapper(member)) {
+        engine.traceChild(owner, member, slot);
+        return;
+    }
+    engine.keepOpaqueRoot(owner, member, slot);
+}
+
+/// One node a holder holds and keeps itself: a live collection's root
+/// (refcount design 5h; WebKit's collections hold `Ref<ContainerNode>
+/// m_ownerNode`). A counted hold in the node's chain - so a node freed under
+/// it is forgotten, never released, exactly as a `Holder`'s - plus the
+/// holder's keep of the member's opaque root (`keepMember`), which follows
+/// the member wherever it moves: no removal rescues it. A member that is not
+/// a node (a collection that roots a RadioNodeList) is kept, not counted.
+pub const MemberHold = struct {
+    hold: Hold = .{},
+    /// The member when it is not a node (kept, not counted), with its
+    /// generation; a node member is the hold's.
+    other: ?*runtime.Instance = null,
+    other_generation: u64 = 0,
+    kept: bool = false,
+
+    /// Hold `member` from `owner` and keep its opaque root in `slot`. The
+    /// member hold holds nothing yet.
+    pub fn take(self: *MemberHold, owner: *runtime.Instance, member: *runtime.Instance, slot: engine.TracedSlot) void {
+        std.debug.assert(self.hold.node == null and self.other == null);
+        const base = instance_bridge.getNodeBase(@ptrCast(member));
+        if (base) |node| {
+            self.hold.link(null, member, node);
+        } else {
+            self.other = member;
+            self.other_generation = runtime.SlabAllocator.generationOf(member);
+        }
+        if (owner.ctx.hasEngine() and member.ctx.hasEngine()) {
+            keepMemberOf(owner, member, base != null, slot);
+            self.kept = true;
+        }
+    }
+
+    /// The member's tree node while it is alive and a node; null otherwise.
+    /// By the slab generation alone, with no registry read: `nodeReleased`
+    /// empties the hold before the tree node is freed.
+    pub fn liveBase(self: *const MemberHold) ?*NodeBase {
+        _ = self.hold.get() orelse return null;
+        return self.hold.base;
+    }
+
+    /// The member, or null once it was freed (a teardown net).
+    pub fn get(self: *const MemberHold) ?*runtime.Instance {
+        if (self.other) |member| {
+            if (runtime.SlabAllocator.generationOf(member) != self.other_generation) return null;
+            return member;
+        }
+        return self.hold.get();
+    }
+
+    /// Let the member go, and the keep: the owner is cleared or going.
+    pub fn release(self: *MemberHold, owner: *runtime.Instance, slot: engine.TracedSlot) void {
+        self.hold.unlink();
+        self.other = null;
+        if (self.kept) engine.forgetTracedChild(owner, slot);
+        self.kept = false;
+    }
+};
 
 /// The edge slots a holder's rescues hang from, on its owner's wrapper.
 pub const root_slot: engine.TracedSlot = .{ .name = "node-holds:root" };
@@ -252,7 +358,7 @@ pub const Holder = struct {
         const index: usize = if (!self.rescues.single_taken) blk: {
             // The first rescue: one edge, one call.
             self.rescues.single_taken = true;
-            engine.traceChild(owner, root_instance, root_slot);
+            keepMemberOf(owner, root_instance, true, root_slot);
             break :blk single_index;
         } else blk: {
             const index = self.rescues.next_index;
@@ -698,7 +804,9 @@ fn rescueForHolds(node: *NodeBase) void {
     var count: usize = 0;
     var current = node.holds;
     while (current) |held| : (current = held.next) {
-        const entry: Entry = .{ .holder = held.holder, .owner = held.holder.owner, .generation = held.holder.owner_generation };
+        // A member hold's owner keeps the member's own wrapper: nothing to rescue.
+        const holder = held.holder orelse continue;
+        const entry: Entry = .{ .holder = holder, .owner = holder.owner, .generation = holder.owner_generation };
         if (count < stack_entries.len) {
             stack_entries[count] = entry;
         } else {

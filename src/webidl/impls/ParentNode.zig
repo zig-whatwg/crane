@@ -35,7 +35,6 @@ const analyzeSelector = selector_mod.analyzeSelector;
 // Import impl modules for accessing internal state
 const NodeImpl = @import("Node.zig");
 const ElementImpl = @import("Element.zig");
-const HTMLCollectionImpl = @import("HTMLCollection.zig");
 const live_collections = @import("dom").live_collections;
 const dom = @import("dom");
 const NodeBase = dom.NodeBase;

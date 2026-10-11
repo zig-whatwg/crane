@@ -86,7 +86,13 @@ pub const InternalState = struct {
     /// For live NodeLists, the root node to query from
     root: ?*runtime.Instance = null,
     root_generation: u64 = 0,
-    labels_root_traced: bool = false,
+    /// A live list HOLDS its root (refcount design 5h; WebKit's
+    /// LiveNodeList keeps `Ref<ContainerNode> m_ownerNode`, its
+    /// ChildNodeList `Ref<ContainerNode> m_parent`): one counted reference
+    /// for its life, and its wrapper keeps the root's opaque root
+    /// (`live_collections.root_slot`). A RadioNodeList's root is a
+    /// collection, kept but not counted.
+    root_hold: node_holds.MemberHold = .{},
     cache: live_collections.IndexCache = .{},
     control_name: ?[]const u8 = null,
 
@@ -108,8 +114,9 @@ pub const InternalState = struct {
         };
     }
 
-    pub fn deinit(self: *InternalState) void {
+    pub fn deinit(self: *InternalState, list: *runtime.Instance) void {
         self.held.release();
+        self.root_hold.release(list, live_collections.root_slot);
         if (self.control_name) |name| self.allocator.free(name);
         // Note: filter_name and filter_namespace are slices into
         // other owned memory, don't free them here
@@ -138,6 +145,7 @@ fn makeElementsByName(list: *runtime.Instance, document: *runtime.Instance, name
     internal.is_live = true;
     internal.root = document;
     internal.root_generation = runtime.SlabAllocator.generationOf(document);
+    internal.root_hold.take(list, document, live_collections.root_slot);
     internal.live_type = .elements_by_name;
 }
 
@@ -170,10 +178,7 @@ fn makeLabels(list: *runtime.Instance, element: *runtime.Instance) !void {
     internal.live_type = .labels;
     internal.root = element;
     internal.root_generation = runtime.SlabAllocator.generationOf(element);
-    if (list.ctx.hasEngine()) {
-        @import("engine").traceChild(list, element, .{ .name = "labelsTarget" });
-        internal.labels_root_traced = true;
-    }
+    internal.root_hold.take(list, element, live_collections.root_slot);
 }
 
 /// Initialize instance (creates the instance)
@@ -225,8 +230,11 @@ fn setStaticBases(list: *runtime.Instance, nodes: []const *@import("dom").NodeBa
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        if (internal.labels_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "labelsTarget" });
-        internal.deinit();
+        // A childNodes list's owner caches it raw: it lets go of it now.
+        if (internal.is_live and internal.live_type == .children) {
+            if (internal.root_hold.get()) |owner| @import("dom").refcount.childNodesFreed(owner, instance);
+        }
+        internal.deinit(instance);
 
         // Return the block itself, not just what it points to.
         // `internal.deinit()` releases the strings and lists the state
@@ -303,6 +311,7 @@ pub fn createLiveChildNodes(allocator: std.mem.Allocator, ctx: runtime.Context, 
     internal.is_live = true;
     internal.root = root;
     internal.root_generation = runtime.SlabAllocator.generationOf(root);
+    internal.root_hold.take(instance, root, live_collections.root_slot);
     internal.live_type = .children;
 
     return instance;
@@ -407,6 +416,9 @@ fn getLiveItem(internal: *InternalState, index: u32) ?*runtime.Instance {
 
 fn prepareCache(internal: *InternalState) bool {
     const root = internal.root orelse return false;
+    // Nothing changed since the last full check: one registry read.
+    const root_base = internal.root_hold.liveBase();
+    if (root_base) |base| if (internal.cache.fresh(base)) return true;
     const link = live_collections.Link{ .instance = root, .generation = internal.root_generation };
     if (link.get() == null) {
         internal.cache = .{};
@@ -415,6 +427,7 @@ fn prepareCache(internal: *InternalState) bool {
     const document = live_collections.nodeDocument(root);
     const version = if (document) |doc| live_collections.treeVersion(doc) else null;
     _ = internal.cache.begin(link, document, version);
+    if (root_base) |base| internal.cache.keyDocument(base);
     return true;
 }
 

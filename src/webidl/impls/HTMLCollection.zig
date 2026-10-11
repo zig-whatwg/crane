@@ -16,7 +16,9 @@ const callbacks = @import("callbacks");
 const infra = @import("infra");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const HTMLCollection = interfaces.HTMLCollection;
-const live_collections = @import("dom").live_collections;
+const dom = @import("dom");
+const live_collections = dom.live_collections;
+const node_holds = dom.node_holds;
 
 pub const State = HTMLCollection.State;
 
@@ -43,12 +45,16 @@ pub const InternalState = struct {
     /// collection script keeps can outlive its root; a mismatch means the
     /// root is gone and the collection is empty, never a read of freed memory.
     root_generation: u64 = 0,
+    /// The collection HOLDS its root (refcount design 5h; WebKit's
+    /// collections keep `Ref<ContainerNode> m_ownerNode`, Blink's
+    /// LiveNodeListBase a traced `Member<ContainerNode> owner_node_`): one
+    /// counted reference for its life, and its wrapper keeps the root's
+    /// opaque root (`live_collections.root_slot`). Script that keeps only
+    /// `root.getElementsByClassName('x')` keeps the root and its tree.
+    root_hold: node_holds.MemberHold = .{},
     document_filter: live_collections.DocumentFilter = .images,
-    form_root_traced: bool = false,
     fieldset_controls: bool = false,
-    options_root_traced: bool = false,
     selected_options_only: bool = false,
-    table_root_traced: bool = false,
     table_filter: live_collections.TableFilter = .bodies,
 
     /// How a LIVE collection rebuilds its elements from `root`: set by the
@@ -59,6 +65,8 @@ pub const InternalState = struct {
     /// Filter function for matching elements (for getElementsByClassName, etc.)
     filter_tag: ?runtime.DOMString = null,
     filter_class: ?runtime.DOMString = null,
+    /// getElementsByTagName(NS)'s filter (`NameFilter`); its strings are owned.
+    name_filter: NameFilter = .{},
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -69,6 +77,7 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         self.elements.deinit();
+        self.name_filter.deinit(self.allocator);
         if (self.filter_tag) |*tag| {
             tag.deinit(self.allocator);
         }
@@ -93,8 +102,9 @@ fn makeLive(collection: *runtime.Instance, root: *runtime.Instance, refill: Refi
     const internal = getInternal(collection) orelse return;
     internal.root = root;
     internal.root_generation = runtime.SlabAllocator.generationOf(root);
+    internal.root_hold.take(collection, root, live_collections.root_slot);
     internal.refill = refill;
-    refresh(collection, internal);
+    _ = refresh(collection, internal);
 }
 
 /// `dom.live_collections`' element-children filter: `children` (DOM
@@ -105,7 +115,7 @@ fn makeElementChildren(collection: *runtime.Instance, root: *runtime.Instance) v
 }
 
 /// HTML 3.1.7 document tree accessors: the generated SameObject cache owns
-/// the document-to-list edge. Root retention is the refcount follow-up.
+/// the document-to-list edge; the collection holds the document (`makeLive`).
 fn makeDocumentElements(collection: *runtime.Instance, document: *runtime.Instance, filter: live_collections.DocumentFilter) void {
     const internal = getInternal(collection) orelse return;
     internal.document_filter = filter;
@@ -156,10 +166,6 @@ fn makeFormControls(collection: *runtime.Instance, root: *runtime.Instance, fiel
     internal.fieldset_controls = fieldset;
     // Form owner association is not covered by a document tree version.
     internal.cacheable = false;
-    if (collection.ctx.hasEngine()) {
-        @import("engine").traceChild(collection, root, .{ .name = "formControlsRoot" });
-        internal.form_root_traced = true;
-    }
     makeLive(collection, root, &refillFormControls);
 }
 
@@ -168,10 +174,6 @@ fn makeSelectOptions(collection: *runtime.Instance, select: *runtime.Instance, s
     internal.selected_options_only = selected_only;
     // selectedOptions also depends on IDL selectedness, not just attributes.
     internal.cacheable = !selected_only;
-    if (collection.ctx.hasEngine()) {
-        @import("engine").traceChild(collection, select, .{ .name = "optionsRoot" });
-        internal.options_root_traced = true;
-    }
     makeLive(collection, select, &refillSelectOptions);
 }
 
@@ -186,10 +188,6 @@ fn makeTable(collection: *runtime.Instance, root: *runtime.Instance, filter: liv
     // HTML 4.9 table membership depends only on the tree. The shared
     // document version also invalidates named reads after attribute changes.
     internal.cacheable = true;
-    if (collection.ctx.hasEngine()) {
-        @import("engine").traceChild(collection, root, .{ .name = "tableRoot" });
-        internal.table_root_traced = true;
-    }
     makeLive(collection, root, &refillTable);
 }
 
@@ -265,6 +263,174 @@ fn refillElementChildren(collection: *runtime.Instance, root: *runtime.Instance)
         child = interfaces.Node.get_nextSibling(c) catch return false;
     }
     return true;
+}
+
+/// The filters of DOM's "list of elements with qualified name" and "list of
+/// elements with namespace and local name" (getElementsByTagName and
+/// getElementsByTagNameNS), fixed when the collection is made: the spec
+/// reads whether root's node document is an HTML document in its steps, so
+/// a list made in an HTML document keeps lowercasing for HTML elements after
+/// its root moves to an XML one (dom/nodes/Element-getElementsByTagName-
+/// change-document-HTMLNess.html).
+const NameFilter = struct {
+    mode: Mode = .none,
+    /// The qualified name or the local name, as given; owned.
+    name: ?[]u8 = null,
+    /// The qualified name in ASCII lowercase, for `.html_qualified`; owned.
+    lower: ?[]u8 = null,
+    /// The namespace, for `.namespace` and `.both` (null: no namespace); owned.
+    namespace: ?[]u8 = null,
+
+    const Mode = enum {
+        none,
+        /// Every descendant element ("*", or "*" and "*").
+        any,
+        /// Qualified name `name` (not an HTML document).
+        qualified,
+        /// An HTML element whose qualified name is `lower`, or any other
+        /// whose qualified name is `name` (an HTML document).
+        html_qualified,
+        /// Local name `name`, any namespace (namespace "*").
+        local,
+        /// Namespace `namespace`, any local name (local name "*").
+        namespace,
+        /// Namespace `namespace` and local name `name`.
+        both,
+    };
+
+    fn deinit(self: *NameFilter, allocator: std.mem.Allocator) void {
+        if (self.name) |name| allocator.free(name);
+        if (self.lower) |lower| allocator.free(lower);
+        if (self.namespace) |namespace| allocator.free(namespace);
+        self.* = .{};
+    }
+
+    fn matches(self: *const NameFilter, names: dom.node_creation.ElementNames) bool {
+        return switch (self.mode) {
+            .none => false,
+            .any => true,
+            .qualified => qualifiedNameIs(names, self.name.?),
+            .html_qualified => if (sameOptional(names.namespace, html_namespace))
+                qualifiedNameIs(names, self.lower.?)
+            else
+                qualifiedNameIs(names, self.name.?),
+            .local => std.mem.eql(u8, names.local_name, self.name.?),
+            .namespace => sameOptional(names.namespace, self.namespace),
+            .both => sameOptional(names.namespace, self.namespace) and std.mem.eql(u8, names.local_name, self.name.?),
+        };
+    }
+};
+
+const html_namespace: []const u8 = "http://www.w3.org/1999/xhtml";
+
+/// Whether the element's qualified name - "prefix:local" with a prefix,
+/// else its local name - is `wanted`, compared without building it.
+fn qualifiedNameIs(names: dom.node_creation.ElementNames, wanted: []const u8) bool {
+    const prefix = names.prefix orelse return std.mem.eql(u8, names.local_name, wanted);
+    return wanted.len == prefix.len + 1 + names.local_name.len and
+        std.mem.startsWith(u8, wanted, prefix) and wanted[prefix.len] == ':' and
+        std.mem.endsWith(u8, wanted, names.local_name);
+}
+
+fn sameOptional(a: ?[]const u8, b: ?[]const u8) bool {
+    if (a) |left| return if (b) |right| std.mem.eql(u8, left, right) else false;
+    return b == null;
+}
+
+/// `dom.live_collections`' qualified-name filter: DOM's "list of elements
+/// with qualified name `qualifiedName`" for `root`.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-getelementsbytagname
+fn makeQualifiedName(collection: *runtime.Instance, root: *runtime.Instance, qualified_name: []const u8) error{OutOfMemory}!void {
+    const internal = getInternal(collection) orelse return;
+    internal.name_filter.deinit(internal.allocator);
+    // 1. "If qualifiedName is U+002A (*), then return an HTMLCollection
+    //    rooted at root, whose filter matches only descendant elements."
+    if (std.mem.eql(u8, qualified_name, "*")) {
+        internal.name_filter.mode = .any;
+    } else {
+        const name = try internal.allocator.dupe(u8, qualified_name);
+        internal.name_filter.name = name;
+        // 2. "Otherwise, if root's node document is an HTML document":
+        //    an HTML element's qualified name is compared with qualifiedName
+        //    in ASCII lowercase, any other's with qualifiedName as given.
+        if (inHtmlDocument(root)) {
+            const lower = try internal.allocator.alloc(u8, qualified_name.len);
+            internal.name_filter.lower = std.ascii.lowerString(lower, qualified_name);
+            internal.name_filter.mode = .html_qualified;
+        } else {
+            // 3. "Otherwise ... whose qualified name is qualifiedName."
+            internal.name_filter.mode = .qualified;
+        }
+    }
+    makeLive(collection, root, &refillNames);
+}
+
+/// `dom.live_collections`' namespace-and-local-name filter: DOM's "list of
+/// elements with namespace `namespace` and local name `localName`".
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-getelementsbytagnamens
+fn makeNamespaceLocalName(collection: *runtime.Instance, root: *runtime.Instance, namespace_in: ?[]const u8, local_name: []const u8) error{OutOfMemory}!void {
+    const internal = getInternal(collection) orelse return;
+    internal.name_filter.deinit(internal.allocator);
+    // 1. "If namespace is the empty string, then set it to null."
+    const namespace: ?[]const u8 = if (namespace_in) |ns| (if (ns.len == 0) null else ns) else null;
+    const any_namespace = if (namespace) |ns| std.mem.eql(u8, ns, "*") else false;
+    const any_local = std.mem.eql(u8, local_name, "*");
+    if (any_namespace and any_local) {
+        // 2. Both "*": every descendant element.
+        internal.name_filter.mode = .any;
+    } else if (any_namespace) {
+        // 3. Namespace "*": local name localName.
+        internal.name_filter.name = try internal.allocator.dupe(u8, local_name);
+        internal.name_filter.mode = .local;
+    } else {
+        if (namespace) |ns| internal.name_filter.namespace = try internal.allocator.dupe(u8, ns);
+        if (any_local) {
+            // 4. Local name "*": namespace namespace.
+            internal.name_filter.mode = .namespace;
+        } else {
+            // 5. Namespace namespace and local name localName.
+            internal.name_filter.name = try internal.allocator.dupe(u8, local_name);
+            internal.name_filter.mode = .both;
+        }
+    }
+    makeLive(collection, root, &refillNames);
+}
+
+/// Whether `root`'s node document is an HTML document.
+fn inHtmlDocument(root: *runtime.Instance) bool {
+    const document = live_collections.nodeDocument(root) orelse return false;
+    return dom.document_internals.getDocumentType(document) == .html;
+}
+
+/// `root`'s descendant elements, in tree order, that the name filter
+/// matches. The walk follows the tree's own links, and reads each element's
+/// names borrowed (dom.node_creation.elementNames), so a refill copies
+/// nothing per element.
+fn refillNames(collection: *runtime.Instance, root: *runtime.Instance) bool {
+    const internal = getInternal(collection) orelse return false;
+    const root_base = dom.instance_bridge.getNodeBase(@ptrCast(root)) orelse return false;
+    var current = root_base.first_child;
+    while (current) |node| : (current = nextBaseInTreeOrder(node, root_base)) {
+        if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
+        const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse continue));
+        const names = dom.node_creation.elementNames(element) orelse continue;
+        if (!internal.name_filter.matches(names)) continue;
+        addElement(collection, element) catch return false;
+    }
+    return true;
+}
+
+/// The tree node after `node` in tree order within `root`'s descendants.
+fn nextBaseInTreeOrder(node: *dom.NodeBase, root: *dom.NodeBase) ?*dom.NodeBase {
+    if (node.first_child) |child| return child;
+    var current = node;
+    while (current != root) {
+        if (current.next_sibling) |sibling| return sibling;
+        current = current.parent_node orelse return null;
+    }
+    return null;
 }
 
 /// `dom.live_collections`' class-names filter: DOM's "list of elements with
@@ -354,35 +520,49 @@ fn isQuirksMode(root: *runtime.Instance) bool {
     return std.mem.eql(u8, mode.asSlice(), "BackCompat");
 }
 
-/// Bring a live collection up to date with its root.
-fn refresh(instance: *runtime.Instance, internal: *InternalState) void {
-    const refill = internal.refill orelse return;
-    const root = internal.root orelse return;
+/// Bring a live collection up to date with its root. True when its
+/// elements are known to match an unmoved tree version - every one of them
+/// alive (live_collections.Link.getUnchanged) - false when they must each be
+/// checked in full.
+fn refresh(instance: *runtime.Instance, internal: *InternalState) bool {
+    const refill = internal.refill orelse return false;
+    const root = internal.root orelse return false;
+    // Nothing changed since the last full check: one registry read.
+    const root_base = internal.root_hold.liveBase();
+    if (internal.cacheable) if (root_base) |base| if (internal.cache.fresh(base)) return true;
     const link = live_collections.Link{ .instance = root, .generation = internal.root_generation };
     if (link.get() == null) {
         internal.cache = .{};
         clear(instance);
-        return;
+        return false;
     }
     if (internal.cacheable) {
         const document = live_collections.nodeDocument(root);
         const version = if (document) |doc| live_collections.treeVersion(doc) else null;
-        if (internal.cache.begin(link, document, version)) return;
+        const valid = internal.cache.begin(link, document, version);
+        if (root_base) |base| internal.cache.keyDocument(base);
+        if (valid) return true;
     }
     clear(instance);
     // A failed refill must never become a cached partial result.
-    if (!refill(instance, root)) internal.cache = .{};
+    if (!refill(instance, root)) {
+        internal.cache = .{};
+        internal.cache.length = @intCast(internal.elements.size());
+        return false;
+    }
     internal.cache.length = @intCast(internal.elements.size());
+    // Just refilled under a tree version: every element is alive.
+    return internal.cache.version != null;
 }
 
 /// Named reads already inspect the whole buffer. Validate it before exposing
 /// any element; item() checks just its own entry to keep indexed loops linear.
 fn refreshNamed(instance: *runtime.Instance, internal: *InternalState) void {
-    refresh(instance, internal);
+    if (refresh(instance, internal)) return;
     for (internal.elements.toSlice()) |link| {
         if (link.get() == null) {
             internal.cache = .{};
-            refresh(instance, internal);
+            _ = refresh(instance, internal);
             return;
         }
     }
@@ -399,7 +579,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls make a collection live through dom.live_collections.
-    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .document_elements = &makeDocumentElements, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .table = &makeTable, .root = &liveRoot });
+    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames, .qualified_name = &makeQualifiedName, .namespace_local_name = &makeNamespaceLocalName, .document_elements = &makeDocumentElements, .form_controls = &makeFormControls, .select_options = &makeSelectOptions, .table = &makeTable, .root = &liveRoot });
 }
 
 /// Initialize instance (creates the instance)
@@ -429,9 +609,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        if (internal.form_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "formControlsRoot" });
-        if (internal.options_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "optionsRoot" });
-        if (internal.table_root_traced) @import("engine").forgetTracedChild(instance, .{ .name = "tableRoot" });
+        internal.root_hold.release(instance, live_collections.root_slot);
         internal.deinit();
 
         // Return the block itself, not just what it points to.
@@ -451,7 +629,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Returns the number of elements in the collection.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
-    refresh(instance, internal);
+    _ = refresh(instance, internal);
     return @intCast(internal.elements.size());
 }
 
@@ -460,15 +638,15 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Returns the element at the given index, or null if out of bounds.
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    refresh(instance, internal);
+    const unchanged = refresh(instance, internal);
     // Return null for out of bounds per spec
     const link = internal.elements.get(index) orelse return null;
-    if (link.get()) |element| {
+    if (if (unchanged) link.getUnchanged() else link.get()) |element| {
         internal.cache.remember(index, element);
         return element;
     }
     internal.cache = .{};
-    refresh(instance, internal);
+    _ = refresh(instance, internal);
     const replacement = internal.elements.get(index) orelse return null;
     const element = replacement.get() orelse return null;
     internal.cache.remember(index, element);

@@ -545,7 +545,7 @@ pub fn installHooks() void {
         .existing_node_at = &existingAttrNodeAtHook,
     });
     // The parsers' "create an element" sets names through `dom.node_creation`.
-    dom.node_creation.installElement(.{ .set_names = &setNamesHook, .is_value = &isValueHook });
+    dom.node_creation.installElement(.{ .set_names = &setNamesHook, .is_value = &isValueHook, .names = &namesHook });
     dom.shadow_hosts.install(.{ .root_for_host = &shadowRootOf });
     // The slot algorithms read an element's slottable state through
     // `dom.slot_helpers`.
@@ -565,6 +565,17 @@ pub fn installHooks() void {
 fn isValueHook(instance: *runtime.Instance) ?[]const u8 {
     const internal = getInternal(instance) orelse return null;
     return if (internal.is_value) |value| value.asSlice() else null;
+}
+
+/// dom.node_creation's names: this element's namespace, prefix and local
+/// name, borrowed - fixed for its life once "create an element" set them.
+fn namesHook(instance: *runtime.Instance) ?dom.node_creation.ElementNames {
+    const internal = getInternal(instance) orelse return null;
+    return .{
+        .namespace = if (internal.namespace_uri) |ns| ns.asSlice() else null,
+        .prefix = if (internal.prefix) |p| p.asSlice() else null,
+        .local_name = internal.local_name.asSlice(),
+    };
 }
 
 fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
@@ -1756,81 +1767,6 @@ fn setAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8, element
     removeAttributeByNamespaceAndLocalName(instance, null, aria_attr);
 }
 
-// =============================================================================
-// Tree Traversal Helpers for getElementsBy* methods
-// =============================================================================
-
-/// Collect descendants matching tag name (tree order traversal)
-fn collectElementsByTagName(
-    root: *runtime.Instance,
-    qualified_name: []const u8,
-    collection: *runtime.Instance,
-) !void {
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-
-    // Get first child
-    var child = NodeImpl.getFirstChild(root);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // Check if matches
-            if (getInternal(c)) |child_internal| {
-                const local_name = child_internal.local_name.asSlice();
-                const matches = std.mem.eql(u8, qualified_name, "*") or
-                    std.ascii.eqlIgnoreCase(local_name, qualified_name);
-
-                if (matches) {
-                    try HTMLCollectionImpl.addElement(collection, c);
-                }
-            }
-
-            // Recurse into descendants
-            try collectElementsByTagName(c, qualified_name, collection);
-        }
-
-        child = NodeImpl.getNextSibling(c);
-    }
-}
-
-/// Collect descendants matching namespace and local name (tree order traversal)
-fn collectElementsByTagNameNS(
-    root: *runtime.Instance,
-    namespace: []const u8,
-    local_name: []const u8,
-    collection: *runtime.Instance,
-) !void {
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-
-    var child = NodeImpl.getFirstChild(root);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            if (getInternal(c)) |child_internal| {
-                // Check namespace match ("*" matches any)
-                const ns_matches = std.mem.eql(u8, namespace, "*") or blk: {
-                    if (child_internal.namespace_uri) |ns| {
-                        break :blk std.mem.eql(u8, ns.asSlice(), namespace);
-                    }
-                    break :blk namespace.len == 0;
-                };
-
-                // Check local name match ("*" matches any)
-                const name_matches = std.mem.eql(u8, local_name, "*") or
-                    std.mem.eql(u8, child_internal.local_name.asSlice(), local_name);
-
-                if (ns_matches and name_matches) {
-                    try HTMLCollectionImpl.addElement(collection, c);
-                }
-            }
-
-            // Recurse into descendants
-            try collectElementsByTagNameNS(c, namespace, local_name, collection);
-        }
-
-        child = NodeImpl.getNextSibling(c);
-    }
-}
-
 /// Setter for onfullscreenchange
 /// Fullscreen API - Sets the event handler for fullscreen changes
 /// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenchange
@@ -2424,19 +2360,12 @@ pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionari
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbytagnamens
 pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ns_slice = if (namespace) |ns| ns.asSlice() else "";
-    const name_slice = localName.asSlice();
 
-    // Create HTMLCollection
-    const collection = interfaces.HTMLCollection.init(
-        internal.allocator,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
+    // DOM: "return the list of elements with namespace namespace and local
+    // name localName for this" - a LIVE collection (dom.live_collections).
+    const collection = interfaces.HTMLCollection.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
     errdefer interfaces.HTMLCollection.deinit(collection);
-
-    // Collect matching descendants
-    collectElementsByTagNameNS(instance, ns_slice, name_slice, collection) catch return error.OutOfMemory;
-
+    try dom.live_collections.elementsWithNamespaceAndLocalName(collection, instance, if (namespace) |ns| ns.asSlice() else null, localName.asSlice());
     return collection;
 }
 
@@ -2570,22 +2499,18 @@ pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: enums.Spat
 }
 
 /// Operation: getElementsByTagName
-/// DOM §4.10.5 - Returns HTMLCollection of descendants with matching tag name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbytagname
+///
+/// "The getElementsByTagName(qualifiedName) method steps are to return the
+/// list of elements with qualified name qualifiedName for this" - a LIVE
+/// collection (dom.live_collections), which holds this element (refcount
+/// design 5h). It was a snapshot, which neither saw later mutations nor
+/// kept its root (crane/hd-retention-tagname.html).
 pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const name_slice = qualifiedName.asSlice();
-
-    // Create HTMLCollection
-    const collection = interfaces.HTMLCollection.init(
-        internal.allocator,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
+    const collection = interfaces.HTMLCollection.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
     errdefer interfaces.HTMLCollection.deinit(collection);
-
-    // Collect matching descendants
-    collectElementsByTagName(instance, name_slice, collection) catch return error.OutOfMemory;
-
+    try dom.live_collections.elementsWithQualifiedName(collection, instance, qualifiedName.asSlice());
     return collection;
 }
 

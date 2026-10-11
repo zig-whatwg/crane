@@ -1426,7 +1426,11 @@ pub fn windowIndexedPropertyGetter(
     const conv = @import("conversions.zig");
 
     const isolate = info.getIsolate();
+    // Owned, as every v8_* pointer is (a Global per call): both are released
+    // on every path - kept, each window[i] leaked two Globals (leaks
+    // --atExit, lane rc5).
     const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+    defer v8.v8_Context_Dispose(v8_context);
 
     // Get the 'this' object (the global/Window object)
     const this_obj = info.getThis();
@@ -1434,6 +1438,7 @@ pub fn windowIndexedPropertyGetter(
 
     // Also try getting the global from the context (might be different from this_obj)
     const global_obj = v8.v8_Context_Global(v8_context);
+    defer if (global_obj) |global| v8.v8_Object_Dispose(global);
 
     // Extract instance pointer from internal field
     var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -1511,6 +1516,13 @@ pub fn windowIndexedPropertyGetter(
                 const iframes = interfaces.Document.call_getElementsByTagName(document, iframe_tag) catch {
                     return .kNo; // Can't access iframes
                 };
+                // The list is this lookup's alone - script never sees it, so
+                // no wrapper will ever free it - and it is live: it holds the
+                // document (a counted reference, and an edge waiting in the
+                // wrapper cache for a wrapper that never comes). Let it go on
+                // every path (refcount 5h, lane rc5).
+                const iframes_generation = runtime.SlabAllocator.generationOf(iframes);
+                defer iframes.releaseIfUnwrapped(iframes_generation);
 
                 // Check if we have enough iframes in the DOM
                 const iframe_count = interfaces.HTMLCollection.get_length(iframes) catch 0;
