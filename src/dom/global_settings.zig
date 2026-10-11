@@ -141,6 +141,14 @@ var installed: [capacity]?Settings = @splat(null);
 
 /// Called by each kind of global. Idempotent: a kind is recognised by its
 /// `owns` function and installed once.
+///
+/// Keyed by a function pointer, and safe so: a release build folds functions
+/// with identical code into one (LLVM), so two `owns` checks distinct in Debug
+/// can share an address there, and the second install is dropped - but `of`
+/// answers with the FIRST kind whose check accepts the global, so in Debug
+/// that second kind, with the same check, is never reached either. (Where a
+/// table dispatches to every entry, or keeps the last, keying by one function
+/// is wrong: form_controls, activation, document_fetches.)
 pub fn install(settings: Settings) void {
     process_start.assertInstalling();
     for (&installed) |*slot| {
@@ -177,6 +185,24 @@ fn testOrigin(global: *runtime.Instance) anyerror!runtime.USVString {
 fn testFalse(global: *runtime.Instance) bool {
     _ = global;
     return false;
+}
+
+fn testTrue(global: *runtime.Instance) bool {
+    _ = global;
+    return true;
+}
+
+test "kinds that share an owns check: the first installed answers, as a Debug build's table does" {
+    // In a release build two kinds' `owns` checks with the same body are one
+    // function. The answer must still be the first kind's.
+    const saved = installed;
+    defer installed = saved;
+    installed = @splat(null);
+    const global = &test_owned;
+    install(.{ .owns = &testOwns, .origin = &testOrigin, .is_secure_context = &testFalse, .cross_origin_isolated = &testFalse });
+    install(.{ .owns = &testOwns, .origin = &testOrigin, .is_secure_context = &testTrue, .cross_origin_isolated = &testFalse });
+    const settings = of(global) orelse return error.TestExpectedSettings;
+    try std.testing.expect(!settings.is_secure_context(global));
 }
 
 test "a global no kind owns has no settings, and a kind installs once" {
