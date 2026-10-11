@@ -1511,6 +1511,13 @@ pub fn windowIndexedPropertyGetter(
                 const iframes = interfaces.Document.call_getElementsByTagName(document, iframe_tag) catch {
                     return .kNo; // Can't access iframes
                 };
+                // The list is this lookup's alone - script never sees it, so
+                // no wrapper will ever free it - and it is live: it holds the
+                // document (a counted reference, and an edge waiting in the
+                // wrapper cache for a wrapper that never comes). Let it go on
+                // every path (refcount 5h, lane rc5).
+                const iframes_generation = runtime.SlabAllocator.generationOf(iframes);
+                defer iframes.releaseIfUnwrapped(iframes_generation);
 
                 // Check if we have enough iframes in the DOM
                 const iframe_count = interfaces.HTMLCollection.get_length(iframes) catch 0;
