@@ -257,3 +257,33 @@ pub fn validateContext(label: []const u8) !void {
         }
     }
 }
+
+/// UTS #46 CheckJoiners enables only RFC 5892 Appendix A.1/A.2 (ContextJ).
+/// Scan UTF-8 directly: no allocator, and only transparent Joining_Type=T may
+/// be skipped on either side. Script membership is not a joining property.
+pub fn validateJoiners(label: []const u8) ContextError!void {
+    var it = (std.unicode.Utf8View.init(label) catch return error.InvalidContext).iterator();
+    var previous: ?u21 = null;
+    var before: unicode_data.JoiningType = .U;
+    while (it.nextCodepoint()) |cp| {
+        if (cp == ZERO_WIDTH_NON_JOINER or cp == ZERO_WIDTH_JOINER) {
+            const virama = if (previous) |p| isVirama(p) else false;
+            if (!virama) {
+                if (cp == ZERO_WIDTH_JOINER) return error.InvalidContext;
+                if (before != .L and before != .D) return error.InvalidContext;
+                var after = it;
+                var found = false;
+                while (after.nextCodepoint()) |next| {
+                    const jt = unicode_data.lookupJoiningType(next);
+                    if (jt == .T) continue;
+                    found = jt == .R or jt == .D;
+                    break;
+                }
+                if (!found) return error.InvalidContext;
+            }
+        }
+        const jt = unicode_data.lookupJoiningType(cp);
+        if (jt != .T) before = jt;
+        previous = cp;
+    }
+}

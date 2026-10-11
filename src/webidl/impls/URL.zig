@@ -119,7 +119,7 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webi
     // Step 1: Parse base URL if provided
     var base_record: ?URLRecord = null;
     const base_slice = if (base.was_passed) base.value else "";
-    if (base_slice.len > 0) {
+    if (base.was_passed) {
         base_record = api_parser.parseURL(ctx.allocator, base_slice, null) catch {
             return error.TypeError; // Base URL parse failed
         };
@@ -759,7 +759,7 @@ pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, ba
     // Step 1: Parse base URL if provided
     var base_record: ?URLRecord = null;
     const base_slice = if (base.was_passed) base.value else "";
-    if (base_slice.len > 0) {
+    if (base.was_passed) {
         base_record = api_parser.parseURL(allocator, base_slice, null) catch {
             // Base URL parse failed - return null
             return null;
@@ -845,7 +845,7 @@ pub fn call_static_canParse(instance: *runtime.Instance, url: runtime.USVString,
     // Parse base URL if provided
     var base_record: ?URLRecord = null;
     const base_slice = if (base.was_passed) base.value else "";
-    if (base_slice.len > 0) {
+    if (base.was_passed) {
         base_record = api_parser.parseURL(allocator, base_slice, null) catch return false;
     }
     defer if (base_record) |*br| br.deinit();

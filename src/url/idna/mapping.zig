@@ -29,13 +29,13 @@ pub const Status = enum {
 ///
 /// Parameters:
 /// - `use_std3_ascii_rules`: If true, reject disallowed_std3_* characters
-/// - `lenient`: If true, pass through disallowed characters instead of failing (for toASCII)
 pub fn mapString(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii_rules: bool) ![]u8 {
     return mapStringInternal(allocator, input, use_std3_ascii_rules, false);
 }
 
 /// Apply lenient IDNA mapping for toASCII
-/// Disallowed characters are passed through instead of causing failure (V7 is non-fatal)
+/// UTS #46 Processing step 1 leaves disallowed characters unchanged; step 4
+/// validates the normalized result. A mapping result alone is not success.
 pub fn mapStringLenient(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii_rules: bool) ![]u8 {
     return mapStringInternal(allocator, input, use_std3_ascii_rules, true);
 }
@@ -45,7 +45,7 @@ fn mapStringInternal(allocator: std.mem.Allocator, input: []const u8, use_std3_a
     errdefer result.deinit();
 
     var i: usize = 0;
-    outer: while (i < input.len) {
+    while (i < input.len) {
         // Decode UTF-8 code point
         const cp_len = std.unicode.utf8ByteSequenceLength(input[i]) catch {
             return MappingError.InvalidCodePoint;
@@ -58,27 +58,6 @@ fn mapStringInternal(allocator: std.mem.Allocator, input: []const u8, use_std3_a
         const cp = std.unicode.utf8Decode(input[i..][0..cp_len]) catch {
             return MappingError.InvalidCodePoint;
         };
-
-        // Special case: Format characters and fillers should be ignored (removed)
-        // These are marked as 'disallowed' in IDNA tables but tests expect them removed
-        // They have the Default_Ignorable_Code_Point property or are fillers
-        const ignored_chars = [_]u21{
-            0x115F, // HANGUL CHOSEONG FILLER
-            0x1160, // HANGUL JUNGSEONG FILLER
-            0x3164, // HANGUL FILLER
-            0xFFA0, // HALFWIDTH HANGUL FILLER
-            0x17B4, // KHMER VOWEL INHERENT AQ (combining, disallowed)
-            0x17B5, // KHMER VOWEL INHERENT AA (combining, disallowed)
-            0x1D176, // MUSICAL SYMBOL END TIE (format character)
-        };
-
-        for (ignored_chars) |ignored| {
-            if (cp == ignored) {
-                // Skip this character (treat as ignored)
-                i += cp_len;
-                continue :outer;
-            }
-        }
 
         // Look up IDNA status
         const lookup = unicode_data.lookupIdnaStatus(cp);
@@ -106,8 +85,7 @@ fn mapStringInternal(allocator: std.mem.Allocator, input: []const u8, use_std3_a
             },
             .disallowed => {
                 if (lenient) {
-                    // Per UTS46 test data: V7 errors (disallowed chars) are non-fatal for toASCII
-                    // Pass through the character to be encoded in punycode
+                    // UTS #46 Processing step 1: validation occurs after NFC.
                     try result.appendSlice(input[i .. i + cp_len]);
                 } else {
                     // Per UTS46/WHATWG URL, disallowed characters cause failure for toUnicode

@@ -50,7 +50,7 @@ pub const ValidationError = struct {
 /// Format: error_name corresponds to spec's "error-name"
 pub const ErrorType = enum {
     // IDNA errors (lines 43-48)
-    /// Unicode ToASCII records an error or returns empty string (FAILURE)
+    /// Strict Unicode ToASCII fails (diagnostic; compatibility parsing may succeed)
     domain_to_ascii,
     /// Host contains a forbidden domain code point (FAILURE)
     domain_invalid_code_point,
@@ -121,7 +121,7 @@ pub const ErrorType = enum {
     /// - URL parsing: missing-scheme-non-relative-URL, host-missing, port errors
     ///
     /// Non-failure errors (parser continues):
-    /// - domain-to-Unicode
+    /// - domain-to-ASCII (strict-check diagnostic), domain-to-Unicode
     /// - IPv4-empty-part, IPv4-non-decimal-part
     /// - invalid-URL-unit, special-scheme-missing-following-solidus
     /// - invalid-reverse-solidus, invalid-credentials
@@ -129,7 +129,6 @@ pub const ErrorType = enum {
     pub fn isFailure(self: ErrorType) bool {
         return switch (self) {
             // IDNA failures
-            .domain_to_ascii,
             .domain_invalid_code_point,
             // Host parsing failures
             .host_invalid_code_point,
@@ -153,7 +152,9 @@ pub const ErrorType = enum {
             .port_invalid,
             => true,
 
-            // Non-failures
+            // Non-failures: URL domain parser step 2 records this diagnostic
+            // without returning; only its later steps decide parser failure.
+            .domain_to_ascii,
             .domain_to_unicode,
             .ipv4_empty_part,
             .ipv4_non_decimal_part,
@@ -170,7 +171,7 @@ pub const ErrorType = enum {
     /// Get human-readable error description
     pub fn description(self: ErrorType) []const u8 {
         return switch (self) {
-            .domain_to_ascii => "Unicode ToASCII records an error or returns empty string",
+            .domain_to_ascii => "Strict Unicode ToASCII failed; compatibility parsing may still succeed",
             .domain_invalid_code_point => "Host contains a forbidden domain code point",
             .domain_to_unicode => "Unicode ToUnicode records an error",
             .host_invalid_code_point => "Opaque host contains a forbidden host code point",
