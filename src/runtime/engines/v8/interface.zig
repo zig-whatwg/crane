@@ -4716,12 +4716,19 @@ pub fn V8Interface(comptime Interface: type) type {
                 return conv.enumToV8String(ReturnType, isolate, result);
             }
 
-            // Handle union types (e.g., ReadableStreamReader)
+            // A union (FormData.get's (File or USVString), getReader's
+            // reader): its active member's conversion, and so that member's
+            // ownership (`conv.unionValueIsOwned`) - a String made for a
+            // string member is released once set, a wrapper is the cache's.
+            // `owned` was left false for every union, so FormData.get kept
+            // the String of every string entry it returned.
             if (type_info == .@"union") {
-                // Use the generic toV8Value conversion which handles unions
-                return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
+                const converted = conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
+                    owned.* = true;
                     return v8.v8_Undefined(isolate);
                 };
+                owned.* = conv.unionValueIsOwned(ReturnType, result);
+                return converted;
             }
 
             // Handle Promise(T) types - extract the handle and return the V8 Promise

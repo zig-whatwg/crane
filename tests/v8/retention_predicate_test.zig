@@ -451,3 +451,46 @@ test "setterValueLeavesHandle - an unknown type defaults to KEPT" {
     const Dictionary = struct { detail: ?runtime.JSValue = null };
     try std.testing.expect(!leaves(Dictionary, .{}));
 }
+
+// ============================================================================
+// unionValueIsOwned: is the value an operation's union result converts to a
+// Global made for the call, which the binding releases once it is set as the
+// result? TRUE releases it, so every member the rule cannot prove fresh must
+// answer FALSE - a wrapper released under the wrapper cache is a
+// use-after-free; a fresh value kept is a leak.
+
+const unionOwned = v8.conversions.unionValueIsOwned;
+
+test "unionValueIsOwned - a string, number, boolean or sequence member is made for the call" {
+    // FormDataEntryValue, reconstructed: (File or USVString).
+    const Entry = union(enum) { file: *runtime.Instance, usvstring: []const u8 };
+    try std.testing.expect(unionOwned(Entry, .{ .usvstring = "b" }));
+    const Numberish = union(enum) { double: f64, flag: bool, text: runtime.DOMString };
+    try std.testing.expect(unionOwned(Numberish, .{ .double = 1 }));
+    try std.testing.expect(unionOwned(Numberish, .{ .flag = true }));
+    try std.testing.expect(unionOwned(Numberish, .{ .text = runtime.DOMString.empty }));
+    const List = union(enum) { items: []const u32, one: u32 };
+    try std.testing.expect(unionOwned(List, .{ .items = &.{} }));
+}
+
+test "unionValueIsOwned - an interface member is its wrapper: kept" {
+    var dummy: u64 = 0;
+    const Entry = union(enum) { file: *runtime.Instance, usvstring: []const u8 };
+    try std.testing.expect(!unionOwned(Entry, .{ .file = @ptrCast(@alignCast(&dummy)) }));
+}
+
+test "unionValueIsOwned - a nested union answers by its own active member" {
+    var dummy: u64 = 0;
+    const Inner = union(enum) { text: []const u8, node: *runtime.Instance };
+    const Outer = union(enum) { inner: Inner, flag: bool };
+    try std.testing.expect(unionOwned(Outer, .{ .inner = .{ .text = "x" } }));
+    try std.testing.expect(!unionOwned(Outer, .{ .inner = .{ .node = @ptrCast(@alignCast(&dummy)) } }));
+}
+
+test "unionValueIsOwned - an any, object or unknown member defaults to KEPT" {
+    var dummy: u64 = 0;
+    const Shape = union(enum) { value: runtime.JSValue, opaque_member: *anyopaque };
+    try std.testing.expect(!unionOwned(Shape, .{ .value = runtime.JSValue.jsNull }));
+    try std.testing.expect(!unionOwned(Shape, .{ .value = .{ .handle = .{ .ptr = @ptrCast(&dummy) } } }));
+    try std.testing.expect(!unionOwned(Shape, .{ .opaque_member = @ptrCast(&dummy) }));
+}

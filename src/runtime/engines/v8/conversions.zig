@@ -2717,6 +2717,27 @@ pub fn dictionaryValueIsOwned(comptime T: type) bool {
     return isDictionaryValue(T);
 }
 
+/// Whether toV8Value(T, ..., value) of a union `T` is a Global made for the
+/// call: toV8Value converts the ACTIVE member as a value of its own type, so
+/// the member decides - by the rule a dictionary member's value follows
+/// (`dictionaryMemberValueIsOwned`: a string, number, boolean or enum, a
+/// dictionary, a sequence), a nested union by its own active member. Anything
+/// else - an interface member's wrapper (the wrapper cache's), an `any` or
+/// `object` member's handle, an `*anyopaque` member - stays kept, the
+/// conservative answer.
+pub fn unionValueIsOwned(comptime T: type, value: T) bool {
+    const info = @typeInfo(T).@"union";
+    if (comptime info.tag_type == null) return false;
+    switch (value) {
+        inline else => |payload| {
+            const Member = @TypeOf(payload);
+            if (comptime Member == runtime.JSValue or Member == runtime.DOMString) return dictionaryMemberValueIsOwned(Member);
+            if (comptime @typeInfo(Member) == .@"union") return unionValueIsOwned(Member, payload);
+            return dictionaryMemberValueIsOwned(Member);
+        },
+    }
+}
+
 pub fn toV8Value(
     comptime T: type,
     isolate: *v8.Isolate,

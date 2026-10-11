@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A union result is owned as its active member is](architecture-a-union-result-is-owned-as-its-active-member.md) - An ownership rule keyed on a type is wrong for a union: ask the value which member it holds, and keep the safe default for every member you cannot prove fresh.
 - [Find an object's Browser from its address, not from its context](architecture-find-an-objects-browser-from-its-address-not-its-context.md) - An owner you can only reach through a context dies with the context; put the owner where the object's memory is - an allocation block aligned to its size names its allocator for free.
 - [A traced edge keeps an object from the collector, not from its realm's end](architecture-a-traced-edge-keeps-an-object-from-the-collector-not-from-its-realm-s-end.md) - A traced edge is a reason for the collector to keep an object, not a guarantee that it lives: if the object can come from another realm, its realm's end frees it - read it through a generation check everywhere, and find out by ending that realm in a test.
 - [A flag made counted changes every caller - audit them all, and test each by collection](architecture-a-flag-made-counted-changes-every-caller.md) - Changing a primitive's counting semantics is a change to every caller: grep them all (no `head`), balance each with its own bool, and prove each one by collecting the object it keeps.
