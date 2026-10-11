@@ -146,11 +146,10 @@ fn getOrCreateInternal(instance: *runtime.Instance) !*InternalState {
 
     // Create new internal state using the runtime's arena allocator
     // This ensures proper cleanup during context shutdown
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
     // The registry owns this block, so `Registry.remove` returns it to
     // the arena. With `set` it was dropped from the map and held to
     // process exit - measured at 904 bytes per discarded element.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{
         .allocator = instance.ctx.allocator,
     };
@@ -181,7 +180,7 @@ pub fn init(
     // that took it for its own inherited the dead one's request state (or,
     // from an earlier runtime, a block that is gone). createIn frees and
     // reports a dead one's (docs/lessons/architecture-an-address-keyed-entry-a-teardown-misses-is-inherited.md).
-    const internal = try Registry.createIn(instance, runtime.ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{ .allocator = instance.ctx.allocator };
 
     return instance;

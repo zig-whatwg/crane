@@ -34,6 +34,13 @@ test "an object or embed torn down with its tree runs its own deinit" {
 
     var ctx_data = try runtime.ContextData.init(allocator, .{});
     defer ctx_data.deinit();
+    // A page's realm, as far as the teardown can tell: it has an agent, so a
+    // torn-down node's storage stays for its wrapper (or the page's end) to
+    // free, and its state can still be read below. An engine-less realm's
+    // would be returned to the slab and arena at once
+    // (Node.deinitNodeByType), and reading it here would read freed memory.
+    var page_agent: u8 = 0;
+    ctx_data.agent = @ptrCast(&page_agent);
     const ctx: runtime.Context = &ctx_data;
 
     const div = try interfaces.HTMLDivElement.init(allocator, ctx);
@@ -45,8 +52,8 @@ test "an object or embed torn down with its tree runs its own deinit" {
     try testing.expect(holdsState(interfaces.HTMLEmbedElement, embed));
 
     // The div's teardown: Node.deinit tears its children down by type. (The
-    // Instances themselves stay until the collector or the page frees them:
-    // their state can still be read.)
+    // Instances themselves stay until the collector or the page frees them -
+    // here the standalone scope's end: their state can still be read.)
     interfaces.HTMLDivElement.deinit(div);
 
     try testing.expect(!holdsState(interfaces.HTMLObjectElement, object));

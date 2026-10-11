@@ -84,9 +84,15 @@ pub const Instance = struct {
     /// Initialize a new instance with consolidated lifecycle management
     ///
     /// This function consolidates all instance allocation logic:
-    /// - Allocates Instance handle from SlabAllocator (16 bytes, fast)
-    /// - Allocates state from ArenaAllocator (variable size)
+    /// - Allocates the Instance handle from its Browser's slab (24 bytes, fast)
+    /// - Allocates state from its Browser's arena (variable size)
     /// - Sets up vtable and state pointers
+    ///
+    /// Its Browser is its realm's (`ctx.browserScope()`, docs/instances.md):
+    /// an object belongs to the Browser whose realm made it, and that
+    /// Browser's end frees it. A realm no Browser made uses the standalone
+    /// scope (runtime.initializeRuntime); with neither, making an object is a
+    /// programming error.
     ///
     /// ## Parameters
     /// - `allocator`: Unused (kept for API compatibility, will be removed in future)
@@ -101,7 +107,7 @@ pub const Instance = struct {
     ///
     /// ## Example
     /// ```zig
-    /// const instance = try Instance.init(allocator, ElementState, &element_vtable, ctx, undefined);
+    /// const instance = try Instance.init(allocator, ElementState, &element_vtable, ctx);
     /// defer Instance.deinit(instance);
     /// ```
     pub fn init(
@@ -110,24 +116,19 @@ pub const Instance = struct {
         vtable: *const VTable,
         ctx: Context,
     ) !*Instance {
-        _ = allocator; // Unused - SlabAllocator and ArenaAllocator are global singletons
+        _ = allocator; // Unused - the realm's Browser's slab and arena hold every object
 
-        // Import SlabAllocator and ArenaAllocator at comptime
-        const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
-        const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
+        const scope = ctx.browserScope() orelse
+            @panic("a platform object made in a realm no Browser owns, with no standalone runtime (runtime.initializeRuntime)");
 
-        // Step 1: Allocate Instance handle from slab allocator (24 bytes)
-        const instance = try SlabAllocator.get().alloc(vtable);
-        errdefer SlabAllocator.get().free(instance);
+        // Step 1: Allocate the Instance handle from the Browser's slab (24
+        // bytes). A reissued slot starts with no lifecycle flags.
+        const instance = try scope.slab.alloc(vtable);
+        errdefer scope.slab.free(instance);
 
-        // Step 1a: Clear any stale lifecycle flags from previous instance at this address
-        // The slab allocator reuses memory addresses, so we must clear old flags
-        // to prevent markCleanupStarted() from incorrectly returning false for new instances.
-        const instance_lifecycle = @import("instance_lifecycle.zig");
-        instance_lifecycle.reset(instance);
-
-        // Step 2: Allocate state from arena allocator (variable size based on StateType)
-        const state = try ArenaAllocator.get().create(StateType);
+        // Step 2: Allocate state from the Browser's arena (variable size
+        // based on StateType)
+        const state = try scope.arena.create(StateType);
 
         // Step 2a: CRITICAL - Zero-initialize state memory to prevent uninitialized reads
         // This ensures all pointer fields are null, all numbers are 0, etc.
@@ -148,50 +149,28 @@ pub const Instance = struct {
     ///
     /// This function consolidates all instance cleanup logic:
     /// - Calls VTable's deinit_fn if present (for custom cleanup)
-    /// - Returns Instance handle to SlabAllocator
-    /// - State memory is batch-freed during GC sweep (ArenaAllocator.reset())
+    /// - Returns the state block to its Browser's arena
+    /// - Returns the Instance handle to its Browser's slab
+    ///
+    /// Its Browser is found from the instance's address (`BrowserScope.ofInstance`),
+    /// never from its context, which a teardown may already have ended.
     ///
     /// ## Parameters
     /// - `instance`: The instance to deinitialize
     ///
     /// ## Example
     /// ```zig
-    /// const instance = try Instance.init(allocator, ElementState, &element_vtable, undefined);
+    /// const instance = try Instance.init(allocator, ElementState, &element_vtable, ctx);
     /// defer Instance.deinit(instance);
     /// ```
     pub fn deinit(instance: *Instance) void {
-        // Import SlabAllocator at comptime
-        const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
-
         // Step 1: Call VTable's deinit function if present (for custom cleanup)
         if (instance.vtable.deinit) |deinit_fn| {
             deinit_fn(instance);
         }
 
-        // Step 2: Return the state block for reuse.
-        //
-        // Must come after the vtable deinit above, which releases what the state
-        // POINTS TO; this releases the state itself. Same ordering the slab has
-        // always relied on for the Instance handle.
-        //
-        // This used to be a comment saying the arena would batch-free it during GC
-        // sweep. Nothing ever called that sweep, so in practice every discarded
-        // node's state was held to process exit - 21.4 MB across 10,000 elements,
-        // measured by `zig build gc-bench`. A blanket reset was never the answer
-        // anyway: the arena is process-global and holds every LIVE node too.
-        const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
-        if (instance.vtable.state_size != 0) {
-            if (ArenaAllocator.tryGet() catch null) |arena| {
-                arena.destroyRaw(
-                    @ptrCast(instance.state),
-                    instance.vtable.state_size,
-                    instance.vtable.state_align,
-                );
-            }
-        }
-
-        // Step 3: Return Instance handle to slab allocator
-        SlabAllocator.get().free(instance);
+        // Steps 2-3: the state block, then the handle (gc.releaseStorage).
+        @import("gc_integration.zig").releaseStorage(instance);
     }
 
     /// Hand back an object the engine made for script and exposed only if
@@ -204,8 +183,7 @@ pub const Instance = struct {
     /// frees it when that dies. Only an object nothing ever wrapped is still
     /// the caller's - and nothing else will ever free it - so it is freed here.
     pub fn releaseIfUnwrapped(instance: *Instance, generation: u64) void {
-        const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
-        if (SlabAllocator.generationOf(instance) != generation) return;
+        if (@import("slab_allocator.zig").SlabAllocator.generationOf(instance) != generation) return;
         // No engine realm behind it (a DOM unit test's context, a retired
         // realm): nothing can have wrapped it, and nothing is known about who
         // else holds it - leave it.
@@ -605,214 +583,5 @@ test "Method enum has expected operations" {
     _ = Method.construct;
 }
 
-test "Instance.init allocates instance and state successfully" {
-    const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
-    const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
-
-    // Initialize allocators
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    // Create VTable
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    // Define state type
-    const State = struct {
-        value: u32,
-        name: []const u8,
-    };
-
-    // Test Instance.init
-    const instance = try Instance.init(testing.allocator, State, &vtable, undefined);
-    defer Instance.deinit(instance);
-
-    // Verify instance is properly initialized
-    try testing.expect(instance.vtable == &vtable);
-
-    // Verify state can be accessed
-    const state = instance.getState(State);
-    state.value = 42;
-    state.name = "test";
-    try testing.expectEqual(@as(u32, 42), state.value);
-    try testing.expectEqualStrings("test", state.name);
-}
-
-test "Instance.init handles allocation failure gracefully" {
-    const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
-    const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
-
-    // Use FailingAllocator to simulate OutOfMemory
-    var failing = std.testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
-
-    SlabAllocator.init(failing.allocator());
-    defer SlabAllocator.deinit();
-
-    ArenaAllocator.init(failing.allocator());
-    defer ArenaAllocator.deinit();
-
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    const State = struct {
-        value: u32,
-    };
-
-    // Should fail with OutOfMemory
-    const result = Instance.init(testing.allocator, State, &vtable, undefined);
-    try testing.expectError(error.OutOfMemory, result);
-}
-
-test "Instance.deinit calls VTable deinit_fn if present" {
-    const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
-    const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
-
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    // Track whether deinit_fn was called
-    var deinit_called = false;
-
-    const State = struct {
-        deinit_flag: *bool,
-    };
-
-    const deinitFn = struct {
-        fn call(instance: *Instance) void {
-            const s: *State = @ptrCast(@alignCast(instance.state));
-            s.deinit_flag.* = true;
-        }
-    }.call;
-
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = deinitFn,
-        .methods_ptr = &delegates,
-    };
-
-    const instance = try Instance.init(testing.allocator, State, &vtable, undefined);
-    const state = instance.getState(State);
-    state.deinit_flag = &deinit_called;
-
-    // Deinit should call our deinit_fn
-    Instance.deinit(instance);
-
-    try testing.expect(deinit_called);
-}
-
-test "Instance.deinit does not crash without deinit_fn" {
-    const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
-    const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
-
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const State = struct {
-        value: u32,
-    };
-
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = null, // No deinit function
-        .methods_ptr = &delegates,
-    };
-
-    const instance = try Instance.init(testing.allocator, State, &vtable, undefined);
-
-    // Should not crash even without deinit_fn
-    Instance.deinit(instance);
-}
-
-test "Instance.init and deinit no memory leaks" {
-    const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
-    const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
-
-    // Use testing.allocator which detects leaks
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const State = struct {
-        value: u32,
-        data: [100]u8,
-    };
-
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    // Allocate and free multiple instances
-    var instances: [10]*Instance = undefined;
-    for (&instances) |*inst| {
-        inst.* = try Instance.init(testing.allocator, State, &vtable, undefined);
-    }
-
-    for (instances) |inst| {
-        Instance.deinit(inst);
-    }
-
-    // Note: State memory is batch-freed during arena reset, not individual deinit
-    // This test verifies Instance handles are properly freed
-}
-
-test "Instance.init supports different state types" {
-    const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
-    const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
-
-    SlabAllocator.init(testing.allocator);
-    defer SlabAllocator.deinit();
-
-    ArenaAllocator.init(testing.allocator);
-    defer ArenaAllocator.deinit();
-
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    // Small state
-    const SmallState = struct {
-        value: u8,
-    };
-
-    const inst1 = try Instance.init(testing.allocator, SmallState, &vtable, undefined);
-    defer Instance.deinit(inst1);
-
-    const state1 = inst1.getState(SmallState);
-    state1.value = 42;
-    try testing.expectEqual(@as(u8, 42), state1.value);
-
-    // Large state
-    const LargeState = struct {
-        values: [1024]u64,
-    };
-
-    const inst2 = try Instance.init(testing.allocator, LargeState, &vtable, undefined);
-    defer Instance.deinit(inst2);
-
-    const state2 = inst2.getState(LargeState);
-    state2.values[0] = 123;
-    state2.values[1023] = 456;
-    try testing.expectEqual(@as(u64, 123), state2.values[0]);
-    try testing.expectEqual(@as(u64, 456), state2.values[1023]);
-}
+// Instance.init and deinit against a Browser's scope: tests/runtime/
+// (browser_scope_allocators_test.zig, instance_initialization_test.zig).

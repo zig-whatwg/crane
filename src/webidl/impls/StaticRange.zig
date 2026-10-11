@@ -118,8 +118,7 @@ fn removeInternal(instance: *runtime.Instance) void {
         // waiting for its wrapper go; a collected one's went with it.
         kv.value.kept_start.release(instance);
         kv.value.kept_end.release(instance);
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, kv.value);
+        runtime.arenaOf(instance).destroy(InternalState, kv.value);
     }
 }
 
@@ -140,8 +139,7 @@ pub fn init(
     errdefer runtime.Instance.deinit(instance);
 
     // Allocate internal state using arena
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init();
 
     // Store in our global map

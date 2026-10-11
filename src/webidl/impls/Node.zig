@@ -189,11 +189,10 @@ pub fn init(
     errdefer EventTargetImpl.deinit(instance);
 
     // Initialize Node internal state in global registry
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
     // The registry owns this block, so `Registry.remove` returns it to the arena.
     // Node is the hottest path here - every element is a Node - and with `set` the
     // block was dropped from the map and held to process exit.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
 
     // Create NodeBase - the unified tree structure

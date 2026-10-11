@@ -320,6 +320,18 @@ pub const ContextData = struct {
         };
     }
 
+    /// The Browser whose platform objects this realm makes (`Instance.init`):
+    /// its own `browser_scope`; a ShadowRealm's, its principal realm's (as
+    /// its settings follow the principal realm); for a realm no Browser
+    /// made, the standalone scope (runtime.initializeRuntime), if any.
+    pub fn browserScope(self: *const Self) ?*BrowserScope {
+        var realm: ?*const Self = self;
+        while (realm) |r| : (realm = r.principal_realm) {
+            if (r.browser_scope) |scope| return scope;
+        }
+        return BrowserScope.standalone();
+    }
+
     /// Deinitialize context and cleanup resources
     pub fn deinit(self: *Self) void {
         // NOTE: V8 wrapper cache cleanup is handled by context_manager

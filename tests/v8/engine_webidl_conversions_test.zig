@@ -1423,11 +1423,11 @@ test "protocol: a platform object converts to its wrapper in its relevant realm,
     const ctx = try realm();
     const here = try hostedRealm();
     const other = try otherRealm();
-    _ = runtime.SlabAllocator.tryGet() catch runtime.SlabAllocator.init(std.heap.page_allocator);
+    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
 
     // A platform object of `other` (its relevant realm), wrapped there: a
     // plain object of `other`'s, in `other`'s wrapper cache.
-    const instance = try runtime.SlabAllocator.get().alloc(&relevant_vtable);
+    const instance = try runtime.BrowserScope.standalone().?.slab.alloc(&relevant_vtable);
     instance.state = @ptrCast(&relevant_state);
     instance.ctx = other;
     ffi.v8_Context_Enter(other_context.?);

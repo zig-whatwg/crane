@@ -265,8 +265,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// Initialize an EventTarget with internal state
 /// This is called by subclasses (like Node) to set up the internal state
 pub fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !*InternalState {
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init(allocator);
 
     // Store internal state in registry (ensure it's initialized first)
@@ -398,7 +397,7 @@ fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
         if (lazy.generation != runtime.SlabAllocator.generationOf(instance)) {
             const stale = registry.take(@intFromPtr(instance));
             registry.unlock();
-            if (stale) |entry| releaseEntry(entry);
+            if (stale) |entry| releaseEntry(@intFromPtr(instance), entry);
             return null;
         }
     }
@@ -409,7 +408,7 @@ fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
 fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
     const registry = &internal_state_registry;
     var stale: ?*InternalState = null;
-    defer if (stale) |entry| releaseEntry(entry);
+    defer if (stale) |entry| releaseEntry(@intFromPtr(instance), entry);
     registry.lock();
     defer registry.unlock();
     const map = registry.ensure();
@@ -427,9 +426,8 @@ fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) 
 /// `LazyEntry`), made on its first addEventListener.
 fn lazyInternal(instance: *runtime.Instance) !*InternalState {
     if (getInternalFromRegistry(instance)) |internal| return internal;
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
-    errdefer ArenaAllocator.get().destroy(InternalState, internal);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    errdefer runtime.arenaOf(instance).destroy(InternalState, internal);
     internal.* = InternalState.init(std.heap.page_allocator);
     internal.lazy = .{ .realm = instance.ctx, .generation = runtime.SlabAllocator.generationOf(instance) };
     try setInternalInRegistry(instance, internal);
@@ -439,10 +437,12 @@ fn lazyInternal(instance: *runtime.Instance) !*InternalState {
 /// Release an entry taken out of the registry and what it holds - its
 /// listeners' callbacks and its event handlers. Only for an entry whose
 /// realm's agent lives, on that agent's thread, with the registry unlocked.
-fn releaseEntry(internal: *InternalState) void {
+/// `address` is its instance's: the block goes back to that instance's
+/// Browser's arena (runtime.arenaOf), where it was made.
+fn releaseEntry(address: usize, internal: *InternalState) void {
     internal.deinitEx(true);
-    const Arena = @import("runtime").ArenaAllocator;
-    if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+    const instance: *runtime.Instance = @ptrFromInt(address);
+    runtime.arenaOf(instance).destroy(InternalState, internal);
 }
 
 /// EventTarget's unloading cleanup step (dom.unloading_cleanup): the entries
@@ -453,7 +453,8 @@ fn releaseEntry(internal: *InternalState) void {
 /// too late for it.
 fn releaseRealmEntries(environment: runtime.Context) void {
     const registry = &internal_state_registry;
-    var doomed: std.ArrayListUnmanaged(*InternalState) = .empty;
+    const Doomed = struct { address: usize, internal: *InternalState };
+    var doomed: std.ArrayListUnmanaged(Doomed) = .empty;
     defer doomed.deinit(std.heap.page_allocator);
     {
         registry.lock();
@@ -471,10 +472,10 @@ fn releaseRealmEntries(environment: runtime.Context) void {
         doomed.ensureTotalCapacity(std.heap.page_allocator, keys.items.len) catch return;
         for (keys.items) |key| {
             const taken = registry.take(key) orelse continue;
-            doomed.appendAssumeCapacity(taken);
+            doomed.appendAssumeCapacity(.{ .address = key, .internal = taken });
         }
     }
-    for (doomed.items) |internal| releaseEntry(internal);
+    for (doomed.items) |entry| releaseEntry(entry.address, entry.internal);
 }
 
 fn removeFromRegistry(instance: *runtime.Instance) void {
@@ -486,8 +487,7 @@ fn removeFromRegistry(instance: *runtime.Instance) void {
     // rather than using InstanceRegistry, so it needs its own release - and it is on
     // every DOM node, so leaving it out keeps the leak on the hottest path there is.
     if (taken) |internal| {
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
     }
 }
 

@@ -481,8 +481,7 @@ pub fn init(
     // createIn, not set: the registry then owns the block and returns it to the
     // arena on remove, rather than dropping it from the map and holding it to
     // process exit.
-    const ArenaAllocator = runtime.ArenaAllocator;
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{ .allocator = ctx.allocator };
 
     return instance;

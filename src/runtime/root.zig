@@ -119,6 +119,13 @@ pub const arraybuffer_view = @import("arraybuffer_view.zig");
 pub const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 pub const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
 
+/// The arena of `instance`'s Browser (docs/instances.md): where its state,
+/// and the internal state its impl keeps for it, are allocated and returned.
+/// Found from the instance's address (BrowserScope.ofInstance).
+pub fn arenaOf(instance: *const Instance) *ArenaAllocator {
+    return &BrowserScope.ofInstance(instance).arena;
+}
+
 // Compile-time utilities
 pub const buildVTable = @import("vtable_builder.zig").buildVTable;
 pub const buildVTableWithDeinit = @import("vtable_builder.zig").buildVTableWithDeinit;
@@ -130,8 +137,6 @@ pub const gc = @import("gc_integration.zig");
 /// (`VTable.counted`) and how the adapter takes and releases the reference.
 pub const lifetime = @import("lifetime.zig");
 pub const onObjectFreed = gc.onObjectFreed;
-pub const onGCSweep = gc.onGCSweep;
-pub const GCStats = gc.GCStats;
 
 // Cleanup coordination (RC2 fix - prevents dual cleanup path conflicts)
 pub const cleanup_coordinator = @import("cleanup_coordinator.zig");
@@ -151,8 +156,6 @@ pub const getInternal = internal_state.getInternal;
 pub const setInternal = internal_state.setInternal;
 pub const removeInternal = internal_state.removeInternal;
 pub const hasInternal = internal_state.hasInternal;
-pub const resetInternalStateRegistry = internal_state.resetRegistry;
-pub const initInternalStateRegistry = internal_state.initRegistry;
 
 // JS Engine abstraction
 pub const jsengine = @import("jsengine.zig");
@@ -320,57 +323,52 @@ pub fn clamp(comptime T: type, value: anytype) T {
     @compileError("clamp only supports integer and float types");
 }
 
-/// Initialize the WebIDL runtime
-///
-/// Must be called before using any runtime functionality.
-/// Initializes both SlabAllocator and ArenaAllocator.
+/// Start the runtime without a Browser: the standalone scope
+/// (BrowserScope.standalone), whose slab and arena serve every realm no
+/// Browser made - unit tests' realms, and a host that runs the runtime on its
+/// own. A Browser never uses it: each has its own scope (Browser.init).
 ///
 /// Thread safety: Not thread-safe, call once during startup
 ///
 /// Example:
 /// ```zig
-/// const std = @import("std");
-/// const runtime = @import("runtime");
-///
-/// pub fn main() !void {
-///     var gpa: std.heap.DebugAllocator(.{}) = .init;
-///     defer _ = gpa.deinit();
-///     const allocator = gpa.allocator();
-///
-///     runtime.initRuntime(allocator);
-///     defer runtime.deinitRuntime();
-///
-///     // Use runtime...
-/// }
+/// runtime.initRuntime(allocator);
+/// defer runtime.deinitRuntime();
 /// ```
 pub fn initializeRuntime(allocator: std.mem.Allocator) void {
-    SlabAllocator.init(allocator);
-    ArenaAllocator.init(allocator);
-    @import("webidl").utils.beginRegistryRuntime(); // a new arena: the registries' entries from before it are gone
-    // Initialize internal state registry with provided allocator
-    // This prevents memory fragmentation from using page_allocator
-    internal_state.initRegistry(allocator);
+    const scope = allocator.create(BrowserScope) catch @panic("out of memory starting the runtime");
+    scope.* = BrowserScope.init(allocator);
+    BrowserScope.setStandalone(scope);
+    beginRegistries();
 }
 
-/// Deinitialize the WebIDL runtime
-///
-/// Frees all resources allocated by the runtime.
-/// Must be called after all WebIDL objects have been freed.
+/// End the runtime `initializeRuntime` started: the standalone scope ends,
+/// with every object still in it.
 ///
 /// Thread safety: Not thread-safe, call once during shutdown
 pub fn deinitializeRuntime() void {
-    // Call any registered cleanup hooks (e.g., EventTarget registry cleanup)
-    if (runtime_cleanup_hook) |hook| {
-        hook();
-    }
+    endRegistries();
+    const scope = BrowserScope.standalone() orelse return;
+    BrowserScope.setStandalone(null);
+    const allocator = scope.allocator;
+    scope.deinit();
+    allocator.destroy(scope);
+}
 
-    // Reset internal state registry
-    // This removes all instance→InternalState mappings to prevent stale references
-    // when running multiple tests sequentially (each test gets a fresh environment)
-    internal_state.resetRegistry();
+/// INTERIM (instances B1, until the DOM's side tables are the scope's): the
+/// process-wide registries' entries from before now belong to an earlier
+/// runtime (webidl.utils.beginRegistryRuntime). A Browser's start and the
+/// standalone runtime's call it; one runtime at a time, as those registries
+/// assume.
+pub fn beginRegistries() void {
+    @import("webidl").utils.beginRegistryRuntime();
+}
 
-    ArenaAllocator.deinit();
-    SlabAllocator.deinit();
+/// INTERIM (instances B1, as `beginRegistries`): the registries' own end,
+/// after the agent's - EventTarget's registry releases what its entries
+/// still hold, with no engine.
+pub fn endRegistries() void {
+    if (runtime_cleanup_hook) |hook| hook();
 }
 
 /// Cleanup hook function type
@@ -379,7 +377,7 @@ pub const CleanupHookFn = *const fn () void;
 /// Global cleanup hook (set by impls that need cleanup during deinit)
 var runtime_cleanup_hook: ?CleanupHookFn = null;
 
-/// Register a cleanup hook to be called during deinitializeRuntime
+/// Register a cleanup hook to be called by `endRegistries`
 /// This allows impl modules to register cleanup without circular dependencies
 pub fn registerCleanupHook(hook: CleanupHookFn) void {
     runtime_cleanup_hook = hook;
@@ -469,54 +467,9 @@ test "runtime exports" {
     _ = gc;
     _ = lifetime;
     _ = onObjectFreed;
-    _ = onGCSweep;
-    _ = GCStats;
 
     _ = initRuntime;
     _ = deinitRuntime;
-}
-
-test "initRuntime and deinitRuntime work" {
-    initializeRuntime(testing.allocator);
-    defer deinitializeRuntime();
-
-    // Verify allocators are initialized and can allocate
-    const slab = SlabAllocator.get();
-    const arena = ArenaAllocator.get();
-
-    // Can allocate after init
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-
-    const instance = try slab.alloc(&vtable);
-    const value = try arena.create(u32);
-    value.* = 42;
-
-    try testing.expectEqual(@as(u32, 42), value.*);
-
-    slab.free(instance);
-}
-
-test "initRuntime initializes both allocators" {
-    initializeRuntime(testing.allocator);
-    defer deinitializeRuntime();
-
-    // SlabAllocator should be usable
-    const delegates = .{}; // Empty delegates struct
-    const vtable = VTable{
-        .deinit = null,
-        .methods_ptr = &delegates,
-    };
-    const inst = try SlabAllocator.get().alloc(&vtable);
-    SlabAllocator.get().free(inst);
-
-    // ArenaAllocator should be usable
-    const val = try ArenaAllocator.get().create(u64);
-    val.* = 123;
-    try testing.expectEqual(@as(u64, 123), val.*);
 }
 
 test "convenience aliases work" {

@@ -141,8 +141,9 @@ pub const Browser = struct {
     cookie_jar: *cookiestore.CookieJar,
     /// The Browser's scope: its per-Browser state, as supplements every realm
     /// of it reaches (ContextData.browser_scope; docs/instances.md rule 2) -
-    /// its live workers (html.WorkerRegistry). Ends after every realm and
-    /// every worker thread.
+    /// its live workers (html.WorkerRegistry) - and the slab and arena every
+    /// platform object of it comes from. Ends after every realm and every
+    /// worker thread.
     scope: *runtime.BrowserScope,
 
     /// Initialize a new Browser instance
@@ -167,9 +168,12 @@ pub const Browser = struct {
         try @import("fetch").network.globalInit();
         errdefer @import("fetch").network.globalCleanup();
 
-        // Initialize WebIDL runtime (SlabAllocator, ArenaAllocator)
-        runtime.initializeRuntime(allocator);
-        errdefer runtime.deinitializeRuntime();
+        // The platform objects of this Browser come from its own scope's
+        // slab and arena (made below, before its first realm), never from
+        // another Browser's. INTERIM until the DOM's side tables are the
+        // scope's too: the process-wide registries start a new runtime.
+        runtime.beginRegistries();
+        errdefer runtime.endRegistries();
 
         // Agents are made from the process's snapshot, unless this Browser
         // asked for none (an empty snapshot_path).
@@ -332,12 +336,15 @@ pub const Browser = struct {
             @import("html").window.browsing_context.BrowsingContext.freeRetired();
         }
 
+        // INTERIM (as in init): the process-wide registries' own end, while
+        // the scope's arena still holds their blocks.
+        runtime.endRegistries();
+
         // The Browser's scope: every realm and every worker thread is gone.
+        // Its slab and arena go with it - every platform object of this
+        // Browser, and none of another's.
         self.scope.deinit();
         self.allocator.destroy(self.scope);
-
-        // Cleanup WebIDL runtime
-        runtime.deinitializeRuntime();
 
         // The network ends with the last Browser, once nothing that could
         // hold a transfer is left: the thread's scheduler closes, and so does

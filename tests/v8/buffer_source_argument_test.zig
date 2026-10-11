@@ -40,8 +40,7 @@ fn realm() !runtime.Context {
     ffi.v8_Context_Enter(context);
     v8.context_manager.init(std.heap.page_allocator) catch {};
     const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.SlabAllocator.init(std.heap.page_allocator);
-    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    runtime.initializeRuntime(std.heap.page_allocator);
     v8.interface_bindings.registerAllInterfaces(i, context);
     isolate_once = i;
     context_once = context;

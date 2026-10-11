@@ -242,6 +242,8 @@ const max_counters = 32;
 
 /// The agent to ask for heap statistics, set once the browser exists.
 var heap_agent: ?*engine.Agent = null;
+/// The Browser's scope, whose slab and arena hold the page's objects.
+var browser_scope: ?*runtime.BrowserScope = null;
 
 /// How far this image was slid by ASLR, so a recorded return address can be turned
 /// into the static address `atos` understands.
@@ -275,8 +277,8 @@ fn readCounters(storage: *[max_counters]engine.Counter) usize {
 }
 
 fn takeSample(cycle: usize) Sample {
-    const arena = runtime.ArenaAllocator.tryGet() catch null;
-    const slab = runtime.SlabAllocator.tryGet() catch null;
+    const arena: ?*runtime.ArenaAllocator = if (browser_scope) |scope| &scope.arena else null;
+    const slab: ?*runtime.SlabAllocator = if (browser_scope) |scope| &scope.slab else null;
     var sample: Sample = .{
         .cycle = cycle,
         .resident = memory.residentBytes(),
@@ -383,6 +385,7 @@ pub fn main(init: std.process.Init) !void {
     if (page.realm == null) return error.NoRealm;
 
     heap_agent = page.agent;
+    browser_scope = browser.scope;
 
     var samples: std.ArrayListUnmanaged(Sample) = .empty;
     defer samples.deinit(allocator);

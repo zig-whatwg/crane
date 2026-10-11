@@ -30,8 +30,7 @@ test "Realm.wrap refuses an AbortController - its wrapper is weak, so it is held
     ffi.v8_Context_Enter(context);
     v8.context_manager.init(std.heap.page_allocator) catch {};
     const realm_ctx = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.SlabAllocator.init(std.heap.page_allocator);
-    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    runtime.initializeRuntime(std.heap.page_allocator);
 
     const controller = try interfaces.AbortController.call_constructor(realm_ctx);
     const realm = try js.Realm.of(controller);

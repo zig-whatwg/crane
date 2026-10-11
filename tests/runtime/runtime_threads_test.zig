@@ -1,11 +1,11 @@
 //! Platform objects made and freed on two threads at once.
 //!
 //! Every worker runs on a thread of its own (docs/instances.md, "Decisions"),
-//! and every platform object any thread makes comes from the runtime's
-//! process-wide allocators: `Instance.init` takes its handle from
-//! `SlabAllocator.global` and its state from `ArenaAllocator.global`, and an
-//! impl records its internal state in `internal_state`'s registry. All three
-//! were single-threaded - a free list popped by two threads at once hands one
+//! and every platform object a Browser's threads make comes from its scope's
+//! allocators: `Instance.init` takes its handle from `BrowserScope.slab` and
+//! its state from `BrowserScope.arena`, and an impl records its internal
+//! state in the scope's `internal_state` registry. All three were once
+//! single-threaded - a free list popped by two threads at once hands one
 //! slot to both, and a hash map written by two threads loses entries or
 //! corrupts its buckets.
 //!
@@ -56,8 +56,6 @@ const Churn = struct {
     mismatches: u32 = 0,
 
     fn run(self: *Churn) void {
-        // The lifecycle registry is per thread; this thread's goes with it.
-        defer runtime.instance_lifecycle.deinit();
         var live: [window]?Live = @splat(null);
         var serial: u64 = 0;
         var i: usize = 0;
@@ -141,6 +139,6 @@ test "two threads make and free platform objects at once, and neither sees the o
     try std.testing.expectEqual(@as(u32, 0), churns[0].mismatches);
     try std.testing.expectEqual(@as(u32, 0), churns[1].mismatches);
     // Every object made was freed: the slab's count balances.
-    const stats = runtime.SlabAllocator.get().stats();
+    const stats = runtime.BrowserScope.standalone().?.slab.stats();
     try std.testing.expectEqual(@as(usize, 0), stats.currently_allocated);
 }

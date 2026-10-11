@@ -91,7 +91,7 @@ pub fn init(
     // Chain to parent class (HTMLElement)
     const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
-    const internal = try Registry.createIn(instance, runtime.ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{};
     return instance;
 }

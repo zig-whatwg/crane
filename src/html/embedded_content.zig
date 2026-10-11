@@ -139,7 +139,7 @@ pub const Content = struct {
 
     fn unref(self: *Content) void {
         self.references -= 1;
-        if (self.references == 0) runtime.ArenaAllocator.get().destroy(Content, self);
+        if (self.references == 0) runtime.arenaOf(self.element).destroy(Content, self);
     }
 
     fn elementIsLive(self: *const Content) bool {
@@ -151,7 +151,7 @@ pub const Content = struct {
 /// the runtime arena, as the iframe's state is: an element torn down with
 /// its page may never run its deinit, and the arena goes with the page.
 pub fn create(allocator: std.mem.Allocator, element: *runtime.Instance, kind: Kind) error{OutOfMemory}!*Content {
-    const content = try runtime.ArenaAllocator.get().create(Content);
+    const content = try runtime.arenaOf(element).create(Content);
     content.* = .{
         .allocator = allocator,
         .ctx = element.ctx,
@@ -614,8 +614,9 @@ fn ensureNavigable(content: *Content) bool {
     const integration = content.integration orelse blk: {
         // From the runtime arena, as every container's content navigable
         // is: dom.navigables.releaseContentNavigable returns it there.
-        const made = runtime.ArenaAllocator.get().create(IFrameIntegration) catch return false;
+        const made = runtime.arenaOf(element).create(IFrameIntegration) catch return false;
         made.* = IFrameIntegration.init(content.allocator);
+        made.block_arena = runtime.arenaOf(element);
         content.integration = made;
         break :blk made;
     };

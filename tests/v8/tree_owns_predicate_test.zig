@@ -35,8 +35,7 @@ fn ensurePools() void {
     // A file-isolated executable has no earlier test to install Node's
     // creation and tree hooks before DocumentFragment.init.
     interfaces.process_hooks.startHooksForTest();
-    runtime.SlabAllocator.init(std.heap.page_allocator);
-    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    runtime.initializeRuntime(std.heap.page_allocator);
     pools_ready = true;
 }
 

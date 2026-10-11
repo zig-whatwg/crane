@@ -101,11 +101,10 @@ pub fn init(
     errdefer CharacterDataImpl.deinit(instance);
 
     // Initialize Text internal state in global registry
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
 
     return instance;

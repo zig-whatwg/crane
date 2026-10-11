@@ -106,8 +106,6 @@ pub fn init(
     const instance = try interfaces.Node.initWithState(allocator, StateType, vtable, ctx);
     errdefer interfaces.Node.deinit(instance);
 
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-
     // Set the node type for this DocumentFragment
     try dom.node_creation.setType(instance, interfaces.Node.get_DOCUMENT_FRAGMENT_NODE());
 
@@ -115,7 +113,7 @@ pub fn init(
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, ArenaAllocator.get());
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
 
     return instance;

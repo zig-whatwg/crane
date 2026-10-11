@@ -59,8 +59,7 @@ pub fn init(
     errdefer runtime.Instance.deinit(instance);
 
     // Initialize internal state using ArenaAllocator
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init(allocator);
 
     // Store internal state in instance
@@ -79,8 +78,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // Return the block itself, not just what it points to. The comment this
         // replaces said the arena manages it; the arena had no way to, so the
         // struct stayed allocated for the life of the process.
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing

@@ -95,12 +95,14 @@ pub const InternalState = struct {
     ad_auction_headers: bool = false,
     shared_storage_writable: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator) !*InternalState {
-        const ArenaAllocator = runtime.ArenaAllocator;
-        const state = try ArenaAllocator.get().create(InternalState);
+    /// From `arena` - its element's Browser's (runtime.arenaOf) - as the
+    /// element's own state is.
+    pub fn init(allocator: std.mem.Allocator, arena: *runtime.ArenaAllocator) !*InternalState {
+        const state = try arena.create(InternalState);
 
-        const integration = try ArenaAllocator.get().create(IFrameIntegration);
+        const integration = try arena.create(IFrameIntegration);
         integration.* = IFrameIntegration.init(allocator);
+        integration.block_arena = arena;
 
         log.debug("[InternalState.init] Created integration={*} for state={*}", .{ integration, state });
 
@@ -196,7 +198,7 @@ pub fn init(
 
     // Initialize internal state
     const state = instance.getState(StateType);
-    state.own._internal = try InternalState.init(allocator);
+    state.own._internal = try InternalState.init(allocator, runtime.arenaOf(instance));
     log.debug("[HTMLIFrameElement.init] instance={*} -> internal={*} -> integration={*}", .{ instance, state.own._internal.?, state.own._internal.?.integration });
 
     // Set Node's local name for iframe identification during DOM operations
@@ -228,8 +230,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // The state block too, and no pointer left to it: a second deinit
         // must find nothing to free.
         state.own._internal = null;
-        const Arena = runtime.ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
     } else {
         log.debug("[HTMLIFrameElement.deinit] instance={*} -> No internal state", .{instance});
     }

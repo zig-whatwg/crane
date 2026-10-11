@@ -50,8 +50,7 @@ fn realm() !runtime.Context {
     v8.context_manager.init(std.heap.page_allocator) catch {};
     const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
     r.agent = @ptrCast(i);
-    runtime.SlabAllocator.init(std.heap.page_allocator);
-    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    runtime.initializeRuntime(std.heap.page_allocator);
     v8.V8Interface(Probe).registerGlobal(i, context, Probe.Meta.name);
     isolate_once = i;
     context_once = context;

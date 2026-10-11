@@ -50,8 +50,7 @@ fn setup() !void {
     try protocol.initializeEngine(.{});
     if (pools_ready) return;
     interfaces.process_hooks.startHooksForTest();
-    SlabAllocator.init(std.heap.page_allocator);
-    runtime.ArenaAllocator.init(std.heap.page_allocator);
+    runtime.initializeRuntime(std.heap.page_allocator);
     pools_ready = true;
 }
 

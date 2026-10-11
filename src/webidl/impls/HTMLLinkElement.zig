@@ -97,7 +97,7 @@ pub fn init(
     errdefer interfaces.HTMLElement.deinit(instance);
     // From the arena that holds the element's state, as every element's
     // internal state is: teardown does not always run `deinit`.
-    const internal = try runtime.ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = .{};
     instance.getState(StateType).own._internal = internal;
     return instance;
@@ -108,7 +108,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         style_sheet_loading.elementGone(instance);
-        if (runtime.ArenaAllocator.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
     // Chain to parent class (via interface per Golden Rule #13)

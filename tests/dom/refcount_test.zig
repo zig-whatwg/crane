@@ -450,9 +450,9 @@ var dummy_methods: u8 = 0;
 const dummy_vtable: runtime.VTable = .{ .name = "RcTest", .deinit = null, .methods_ptr = &dummy_methods };
 
 test "WeakRef: null once the node's slab slot is freed or reissued, and for a garbage tree" {
-    runtime.SlabAllocator.init(testing.allocator);
-    defer runtime.SlabAllocator.deinit();
-    const slab = runtime.SlabAllocator.get();
+    var slab_value = runtime.SlabAllocator.init(testing.allocator);
+    defer slab_value.deinit();
+    const slab = &slab_value;
 
     var fixture: Fixture = undefined;
     fixture.init(.fatal);

@@ -104,8 +104,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // Return the block itself, not just what it points to. `internal.deinit()`
         // releases what the state OWNS; the state struct was staying allocated for
         // the life of the process.
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
 
@@ -128,8 +127,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const state = instance.getState(State);
 
     // Create internal state
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init(ctx.allocator);
     state.own._internal = internal;
 
@@ -189,7 +187,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Create the INHERITED Event internal state and set the initialized flag.
     // Without it dispatchEvent throws InvalidStateError, so the event can be
     // constructed but never dispatched. Same thing MouseEvent does by hand.
-    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
+    try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
 
     return instance;
 }

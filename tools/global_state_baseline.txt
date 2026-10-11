@@ -208,7 +208,7 @@ src/platform/stub_platform_backend.zig stub_source_buffer_counter 1 G X decl:84c
 src/platform/timer_backend.zig custom_backend 1 TL H decl:3d002d161da743ae
 src/platform/timer_backend.zig default_backend_allocator 1 TL A decl:72369f58d4c42d35
 src/platform/timer_backend.zig default_backend_instance 1 TL A decl:0bf910b86e57773a
-src/runtime/arena_allocator.zig ArenaAllocator.global 1 G I/engine decl:a580f2e51b09cfeb
+src/runtime/browser_scope.zig standalone_scope 1 G P-res decl:900c140c0fed34c8
 src/runtime/ce_reactions.zig hooks 1 G P-res decl:af7149130290d354
 src/runtime/cleanup_coordinator.zig active_coordinator 1 TL C decl:30416084c34bdb90
 src/runtime/engines/v8/callback_registry.zig live 1 TL I/engine decl:cb121b88af7eecfc
@@ -303,17 +303,11 @@ src/runtime/engines/v8/window_properties.zig template_cache_isolate 1 G I/engine
 src/runtime/engines/v8/worker_realm.zig records 1 TL I/engine decl:07a3f05d79fd67cb
 src/runtime/engines/v8/wrapper_cache.zig live_caches 1 TL I/engine decl:647404af22eb8c78
 src/runtime/engines/v8/wrapper_type_info.zig global_registry 1 G P-const decl:eb2faada9e73e22b
-src/runtime/gc_integration.zig GCStats.global 1 G D decl:c19a53c965c1a883
 src/runtime/instance.zig TypeIdHolder.marker 1 G P-res decl:f33e1c60fc8c8315
-src/runtime/instance_lifecycle.zig default_flags 1 G C decl:06e7bf07bf5a2cc5
-src/runtime/instance_lifecycle.zig registry 1 TL I/engine decl:3d237443b4822326
-src/runtime/instance_lifecycle.zig registry_allocator 1 TL I/engine decl:72369f58d4c42d35
-src/runtime/internal_state.zig global_registry 1 G I/engine decl:5461307b03e22334
 src/runtime/lifetime.zig hooks 1 G P-res decl:4dad5b7413d7153c
 src/runtime/native_timer.zig fired 1 G X decl:3796f88280404836
 src/runtime/native_timer.zig fired_ids 1 G X decl:f6c851a114bc5146
 src/runtime/root.zig runtime_cleanup_hook 1 G H decl:ea7442cad310ba31
-src/runtime/slab_allocator.zig SlabAllocator.global 1 G I/engine decl:cbc0475ee708c7c8
 src/runtime/timer.zig nesting_level 1 TL A decl:cf9dca8c2da04496
 src/service_worker/client.zig Client.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/job.zig Job.next_id 1 G P-res decl:1dfcee87d8da8735

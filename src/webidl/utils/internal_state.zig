@@ -200,7 +200,7 @@ test "InternalStateAccessor - getCast compiles" {
 /// InternalState type is read back off that struct's own `_internal` field
 /// rather than imported, so this stays on the right side of the impls boundary:
 /// an impl reaches Event through `interfaces`, never through `impls/Event.zig`.
-/// `arena` is the process-wide `runtime.ArenaAllocator.get()`, passed in rather
+/// `arena` is the event's Browser's (`runtime.arenaOf(instance)`), passed in rather
 /// than imported: the `webidl` module does not depend on `runtime`, and adding
 /// that edge to reach one allocator would be the wrong trade. Event's own
 /// constructor takes the InternalState from that arena, so passing it keeps the
@@ -217,8 +217,9 @@ test "InternalStateAccessor - getCast compiles" {
 /// The Event InternalState type is read back off that struct's own `_internal`
 /// field rather than imported, so this stays on the right side of the impls
 /// boundary: an impl reaches Event through `interfaces`, never through
-/// `impls/Event.zig`. `arena` is `runtime.ArenaAllocator.get()`, passed in
-/// because the `webidl` module does not depend on `runtime`.
+/// `impls/Event.zig`. `arena` is `runtime.arenaOf(instance)` - the event's
+/// Browser's - passed in because the `webidl` module does not depend on
+/// `runtime`.
 pub fn initEventBase(base_own: anytype, arena: anytype, allocator: std.mem.Allocator) !void {
     const FieldT = @TypeOf(base_own._internal);
     const Internal = @typeInfo(@typeInfo(FieldT).optional.child).pointer.child;
