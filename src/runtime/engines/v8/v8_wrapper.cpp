@@ -7194,6 +7194,40 @@ Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* 
     return trackHandle(new Global<Object>(isolate, info->This()));
 }
 
+// PropertyCallbackInfo - the aligned pointer in internal field `index` of the
+// object that has the interceptor (HolderV2), or nullptr when it has no such
+// field. That object is WebIDL's O for a legacy platform object's [[Get]] and
+// [[HasProperty]]: `list[i]` asks the list, and so does `heir[i]` for an
+// object whose prototype is the list (ES OrdinaryGet hands the lookup to the
+// prototype with the heir as receiver; This() is then the heir, which has no
+// fields). An interceptor's holder is the API object the interceptor is on -
+// never a JS proxy: a legacy platform object's proxy forwards to its target,
+// and the target is the holder.
+//
+// No Global and no HandleScope: the holder is a slot of the callback's
+// arguments, and an indexed getter runs once per `list[i]` (~1e8 times in
+// dom/nodes/NodeList-static-length-getter-tampered-*.html), where
+// v8_PropertyCallbackInfo_This's Global - made, tracked and disposed per call
+// - was a third of the read (gc_bench profile, 2026-10-11).
+void* v8_PropertyCallbackInfo_HolderAlignedPointer(const PropertyCallbackInfo<Value>* info, int index) {
+    Local<Object> holder = info->HolderV2();
+    if (holder->InternalFieldCount() <= index) return nullptr;
+    return holder->GetAlignedPointerFromInternalField(index);
+}
+
+// PropertyCallbackInfo - whether the return value set so far is undefined.
+// Reads the return slot; makes no handle.
+bool v8_PropertyCallbackInfo_ReturnValueIsUndefined(const PropertyCallbackInfo<Value>* info) {
+    return info->GetReturnValue().Get()->IsUndefined();
+}
+
+// PropertyCallbackInfo<Integer> - set a query interceptor's answer, the
+// property's attributes (a v8::PropertyAttribute): a Smi written into the
+// return slot, where v8_Integer_New made a Global per call.
+void v8_PropertyCallbackInfo_SetReturnValueInt32(const PropertyCallbackInfo<Integer>* info, int32_t value) {
+    info->GetReturnValue().Set(value);
+}
+
 // PropertyCallbackInfo - get holder object
 // Returns nullptr if not available (e.g., accessing property on prototype)
 Global<Object>* v8_PropertyCallbackInfo_Holder(const PropertyCallbackInfo<Value>* info) {
@@ -7213,18 +7247,17 @@ Global<Object>* v8_PropertyCallbackInfo_Void_Holder(const PropertyCallbackInfo<v
     return trackHandle(new Global<Object>(isolate, holder));
 }
 
-// PropertyCallbackInfo - set return value
+// PropertyCallbackInfo - set return value. The Global's value is written into
+// the return slot (ReturnValue::Set(const Global&)): no Local, so no
+// HandleScope - this runs once per interceptor answer, `list[i]` included.
+// The caller keeps the handle; nothing here retains it.
 void v8_PropertyCallbackInfo_SetReturnValue(const PropertyCallbackInfo<Value>* info, Global<Value>* value) {
-    Isolate* isolate = info->GetIsolate();
-    HandleScope handle_scope(isolate);
-
     if (!value || value->IsEmpty()) {
         info->GetReturnValue().SetUndefined();
         return;
     }
 
-    Local<Value> val = value->Get(isolate);
-    info->GetReturnValue().Set(val);
+    info->GetReturnValue().Set(*value);
 }
 
 // PropertyCallbackInfo (void) - set return value (mostly for Boolean results)
