@@ -455,6 +455,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Debugging
 
+- [When every file in a directory fails, find the setup step that fails once per file, not the commonest message](debugging-a-harness-setup-step-failing-in-every-file-is-the-cause-not-the-commonest-message.md) - Rank failure clusters by how many files they hit and where they first appear, not by how many subtests they hold: a setup step that fails once in every file looks small in the counts but is the cause of everything after it.
 - [A Wrapperless Removal Orphans the Node Until Browser End](debugging-a-wrapperless-removal-orphans-the-node-until-browser-end.md) - A feature that starts passing can expose a leak in code merged rounds earlier; any InternalState owning non-arena memory needs a teardown sweep until refcounting.
 - [A node's slab generation can outlive its NodeBase - a generation check does not prove a node's storage is there](debugging-a-nodes-slab-generation-can-outlive-its-nodebase.md) - A live generation says the Instance slot is still that object's, not that its node storage exists: anything linked into a NodeBase must be unlinked by the node's own teardown, the way registered observers are.
 - [Give the objects that reissue a freed slot a voice](debugging-give-the-objects-that-reissue-a-freed-slot-a-voice.md) - Make the impostor talk: churn objects that announce themselves, so a reissued slot fails the assertion with its name instead of passing or crashing elsewhere.
