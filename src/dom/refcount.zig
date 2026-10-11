@@ -1,8 +1,9 @@
 //! Reference counting for DOM nodes: the types (lane rc12, step 2 of
 //! tmp/plans/refcount-design.md; decisions in tmp/plans/refcount-decisions.md).
 //!
-//! NOTHING IN PRODUCTION USES THIS YET. Steps 3 to 6 run the counts in shadow
-//! mode (kept and checked, deciding nothing); step 7 lets them decide.
+//! SHADOW MODE: production keeps the counts - the tree links (step 3), the
+//! wrapper's reference (step 4), the holders' references (step 5) - and
+//! checks them, and they decide nothing; step 7 lets them decide.
 //!
 //! What a node count is, from WebKit (Source/WebCore/dom/Node.h, NodeInlines.h):
 //! `NodeBase.rc` holds the count of `Ref`s in units of `NodeBase.rc_one` with
@@ -511,8 +512,44 @@ pub fn wrapperRelease(target: *anyopaque) void {
 /// A wrapper's reference on `node` (`ref` without a ledger): a count going
 /// from zero to one makes the node a hold along its host-including chain.
 pub fn wrapperRef(node: *NodeBase) void {
+    unledgeredRef(node, "a wrapper");
+}
+
+/// A wrapper's reference on `node` ends (`deref` without a ledger): the count
+/// reaching zero ends the hold along the host-including chain. Shadow mode: a
+/// root whose total reaches zero is not flagged or queued - the collector
+/// still frees (step 7 gives this a sink).
+pub fn wrapperDeref(node: *NodeBase) void {
+    unledgeredDeref(node, "a wrapper");
+}
+
+// ============================================================================
+// Holders' references (design section 7, step 5): a holder that is not the
+// tree - a MutationRecord, a static NodeList, a live collection - takes one
+// reference on each node it holds, for as long as it holds it (WebKit's
+// ChildListRecord keeps `Ref<ContainerNode> m_target`, StaticNodeList a
+// `Vector<Ref<Node>>`, a collection `Ref<ContainerNode> m_ownerNode`).
+// SHADOW MODE: no ledger is wired to the agent yet, so these are `ref` and
+// `deref` without one, as the wrapper's are; nothing is flagged or queued, and
+// frees are still the collector's. A holder therefore keeps its old net (a
+// node freed under it is FORGOTTEN, never released: dom.node_holds).
+// ============================================================================
+
+/// A holder's reference on `node` (`ref` without a ledger).
+pub fn holderRef(node: *NodeBase) void {
+    unledgeredRef(node, "a holder");
+}
+
+/// A holder's reference on `node` ends (`deref` without a ledger).
+pub fn holderDeref(node: *NodeBase) void {
+    unledgeredDeref(node, "a holder");
+}
+
+/// `ref` without a ledger, for the references production takes before step 7
+/// wires one to the agent: a violation is an error log naming `who`.
+fn unledgeredRef(node: *NodeBase, comptime who: []const u8) void {
     if (node.rc_flags.garbage or node.rc_flags.destroying) {
-        violate(null, "a wrapper took a reference on node {*}, {s}", .{ node, if (node.rc_flags.garbage) "the root of a garbage tree" else "during its teardown" });
+        violate(null, who ++ " took a reference on node {*}, {s}", .{ node, if (node.rc_flags.garbage) "the root of a garbage tree" else "during its teardown" });
         return;
     }
     if (node.rc > std.math.maxInt(u32) - NodeBase.rc_one) {
@@ -524,13 +561,10 @@ pub fn wrapperRef(node: *NodeBase) void {
     if (!was_held) adjustForeign(walkAdd(null, node, 1), 1);
 }
 
-/// A wrapper's reference on `node` ends (`deref` without a ledger): the count
-/// reaching zero ends the hold along the host-including chain. Shadow mode: a
-/// root whose total reaches zero is not flagged or queued - the collector
-/// still frees (step 7 gives this a sink).
-pub fn wrapperDeref(node: *NodeBase) void {
+/// `deref` without a ledger (see `unledgeredRef`).
+fn unledgeredDeref(node: *NodeBase, comptime who: []const u8) void {
     if (!isHeld(node)) {
-        violate(null, "a wrapper released node {*}, whose count is zero", .{node});
+        violate(null, who ++ " released node {*}, whose count is zero", .{node});
         return;
     }
     node.rc -= NodeBase.rc_one;
