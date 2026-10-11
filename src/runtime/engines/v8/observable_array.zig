@@ -301,12 +301,56 @@ fn createHandler(ctx: Context, state: *ObservableArrayState) !*v8.Object {
 // - info.setReturnValue(value) for return values
 // - info.getData() for the External wrapping our state pointer
 
-/// Helper to extract ObservableArrayState from callback info
+/// Helper to extract ObservableArrayState from callback info. The [[data]]
+/// handle is owned (`info.getData()` allocates a Global) and released here;
+/// the state pointer it wraps is the registry's.
 fn getStateFromInfo(info: *const v8.FunctionCallbackInfo) ?*ObservableArrayState {
     const data = info.getData();
+    defer v8.v8_Value_Dispose(data);
     // The data is an External wrapping our state pointer
     const state_ptr = v8.v8_External_Value(@ptrCast(data)) orelse return null;
     return @ptrCast(@alignCast(state_ptr));
+}
+
+// Every handle a trap is given (`info.get(i)`) or makes is owned, and
+// `setReturnValue` copies the result into the call's return slot, so each is
+// released before the trap returns - kept, every `sheets.length` read left
+// four Globals (lane callleak). A backing-list element set as the result is
+// the list's, borrowed, and kept.
+
+/// The trap's result is undefined; no handle is made for it.
+fn returnUndefined(info: *const v8.FunctionCallbackInfo) void {
+    v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueGlobal(info, null);
+}
+
+/// The trap's result is `value`, which the trap made: set, then released.
+fn returnOwned(info: *const v8.FunctionCallbackInfo, value: *v8.Value) void {
+    info.setReturnValue(value);
+    v8.v8_Value_Dispose(value);
+}
+
+fn returnBoolean(info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, value: bool) void {
+    const result = v8.v8_Boolean_New(isolate, value) orelse return;
+    returnOwned(info, result);
+}
+
+/// Whether the string key `prop` is "length".
+fn isLengthKey(prop: *v8.Value) bool {
+    if (v8.v8_String_Utf8Length(@ptrCast(prop)) != 6) return false;
+    var buf: [6]u8 = undefined;
+    _ = v8.v8_String_WriteUtf8(@ptrCast(prop), &buf, 6);
+    return std.mem.eql(u8, &buf, "length");
+}
+
+/// The array index the string key `prop` names, if it names one.
+fn arrayIndexKey(prop: *v8.Value) ?usize {
+    // Note: v8_String_WriteUtf8 returns count INCLUDING null terminator
+    // Use Utf8Length for actual character count
+    const str_len = v8.v8_String_Utf8Length(@ptrCast(prop));
+    if (str_len <= 0 or str_len > 32) return null;
+    var key_buf: [32]u8 = undefined;
+    _ = v8.v8_String_WriteUtf8(@ptrCast(prop), &key_buf, 32);
+    return std.fmt.parseInt(usize, key_buf[0..@intCast(str_len)], 10) catch null;
 }
 
 /// Trap for property access: handler.get(target, property, receiver)
@@ -318,59 +362,37 @@ fn getTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
-    const state = getStateFromInfo(info) orelse {
-        const undef = v8.v8_Undefined(isolate) orelse return;
-        info.setReturnValue(undef);
-        return;
-    };
+    const state = getStateFromInfo(info) orelse return returnUndefined(info);
 
     const target = info.get(0); // O - the target array
+    defer v8.v8_Value_Dispose(target);
     const prop = info.get(1); // P - the property
+    defer v8.v8_Value_Dispose(prop);
     // receiver = info.get(2) - not used for simple cases
 
     const length = state.backing_list.items.len;
 
-    // Step 3: If P is "length", return length
     if (v8.v8_Value_IsString(prop)) {
-        const str_len = v8.v8_String_Utf8Length(@ptrCast(prop));
-        if (str_len == 6) {
-            var buf: [6]u8 = undefined;
-            _ = v8.v8_String_WriteUtf8(@ptrCast(prop), &buf, 6);
-            if (std.mem.eql(u8, &buf, "length")) {
-                const length_value = v8.v8_Number_New(isolate, @floatFromInt(length));
-                info.setReturnValue(@ptrCast(length_value));
-                return;
-            }
+        // Step 3: If P is "length", return length
+        if (isLengthKey(prop)) {
+            return returnOwned(info, @ptrCast(v8.v8_Number_New(isolate, @floatFromInt(length))));
         }
 
         // Check if it's an array index string like "0", "1", etc.
-        // Note: v8_String_WriteUtf8 returns count INCLUDING null terminator
-        // Use Utf8Length for actual character count (str_len from above)
-        var key_buf: [32]u8 = undefined;
-        _ = v8.v8_String_WriteUtf8(@ptrCast(prop), &key_buf, 32);
-        const key = key_buf[0..@intCast(str_len)];
-        if (std.fmt.parseInt(usize, key, 10)) |index| {
+        if (arrayIndexKey(prop)) |index| {
             // Step 4: If P is an array index
-            if (index >= length) {
-                const undef = v8.v8_Undefined(isolate) orelse return;
-                info.setReturnValue(undef);
-                return;
-            }
+            if (index >= length) return returnUndefined(info);
+            // The list's own handle, borrowed: setReturnValue copies it.
             const element = state.backing_list.items[index];
             info.setReturnValue(@ptrCast(element.handle.ptr));
             return;
-        } else |_| {
-            // Not a numeric index - fall through to target lookup
         }
+        // Not a numeric index - fall through to target lookup
     }
 
     // Step 5: Return O.[[Get]](P, Receiver) - delegate to target
-    const result = v8.v8_Object_Get(@ptrCast(target), context, prop) orelse {
-        const undef = v8.v8_Undefined(isolate) orelse return;
-        info.setReturnValue(undef);
-        return;
-    };
-    info.setReturnValue(result);
+    const result = v8.v8_Object_Get(@ptrCast(target), context, prop) orelse return returnUndefined(info);
+    returnOwned(info, result);
 }
 
 /// Trap for property assignment: handler.set(target, property, value, receiver)
@@ -381,58 +403,36 @@ fn setTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    if (args_count < 4) {
-        const false_val = v8.v8_Boolean_New(isolate, false);
-        info.setReturnValue(@ptrCast(false_val));
-        return;
-    }
+    if (args_count < 4) return returnBoolean(info, isolate, false);
 
-    const state = getStateFromInfo(info) orelse {
-        const false_val = v8.v8_Boolean_New(isolate, false);
-        info.setReturnValue(@ptrCast(false_val));
-        return;
-    };
+    const state = getStateFromInfo(info) orelse return returnBoolean(info, isolate, false);
 
     const target = info.get(0); // O - the target array
+    defer v8.v8_Value_Dispose(target);
     const prop = info.get(1); // P - the property
-    const value = info.get(2); // V - the value
-    const receiver = info.get(3); // Receiver
+    defer v8.v8_Value_Dispose(prop);
+    // V - the value. The backing list keeps the very handle it stores (it
+    // is the list's from then on); on every other path it is released.
+    const value = info.get(2);
+    var value_stored = false;
+    defer if (!value_stored) v8.v8_Value_Dispose(value);
+    // The receiver (args[3]) is not used by the simple Object_Set below.
 
-    // The value, borrowed for the trap.
     const js_value = JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
 
     if (v8.v8_Value_IsString(prop)) {
-        const str_len = v8.v8_String_Utf8Length(@ptrCast(prop));
-
         // Step 2: If P is "length", set the length
-        if (str_len == 6) {
-            var buf: [6]u8 = undefined;
-            _ = v8.v8_String_WriteUtf8(@ptrCast(prop), &buf, 6);
-            if (std.mem.eql(u8, &buf, "length")) {
-                // TODO: Implement set length algorithm
-                const true_val = v8.v8_Boolean_New(isolate, true);
-                info.setReturnValue(@ptrCast(true_val));
-                return;
-            }
+        if (isLengthKey(prop)) {
+            // TODO: Implement set length algorithm
+            return returnBoolean(info, isolate, true);
         }
 
-        // Check if it's an array index string like "0", "1", etc.
-        // Note: v8_String_WriteUtf8 returns count INCLUDING null terminator
-        // Use Utf8Length for actual character count
-        var key_buf: [32]u8 = undefined;
-        _ = v8.v8_String_WriteUtf8(@ptrCast(prop), &key_buf, 32);
-        const key = key_buf[0..@intCast(str_len)];
-
-        if (std.fmt.parseInt(usize, key, 10)) |index| {
+        if (arrayIndexKey(prop)) |index| {
             // Step 3: If P is an array index, set the indexed value
             const old_len = state.backing_list.items.len;
 
             // Per spec: index > oldLen returns false (can only append at end)
-            if (index > old_len) {
-                const false_val = v8.v8_Boolean_New(isolate, false);
-                info.setReturnValue(@ptrCast(false_val));
-                return;
-            }
+            if (index > old_len) return returnBoolean(info, isolate, false);
 
             // If replacing existing value
             if (index < old_len) {
@@ -440,28 +440,37 @@ fn setTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
                 state.backing_list.items[index] = js_value;
             } else {
                 // Appending at end (index == old_len)
-                state.backing_list.append(state.allocator, js_value) catch {
-                    const false_val = v8.v8_Boolean_New(isolate, false);
-                    info.setReturnValue(@ptrCast(false_val));
-                    return;
-                };
+                state.backing_list.append(state.allocator, js_value) catch return returnBoolean(info, isolate, false);
             }
+            value_stored = true;
             // TODO: Call set algorithm
-
-            const true_val = v8.v8_Boolean_New(isolate, true);
-            info.setReturnValue(@ptrCast(true_val));
-            return;
-        } else |_| {
-            // Not a numeric index - fall through to target set
+            return returnBoolean(info, isolate, true);
         }
+        // Not a numeric index - fall through to target set
     }
 
     // Step 4: Return O.[[Set]](P, V, Receiver) - delegate to target
     // For non-indexed properties, set on the target array directly
-    _ = receiver; // Receiver not used in simple Object_Set
     const result = v8.v8_Object_Set(@ptrCast(target), context, prop, value);
-    const result_val = v8.v8_Boolean_New(isolate, result);
-    info.setReturnValue(@ptrCast(result_val));
+    returnBoolean(info, isolate, result);
+}
+
+/// Append the string of `index` to `result` at `idx`, releasing what it made.
+fn appendIndexKey(isolate: *v8.Isolate, context: *v8.Context, result: *v8.Array, idx: u32, index: usize) bool {
+    const int_val = v8.v8_Integer_New(isolate, @intCast(index));
+    defer v8.v8_Value_Dispose(@ptrCast(int_val));
+    const str_val = v8.v8_Value_ToString(@ptrCast(int_val), context) orelse return false;
+    defer v8.v8_Value_Dispose(@ptrCast(str_val));
+    _ = v8.v8_Array_Set(result, context, idx, @ptrCast(str_val));
+    return true;
+}
+
+/// Append "length" to `result` at `idx`, releasing the string.
+fn appendLengthKey(isolate: *v8.Isolate, context: *v8.Context, result: *v8.Array, idx: u32) bool {
+    const length_str = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return false;
+    defer v8.v8_String_Dispose(length_str);
+    _ = v8.v8_Array_Set(result, context, idx, @ptrCast(length_str));
+    return true;
 }
 
 /// Trap for Object.keys/Object.getOwnPropertyNames: handler.ownKeys(target)
@@ -477,12 +486,11 @@ fn ownKeysTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     defer v8.v8_Context_Dispose(context);
 
     const state = getStateFromInfo(info) orelse {
-        const array = v8.v8_Array_New(isolate, 0);
-        info.setReturnValue(@ptrCast(array));
-        return;
+        return returnOwned(info, @ptrCast(v8.v8_Array_New(isolate, 0)));
     };
 
     const target = info.get(0); // O - the target array
+    defer v8.v8_Value_Dispose(target);
 
     // Step 2: Let length be handler.[[BackingList]]'s size
     const length = state.backing_list.items.len;
@@ -497,69 +505,50 @@ fn ownKeysTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
         const result = v8.v8_Array_New(isolate, @intCast(length + 1));
         var idx: u32 = 0;
         for (0..length) |i| {
-            const int_val = v8.v8_Integer_New(isolate, @intCast(i));
-            const str_val = v8.v8_Value_ToString(@ptrCast(int_val), context) orelse continue;
-            _ = v8.v8_Array_Set(result, context, idx, @ptrCast(str_val));
-            idx += 1;
+            if (appendIndexKey(isolate, context, result, idx, i)) idx += 1;
         }
-        const length_str = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return;
-        _ = v8.v8_Array_Set(result, context, idx, @ptrCast(length_str));
-        info.setReturnValue(@ptrCast(result));
-        return;
+        _ = appendLengthKey(isolate, context, result, idx);
+        return returnOwned(info, @ptrCast(result));
     };
+    defer v8.v8_Value_Dispose(@ptrCast(target_keys));
 
     const target_keys_len = v8.v8_Array_Length(target_keys);
 
     // Create result array - start empty and grow dynamically
     // We can't pre-calculate size because we filter out duplicates from target_keys
     const result = v8.v8_Array_New(isolate, 0);
+    defer returnOwned(info, @ptrCast(result));
     var idx: u32 = 0;
 
     // Steps 4-5: Add indices 0 to length-1 as strings
     // Use V8's own number-to-string conversion for proper string creation
     for (0..length) |i| {
-        const int_val = v8.v8_Integer_New(isolate, @intCast(i));
-        const str_val = v8.v8_Value_ToString(@ptrCast(int_val), context) orelse continue;
-        _ = v8.v8_Array_Set(result, context, idx, @ptrCast(str_val));
-        idx += 1;
+        if (appendIndexKey(isolate, context, result, idx, i)) idx += 1;
     }
 
     // Add "length" - it's non-enumerable on Array but we MUST include it
-    const length_str = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return;
-    _ = v8.v8_Array_Set(result, context, idx, @ptrCast(length_str));
+    if (!appendLengthKey(isolate, context, result, idx)) return;
     idx += 1;
 
     // Step 6: Extend with target's keys, filtering out "length" and array indices
     // (we already added "length" and indices from backing_list)
     for (0..target_keys_len) |i| {
         const key = v8.v8_Array_Get(context, target_keys, @intCast(i)) orelse continue;
+        defer v8.v8_Value_Dispose(key);
 
         // Skip if not a string
         if (!v8.v8_Value_IsString(key)) continue;
 
-        // Get the string value to check
-        const key_str: *v8.String = @ptrCast(key);
-        const key_len = v8.v8_String_Utf8Length(key_str);
-
         // Skip "length" (we already added it)
-        if (key_len == 6) {
-            var buf: [6]u8 = undefined;
-            _ = v8.v8_String_WriteUtf8(key_str, &buf, 6);
-            if (std.mem.eql(u8, &buf, "length")) continue;
-        }
+        if (isLengthKey(key)) continue;
 
         // Skip array indices (keys that are valid non-negative integers)
         // Array indices are strings like "0", "1", "2", etc.
-        if (key_len <= 10) { // Max uint32 is 10 digits
+        const key_len = v8.v8_String_Utf8Length(@ptrCast(key));
+        if (key_len > 0 and key_len <= 10) { // Max uint32 is 10 digits
             var buf: [16]u8 = undefined;
-            const written = v8.v8_String_WriteUtf8(key_str, &buf, 16);
-            // WriteUtf8 returns count INCLUDING null terminator if written
-            // Use Utf8Length for actual character count
-            const actual_len: usize = @intCast(key_len);
-            const key_slice = buf[0..actual_len];
-            // Check if it's a numeric string
-            if (std.fmt.parseInt(u32, key_slice, 10)) |_| {
-                _ = written; // Suppress unused warning
+            _ = v8.v8_String_WriteUtf8(@ptrCast(key), &buf, 16);
+            if (std.fmt.parseInt(u32, buf[0..@intCast(key_len)], 10)) |_| {
                 continue; // Skip numeric indices
             } else |_| {
                 // Not a numeric string, include it
@@ -574,15 +563,23 @@ fn ownKeysTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     // Per [[OwnPropertyKeys]], symbols come after strings
     const target_symbols = v8.v8_Object_GetOwnPropertySymbols(context, @ptrCast(target));
     if (target_symbols) |symbols| {
+        defer v8.v8_Value_Dispose(@ptrCast(symbols));
         const symbols_len = v8.v8_Array_Length(symbols);
         for (0..symbols_len) |i| {
             const sym = v8.v8_Array_Get(context, symbols, @intCast(i)) orelse continue;
+            defer v8.v8_Value_Dispose(sym);
             _ = v8.v8_Array_Set(result, context, idx, sym);
             idx += 1;
         }
     }
+}
 
-    info.setReturnValue(@ptrCast(result));
+/// Set `key` (made here, released) to `value` (borrowed) on `desc`.
+fn setDescriptorField(isolate: *v8.Isolate, context: *v8.Context, desc: *v8.Object, key: []const u8, value: *v8.Value) bool {
+    const key_str = v8.v8_String_NewFromUtf8(isolate, key.ptr, @intCast(key.len)) orelse return false;
+    defer v8.v8_String_Dispose(key_str);
+    _ = v8.v8_Object_Set(desc, context, @ptrCast(key_str), value);
+    return true;
 }
 
 /// Trap for Object.getOwnPropertyDescriptor
@@ -594,34 +591,27 @@ fn getOwnPropertyDescriptorTrap(info: *const v8.FunctionCallbackInfo) callconv(.
 
     // Return a descriptor: { value: <value>, writable: true, enumerable: true, configurable: true }
     const desc = v8.v8_Object_New(isolate) orelse return;
+    defer returnOwned(info, @ptrCast(desc));
 
+    const true_val = v8.v8_Boolean_New(isolate, true) orelse return;
+    defer v8.v8_Value_Dispose(true_val);
     // Set configurable: true (required for ownKeys invariant)
-    const configurable_key = v8.v8_String_NewFromUtf8(isolate, "configurable", 12) orelse return;
-    const true_val = v8.v8_Boolean_New(isolate, true);
-    _ = v8.v8_Object_Set(desc, context, @ptrCast(configurable_key), @ptrCast(true_val));
-
+    if (!setDescriptorField(isolate, context, desc, "configurable", true_val)) return;
     // Set enumerable: true
-    const enumerable_key = v8.v8_String_NewFromUtf8(isolate, "enumerable", 10) orelse return;
-    _ = v8.v8_Object_Set(desc, context, @ptrCast(enumerable_key), @ptrCast(true_val));
-
+    if (!setDescriptorField(isolate, context, desc, "enumerable", true_val)) return;
     // Set writable: true
-    const writable_key = v8.v8_String_NewFromUtf8(isolate, "writable", 8) orelse return;
-    _ = v8.v8_Object_Set(desc, context, @ptrCast(writable_key), @ptrCast(true_val));
+    if (!setDescriptorField(isolate, context, desc, "writable", true_val)) return;
 
     // Set value to undefined (default)
-    const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
-    const undefined_val = v8.v8_Undefined(isolate);
-    _ = v8.v8_Object_Set(desc, context, @ptrCast(value_key), @ptrCast(undefined_val));
-
-    info.setReturnValue(@ptrCast(desc));
+    const undefined_val = v8.v8_Undefined(isolate) orelse return;
+    defer v8.v8_Value_Dispose(undefined_val);
+    _ = setDescriptorField(isolate, context, desc, "value", undefined_val);
 }
 
 /// Trap for delete operator: handler.deleteProperty(target, property)
 fn deletePropertyTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     // Return true to indicate successful deletion
-    const isolate = info.getIsolate();
-    const true_val = v8.v8_Boolean_New(isolate, true);
-    info.setReturnValue(@ptrCast(true_val));
+    returnBoolean(info, info.getIsolate(), true);
 }
 
 /// Trap for Object.getPrototypeOf: handler.getPrototypeOf(target)
@@ -633,18 +623,22 @@ fn getPrototypeOfTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    // Get Array.prototype
-    // Note: Local handles are managed by V8's HandleScope, no explicit release needed.
+    // Get Array.prototype. Every handle on the way is a Global this trap
+    // owns (the old note that they were HandleScope Locals was wrong).
     const global = v8.v8_Context_Global(context) orelse return;
+    defer v8.v8_Object_Dispose(global);
     const array_str = v8.v8_String_NewFromUtf8(isolate, "Array", 5) orelse return;
+    defer v8.v8_String_Dispose(array_str);
     const array_ctor = v8.v8_Object_Get(global, context, @ptrCast(array_str)) orelse return;
+    defer v8.v8_Value_Dispose(array_ctor);
 
     if (!v8.v8_Value_IsFunction(array_ctor)) return;
 
     const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return;
+    defer v8.v8_String_Dispose(prototype_str);
     const array_proto = v8.v8_Object_Get(@ptrCast(array_ctor), context, @ptrCast(prototype_str)) orelse return;
 
-    info.setReturnValue(array_proto);
+    returnOwned(info, array_proto);
 }
 
 /// Get the internal state for an ObservableArray proxy

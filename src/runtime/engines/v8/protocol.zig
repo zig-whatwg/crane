@@ -826,7 +826,11 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 }
 
 /// The adapter's counters, every one cumulative or live as its comment says:
-/// - live handles by kind: Globals created minus disposed;
+/// - live handles by kind: Globals created minus disposed - counted where
+///   each kind is made and released, so a handle made or released past
+///   those points drifts them (the object count reads below zero);
+///   `live_string_globals` is counted per handle instead, exact, and only in
+///   gc_bench's build (-DCRANE_TRACK_GLOBALS=1; 0 in every other);
 /// - `global_handle_bytes`: V8's used global handle bytes for the current
 ///   isolate (0 with none), which counts every Global whoever made it;
 /// - `wrapper_cache_entries`: the wrappers every realm's wrapper cache on this

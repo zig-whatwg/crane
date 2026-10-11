@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+#include <type_traits>
 #include <execinfo.h>  // For backtrace on macOS/Linux
 
 using namespace v8;
@@ -82,6 +83,11 @@ static std::vector<GlobalHandleEntry> g_snapshot_handles;
 // is a delete site like any other.
 static void releaseWeakArmRaw(void* handle);
 
+// Defined with the live string count below: every delete site a Global<String>
+// can reach calls it, so the count is of handles, not of entry points.
+template <typename T>
+static void forgetStringHandle(Global<T>* handle);
+
 // ---- lane: realms (realm-tagged handles) ----
 // Handles the engine protocol made for a realm's callbacks (an event
 // listener, an event handler), tagged with the realm whose API stored them,
@@ -120,6 +126,7 @@ template<typename T>
 static void resetGlobalHandle(void* ptr) {
     releaseWeakArmRaw(ptr);
     Global<T>* handle = static_cast<Global<T>*>(ptr);
+    forgetStringHandle(handle);
     handle->Reset();
     delete handle;
 }
@@ -159,6 +166,48 @@ static std::atomic<int64_t> g_site_count[kGlobalSiteSlots];
 #ifndef CRANE_TRACK_GLOBALS
 #define CRANE_TRACK_GLOBALS 0
 #endif
+
+// Live Global<String> handles (`live_string_globals`): gc_bench's build only,
+// 0 in every other, as `globals_created` is.
+//
+// Counted by HANDLE. The counter used to add one in v8_String_NewFromUtf8 and
+// take one away in v8_String_Dispose, but a binding releases the string it
+// returns as a Value (v8_Global_Dispose), so it rose by one per string an
+// operation or getter returned while V8's own count stayed flat: 200,000
+// `el.getAttribute('title')` calls read +200,000 live_string_globals and +0
+// global_handle_bytes (lane callleak, 2026-10-11). trackHandle now marks every
+// Global<String> it makes with a wrapper class id - a field of the handle's own
+// node in V8's global handle table, read and written inline, no lookup and no
+// lock - and every dispose a string can reach (v8_String_Dispose,
+// v8_Value_Dispose, v8_Global_Dispose, v8_FreeToStringResult, the snapshot's
+// bulk reset) reads it back before Reset. So the type a handle is released as
+// does not matter, and an unmarked handle costs one load. A registry of
+// pointers did the same exactly and cost gc_bench 10-20% on string-heavy
+// bodies (a lock and a hash probe on every dispose).
+static std::atomic<int64_t> g_live_string_globals{0};
+
+// Nothing else in Crane assigns wrapper class ids.
+static constexpr uint16_t kCountedStringClassId = 0x5354;  // "ST"
+
+static void rememberStringHandle(Global<String>* handle) {
+#if CRANE_TRACK_GLOBALS
+    handle->SetWrapperClassId(kCountedStringClassId);
+    g_live_string_globals.fetch_add(1, std::memory_order_relaxed);
+#else
+    (void)handle;
+#endif
+}
+
+template <typename T>
+static void forgetStringHandle(Global<T>* handle) {
+#if CRANE_TRACK_GLOBALS
+    if (handle->WrapperClassId() == kCountedStringClassId) {
+        g_live_string_globals.fetch_sub(1, std::memory_order_relaxed);
+    }
+#else
+    (void)handle;
+#endif
+}
 
 static void recordGlobalSite(uintptr_t pc) {
 #if !CRANE_TRACK_GLOBALS
@@ -206,6 +255,7 @@ static Global<T>* trackHandle(Global<T>* handle) {
         // spread too thin to rank. Entry-point attribution plus a targeted read of
         // the hot path has been the more useful pair.
         recordGlobalSite(reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
+        if constexpr (std::is_same_v<T, String>) rememberStringHandle(handle);
 #endif
     }
     if (g_snapshot_mode && handle) {
@@ -3267,15 +3317,11 @@ void v8_Context_AllowCodeGenerationFromStrings(Global<Context>* context, bool al
 // String Functions
 // ============================================================================
 
-// Live Global<String> handles: created minus disposed.
+// Live Global<String> handles (rememberStringHandle above; 0 outside gc_bench).
 //
 // Every one of these is a C++ heap allocation AND a slot in V8's global handle
 // table, which lives outside `used_heap_size` - so a leak here is invisible to
-// GetHeapStatistics while being perfectly visible in RSS. That is exactly the
-// shape the Phase 6 measurements show: V8's heap flat at 7.0 MB across 20,000
-// cycles while resident memory climbs 78 MB.
-static std::atomic<int64_t> g_live_string_globals{0};
-
+// GetHeapStatistics while being perfectly visible in RSS.
 int64_t v8_Debug_LiveStringGlobals() {
     return g_live_string_globals.load(std::memory_order_relaxed);
 }
@@ -3292,7 +3338,6 @@ Global<String>* v8_String_NewFromUtf8(Isolate* isolate, const uint8_t* data, int
         return nullptr;
     }
     Local<String> str = maybe_str.ToLocalChecked();
-    g_live_string_globals.fetch_add(1, std::memory_order_relaxed);
     return trackHandle(new Global<String>(isolate, str));
 }
 
@@ -3304,7 +3349,7 @@ void v8_String_Dispose(Global<String>* str) {
         // created inside snapshot mode and then clears the handles - a live
         // use-after-free that this guard fixes, independent of any new disposal.
         if (g_snapshot_mode) return;
-        g_live_string_globals.fetch_sub(1, std::memory_order_relaxed);
+        forgetStringHandle(str);
         releaseWeakArm(str);
         str->Reset();
         delete str;
@@ -3676,6 +3721,7 @@ void v8_FreeToStringResult(V8ToStringResult* result) {
     // aborts inside `resetGlobalHandle`.
     if (!g_snapshot_mode) {
         if (result->value) {
+            forgetStringHandle(result->value);
             result->value->Reset();
             delete result->value;
         }
@@ -3702,6 +3748,7 @@ void v8_Value_Dispose(Global<Value>* value) {
     // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
     if (g_snapshot_mode) return;
     if (value) {
+        forgetStringHandle(value);
         releaseWeakArm(value);
         untagRealmHandle(value);
         value->Reset();
@@ -10423,6 +10470,7 @@ void v8_Global_Dispose(Global<Value>* global) {
     // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
     if (g_snapshot_mode) return;
     if (global != nullptr) {
+        forgetStringHandle(global);
         releaseWeakArm(global);
         untagRealmHandle(global);
         global->Reset();
