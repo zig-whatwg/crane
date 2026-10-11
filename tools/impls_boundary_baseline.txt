@@ -435,10 +435,8 @@ src/webidl/impls/Range.zig Node.getFirstChild 2
 src/webidl/impls/Range.zig Node.getNextSibling 2
 src/webidl/impls/Range.zig Node.getNodeType 8
 src/webidl/impls/Range.zig Node.getParent 8
-src/webidl/impls/Request.zig Blob.createFromBlobData 1
 src/webidl/impls/Request.zig FormData.createFromInternal 1
 src/webidl/impls/Request.zig Headers.initWithHeaderList 1
-src/webidl/impls/Response.zig Blob.createFromBlobData 1
 src/webidl/impls/Response.zig FormData.createFromInternal 1
 src/webidl/impls/Response.zig Headers.initWithHeaderList 1
 src/webidl/impls/SVGElement.zig Element.deinit 1
