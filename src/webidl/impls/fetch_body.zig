@@ -1022,10 +1022,6 @@ fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, bounda
     var out: std.ArrayListUnmanaged(u8) = .empty;
     errdefer out.deinit(allocator);
     const entries = interfaces.FormData.getEntriesForIterable(form) orelse &.{};
-    // No entries, no parts - and no closing delimiter either: an empty
-    // FormData is an empty body in every engine
-    // (fetch/api/response/response-consume-empty.any.js).
-    if (entries.len == 0) return out.toOwnedSlice(allocator);
     for (entries) |entry| {
         try out.appendSlice(allocator, "--");
         try out.appendSlice(allocator, boundary);
@@ -1065,6 +1061,15 @@ fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, bounda
         }
         try out.appendSlice(allocator, "\r\n");
     }
+    // HTML 4.10.22.8 step 2: finish the multipart encoding even with no
+    // entries, as Blink FormData::EncodeMultiPartFormData does.
+    // At wpt.fyi cc74d2669f, Chrome/Firefox/Safari pass body/formdata 3/3
+    // (including empty round trips), but request/response-consume-empty
+    // only 13/14: each fails "Consume empty FormData ... body as text",
+    // which wrongly expects zero bytes. Crane intentionally fails it too.
+    // https://wpt.fyi/results/fetch/api/body/formdata.any.html?sha=cc74d2669f
+    // https://wpt.fyi/results/fetch/api/response/response-consume-empty.any.html?sha=cc74d2669f
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/forms/form_data.cc
     try out.appendSlice(allocator, "--");
     try out.appendSlice(allocator, boundary);
     try out.appendSlice(allocator, "--\r\n");
