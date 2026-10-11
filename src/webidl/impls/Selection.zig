@@ -20,6 +20,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const infra = @import("infra");
 const Selection = interfaces.Selection;
 const dom = @import("dom");
 const boundary_points = dom.boundary_points;
@@ -650,38 +651,45 @@ fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResu
         else => return err,
     };
     defer text.deinit(node.ctx.allocator);
+    // The data is WTF-8 and offsets are UTF-16 code units (DOM node length):
+    // walk the bytes a code point at a time from the offset's byte, and count
+    // the code units back at the end. Word boundaries are ASCII, so every
+    // other code point is a word character - one an offset splits included
+    // (between the two halves of a surrogate pair).
     const data = text.asSlice();
-    const data_len = try interfaces.CharacterData.get_length(node);
-    // Follow-up after the utf16 lane lands: convert code-unit positions with
-    // infra.wtf8.byteOffsetOfCodeUnit before indexing the WTF-8 bytes here.
+    const at = infra.wtf8.positionOfCodeUnit(data, offset);
 
     if (forward) {
-        // Find end of current word, then start of next word
-        var pos = offset;
+        // Find end of current word, then start of next word. From inside a
+        // pair, its low half is the rest of the current word's character.
+        var pos = if (at.mid_pair) nextCodePoint(data, at.byte) else at.byte;
 
         // Skip current word (non-whitespace)
-        while (pos < data_len and !isWordBoundary(data[pos])) : (pos += 1) {}
+        while (pos < data.len and !isWordBoundaryAt(data, pos)) pos = nextCodePoint(data, pos);
 
-        // Skip whitespace between words
-        while (pos < data_len and isWordBoundary(data[pos])) : (pos += 1) {}
+        // Skip whitespace between words (ASCII: one byte each)
+        while (pos < data.len and isWordBoundaryAt(data, pos)) : (pos += 1) {}
 
-        if (pos >= data_len) {
+        if (pos >= data.len) {
             // Reached end of this text node, try next
             if (try getNextTextPosition(node)) |next| {
                 return next;
             }
         }
 
-        return .{ .node = node, .offset = pos };
+        return .{ .node = node, .offset = codeUnitsBefore(data, pos) };
     } else {
-        // Find start of current/previous word
-        var pos = offset;
+        // Find start of current/previous word. From inside a pair, its high
+        // half (before the offset) ends a word: no boundary to skip first.
+        var pos = at.byte;
 
         // Skip whitespace going backward
-        while (pos > 0 and isWordBoundary(data[pos - 1])) : (pos -= 1) {}
+        if (!at.mid_pair) {
+            while (pos > 0 and isWordBoundaryAt(data, pos - 1)) : (pos -= 1) {}
+        }
 
         // Skip word going backward
-        while (pos > 0 and !isWordBoundary(data[pos - 1])) : (pos -= 1) {}
+        while (pos > 0 and !isWordBoundaryAt(data, pos - 1)) pos = previousCodePoint(data, pos);
 
         if (pos == 0 and offset == 0) {
             // Already at start, try previous text node
@@ -690,8 +698,35 @@ fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResu
             }
         }
 
-        return .{ .node = node, .offset = pos };
+        return .{ .node = node, .offset = codeUnitsBefore(data, pos) };
     }
+}
+
+/// Whether the byte at `pos` of WTF-8 `data` is a word boundary: one of the
+/// ASCII boundaries (`isWordBoundary`). A byte of a multi-byte sequence never is.
+fn isWordBoundaryAt(data: []const u8, pos: usize) bool {
+    return data[pos] < 0x80 and isWordBoundary(data[pos]);
+}
+
+/// The byte offset after the code point that starts at `pos` of WTF-8 `data`
+/// (a stray continuation byte counts as one), never past the end.
+fn nextCodePoint(data: []const u8, pos: usize) usize {
+    const lead = data[pos];
+    const len: usize = if (lead < 0xC0) 1 else if (lead < 0xE0) 2 else if (lead < 0xF0) 3 else 4;
+    return @min(pos + len, data.len);
+}
+
+/// The byte offset of the code point that ends at `pos` (> 0) of WTF-8 `data`.
+fn previousCodePoint(data: []const u8, pos: usize) usize {
+    var i = pos - 1;
+    while (i > 0 and (data[i] & 0xC0) == 0x80) i -= 1;
+    return i;
+}
+
+/// The UTF-16 code units of `data` before byte offset `pos`, a code point
+/// boundary.
+fn codeUnitsBefore(data: []const u8, pos: usize) u32 {
+    return @intCast(infra.wtf8.codeUnitLength(data[0..pos]));
 }
 
 /// Move to document boundary
