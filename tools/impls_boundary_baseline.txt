@@ -448,17 +448,6 @@ src/webidl/impls/SVGScriptElement.zig Element.setAttributeValue 1
 src/webidl/impls/SVGScriptElement.zig Node.setLocalName 1
 src/webidl/impls/SVGScriptElement.zig SVGElement.deinit 2
 src/webidl/impls/SVGScriptElement.zig SVGElement.init 1
-src/webidl/impls/Selection.zig CharacterData.getInternalState 25
-src/webidl/impls/Selection.zig Node.NodeType 9
-src/webidl/impls/Selection.zig Node.getFirstChild 5
-src/webidl/impls/Selection.zig Node.getNextSibling 6
-src/webidl/impls/Selection.zig Node.getNodeType 3
-src/webidl/impls/Selection.zig Node.getParent 5
-src/webidl/impls/Selection.zig Node.getPreviousSibling 1
-src/webidl/impls/Selection.zig Range.containsNode 1
-src/webidl/impls/Selection.zig ShadowRoot.getInternalState 1
-src/webidl/impls/Selection.zig StaticRange.setEnd 1
-src/webidl/impls/Selection.zig StaticRange.setStart 1
 src/webidl/impls/ServiceWorkerGlobalScope.zig CookieStore.createForOrigin 1
 src/webidl/impls/ServiceWorkerRegistration.zig CookieStoreManager.createForRegistration 1
 src/webidl/impls/ShadowRoot.zig DocumentFragment.init 1

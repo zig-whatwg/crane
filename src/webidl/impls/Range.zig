@@ -24,6 +24,7 @@ const Range = interfaces.Range;
 const range_boundaries = @import("dom").range_boundaries;
 const boundary_points = @import("dom").boundary_points;
 const dom = @import("dom");
+const Link = @import("same_object.zig").Link;
 const document_internals = @import("dom").document_internals;
 
 // Import related impls
@@ -76,6 +77,11 @@ pub const InternalState = struct {
     /// container, and the end container while it is another node.
     traced_start: ?*runtime.Instance = null,
     traced_end: ?*runtime.Instance = null,
+
+    /// Deliberately weak: Selection already traces this Range, and an otherwise
+    /// unreferenced Selection must not be rooted by a script-held Range. The
+    /// generation check is the weak-link behavior, not a substitute for a hold.
+    selection: ?Link = null,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -134,6 +140,49 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     range_boundaries.install(&boundariesOf);
     range_boundaries.installLiveRange(.{ .collapse = &collapseLive, .update_owner_document = &updateOwnerDocument });
+    dom.selection.install(.{ .associate_range = &associateSelection });
+}
+
+fn associateSelection(range: *runtime.Instance, selection: *runtime.Instance, associated: bool) void {
+    const internal = getInternal(range) orelse return;
+    if (associated) {
+        internal.selection = Link.to(selection);
+    } else if (internal.selection) |link| {
+        if (link.instance == selection) internal.selection = null;
+    }
+}
+
+/// No boundary reads on unselected ranges. A selected range's pre/post points
+/// suppress setter no-ops; DOM mutation setters take the same path.
+fn selectedBoundaries(internal: *const InternalState) ?range_boundaries.Boundaries {
+    if (internal.selection == null) return null;
+    return .{
+        .start_container = internal.start_container orelse return null,
+        .start_offset = internal.start_offset,
+        .end_container = internal.end_container orelse return null,
+        .end_offset = internal.end_offset,
+    };
+}
+
+fn notifySelection(range: *runtime.Instance, internal: *InternalState, before: ?range_boundaries.Boundaries) void {
+    const old = before orelse return;
+    const link = internal.selection orelse return;
+    if (!link.isLive()) {
+        internal.selection = null;
+        return;
+    }
+    const after = selectedBoundaries(internal);
+    if (!std.meta.eql(before, after)) {
+        const containers_changed = if (after) |points|
+            old.start_container != points.start_container or old.end_container != points.end_container
+        else
+            true;
+        // Selection API selectionchange: a selected Range boundary changed.
+        // Blink RangeUpdateScope updates the associated selection on exit;
+        // our hook checks the association and queues without dispatching
+        // inside a mutation. This notifier reads no Range state after handoff.
+        dom.selection.rangeMutated(link.instance, range, containers_changed);
+    }
 }
 
 /// Initialize instance (creates the instance)
@@ -217,6 +266,8 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// createRange() reaches this; the constructor uses it directly.
 fn collapseLive(range: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
     const internal = getInternal(range) orelse return error.InvalidStateError;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(range, internal, before);
     defer keepContainers(range, internal);
     internal.start_container = node;
     internal.start_offset = offset;
@@ -395,6 +446,9 @@ fn compareBoundaryPoints(
 /// Sets the start of the range to the given boundary point
 pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const previous_start = internal.start_container;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     defer keepContainers(instance, internal);
 
     // Step 1: If node is a doctype, throw InvalidNodeTypeError
@@ -416,6 +470,7 @@ pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offse
         // No end container yet, just set start
         internal.start_container = node;
         internal.start_offset = offset;
+        if (internal.start_container != previous_start) try updateOwnerDocument(instance);
         return;
     };
     const rangeRoot = getRoot(end_container);
@@ -429,12 +484,22 @@ pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offse
     // Step 4.2: Set range's start to bp
     internal.start_container = node;
     internal.start_offset = offset;
+    // Only a changed container can change the node document during this
+    // synchronous setter. Adoption already calls updateOwnerDocument through
+    // range_boundaries. Avoid its lookup on offset-only changes (Q19).
+    // A moved boundary must join the new live-range list so removals find it.
+    // Blink Range::setStart/SetDocument:
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/dom/range.cc
+    if (internal.start_container != previous_start) try updateOwnerDocument(instance);
 }
 
 /// DOM §5.3 - Range.setEnd(node, offset)
 /// Sets the end of the range to the given boundary point
 pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const previous_start = internal.start_container;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     defer keepContainers(instance, internal);
 
     // Step 1: If node is a doctype, throw InvalidNodeTypeError
@@ -456,6 +521,7 @@ pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset:
         // No start container yet, just set end
         internal.end_container = node;
         internal.end_offset = offset;
+        if (internal.start_container != previous_start) try updateOwnerDocument(instance);
         return;
     };
     const rangeRoot = getRoot(start_container);
@@ -469,6 +535,7 @@ pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset:
     // Step 5.2: Set range's end to bp
     internal.end_container = node;
     internal.end_offset = offset;
+    if (internal.start_container != previous_start) try updateOwnerDocument(instance);
 }
 
 /// DOM §5.3 - Range.setStartBefore(node)
@@ -526,6 +593,8 @@ pub fn call_setEndAfter(instance: *runtime.Instance, node: *runtime.Instance) an
 /// DOM §5.3 - Range.collapse(toStart)
 pub fn call_collapse(instance: *runtime.Instance, toStart: webidl.Opt(bool)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     defer keepContainers(instance, internal);
 
     const collapse_to_start = if (toStart.was_passed) toStart.value else false;
@@ -559,6 +628,9 @@ pub fn call_selectNode(instance: *runtime.Instance, node: *runtime.Instance) any
 /// DOM §5.3 - Range.selectNodeContents(node)
 pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const previous_start = internal.start_container;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     defer keepContainers(instance, internal);
 
     // If node is a doctype, throw InvalidNodeTypeError
@@ -573,6 +645,7 @@ pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Insta
     internal.start_offset = 0;
     internal.end_container = node;
     internal.end_offset = length;
+    if (internal.start_container != previous_start) try updateOwnerDocument(instance);
 }
 
 /// DOM §5.5 - Range.compareBoundaryPoints(how, sourceRange)
@@ -812,6 +885,8 @@ fn collapsePoint(bounds: Bounds) struct { node: *runtime.Instance, offset: u32 }
 /// DOM 5.5 "The deleteContents() method steps".
 pub fn call_deleteContents(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     defer keepContainers(instance, internal);
     // Step 2: "Let originalStartNode, originalStartOffset, originalEndNode,
     // and originalEndOffset be this's start node, start offset, end node, and
@@ -1004,6 +1079,8 @@ fn extract(allocator: std.mem.Allocator, bounds: Bounds) anyerror!Extracted {
 
 /// Extract `instance` and perform extract's step 21 on it.
 fn extractThis(instance: *runtime.Instance, internal: *InternalState) anyerror!*runtime.Instance {
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     defer keepContainers(instance, internal);
     const bounds = Bounds.of(internal) orelse return error.InvalidStateError;
     const extracted = try extract(instance.ctx.allocator, bounds);
@@ -1112,6 +1189,8 @@ pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instanc
 /// DOM 5.5 "insert" a node into a live range; insertNode(node)'s steps.
 pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     defer keepContainers(instance, internal);
     const start = internal.start_container orelse return error.InvalidStateError;
     const start_offset = internal.start_offset;
@@ -1546,6 +1625,8 @@ pub fn getEndOffset(instance: *runtime.Instance) u32 {
 /// Spec: https://dom.spec.whatwg.org/#concept-range-start
 pub fn setStartBoundary(instance: *runtime.Instance, container: *runtime.Instance, offset: u32) void {
     const internal = getInternal(instance) orelse return;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     internal.start_container = container;
     internal.start_offset = offset;
     keepContainers(instance, internal);
@@ -1555,6 +1636,8 @@ pub fn setStartBoundary(instance: *runtime.Instance, container: *runtime.Instanc
 /// Spec: https://dom.spec.whatwg.org/#concept-range-end
 pub fn setEndBoundary(instance: *runtime.Instance, container: *runtime.Instance, offset: u32) void {
     const internal = getInternal(instance) orelse return;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     internal.end_container = container;
     internal.end_offset = offset;
     keepContainers(instance, internal);
@@ -1563,12 +1646,16 @@ pub fn setEndBoundary(instance: *runtime.Instance, container: *runtime.Instance,
 /// Update start offset (for live range updates during mutations)
 pub fn setStartOffset(instance: *runtime.Instance, offset: u32) void {
     const internal = getInternal(instance) orelse return;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     internal.start_offset = offset;
 }
 
 /// Update end offset (for live range updates during mutations)
 pub fn setEndOffset(instance: *runtime.Instance, offset: u32) void {
     const internal = getInternal(instance) orelse return;
+    const before = selectedBoundaries(internal);
+    defer notifySelection(instance, internal, before);
     internal.end_offset = offset;
 }
 
