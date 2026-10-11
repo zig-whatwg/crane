@@ -13,6 +13,7 @@
 const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
+const NodeBase = @import("node_base.zig").NodeBase;
 
 /// A document version covers tree and attribute mutations, including adoption
 /// and teardown. The refcount owner updates it at those mutation boundaries.
@@ -42,7 +43,24 @@ pub const Link = struct {
             runtime.instance_lifecycle.isCleanedUp(self.instance)) return null;
         return self.instance;
     }
+
+    /// `get` by the slab generation alone, for an entry of a cache whose
+    /// document's tree version has not moved since the entry was cached:
+    /// every free of a node of that document moves it (refcount.nodeFreed),
+    /// so the entry's teardown cannot have begun. The generation stays the
+    /// net.
+    pub fn getUnchanged(self: Link) ?*runtime.Instance {
+        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
+        return self.instance;
+    }
 };
+
+/// What a node's tree node names as its node document - the document's own
+/// tree node; a document names itself - as a key `IndexCache.fresh` compares.
+fn documentKey(root_base: *const NodeBase) usize {
+    if (root_base.node_type == NodeBase.DOCUMENT_NODE) return @intFromPtr(root_base);
+    return @intFromPtr(root_base.owner_document);
+}
 
 /// The root's CURRENT node document, so adoption cannot reuse the old
 /// document's version even if both documents happen to have the same number.
@@ -59,6 +77,9 @@ pub fn nodeDocument(root: *runtime.Instance) ?*runtime.Instance {
 pub const IndexCache = struct {
     version: ?u64 = null,
     document: ?Link = null,
+    /// `documentKey` of the root when `document` was read (`keyDocument`);
+    /// 0 until then. The cheap half of `fresh`.
+    document_key: usize = 0,
     length: ?u32 = null,
     last: ?Link = null,
     last_index: u32 = 0,
@@ -85,6 +106,29 @@ pub const IndexCache = struct {
         return false;
     }
 
+    /// Whether everything cached is still usable, checked cheaply enough for
+    /// every indexed read: the root - alive, its collection holds it
+    /// (node_holds.MemberHold), and `root_base` is its tree node - still
+    /// names the document `begin` read, that document is the same slab slot,
+    /// and its tree version has not moved. Every mutation, adoption and free
+    /// of a node of the document moves the version, so a true answer also
+    /// says every node the cache remembers is alive. One registry read (the
+    /// document's counts) against `begin`'s six; false sends the caller to
+    /// `begin`.
+    pub fn fresh(self: *const IndexCache, root_base: *const NodeBase) bool {
+        const version = self.version orelse return false;
+        const document = self.document orelse return false;
+        if (self.document_key == 0 or documentKey(root_base) != self.document_key) return false;
+        if (runtime.SlabAllocator.generationOf(document.instance) != document.generation) return false;
+        return treeVersion(document.instance) == version;
+    }
+
+    /// After `begin`: remember the document key of the root whose document
+    /// `begin` read, for `fresh`.
+    pub fn keyDocument(self: *IndexCache, root_base: *const NodeBase) void {
+        self.document_key = if (self.document != null) documentKey(root_base) else 0;
+    }
+
     pub fn remember(self: *IndexCache, index: u32, node: *runtime.Instance) void {
         self.last = Link.to(node);
         self.last_index = index;
@@ -96,7 +140,9 @@ pub const IndexCache = struct {
         var node: ?*runtime.Instance = null;
         if (self.last) |link| {
             if (index >= self.last_index) {
-                node = link.get();
+                // `begin` or `fresh` validated the cache against an unmoved
+                // tree version for this read, or it would hold no cursor.
+                node = link.getUnchanged();
                 if (node != null) offset = self.last_index;
             }
         }

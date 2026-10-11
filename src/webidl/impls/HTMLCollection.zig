@@ -101,7 +101,7 @@ fn makeLive(collection: *runtime.Instance, root: *runtime.Instance, refill: Refi
     internal.root_generation = runtime.SlabAllocator.generationOf(root);
     internal.root_hold.take(collection, root, live_collections.root_slot);
     internal.refill = refill;
-    refresh(collection, internal);
+    _ = refresh(collection, internal);
 }
 
 /// `dom.live_collections`' element-children filter: `children` (DOM
@@ -349,35 +349,49 @@ fn isQuirksMode(root: *runtime.Instance) bool {
     return std.mem.eql(u8, mode.asSlice(), "BackCompat");
 }
 
-/// Bring a live collection up to date with its root.
-fn refresh(instance: *runtime.Instance, internal: *InternalState) void {
-    const refill = internal.refill orelse return;
-    const root = internal.root orelse return;
+/// Bring a live collection up to date with its root. True when its
+/// elements are known to match an unmoved tree version - every one of them
+/// alive (live_collections.Link.getUnchanged) - false when they must each be
+/// checked in full.
+fn refresh(instance: *runtime.Instance, internal: *InternalState) bool {
+    const refill = internal.refill orelse return false;
+    const root = internal.root orelse return false;
+    // Nothing changed since the last full check: one registry read.
+    const root_base = internal.root_hold.liveBase();
+    if (internal.cacheable) if (root_base) |base| if (internal.cache.fresh(base)) return true;
     const link = live_collections.Link{ .instance = root, .generation = internal.root_generation };
     if (link.get() == null) {
         internal.cache = .{};
         clear(instance);
-        return;
+        return false;
     }
     if (internal.cacheable) {
         const document = live_collections.nodeDocument(root);
         const version = if (document) |doc| live_collections.treeVersion(doc) else null;
-        if (internal.cache.begin(link, document, version)) return;
+        const valid = internal.cache.begin(link, document, version);
+        if (root_base) |base| internal.cache.keyDocument(base);
+        if (valid) return true;
     }
     clear(instance);
     // A failed refill must never become a cached partial result.
-    if (!refill(instance, root)) internal.cache = .{};
+    if (!refill(instance, root)) {
+        internal.cache = .{};
+        internal.cache.length = @intCast(internal.elements.size());
+        return false;
+    }
     internal.cache.length = @intCast(internal.elements.size());
+    // Just refilled under a tree version: every element is alive.
+    return internal.cache.version != null;
 }
 
 /// Named reads already inspect the whole buffer. Validate it before exposing
 /// any element; item() checks just its own entry to keep indexed loops linear.
 fn refreshNamed(instance: *runtime.Instance, internal: *InternalState) void {
-    refresh(instance, internal);
+    if (refresh(instance, internal)) return;
     for (internal.elements.toSlice()) |link| {
         if (link.get() == null) {
             internal.cache = .{};
-            refresh(instance, internal);
+            _ = refresh(instance, internal);
             return;
         }
     }
@@ -444,7 +458,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Returns the number of elements in the collection.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
-    refresh(instance, internal);
+    _ = refresh(instance, internal);
     return @intCast(internal.elements.size());
 }
 
@@ -453,15 +467,15 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Returns the element at the given index, or null if out of bounds.
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    refresh(instance, internal);
+    const unchanged = refresh(instance, internal);
     // Return null for out of bounds per spec
     const link = internal.elements.get(index) orelse return null;
-    if (link.get()) |element| {
+    if (if (unchanged) link.getUnchanged() else link.get()) |element| {
         internal.cache.remember(index, element);
         return element;
     }
     internal.cache = .{};
-    refresh(instance, internal);
+    _ = refresh(instance, internal);
     const replacement = internal.elements.get(index) orelse return null;
     const element = replacement.get() orelse return null;
     internal.cache.remember(index, element);

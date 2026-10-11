@@ -416,6 +416,9 @@ fn getLiveItem(internal: *InternalState, index: u32) ?*runtime.Instance {
 
 fn prepareCache(internal: *InternalState) bool {
     const root = internal.root orelse return false;
+    // Nothing changed since the last full check: one registry read.
+    const root_base = internal.root_hold.liveBase();
+    if (root_base) |base| if (internal.cache.fresh(base)) return true;
     const link = live_collections.Link{ .instance = root, .generation = internal.root_generation };
     if (link.get() == null) {
         internal.cache = .{};
@@ -424,6 +427,7 @@ fn prepareCache(internal: *InternalState) bool {
     const document = live_collections.nodeDocument(root);
     const version = if (document) |doc| live_collections.treeVersion(doc) else null;
     _ = internal.cache.begin(link, document, version);
+    if (root_base) |base| internal.cache.keyDocument(base);
     return true;
 }
 
