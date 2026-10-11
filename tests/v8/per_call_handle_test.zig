@@ -282,3 +282,23 @@ test "a [PutForwards] setter releases what it made" {
     try page.expectNoHandleLeftBy("e.classList = 'a b'");
     try page.expectNoHandleLeftBy("e.style = 'color: red'");
 }
+
+test "an observable array's traps release what they are given and make" {
+    const page = try Page.open();
+    defer page.close();
+    // DocumentOrShadowRoot.adoptedStyleSheets: a Proxy whose traps are
+    // native (observable_array.zig). Each trap took its target, key and
+    // receiver as owned Globals and kept them, and kept the value it set as
+    // its result.
+    const sheets = "(globalThis.sheets ||= new Document().adoptedStyleSheets)";
+    try page.expectNoHandleLeftBy(sheets ++ ".length");
+    try page.expectNoHandleLeftBy(sheets ++ "[0]");
+    try page.expectNoHandleLeftBy(sheets ++ ".foo = 1");
+    try page.expectNoHandleLeftBy(sheets ++ ".foo");
+    try page.expectNoHandleLeftBy("delete " ++ sheets ++ ".foo");
+    try page.expectNoHandleLeftBy("Object.getPrototypeOf(" ++ sheets ++ ")");
+    // These two throw today (the traps break the Proxy invariants for
+    // `length`, a gap of its own); the handles must go either way.
+    try page.expectNoHandleLeftBy("try { Object.keys(" ++ sheets ++ "); } catch (err) {}");
+    try page.expectNoHandleLeftBy("try { Object.getOwnPropertyDescriptor(" ++ sheets ++ ", 'length'); } catch (err) {}");
+}
