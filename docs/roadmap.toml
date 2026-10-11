@@ -483,6 +483,7 @@ progress = [
   "d6d42ba344 (merged 67e85fac60) - Web Locks: one lock manager per Browser and storage key under a mutex, shared by windows and worker threads, grants delivered as tasks to each environment; an environment's end releases its locks (weblocks lane)",
   "5b56cfb965 (merged 7e9bb59fb0) - workers batch 2: every shared worker on its own thread, the shared worker manager per Browser with an owner set (orphans terminate; extendedLifetime), every no-event-loop fallback removed, worker performance, worker code-generation hooks (workers3 lane)",
   "7d800953da..d2e1efe58a - workers batch 2: every shared worker on a thread of its own; HTML's shared worker manager a BrowserScope supplement with each worker's owner set (an orphan is closed; extendedLifetime keeps it for the timeout); worker realms all have their own loop; a worker's own Performance; worker agents' code generation hooks (workers lane)",
+  "c5e6df1c07, e3c2108334, c57c27305e, aaffd3e2e3, 5eeba6a50e - instances B3 (part): the storage shed and bucket file systems, the blob URL store (requests carry their client's) and the cookie jar with its CookieStore listeners are BrowserScope supplements; a page's cookieStore hears a cookie a worker's fetch stored; the dead quota config, blob URL twin and connection-pool global deleted; rejection tracking on the agent's host (inst3 lane)",
 ]
 
   [[infra.items]]
@@ -491,7 +492,7 @@ progress = [
 
   [[infra.items]]
   name = "The storage shed, cookie jar, HTTP cache and blob URL store belong to the instance"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Cross-tab registries (BroadcastChannel, SharedWorker, Web Locks, service worker registrations and clients, permissions) belong to the instance"
