@@ -314,9 +314,10 @@ pub const Browser = struct {
             // its end frees. We must clean them up while allocators are valid.
             impls.cleanup.cleanupAllDomRegistries();
 
-            // Release the rejection tracker's promise handles while the
-            // agent that owns them still exists.
-            @import("html").rejected_promises.releaseTracked();
+            // Release the rejection tracker's promise handles - this agent's,
+            // on its host, and no other Browser's - while the agent that
+            // owns them still exists.
+            @import("html").rejected_promises.releaseAgent(agent);
 
             // The end of the agent (engine.destroyAgent): its hooks forgotten,
             // the engine's per-isolate and per-thread state torn down in

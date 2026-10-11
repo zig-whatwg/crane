@@ -939,9 +939,10 @@ pub const WorkerHost = struct {
         // The module map goes with the settings object: its records are
         // engine handles of this agent.
         self.disposeModules();
-        // So do the rejected promises tracked for its global, and the
-        // notifications queued for it: Globals of this agent.
-        if (self.global_scope) |global_scope| rejected_promises.forgetGlobal(global_scope);
+        // So do the rejected promises tracked for its globals (the worker's
+        // global scope, and any ShadowRealm's in it), and the notifications
+        // queued for them: Globals of this agent, on its host.
+        rejected_promises.releaseAgent(self.agent);
         // The unloading document cleanup steps other specifications define,
         // run for the worker's realm as Blink runs them for every execution
         // context that ends (the File API's: the blob URL entries the worker
