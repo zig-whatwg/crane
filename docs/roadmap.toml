@@ -388,6 +388,7 @@ done_when = """A side-data channel carries WebAssembly modules, SharedArrayBuffe
 and transferable platform objects."""
 progress = [
   "0c414f3cad - [Serializable] platform objects: codegen routes to each interface's serialization steps, an engine-neutral record on V8's delegate, Blob/File/DOMException/geometry/ImageData/CryptoKey (serializable lane)",
+  "8b365d3349 - WebAssembly.Module: wire bytes and [[AgentCluster]] in an adapter envelope, HostHooks.agentClusterOf, site-keyed window clusters (wasmser lane, ported from serial); 435021f2a9 cross-origin postMessage serializes in the caller's realm; 9feeb5f976 a dedicated worker is in its owner's cluster",
 ]
 
   [[infra.items]]
@@ -396,7 +397,7 @@ progress = [
 
   [[infra.items]]
   name = "WebAssembly.Module across windows in one agent cluster"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "SharedArrayBuffer where the agent cluster allows it"
