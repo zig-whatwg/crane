@@ -1,0 +1,12 @@
+# Architecture: An identity edge drawn at hold time is no memory net while the collector frees trees
+
+**Date**: 2026-10-11
+**Lesson**: `engine.keepOpaqueRoot` keeps only the wrappers that exist when it is called. A holder of a node whose tree has no wrapper yet must still wrap that tree's root while the collector decides what is freed (refcount steps 5 and 6).
+
+**Why**: Until refcount step 7, a node is freed when its tree's root wrapper is collected. keepOpaqueRoot is the refcount design's identity edge. It draws an edge to the member's own wrapper, else to its tree's wrapped root, and draws nothing for a tree with no wrapper, which the collector never frees. That is correct at the moment of the call. But script can wrap a node of that tree later, through the holder itself (`record.removedNodes[0]`), and drop the wrapper again. No edge reaches the new wrapper, so the collector takes it, and the tree is freed under the holder. WebKit has no gap here because it re-reads a record's opaque roots at every marking (`ChildListRecord::visitNodesInGCThread`); V8 13.1 offers no such hook (refcount design 2.2).
+
+**What Happened**: Lane rc5 (refcount 5b) was asked to replace node_holds' rescue with keepOpaqueRoot. A candidate that did only that, with no wrap of an unwrapped root, failed crane/rc5-record-node-wrapped-later.html 0/3. The test's case is: `host.innerHTML = ''` removes unwrapped children, a MutationRecord holds them, script later sets an expando on `records[0].removedNodes[0]` and drops it, and a collection runs. The base, which has nodeholds' rescue, passed 3/3, and every other holder test was identical on both. The design had stated the gap ("an unwrapped member that moves into a tree wrapped only later is not followed") and said to keep the chain if a test showed it mattered (decision D4). The test shows it.
+
+**Fix**: `node_holds.keepMember`: keepOpaqueRoot for a member or root that has a wrapper, and `engine.traceChild` (which makes the wrapper) for a node that has none. The second branch is the shadow-mode net, marked for deletion with the chain in step 9b. A live collection's root (`node_holds.MemberHold`) and a holder's first rescue both go through it.
+
+**Takeaway**: **An edge drawn when a hold begins cannot follow wrappers made later. Until counts decide lifetimes, wrap the held tree's root when the hold begins, or the tree is freed under its holder the first time script wraps it and lets go.**
