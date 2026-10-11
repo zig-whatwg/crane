@@ -1255,6 +1255,17 @@ fn navigableContext(integration: *IFrameIntegration) ?runtime.Context {
     return @ptrCast(@alignCast(integration.runtime_context orelse return null));
 }
 
+/// The user agent's blob URL store a navigation of `integration`'s navigable
+/// obtains a blob: URL's blob from: its Browser's - the container's realm's
+/// (a frame's realm shares its parent's Browser scope).
+fn blobURLStoreOf(integration: *IFrameIntegration) ?*anyopaque {
+    const realm: runtime.Context = if (integration.parent_realm) |parent|
+        @ptrCast(@alignCast(parent))
+    else
+        navigableContext(integration) orelse return null;
+    return @ptrCast(dom_module.browser_state.blobURLStoreOf(realm) orelse return null);
+}
+
 /// Step 24.1: "checking if unloading is canceled" for the active document's
 /// inclusive descendant navigables - beforeunload at each, parents first.
 /// Step 24.2: canceled, or navigated again meanwhile, and this navigation
@@ -1448,6 +1459,8 @@ fn startFetch(record: *Navigation) void {
             .destination = destination,
             .mode = .navigate,
             .redirect = .follow,
+            // The blob URL store the entry is in: the Browser's.
+            .blob_url_store = blobURLStoreOf(record.integration),
             .referrer = record.referrer,
             .referrer_policy = record.referrer_policy,
             .policy_container = if (record.initiator_policy_container) |*container| container else null,

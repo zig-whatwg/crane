@@ -895,11 +895,6 @@ pub fn executeTests(
         // on this test.
         if (result_stream) |*rs| try rs.writeResults(report.resultsSince(file_first));
         if (run_journal) |*j| try tally.record(j, test_file.path, currentAgent(browser));
-
-        // Reset HTTP connection pool between test files to prevent connection exhaustion
-        // This ensures each test file starts with a fresh connection pool
-        const fetch_mod = @import("fetch");
-        fetch_mod.network.resetGlobalPool();
     }
 
     // Every file has finished; what follows is the report and the teardown,
@@ -1475,21 +1470,9 @@ fn run(init: std.process.Init) !u8 {
     // Execute tests (prints progress and summary)
     try executeTests(allocator, discovery, options, &report, server, &deadline);
 
-    // Clean up global storage resources
-    const storage = @import("storage");
-    storage.deinitGlobalStorageShed(allocator);
-
-    // Clean up global blob URL store
-    const file_mod = @import("file");
-    file_mod.deinitGlobalBlobURLStore(allocator);
-
     // Clean up timer backend
     const platform_mod = @import("platform");
     platform_mod.timer_backend.deinitDefault();
-
-    // Clean up global HTTP connection pool
-    const fetch_mod = @import("fetch");
-    fetch_mod.network.cleanupGlobalPool();
 
     // Finish and write report
     report.finish();

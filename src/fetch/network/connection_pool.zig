@@ -629,44 +629,6 @@ fn progressCallback(
 }
 
 // =============================================================================
-// Global Pool (singleton pattern)
-// =============================================================================
-
-var global_pool: ?*ConnectionPool = null;
-var global_pool_mutex: std.Io.Mutex = .init;
-
-/// Get or create the global connection pool.
-/// The global pool is shared across all requests and provides
-/// maximum connection reuse efficiency.
-pub fn getGlobalPool(allocator: Allocator) !*ConnectionPool {
-    std.Io.Threaded.mutexLock(&global_pool_mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_pool_mutex);
-
-    if (global_pool == null) {
-        global_pool = try ConnectionPool.init(allocator);
-    }
-    return global_pool.?;
-}
-
-/// Cleanup the global pool. Call at program shutdown.
-pub fn cleanupGlobalPool() void {
-    std.Io.Threaded.mutexLock(&global_pool_mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_pool_mutex);
-
-    if (global_pool) |pool| {
-        pool.deinit();
-        global_pool = null;
-    }
-}
-
-/// Reset the global pool by destroying and allowing lazy recreation.
-/// Call between tests to release all connections and start fresh.
-/// The next call to getGlobalPool() will create a new pool.
-pub fn resetGlobalPool() void {
-    cleanupGlobalPool();
-}
-
-// =============================================================================
 // Tests
 // =============================================================================
 
@@ -721,26 +683,4 @@ test "ConnectionPool - RequestContext init and deinit" {
     try std.testing.expectEqual(@as(usize, 0), ctx.response_body.items.len);
     try std.testing.expect(!ctx.completed.load(.seq_cst));
     try std.testing.expect(!ctx.aborted.load(.seq_cst));
-}
-
-test "ConnectionPool - global pool singleton" {
-    const allocator = std.testing.allocator;
-
-    const curl_backend = @import("curl_backend.zig");
-    try curl_backend.globalInit();
-    defer curl_backend.globalCleanup();
-
-    // Get global pool twice - should be same instance
-    const pool1 = try getGlobalPool(allocator);
-    const pool2 = try getGlobalPool(allocator);
-
-    try std.testing.expectEqual(pool1, pool2);
-
-    // Cleanup
-    cleanupGlobalPool();
-
-    // Ensure it was cleaned up
-    std.Io.Threaded.mutexLock(&global_pool_mutex);
-    try std.testing.expect(global_pool == null);
-    std.Io.Threaded.mutexUnlock(&global_pool_mutex);
 }

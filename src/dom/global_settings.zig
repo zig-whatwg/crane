@@ -119,6 +119,9 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // A Window stands in for its navigable's traversable.
     if (std.mem.eql(u8, global.vtable.name, "Window")) client.request.traversable = @ptrCast(global);
     client.request.cookie_jar = cookieJarOf(global);
+    // The blob URL store a blob: request's blob is obtained from: the
+    // global's Browser's (its realm's scope).
+    client.request.blob_url_store = @ptrCast(@import("browser_state.zig").blobURLStoreOf(global.ctx));
     // The policy container "populate request from client" step 3 clones.
     if (settings.policy_container) |container_of| client.request.policy_container = container_of(global);
     // Mixed Content 4.3 is captured by value, like the policy snapshot.

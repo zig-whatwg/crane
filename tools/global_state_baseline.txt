@@ -157,8 +157,6 @@ src/fetch/internal/fetch_controller.zig report_timing_called 1 G X decl:de58a3b1
 src/fetch/internal/fetch_params.zig chunk_length_received 1 G X decl:1dfcee87d8da8735
 src/fetch/internal/fetch_params.zig queue_task_executed 1 G X decl:de58a3b1f5ff5e75
 src/fetch/network/backend.zig default_cert_options 1 G I/profile decl:65591a13919d8c59
-src/fetch/network/connection_pool.zig global_pool 1 G I/profile decl:bfcc31c4f5818db8
-src/fetch/network/connection_pool.zig global_pool_mutex 1 G P-res decl:ee0617868871b920
 src/fetch/network/curl_backend.zig global_init_count 1 G P-res decl:3796f88280404836
 src/fetch/network/curl_backend.zig global_init_mutex 1 G P-res decl:ee0617868871b920
 src/fetch/network/curl_backend.zig global_share 1 G I/profile decl:3bfc31e0824b1ad6
@@ -166,7 +164,6 @@ src/fetch/network/curl_backend.zig lock_call_count 1 G D decl:3796f88280404836
 src/fetch/network/curl_backend.zig share_mutexes 1 G I/profile decl:3da8106419fccf84
 src/fetch/network/curl_backend.zig unlock_call_count 1 G D decl:3796f88280404836
 src/fetch/network/scheduler.zig thread_scheduler 1 TL I/profile decl:0f3c8da331a0bfbd
-src/file/root.zig global_blob_store 1 G I/profile decl:00bd87a143de0674
 src/html/editing/executor.zig document_states 1 G R decl:3e3e1a8064593da4
 src/html/editing/executor.zig getOrCreateEditorState.new_state.Static.editor_state 1 G R decl:8eaedec687f8b9fc
 src/html/embedder_scripts.zig registered 1 TL I/engine decl:985bda748b35fe88
@@ -179,7 +176,6 @@ src/html/module_script.zig mimeEssence.R.buf 1 TL C decl:6d938526b5bf4769
 src/html/module_script.zig parseMimeEssence.S.buf 1 TL C decl:6d938526b5bf4769
 src/html/module_script.zig search_epoch 1 G C decl:6160991ba0a1e2bb
 src/html/navigation/termination_nesting.zig level 1 TL A decl:cf9dca8c2da04496
-src/html/rejected_promises.zig tracked 1 G R decl:e7d7b965a5dd450c
 src/html/report_exception.zig reporting 1 G R decl:0d6bf23d65c97e7a
 src/html/script_element.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/html/script_execution.zig drain_depth 1 G C decl:3796f88280404836
@@ -323,18 +319,13 @@ src/service_worker/client.zig Client.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/job.zig Job.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/registration.zig Registration.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/service_worker.zig ServiceWorker.next_id 1 G P-res decl:1dfcee87d8da8735
-src/storage/quota.zig global_config 1 G I/profile decl:2be66457602efcb0
-src/storage/standard.zig global_bucket_manager 1 G I/profile decl:747163131fca0084
-src/storage/standard.zig global_local_storage_shed 1 G I/profile decl:c95c7e834fa1dc16
 src/storage/storage_manager.zig StorageManager.permission_callback 1 G H decl:7f841d1bca0027f1
 src/streams/internal/message_port.zig MessagePort.generatePortId.S.counter 1 G X decl:1dfcee87d8da8735
 src/streams/internal/read_into_request.zig sentinel_storage 1 G P-const decl:f33e1c60fc8c8315
 src/streams/internal/read_request.zig sentinel_storage 1 G P-const decl:f33e1c60fc8c8315
-src/url/blob_url.zig global_blob_store 1 G I/profile decl:52c96a63e119de70
 src/url/public_suffix.zig psl_result_buf 1 TL C decl:6d938526b5bf4769
 src/urlpattern/pcre2_ffi.zig Regex.static_captures 1 TL C decl:0e6fd21dca79378c
 src/webdriver/main.zig main.handler.server_ptr 1 G P-res decl:f033b82c181714a1
-src/webidl/impls/CookieStore.zig listening 1 TL I/profile decl:0e4d49470b43a231
 src/webidl/impls/Element.zig undefined_sentinel 1 G P-const decl:f33e1c60fc8c8315
 src/webidl/impls/EventTarget.zig current_events 1 G R decl:776d6beda41b573f
 src/webidl/impls/EventTarget.zig internal_state_registry 1 G I/engine decl:5461307b03e22334

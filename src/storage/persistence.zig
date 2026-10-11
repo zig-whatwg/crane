@@ -96,22 +96,27 @@ pub const PersistenceManager = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
+    /// The user agent's storage - its Browser's - whose shelves this manages.
+    /// BORROWED: it outlives the manager.
+    user_agent_storage: *standard.UserAgentStorage,
     policy: EvictionPolicy,
     /// Optional callback for eviction notifications
     eviction_callback: ?EvictionCallback = null,
 
     /// Initialize with default policy
-    pub fn init(allocator: std.mem.Allocator) Self {
+    pub fn init(allocator: std.mem.Allocator, user_agent_storage: *standard.UserAgentStorage) Self {
         return Self{
             .allocator = allocator,
+            .user_agent_storage = user_agent_storage,
             .policy = .{},
         };
     }
 
     /// Initialize with custom policy
-    pub fn initWithPolicy(allocator: std.mem.Allocator, policy: EvictionPolicy) Self {
+    pub fn initWithPolicy(allocator: std.mem.Allocator, user_agent_storage: *standard.UserAgentStorage, policy: EvictionPolicy) Self {
         return Self{
             .allocator = allocator,
+            .user_agent_storage = user_agent_storage,
             .policy = policy,
         };
     }
@@ -123,10 +128,9 @@ pub const PersistenceManager = struct {
 
     /// Check if an origin's storage is persistent
     pub fn isPersistent(self: *Self, origin: []const u8) !bool {
-        const shelf = try standard.obtainLocalStorageShelf(
-            self.allocator,
-            origin,
-        ) orelse return false;
+        self.user_agent_storage.lock();
+        defer self.user_agent_storage.unlock();
+        const shelf = try self.user_agent_storage.obtainShelfLocked(origin) orelse return false;
 
         const bucket = shelf.getDefaultBucket() orelse return false;
         return bucket.mode == .persistent;
@@ -143,10 +147,9 @@ pub const PersistenceManager = struct {
             return false;
         }
 
-        const shelf = try standard.obtainLocalStorageShelf(
-            self.allocator,
-            origin,
-        ) orelse return false;
+        self.user_agent_storage.lock();
+        defer self.user_agent_storage.unlock();
+        const shelf = try self.user_agent_storage.obtainShelfLocked(origin) orelse return false;
 
         const bucket = shelf.getDefaultBucket() orelse return false;
 
@@ -162,10 +165,9 @@ pub const PersistenceManager = struct {
 
     /// Revoke persistent storage for an origin (reset to best-effort)
     pub fn revokePersistence(self: *Self, origin: []const u8) !void {
-        const shelf = try standard.obtainLocalStorageShelf(
-            self.allocator,
-            origin,
-        ) orelse return;
+        self.user_agent_storage.lock();
+        defer self.user_agent_storage.unlock();
+        const shelf = try self.user_agent_storage.obtainShelfLocked(origin) orelse return;
 
         const bucket = shelf.getDefaultBucket() orelse return;
         bucket.mode = .best_effort;
@@ -267,10 +269,9 @@ pub const PersistenceManager = struct {
     /// Clear storage for an origin (eviction)
     /// Returns bytes freed
     pub fn evictOrigin(self: *Self, origin: []const u8) !u64 {
-        const shelf = try standard.obtainLocalStorageShelf(
-            self.allocator,
-            origin,
-        ) orelse return 0;
+        self.user_agent_storage.lock();
+        defer self.user_agent_storage.unlock();
+        const shelf = try self.user_agent_storage.obtainShelfLocked(origin) orelse return 0;
 
         // Calculate usage before clearing
         const usage = shelf.estimateUsage();
@@ -295,7 +296,9 @@ pub const PersistenceManager = struct {
 test "PersistenceManager - init" {
     const allocator = std.testing.allocator;
 
-    const manager = PersistenceManager.init(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
+    const manager = PersistenceManager.init(allocator, &user_agent_storage);
 
     try std.testing.expectEqual(@as(f32, 0.75), manager.policy.moderate_threshold);
     try std.testing.expectEqual(@as(f32, 0.90), manager.policy.critical_threshold);
@@ -309,7 +312,9 @@ test "PersistenceManager - custom policy" {
         .critical_threshold = 0.8,
     };
 
-    const manager = PersistenceManager.initWithPolicy(allocator, policy);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
+    const manager = PersistenceManager.initWithPolicy(allocator, &user_agent_storage, policy);
 
     try std.testing.expectEqual(@as(f32, 0.5), manager.policy.moderate_threshold);
     try std.testing.expectEqual(@as(f32, 0.8), manager.policy.critical_threshold);
@@ -318,11 +323,10 @@ test "PersistenceManager - custom policy" {
 test "PersistenceManager - isPersistent returns false for new origin" {
     const allocator = std.testing.allocator;
 
-    // Clean up any existing global shed
-    standard.deinitGlobalStorageShed(allocator);
-    defer standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var manager = PersistenceManager.init(allocator);
+    var manager = PersistenceManager.init(allocator, &user_agent_storage);
     const is_persistent = try manager.isPersistent("https://example.com");
 
     try std.testing.expect(!is_persistent);
@@ -331,11 +335,10 @@ test "PersistenceManager - isPersistent returns false for new origin" {
 test "PersistenceManager - requestPersistence with permission" {
     const allocator = std.testing.allocator;
 
-    // Clean up any existing global shed
-    standard.deinitGlobalStorageShed(allocator);
-    defer standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var manager = PersistenceManager.init(allocator);
+    var manager = PersistenceManager.init(allocator, &user_agent_storage);
 
     // Request with permission granted
     const granted = try manager.requestPersistence("https://example.com", true);
@@ -349,11 +352,10 @@ test "PersistenceManager - requestPersistence with permission" {
 test "PersistenceManager - requestPersistence without permission" {
     const allocator = std.testing.allocator;
 
-    // Clean up any existing global shed
-    standard.deinitGlobalStorageShed(allocator);
-    defer standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var manager = PersistenceManager.init(allocator);
+    var manager = PersistenceManager.init(allocator, &user_agent_storage);
 
     // Request without permission
     const granted = try manager.requestPersistence("https://example.com", false);
@@ -367,11 +369,10 @@ test "PersistenceManager - requestPersistence without permission" {
 test "PersistenceManager - revokePersistence" {
     const allocator = std.testing.allocator;
 
-    // Clean up any existing global shed
-    standard.deinitGlobalStorageShed(allocator);
-    defer standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var manager = PersistenceManager.init(allocator);
+    var manager = PersistenceManager.init(allocator, &user_agent_storage);
 
     // Grant persistence
     _ = try manager.requestPersistence("https://example.com", true);
@@ -385,7 +386,9 @@ test "PersistenceManager - revokePersistence" {
 test "PersistenceManager - calculateEvictionPriority persistent" {
     const allocator = std.testing.allocator;
 
-    var manager = PersistenceManager.init(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
+    var manager = PersistenceManager.init(allocator, &user_agent_storage);
     const priority = manager.calculateEvictionPriority(1024, clock.wallMillis(), true);
 
     try std.testing.expectEqual(EvictionPriority.never, priority);
@@ -394,7 +397,9 @@ test "PersistenceManager - calculateEvictionPriority persistent" {
 test "PersistenceManager - calculateEvictionPriority recently used" {
     const allocator = std.testing.allocator;
 
-    var manager = PersistenceManager.init(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
+    var manager = PersistenceManager.init(allocator, &user_agent_storage);
     const priority = manager.calculateEvictionPriority(1024, clock.wallMillis(), false);
 
     try std.testing.expectEqual(EvictionPriority.never, priority);
@@ -403,7 +408,9 @@ test "PersistenceManager - calculateEvictionPriority recently used" {
 test "PersistenceManager - calculateEvictionPriority idle" {
     const allocator = std.testing.allocator;
 
-    var manager = PersistenceManager.init(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
+    var manager = PersistenceManager.init(allocator, &user_agent_storage);
     // 8 days ago
     const old_time = clock.wallMillis() - (8 * 24 * 60 * 60 * 1000);
     const priority = manager.calculateEvictionPriority(1024, old_time, false);
@@ -414,7 +421,9 @@ test "PersistenceManager - calculateEvictionPriority idle" {
 test "PersistenceManager - getPressureLevel" {
     const allocator = std.testing.allocator;
 
-    var manager = PersistenceManager.init(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
+    var manager = PersistenceManager.init(allocator, &user_agent_storage);
 
     try std.testing.expectEqual(PressureLevel.none, manager.getPressureLevel(0.5));
     try std.testing.expectEqual(PressureLevel.moderate, manager.getPressureLevel(0.8));

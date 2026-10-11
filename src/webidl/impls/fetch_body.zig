@@ -94,12 +94,13 @@ pub fn installBlobURLResolver() void {
     fetch.algorithms.scheme_fetch.installBlobResolver(&resolveBlobURL);
 }
 
-/// "Obtain a blob object" for scheme fetch: the blob `url` names, if its
-/// entry is live and was made by `origin` (the store's same-origin check),
-/// copied - its bytes and type.
-fn resolveBlobURL(allocator: std.mem.Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?fetch.algorithms.scheme_fetch.ResolvedBlob {
-    const store = @import("file").getGlobalBlobURLStore() orelse return null;
-    const data = store.resolve(url, origin) orelse return null;
+/// "Obtain a blob object" for scheme fetch: the blob `url` names in `store` -
+/// the request's client's Browser's blob URL store - if its entry is live
+/// and was made by `origin` (the store's same-origin check), copied - its
+/// bytes and type.
+fn resolveBlobURL(store: *anyopaque, allocator: std.mem.Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?fetch.algorithms.scheme_fetch.ResolvedBlob {
+    const blob_url_store: *@import("file").BlobURLStore = @ptrCast(@alignCast(store));
+    const data = blob_url_store.resolve(url, origin) orelse return null;
     // The store hands out a reference of our own: a revoke on another thread
     // cannot free the bytes while they are copied.
     defer data.deinit();

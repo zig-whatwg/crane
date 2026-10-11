@@ -11,7 +11,7 @@
 //! ## Usage
 //!
 //! ```zig
-//! const manager = StorageManager.init(allocator, "https://example.com");
+//! const manager = StorageManager.init(allocator, user_agent_storage, "https://example.com");
 //! defer manager.deinit();
 //!
 //! // Check if storage is persisted
@@ -36,6 +36,10 @@ pub const StorageManager = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
+    /// The user agent's storage - its Browser's (a supplement of its scope),
+    /// whose shelves this manager reads and writes. BORROWED: the Browser
+    /// outlives every StorageManager of its realms.
+    user_agent_storage: *standard.UserAgentStorage,
     /// The origin this StorageManager is associated with
     origin: []const u8,
     /// Owned copy of origin string
@@ -60,20 +64,23 @@ pub const StorageManager = struct {
         permission_callback = callback;
     }
 
-    /// Initialize a StorageManager for the given origin
-    pub fn init(allocator: std.mem.Allocator, origin: []const u8) !Self {
+    /// Initialize a StorageManager for the given origin, in
+    /// `user_agent_storage` (its Browser's).
+    pub fn init(allocator: std.mem.Allocator, user_agent_storage: *standard.UserAgentStorage, origin: []const u8) !Self {
         const origin_copy = try allocator.dupe(u8, origin);
         return Self{
             .allocator = allocator,
+            .user_agent_storage = user_agent_storage,
             .origin = origin_copy,
             .origin_owned = true,
         };
     }
 
     /// Initialize with a borrowed origin (caller maintains ownership)
-    pub fn initBorrowed(allocator: std.mem.Allocator, origin: []const u8) Self {
+    pub fn initBorrowed(allocator: std.mem.Allocator, user_agent_storage: *standard.UserAgentStorage, origin: []const u8) Self {
         return Self{
             .allocator = allocator,
+            .user_agent_storage = user_agent_storage,
             .origin = origin,
             .origin_owned = false,
         };
@@ -98,11 +105,12 @@ pub const StorageManager = struct {
     /// 3. Let bucket be shelf's bucket map["default"]
     /// 4. Return bucket's mode is "persistent"
     pub fn persisted(self: *Self) !bool {
+        // The shelf is read under the shed's lock: a worker's manager asks
+        // from its own thread.
+        self.user_agent_storage.lock();
+        defer self.user_agent_storage.unlock();
         // Step 1: Obtain the local storage shelf for this origin
-        const shelf = try standard.obtainLocalStorageShelf(
-            self.allocator,
-            self.origin,
-        ) orelse return false;
+        const shelf = try self.user_agent_storage.obtainShelfLocked(self.origin) orelse return false;
 
         // Step 2-3: Get the default bucket
         const bucket = shelf.getDefaultBucket() orelse return false;
@@ -133,11 +141,13 @@ pub const StorageManager = struct {
     ///    b. Return true
     /// 7. Return false
     pub fn persist(self: *Self) !bool {
+        // The shelf is read and written under the shed's lock (as persisted).
+        // The permission callback runs under it too: it is the embedder's
+        // answer, and must not reach the shed again.
+        self.user_agent_storage.lock();
+        defer self.user_agent_storage.unlock();
         // Step 1: Obtain the local storage shelf
-        const shelf = try standard.obtainLocalStorageShelf(
-            self.allocator,
-            self.origin,
-        ) orelse return false;
+        const shelf = try self.user_agent_storage.obtainShelfLocked(self.origin) orelse return false;
 
         // Step 2-3: Get the default bucket
         const bucket = shelf.getDefaultBucket() orelse return false;
@@ -178,14 +188,14 @@ pub const StorageManager = struct {
     /// 4. Let quota be shelf's quota
     /// 5. Return StorageEstimate { usage, quota }
     pub fn estimate(self: *Self) !?standard.StorageEstimate {
-        return standard.getStorageEstimate(self.allocator, self.origin);
+        return standard.getStorageEstimate(self.user_agent_storage, self.origin);
     }
 
     /// Get the navigator.storage object for a given origin
     /// This is a convenience method for creating a StorageManager
     /// that matches the NavigatorStorage mixin pattern
-    pub fn forNavigator(allocator: std.mem.Allocator, origin: []const u8) !Self {
-        return init(allocator, origin);
+    pub fn forNavigator(allocator: std.mem.Allocator, user_agent_storage: *standard.UserAgentStorage, origin: []const u8) !Self {
+        return init(allocator, user_agent_storage, origin);
     }
 
     /// Get the root directory of the bucket file system for this origin.
@@ -205,7 +215,7 @@ pub const StorageManager = struct {
     /// 5. Return a FileSystemDirectoryHandle for root
     pub fn getDirectory(self: *Self) !fs.FileSystemDirectoryHandle {
         // Step 1-3: Get the bucket file system for this origin
-        const bucket_fs = try standard.getBucketFileSystem(self.allocator, self.origin);
+        const bucket_fs = try standard.getBucketFileSystem(self.user_agent_storage, self.origin);
 
         // Step 4-5: Return handle to root directory
         return bucket_fs.getDirectory();
@@ -218,8 +228,10 @@ pub const StorageManager = struct {
 
 test "StorageManager - init and deinit" {
     const allocator = std.testing.allocator;
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var manager = try StorageManager.init(allocator, "https://example.com");
+    var manager = try StorageManager.init(allocator, &user_agent_storage, "https://example.com");
     defer manager.deinit();
 
     try std.testing.expectEqualStrings("https://example.com", manager.origin);
@@ -228,11 +240,10 @@ test "StorageManager - init and deinit" {
 test "StorageManager - persisted returns false by default" {
     const allocator = std.testing.allocator;
 
-    // Clean up any existing global shed and ensure we start fresh
-    standard.deinitGlobalStorageShed(allocator);
-    defer standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var manager = try StorageManager.init(allocator, "https://example.com");
+    var manager = try StorageManager.init(allocator, &user_agent_storage, "https://example.com");
     defer manager.deinit();
 
     // New origins start with best_effort mode (not persisted)
@@ -243,11 +254,10 @@ test "StorageManager - persisted returns false by default" {
 test "StorageManager - persist without permission returns false" {
     const allocator = std.testing.allocator;
 
-    // Clean up any existing global shed and ensure we start fresh
-    standard.deinitGlobalStorageShed(allocator);
-    defer standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var manager = try StorageManager.init(allocator, "https://example.com");
+    var manager = try StorageManager.init(allocator, &user_agent_storage, "https://example.com");
     defer manager.deinit();
 
     // Default permission callback denies
@@ -258,9 +268,8 @@ test "StorageManager - persist without permission returns false" {
 test "StorageManager - persist with permission grants persistent storage" {
     const allocator = std.testing.allocator;
 
-    // Clean up any existing global shed and ensure we start fresh
-    standard.deinitGlobalStorageShed(allocator);
-    defer standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
     // Set up a permission callback that grants
     const old_callback = StorageManager.permission_callback;
@@ -272,7 +281,7 @@ test "StorageManager - persist with permission grants persistent storage" {
         }
     }.grant);
 
-    var manager = try StorageManager.init(allocator, "https://example.com");
+    var manager = try StorageManager.init(allocator, &user_agent_storage, "https://example.com");
     defer manager.deinit();
 
     // With granting callback, persist should succeed
@@ -287,11 +296,10 @@ test "StorageManager - persist with permission grants persistent storage" {
 test "StorageManager - estimate returns usage and quota" {
     const allocator = std.testing.allocator;
 
-    // Clean up any existing global shed and ensure we start fresh
-    standard.deinitGlobalStorageShed(allocator);
-    defer standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
-    var manager = try StorageManager.init(allocator, "https://example.com");
+    var manager = try StorageManager.init(allocator, &user_agent_storage, "https://example.com");
     defer manager.deinit();
 
     // Get estimate
@@ -309,7 +317,9 @@ test "StorageManager - initBorrowed does not own origin" {
     const allocator = std.testing.allocator;
 
     const origin = "https://example.com";
-    var manager = StorageManager.initBorrowed(allocator, origin);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
+    var manager = StorageManager.initBorrowed(allocator, &user_agent_storage, origin);
     defer manager.deinit(); // Should not free origin
 
     try std.testing.expectEqualStrings(origin, manager.origin);

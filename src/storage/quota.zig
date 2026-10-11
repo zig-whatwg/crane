@@ -62,24 +62,6 @@ pub const QuotaConfig = struct {
     enforce_quota: bool = true,
 };
 
-/// Global quota configuration
-var global_config: QuotaConfig = .{};
-
-/// Set the global quota configuration
-pub fn setQuotaConfig(config: QuotaConfig) void {
-    global_config = config;
-}
-
-/// Get the current quota configuration
-pub fn getQuotaConfig() QuotaConfig {
-    return global_config;
-}
-
-/// Reset quota configuration to defaults
-pub fn resetQuotaConfig() void {
-    global_config = .{};
-}
-
 /// Callback for storage pressure notifications
 pub const PressureCallback = *const fn (origin: []const u8, usage: u64, quota: u64) void;
 
@@ -92,11 +74,13 @@ pub const QuotaManager = struct {
     /// Optional callback for pressure notifications
     pressure_callback: ?PressureCallback = null,
 
-    /// Initialize a QuotaManager with default config
+    /// Initialize a QuotaManager with the default config. (A process-wide
+    /// config that every manager copied went with instances B3: nothing set
+    /// it, and a Browser's quota is its own - initWithConfig.)
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .allocator = allocator,
-            .config = global_config,
+            .config = .{},
         };
     }
 
@@ -165,12 +149,14 @@ pub const QuotaManager = struct {
 
     /// Get estimated usage for an origin
     /// Values are intentionally imprecise to prevent fingerprinting
-    pub fn getEstimatedUsage(self: *Self, origin: []const u8) !u64 {
-        const shelf = try standard.obtainLocalStorageShelf(self.allocator, origin) orelse {
+    /// `user_agent_storage` is the user agent's - the origin's Browser's.
+    pub fn getEstimatedUsage(self: *Self, user_agent_storage: *standard.UserAgentStorage, origin: []const u8) !u64 {
+        _ = self;
+        const estimate = try standard.getStorageEstimate(user_agent_storage, origin) orelse {
             return 0;
         };
 
-        const usage = shelf.estimateUsage();
+        const usage = estimate.usage;
 
         // Round to nearest KB to prevent fingerprinting
         return roundToKilobytes(usage);
@@ -189,6 +175,7 @@ pub const QuotaManager = struct {
     /// Returns true if the operation is allowed
     pub fn enforceWrite(
         self: *Self,
+        user_agent_storage: *standard.UserAgentStorage,
         origin: []const u8,
         bytes_to_write: u64,
     ) !bool {
@@ -196,7 +183,7 @@ pub const QuotaManager = struct {
             return true;
         }
 
-        const current_usage = try self.getEstimatedUsage(origin);
+        const current_usage = try self.getEstimatedUsage(user_agent_storage, origin);
         const result = try self.checkQuota(origin, current_usage, bytes_to_write);
 
         return result == .allowed or result == .storage_pressure;
@@ -287,12 +274,11 @@ test "QuotaManager - check quota storage pressure" {
 test "QuotaManager - enforce write allowed" {
     const allocator = std.testing.allocator;
 
-    // Clean up any existing global shed
-    standard.deinitGlobalStorageShed(allocator);
-    defer standard.deinitGlobalStorageShed(allocator);
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
 
     var manager = QuotaManager.init(allocator);
-    const allowed = try manager.enforceWrite("https://example.com", 1024);
+    const allowed = try manager.enforceWrite(&user_agent_storage, "https://example.com", 1024);
 
     try std.testing.expect(allowed);
 }

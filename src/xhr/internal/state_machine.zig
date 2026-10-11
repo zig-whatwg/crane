@@ -274,6 +274,8 @@ pub const XMLHttpRequestState = struct {
             .referrer_source = referrer_source,
             .traversable = client.traversable,
             .cookie_jar = client.cookie_jar,
+            // Borrowed, as the jar: the client's Browser's blob URL store.
+            .blob_url_store = client.blob_url_store,
             .policy_container = policy_container,
             // Borrowed, as the client's: the global the request's CSP
             // violations go to (CSP 2.4.2).

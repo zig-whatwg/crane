@@ -573,81 +573,93 @@ pub const StorageShed = struct {
 };
 
 // ============================================================================
-// Global Storage Shed (Phase 3.1)
+// The user agent's storage (Phase 3.1)
 // ============================================================================
 
-/// The user agent's storage shed for local storage
-/// This would typically be a singleton in a real implementation
-var global_local_storage_shed: ?*StorageShed = null;
+/// The user agent's storage: its storage shed (Storage 4.3: "A user agent
+/// holds a storage shed, which is a storage shed. A user agent's storage shed
+/// holds all local storage data") and the bucket file systems of its storage
+/// buckets (File System: "the bucket file system" of a storage bucket).
+///
+/// One per Browser - a supplement of its scope (runtime.BrowserScope,
+/// docs/instances.md): two Browsers in one process, one origin, share none of
+/// it, and every realm of one Browser reaches the same one through its
+/// `browser_scope`. Made on first use, with the scope's allocator; ends with
+/// the Browser. (It was a process global made lazily with whatever allocator
+/// its first caller passed, and outlived every Browser.)
+///
+/// THREADS: a Browser's realms run on its window thread and its workers'
+/// threads. `mutex` guards the shed's and the bucket manager's STRUCTURE -
+/// every shelf, bucket, bottle and bucket file system is found or made under
+/// it (`obtainShelf`, `obtainBottleMap`, `bucketFileSystem`). A bottle's map
+/// is then read and written without it, by the realms that may reach it:
+/// localStorage and sessionStorage are [Exposed=Window], so only the Browser's
+/// window thread. A step that reads or writes a shelf from another thread
+/// takes `lock`/`unlock` around it (StorageManager's persist, persisted and
+/// estimate).
+pub const UserAgentStorage = struct {
+    allocator: std.mem.Allocator,
+    mutex: std.Io.Mutex = .init,
+    /// The user agent's storage shed: local storage. Session storage keeps
+    /// its "{top-level browsing context}:{origin}" shelves here too, until
+    /// each tab has its traversable's shed (instances B4).
+    shed: StorageShed,
+    /// The bucket file systems (navigator.storage.getDirectory()).
+    buckets: fs.BucketManager,
 
-/// Global bucket file system manager
-/// Manages per-origin bucket file systems for the File System Access API
-var global_bucket_manager: ?*fs.BucketManager = null;
-
-/// Initialize the global local storage shed
-pub fn initGlobalStorageShed(allocator: std.mem.Allocator) !*StorageShed {
-    if (global_local_storage_shed) |shed| {
-        return shed;
+    pub fn init(allocator: std.mem.Allocator) UserAgentStorage {
+        return .{
+            .allocator = allocator,
+            .shed = StorageShed.init(allocator, .local),
+            .buckets = fs.BucketManager.init(allocator),
+        };
     }
 
-    const shed = try allocator.create(StorageShed);
-    shed.* = StorageShed.init(allocator, .local);
-    global_local_storage_shed = shed;
-    return shed;
-}
-
-/// Get the global local storage shed
-pub fn getGlobalStorageShed() ?*StorageShed {
-    return global_local_storage_shed;
-}
-
-/// Deinitialize the global local storage shed
-pub fn deinitGlobalStorageShed(allocator: std.mem.Allocator) void {
-    if (global_local_storage_shed) |shed| {
-        shed.deinit();
-        allocator.destroy(shed);
-        global_local_storage_shed = null;
+    /// With its Browser: every storage area of it is gone.
+    pub fn deinit(self: *UserAgentStorage) void {
+        self.shed.deinit();
+        self.buckets.deinit();
     }
-    // Also clean up bucket manager
-    if (global_bucket_manager) |manager| {
-        manager.deinit();
-        allocator.destroy(manager);
-        global_bucket_manager = null;
+
+    pub fn lock(self: *UserAgentStorage) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
     }
-}
+
+    pub fn unlock(self: *UserAgentStorage) void {
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+    }
+
+    /// "Obtain a local storage shelf" for `origin` (the caller holds the
+    /// lock, or is the window thread reaching a shelf only it uses).
+    pub fn obtainShelfLocked(self: *UserAgentStorage, origin: []const u8) !?*StorageShelf {
+        if (origin.len == 0 or std.mem.eql(u8, origin, "null")) return null;
+        return try self.shed.obtainShelf(StorageKey.initBorrowed(origin));
+    }
+
+    /// The bucket file system of `origin`'s storage bucket, made on first use.
+    pub fn bucketFileSystem(self: *UserAgentStorage, origin: []const u8) !*fs.BucketFileSystem {
+        // Validate origin (same rules as storage key)
+        if (origin.len == 0 or std.mem.eql(u8, origin, "null")) {
+            return error.SecurityError;
+        }
+        self.lock();
+        defer self.unlock();
+        return self.buckets.getOrCreate(origin);
+    }
+};
 
 // ============================================================================
 // Bucket File System Integration (File System Standard)
 // ============================================================================
 
-/// Initialize the global bucket file system manager
-pub fn initGlobalBucketManager(allocator: std.mem.Allocator) !*fs.BucketManager {
-    if (global_bucket_manager) |manager| {
-        return manager;
-    }
-
-    const manager = try allocator.create(fs.BucketManager);
-    manager.* = fs.BucketManager.init(allocator);
-    global_bucket_manager = manager;
-    return manager;
-}
-
 /// Get the bucket file system for an origin
 /// https://fs.spec.whatwg.org/#dom-storagemanager-getdirectory
 ///
-/// This returns the BucketFileSystem associated with the origin's storage bucket.
-/// Each origin gets its own isolated file system.
-pub fn getBucketFileSystem(allocator: std.mem.Allocator, origin: []const u8) !*fs.BucketFileSystem {
-    // Validate origin (same rules as storage key)
-    if (origin.len == 0 or std.mem.eql(u8, origin, "null")) {
-        return error.SecurityError;
-    }
-
-    // Get or initialize the bucket manager
-    const manager = try initGlobalBucketManager(allocator);
-
-    // Get or create bucket for this origin
-    return manager.getOrCreate(origin);
+/// This returns the BucketFileSystem associated with the origin's storage
+/// bucket in `user_agent_storage` - its Browser's. Each origin gets its own
+/// isolated file system.
+pub fn getBucketFileSystem(user_agent_storage: *UserAgentStorage, origin: []const u8) !*fs.BucketFileSystem {
+    return user_agent_storage.bucketFileSystem(origin);
 }
 
 // ============================================================================
@@ -669,42 +681,41 @@ pub fn obtainStorageKey(allocator: std.mem.Allocator, origin: []const u8) !?Stor
 
 /// Obtain a local storage shelf
 /// https://storage.spec.whatwg.org/#obtain-a-local-storage-shelf
-pub fn obtainLocalStorageShelf(allocator: std.mem.Allocator, origin: []const u8) !?*StorageShelf {
-    const key = try obtainStorageKey(allocator, origin) orelse return null;
-    defer {
-        var k = key;
-        k.deinit();
-    }
-
-    const shed = try initGlobalStorageShed(allocator);
-    return try shed.obtainShelf(key);
+///
+/// From `user_agent_storage`, the user agent's - its Browser's. The caller
+/// holds its lock while it uses the shelf from a thread other than the
+/// Browser's window thread (UserAgentStorage, THREADS).
+pub fn obtainLocalStorageShelf(user_agent_storage: *UserAgentStorage, origin: []const u8) !?*StorageShelf {
+    // "Obtain a storage key": failure for an opaque origin.
+    // TODO: Check if user has disabled storage
+    user_agent_storage.lock();
+    defer user_agent_storage.unlock();
+    return user_agent_storage.obtainShelfLocked(origin);
 }
 
 /// Obtain a storage bottle map for an endpoint
 /// https://storage.spec.whatwg.org/#obtain-a-storage-bottle-map
+///
+/// In `user_agent_storage`, its Browser's. The shelf, bucket and bottle are
+/// found or made under its lock; the proxy map returned reads and writes the
+/// bottle's map without it (UserAgentStorage, THREADS).
 pub fn obtainStorageBottleMap(
-    allocator: std.mem.Allocator,
+    user_agent_storage: *UserAgentStorage,
     storage_type: StorageType,
     origin: []const u8,
     identifier: StorageIdentifier,
 ) !?StorageProxyMap {
-    // Get or create storage key
-    const key = try obtainStorageKey(allocator, origin) orelse return null;
-    defer {
-        var k = key;
-        k.deinit();
-    }
-
-    // Get the appropriate shed
-    // Note: For session storage, we use the same global shed infrastructure
-    // but with a different key that includes the browsing context.
-    // The caller (getSessionStorage in web_storage.zig) already creates
-    // a session_key that includes the browsing_context_id.
+    // Note: session storage uses the same shed for now, with a key that
+    // includes the browsing context: the caller (getSessionStorage in
+    // web_storage.zig) already makes a session key with the top-level
+    // browsing context's id. Each tab's traversable storage shed is
+    // instances B4.
     _ = storage_type; // Both local and session use the same shed infrastructure
-    const shed = try initGlobalStorageShed(allocator);
+    user_agent_storage.lock();
+    defer user_agent_storage.unlock();
 
-    // Obtain shelf
-    const shelf = try shed.obtainShelf(key);
+    // Obtain shelf (null: the storage key is failure)
+    const shelf = try user_agent_storage.obtainShelfLocked(origin) orelse return null;
 
     // Get default bucket
     const bucket = shelf.getDefaultBucket() orelse return null;
@@ -713,9 +724,10 @@ pub fn obtainStorageBottleMap(
     // Session storage bottles are created on-demand since they're scoped per browsing context
     var bottle = bucket.getBottle(identifier);
     if (bottle == null) {
-        // Create the bottle on-demand
+        // Create the bottle on-demand, with the shed's allocator: it is the
+        // shed's, freed with it.
         const endpoint = getEndpoint(identifier);
-        const new_bottle = StorageBottle.init(allocator, endpoint.quota);
+        const new_bottle = StorageBottle.init(user_agent_storage.allocator, endpoint.quota);
         bucket.bottle_map.put(identifier, new_bottle) catch return null;
         bottle = bucket.bottle_map.getPtr(identifier);
     }
@@ -727,21 +739,21 @@ pub fn obtainStorageBottleMap(
 /// Obtain a local storage bottle map
 /// https://storage.spec.whatwg.org/#obtain-a-local-storage-bottle-map
 pub fn obtainLocalStorageBottleMap(
-    allocator: std.mem.Allocator,
+    user_agent_storage: *UserAgentStorage,
     origin: []const u8,
     identifier: StorageIdentifier,
 ) !?StorageProxyMap {
-    return obtainStorageBottleMap(allocator, .local, origin, identifier);
+    return obtainStorageBottleMap(user_agent_storage, .local, origin, identifier);
 }
 
 /// Obtain a session storage bottle map
 /// https://storage.spec.whatwg.org/#obtain-a-session-storage-bottle-map
 pub fn obtainSessionStorageBottleMap(
-    allocator: std.mem.Allocator,
+    user_agent_storage: *UserAgentStorage,
     origin: []const u8,
     identifier: StorageIdentifier,
 ) !?StorageProxyMap {
-    return obtainStorageBottleMap(allocator, .session, origin, identifier);
+    return obtainStorageBottleMap(user_agent_storage, .session, origin, identifier);
 }
 
 // ============================================================================
@@ -757,9 +769,12 @@ pub const StorageEstimate = struct {
     quota: u64,
 };
 
-/// Get storage estimate for an origin
-pub fn getStorageEstimate(allocator: std.mem.Allocator, origin: []const u8) !?StorageEstimate {
-    const shelf = try obtainLocalStorageShelf(allocator, origin) orelse return null;
+/// Get storage estimate for an origin, in `user_agent_storage` (its
+/// Browser's) - read under its lock, since a worker's StorageManager asks too.
+pub fn getStorageEstimate(user_agent_storage: *UserAgentStorage, origin: []const u8) !?StorageEstimate {
+    user_agent_storage.lock();
+    defer user_agent_storage.unlock();
+    const shelf = try user_agent_storage.obtainShelfLocked(origin) orelse return null;
     return StorageEstimate{
         .usage = shelf.estimateUsage(),
         .quota = shelf.getQuota(),
@@ -895,11 +910,11 @@ test "StorageShed - obtain shelf" {
 }
 
 test "obtainLocalStorageBottleMap" {
-    const allocator = std.testing.allocator;
-    defer deinitGlobalStorageShed(allocator);
+    var user_agent_storage = UserAgentStorage.init(std.testing.allocator);
+    defer user_agent_storage.deinit();
 
     // Get bottle map for indexedDB
-    const proxy = try obtainLocalStorageBottleMap(allocator, "https://example.com", .indexedDB);
+    const proxy = try obtainLocalStorageBottleMap(&user_agent_storage, "https://example.com", .indexedDB);
     try std.testing.expect(proxy != null);
 
     // Store some data
@@ -907,23 +922,43 @@ test "obtainLocalStorageBottleMap" {
     try std.testing.expectEqualStrings("testValue", proxy.?.get("testKey").?);
 
     // Opaque origin should return null
-    const opaque_result = try obtainLocalStorageBottleMap(allocator, "null", .indexedDB);
+    const opaque_result = try obtainLocalStorageBottleMap(&user_agent_storage, "null", .indexedDB);
     try std.testing.expect(opaque_result == null);
 }
 
 test "StorageEstimate" {
-    const allocator = std.testing.allocator;
-    defer deinitGlobalStorageShed(allocator);
+    var user_agent_storage = UserAgentStorage.init(std.testing.allocator);
+    defer user_agent_storage.deinit();
 
     // Store some data first
-    const proxy = try obtainLocalStorageBottleMap(allocator, "https://example.com", .indexedDB);
+    const proxy = try obtainLocalStorageBottleMap(&user_agent_storage, "https://example.com", .indexedDB);
     try std.testing.expect(proxy != null);
     try proxy.?.set("key1", "value1");
     try proxy.?.set("key2", "value2value2");
 
     // Get estimate
-    const estimate = try getStorageEstimate(allocator, "https://example.com");
+    const estimate = try getStorageEstimate(&user_agent_storage, "https://example.com");
     try std.testing.expect(estimate != null);
     try std.testing.expect(estimate.?.usage > 0);
     try std.testing.expect(estimate.?.quota > 0);
+}
+
+test "UserAgentStorage - two user agents' sheds share nothing under one storage key; one's bottle maps share" {
+    var a = UserAgentStorage.init(std.testing.allocator);
+    defer a.deinit();
+    var b = UserAgentStorage.init(std.testing.allocator);
+    defer b.deinit();
+
+    const in_a = (try obtainLocalStorageBottleMap(&a, "https://example.com", .localStorage)).?;
+    try in_a.set("k", "a");
+    const in_b = (try obtainLocalStorageBottleMap(&b, "https://example.com", .localStorage)).?;
+    try std.testing.expect(in_b.get("k") == null);
+    const in_a_again = (try obtainLocalStorageBottleMap(&a, "https://example.com", .localStorage)).?;
+    try std.testing.expectEqualStrings("a", in_a_again.get("k").?);
+
+    // Their bucket file systems too.
+    const fs_a = try getBucketFileSystem(&a, "https://example.com");
+    try std.testing.expect(fs_a == try getBucketFileSystem(&a, "https://example.com"));
+    try std.testing.expect(fs_a != try getBucketFileSystem(&b, "https://example.com"));
+    try std.testing.expectError(error.SecurityError, getBucketFileSystem(&a, "null"));
 }

@@ -147,15 +147,16 @@ pub const ResolvedBlob = struct {
     }
 };
 
-/// Resolves a blob URL, for a request whose origin is `origin`, to its
-/// blob - null when "obtaining a blob object" fails: no entry, a revoked
-/// one, or another origin's. The File API's blob URL store is the file
-/// module's, which fetch does not import, so the code that owns the store
-/// installs this (src/webidl/impls/fetch_body.zig).
-pub const BlobResolver = *const fn (allocator: Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?ResolvedBlob;
+/// Resolves a blob URL in `store` - the request's client's Browser's blob URL
+/// store (`InternalRequest.blob_url_store`) - for a request whose origin is
+/// `origin`, to its blob: null when "obtaining a blob object" fails: no
+/// entry, a revoked one, or another origin's. The File API's blob URL store
+/// is the file module's, which fetch does not import, so the code that owns
+/// the store installs this (src/webidl/impls/fetch_body.zig).
+pub const BlobResolver = *const fn (store: *anyopaque, allocator: Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?ResolvedBlob;
 
-/// The one blob URL store is process-wide (file.getGlobalBlobURLStore), so
-/// its resolver is too.
+/// How a blob URL store is read: the same for every Browser, so installed
+/// once for the process; the store it reads is the request's.
 var blob_resolver: ?BlobResolver = null;
 
 /// Install the resolver scheme fetch "blob" asks. Idempotent.
@@ -184,13 +185,16 @@ fn blobFetchRequest(allocator: Allocator, request: *const InternalRequest) error
     //    return a network error.
     if (!std.mem.eql(u8, request.method, "GET")) return .{ .network_error = "blob: fetch is GET only" };
     const resolver = blob_resolver orelse return .{ .network_error = "no blob URL store" };
+    // The user agent's blob URL store is the request's client's Browser's: a
+    // request no Browser's realm made resolves no blob URL.
+    const store = request.blob_url_store orelse return .{ .network_error = "no blob URL store" };
     // 1, 3-8. The blob URL entry, and the blob obtained from it for the
     //         request's environment - its origin.
     const origin: []const u8 = switch (request.origin) {
         .client => "",
         .origin => |o| o,
     };
-    const blob = (try resolver(allocator, request.currentUrl(), origin)) orelse return .{ .network_error = "no blob for this URL" };
+    const blob = (try resolver(store, allocator, request.currentUrl(), origin)) orelse return .{ .network_error = "no blob for this URL" };
     defer blob.deinit(allocator);
 
     // 9. Let response be a new response.
@@ -474,8 +478,12 @@ test "scheme fetch: a data: URL's response says OK" {
     try std.testing.expectEqualStrings("OK", response.status_message);
 }
 
-fn testResolver(allocator: Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?ResolvedBlob {
-    if (!std.mem.eql(u8, url, "blob:http://a.test/1") or !std.mem.eql(u8, origin, "http://a.test")) return null;
+/// The store the test's requests carry: only blob URLs it holds resolve.
+const TestStore = struct { url: []const u8 };
+
+fn testResolver(store: *anyopaque, allocator: Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?ResolvedBlob {
+    const test_store: *const TestStore = @ptrCast(@alignCast(store));
+    if (!std.mem.eql(u8, url, test_store.url) or !std.mem.eql(u8, origin, "http://a.test")) return null;
     return .{ .bytes = try allocator.dupe(u8, "0123456789"), .content_type = try allocator.dupe(u8, "text/plain") };
 }
 
@@ -484,9 +492,18 @@ test "scheme fetch blob: the whole blob, or a range of it" {
     installBlobResolver(&testResolver);
     defer blob_resolver = null;
 
+    var store: TestStore = .{ .url = "blob:http://a.test/1" };
     const request = try InternalRequest.init(allocator, "blob:http://a.test/1");
     defer request.deinit();
     try request.setOrigin("http://a.test");
+
+    // A request that carries no store - no Browser's realm made it - and one
+    // whose store does not hold the URL (another Browser's): network errors.
+    try std.testing.expect((try schemeFetchRequest(allocator, request)) == .network_error);
+    var other_store: TestStore = .{ .url = "blob:http://a.test/2" };
+    request.blob_url_store = &other_store;
+    try std.testing.expect((try schemeFetchRequest(allocator, request)) == .network_error);
+    request.blob_url_store = &store;
 
     {
         const response = (try schemeFetchRequest(allocator, request)).response;
