@@ -37,156 +37,162 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Maximum bytes that can be stored inline (without heap allocation)
-/// 31 bytes chosen to fit in 32-byte cache line with 1 byte for length
-/// Most text nodes in typical HTML are short (whitespace, small words)
+/// Maximum bytes that can be stored inline (without heap allocation).
+/// Most text nodes in typical HTML are short (whitespace, small words); 31
+/// keeps the whole state at 64 bytes beside its lengths and heap pointer.
 pub const INLINE_TEXT_CAPACITY: usize = 31;
 
-/// Internal state for CharacterData implementation
-/// Stores the mutable string data associated with this node
-/// Uses inline storage for small text (≤31 bytes) to avoid heap allocations
+/// Internal state for CharacterData implementation: the node's data.
+///
+/// DOM measures and indexes data in UTF-16 code units (DOM 4.10, Infra §4.6);
+/// Crane holds it as WTF-8 (a lone surrogate as its three bytes, a pair as one
+/// four-byte sequence; infra/wtf8.zig). So the state keeps both lengths: the
+/// bytes, and the code units - the node's length - counted when data is set
+/// and kept current by every splice. When the two are equal every byte is
+/// ASCII and an offset is its own byte offset; otherwise offsets are mapped
+/// onto the bytes by infra.wtf8.
+///
+/// Small text (up to INLINE_TEXT_CAPACITY bytes) is stored inline.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// Inline storage for small text - avoids heap allocation for ≤31 bytes
-    /// First byte is length when using inline storage
-    inline_text: [INLINE_TEXT_CAPACITY + 1]u8,
+    /// The data's bytes on the heap, or null while they are inline.
+    heap: ?[*]u8,
 
-    /// Heap storage for larger text - only used when text > 31 bytes
-    heap_text: ?[]u8,
+    /// The data's length in bytes (the heap block's size when on the heap).
+    byte_len: u32,
+
+    /// The data's length in UTF-16 code units: the node's length (DOM 4.2).
+    units: u32,
+
+    /// Inline storage for small text.
+    inline_text: [INLINE_TEXT_CAPACITY]u8,
 
     pub fn init(allocator: std.mem.Allocator) !InternalState {
         return .{
             .allocator = allocator,
-            .inline_text = [_]u8{0} ** (INLINE_TEXT_CAPACITY + 1), // length = 0
-            .heap_text = null,
+            .heap = null,
+            .byte_len = 0,
+            .units = 0,
+            .inline_text = undefined,
         };
     }
 
     pub fn deinit(self: *InternalState) void {
-        if (self.heap_text) |heap| {
-            self.allocator.free(heap);
+        if (self.heap) |heap| {
+            self.allocator.free(heap[0..self.byte_len]);
+            self.heap = null;
         }
+        self.byte_len = 0;
+        self.units = 0;
     }
 
     /// Check if currently using inline storage
     pub fn isInline(self: *const InternalState) bool {
-        return self.heap_text == null;
+        return self.heap == null;
     }
 
-    /// Get current data as a slice (works for both inline and heap)
+    /// The data's bytes (WTF-8), borrowed until the next change.
     pub fn getData(self: *const InternalState) []const u8 {
-        if (self.heap_text) |heap| {
-            return heap;
-        }
-        // Inline storage: first byte is length
-        const len = self.inline_text[0];
-        return self.inline_text[1 .. 1 + len];
+        if (self.heap) |heap| return heap[0..self.byte_len];
+        return self.inline_text[0..self.byte_len];
     }
 
-    /// Get mutable data slice (for internal use only)
-    fn getDataMut(self: *InternalState) []u8 {
-        if (self.heap_text) |heap| {
-            return heap;
-        }
-        const len = self.inline_text[0];
-        return self.inline_text[1 .. 1 + len];
-    }
-
-    /// Get the length of the data
+    /// The node's length: the data's length in UTF-16 code units.
     pub fn getLength(self: *const InternalState) u32 {
-        if (self.heap_text) |heap| {
-            return @intCast(heap.len);
-        }
-        return self.inline_text[0];
+        return self.units;
+    }
+
+    /// The data's length in bytes.
+    pub fn byteLength(self: *const InternalState) u32 {
+        return self.byte_len;
+    }
+
+    /// Where code unit `unit` (at most the length) falls in the bytes.
+    pub fn position(self: *const InternalState, unit: u32) infra.wtf8.Position {
+        // ASCII: every code unit is one byte.
+        if (self.units == self.byte_len) return .{ .byte = unit };
+        if (unit == 0) return .{ .byte = 0 };
+        if (unit >= self.units) return .{ .byte = self.byte_len };
+        return infra.wtf8.positionOfCodeUnit(self.getData(), unit);
     }
 
     /// Set data - uses inline storage for small text, heap for larger
     pub fn setData(self: *InternalState, data: []const u8) !void {
-        // Free existing heap data if any
-        if (self.heap_text) |heap| {
-            self.allocator.free(heap);
-            self.heap_text = null;
-        }
-
+        if (data.len > std.math.maxInt(u32)) return error.OutOfMemory;
+        const units: u32 = @intCast(infra.wtf8.codeUnitLength(data));
         if (data.len <= INLINE_TEXT_CAPACITY) {
-            // Use inline storage
-            self.inline_text[0] = @intCast(data.len);
-            @memcpy(self.inline_text[1 .. 1 + data.len], data);
+            // Copied before the heap block is freed, and forwards: `data`
+            // may be this state's own bytes.
+            std.mem.copyForwards(u8, self.inline_text[0..data.len], data);
+            if (self.heap) |heap| self.allocator.free(heap[0..self.byte_len]);
+            self.heap = null;
         } else {
-            // Use heap storage
-            self.heap_text = try self.allocator.dupe(u8, data);
+            const heap = try self.allocator.dupe(u8, data);
+            self.deinit();
+            self.heap = heap.ptr;
         }
+        self.byte_len = @intCast(data.len);
+        self.units = units;
     }
 
-    /// Replace a range of data with new data
-    /// This is the core operation for replaceData, insertData, deleteData, appendData
+    /// Replace `count_param` code units at `offset` with `data` (DOM replace
+    /// data steps 2-3 and 5-7) - the core of replaceData, insertData,
+    /// deleteData and appendData. Offsets are code units.
     pub fn replaceData(self: *InternalState, offset: u32, count_param: u32, data: []const u8) !void {
-        const current_len = self.getLength();
-        if (offset > current_len) return error.IndexSizeError;
+        try self.replaceDataUnits(offset, count_param, data, @intCast(infra.wtf8.codeUnitLength(data)));
+    }
+
+    /// replaceData with `data`'s length in code units already counted.
+    pub fn replaceDataUnits(self: *InternalState, offset: u32, count_param: u32, data: []const u8, data_units: u32) !void {
+        const length = self.units;
+        if (offset > length) return error.IndexSizeError;
 
         // Clamp count to available length. Compared as a difference: offset
         // plus a count near 2^32 - `deleteData(1, 0xFFFFFFFF)` - wraps.
-        const count = @min(count_param, current_len - offset);
+        const count = @min(count_param, length - offset);
 
-        const new_len = current_len - count + @as(u32, @intCast(data.len));
+        // Steps 5-7 as one splice: a pair cut at either end splits into its
+        // surrogates, and halves that meet join (infra.wtf8.Pieces).
+        const start = self.position(offset);
+        const end = if (count == 0) start else self.position(offset + count);
+        var pieces: infra.wtf8.Pieces = .{};
+        pieces.splice(self.getData(), start, end, data);
+        const new_len = pieces.joinedLength();
+        if (new_len > std.math.maxInt(u32)) return error.OutOfMemory;
 
         if (new_len <= INLINE_TEXT_CAPACITY) {
-            // Result fits in inline storage
-            var new_inline: [INLINE_TEXT_CAPACITY + 1]u8 = undefined;
-            new_inline[0] = @intCast(new_len);
-
-            const current_data = self.getData();
-
-            // Copy before offset
-            @memcpy(new_inline[1 .. 1 + offset], current_data[0..offset]);
-
-            // Copy new data
-            @memcpy(new_inline[1 + offset .. 1 + offset + data.len], data);
-
-            // Copy after deleted region
-            const after_start = offset + count;
-            if (after_start < current_len) {
-                @memcpy(new_inline[1 + offset + data.len .. 1 + new_len], current_data[after_start..]);
-            }
-
-            // Free heap if we were using it
-            if (self.heap_text) |heap| {
-                self.allocator.free(heap);
-                self.heap_text = null;
-            }
-
-            self.inline_text = new_inline;
+            // The pieces read the current data, which may be inline.
+            var new_inline: [INLINE_TEXT_CAPACITY]u8 = undefined;
+            pieces.writeJoined(new_inline[0..new_len]);
+            self.deinit();
+            @memcpy(self.inline_text[0..new_len], new_inline[0..new_len]);
         } else {
-            // Result needs heap storage
             const new_data = try self.allocator.alloc(u8, new_len);
-            errdefer self.allocator.free(new_data);
-
-            const current_data = self.getData();
-
-            // Copy before offset
-            @memcpy(new_data[0..offset], current_data[0..offset]);
-
-            // Copy new data
-            @memcpy(new_data[offset .. offset + data.len], data);
-
-            // Copy after deleted region
-            const after_start = offset + count;
-            if (after_start < current_len) {
-                @memcpy(new_data[offset + data.len ..], current_data[after_start..]);
-            }
-
-            // Free old heap data if any
-            if (self.heap_text) |heap| {
-                self.allocator.free(heap);
-            }
-
-            self.heap_text = new_data;
-            // Clear inline length to indicate heap mode
-            self.inline_text[0] = 0;
+            pieces.writeJoined(new_data);
+            self.deinit();
+            self.heap = new_data.ptr;
         }
+        self.byte_len = @intCast(new_len);
+        self.units = length - count + data_units;
+    }
+
+    /// The code units from `offset` to `offset + count` (count already
+    /// clamped to the length), in a new allocation. OWNED.
+    pub fn substring(self: *const InternalState, allocator: std.mem.Allocator, offset: u32, count: u32) ![]u8 {
+        const start = self.position(offset);
+        const end = if (count == 0) start else self.position(offset + count);
+        var pieces: infra.wtf8.Pieces = .{};
+        pieces.substring(self.getData(), start, end);
+        return pieces.toOwned(allocator);
     }
 };
+
+// One per CharacterData node: the code-unit count was fitted in beside the
+// byte length without growing the state past 64 bytes.
+comptime {
+    std.debug.assert(@sizeOf(InternalState) <= 64);
+}
 
 // Use shared InstanceRegistry utility for internal state management
 const webidl = @import("webidl");
@@ -284,8 +290,8 @@ pub fn set_data(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 /// 4. Return code units from offset to offset+count.
 pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Step 1: "Let length be node's length" - code units.
     const length = internal.getLength();
-    const data = internal.getData();
 
     // Step 2: Check bounds
     if (offset > length) {
@@ -299,12 +305,11 @@ pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) 
     // Step 3: "If offset plus count is greater than length, return a string
     // whose value is the code units from the offsetth code unit to the end."
     // Compared as a difference: offset plus a count near 2^32 wraps.
-    if (count > length - offset) {
-        return runtime.DOMString.initDupe(allocator, data[offset..]);
-    }
-
-    // Step 4: Return substring
-    return runtime.DOMString.initDupe(allocator, data[offset .. offset + count]);
+    // Step 4: otherwise the code units from offset to offset + count. A pair
+    // cut at either end leaves its surrogate (infra.wtf8).
+    const clamped = @min(count, length - offset);
+    if (clamped == 0) return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initOwned(try internal.substring(allocator, offset, clamped));
 }
 
 /// Operation: appendData(data)
@@ -381,11 +386,14 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
 
     // Steps 5-7: insert data after offset code units, then remove count
     // code units from offset + data's length - one splice, which handles
-    // inline vs heap storage.
-    try internal.replaceData(offset, count, data);
+    // inline vs heap storage, and a pair cut or completed at either seam.
+    if (data.len > std.math.maxInt(u32)) return error.OutOfMemory;
+    const data_units: u32 = @intCast(infra.wtf8.codeUnitLength(data));
+    try internal.replaceDataUnits(offset, count, data, data_units);
 
-    // Steps 8-11: the live ranges whose boundary points are in node.
-    dom.mutation.runLiveRangeReplaceDataSteps(instance, offset, count, @intCast(data.len));
+    // Steps 8-11: the live ranges whose boundary points are in node, moved
+    // by data's length in code units.
+    dom.mutation.runLiveRangeReplaceDataSteps(instance, offset, count, data_units);
 
     // Step 12: "If node's parent is non-null, then run the children changed
     // steps for node's parent."
