@@ -157,8 +157,6 @@ src/fetch/internal/fetch_controller.zig report_timing_called 1 G X decl:de58a3b1
 src/fetch/internal/fetch_params.zig chunk_length_received 1 G X decl:1dfcee87d8da8735
 src/fetch/internal/fetch_params.zig queue_task_executed 1 G X decl:de58a3b1f5ff5e75
 src/fetch/network/backend.zig default_cert_options 1 G I/profile decl:65591a13919d8c59
-src/fetch/network/connection_pool.zig global_pool 1 G I/profile decl:bfcc31c4f5818db8
-src/fetch/network/connection_pool.zig global_pool_mutex 1 G P-res decl:ee0617868871b920
 src/fetch/network/curl_backend.zig global_init_count 1 G P-res decl:3796f88280404836
 src/fetch/network/curl_backend.zig global_init_mutex 1 G P-res decl:ee0617868871b920
 src/fetch/network/curl_backend.zig global_share 1 G I/profile decl:3bfc31e0824b1ad6
