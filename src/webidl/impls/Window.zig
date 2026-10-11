@@ -1999,6 +1999,19 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     return windowPostMessageSteps(instance, message, targetOrigin, list);
 }
 
+/// The current realm of the window post message steps, as a conforming
+/// binding would make it: `current` (the postMessage function's realm), or,
+/// when the caller - `incumbent`, whose window is `source` - is not same
+/// origin-domain with that realm's window, the caller's realm: its
+/// cross-origin function wrapper's (see windowPostMessageSteps).
+fn serializationRealm(current: ?runtime.Context, incumbent: runtime.Context, source: ?*runtime.Instance) runtime.Context {
+    const realm = current orelse return incumbent;
+    const window = windowOfRealm(realm) orelse return realm;
+    const caller = source orelse return realm;
+    if (caller == window or sameOriginDomain(caller, window)) return realm;
+    return incumbent;
+}
+
 /// HTML "window post message steps" given targetWindow `instance`,
 /// `message`, and options' targetOrigin and transfer.
 fn windowPostMessageSteps(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: []const u8, transfer: []const runtime.JSValue) anyerror!void {
@@ -2025,7 +2038,18 @@ fn windowPostMessageSteps(instance: *runtime.Instance, message: runtime.JSValue,
     // list ships its MessagePorts (their transfer steps, dom.message_ports)
     // and detaches its ArrayBuffers, as a port's and a worker's postMessage
     // do (html.worker_host.serializePortMessage).
-    const serialize_realm = engine.currentRealm() orelse incumbent;
+    //
+    // The realm they run in is the current realm: the realm of the postMessage
+    // function object - this window's for a script of its own origin-domain.
+    // A script of another origin-domain reaches postMessage through HTML's
+    // cross-origin property access, whose function is created in the
+    // ACCESSOR's current realm (7.2.3.4 CrossOriginGetOwnPropertyHelper, its
+    // cross-origin function wrapper); the binding hands that caller this
+    // window's own function, so that call serializes in the incumbent realm,
+    // the caller's, as the wrapper would. It is the realm a DataCloneError is
+    // made in, and a WebAssembly.Module's [[AgentCluster]] (WebAssembly Web API
+    // section 3) - the posting window's cluster, never the target's.
+    const serialize_realm = serializationRealm(engine.currentRealm(), incumbent, source_window);
     // StructuredSerializeWithTransfer step 5.4.3's DetachArrayBuffer throws a
     // TypeError for an ArrayBuffer whose [[ArrayBufferDetachKey]] is not
     // undefined - a WebAssembly.Memory's. Checked before the engine's
