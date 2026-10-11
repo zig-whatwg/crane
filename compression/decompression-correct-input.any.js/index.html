@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../compression/"><code>compression/</code></a></li><li aria-current="page"><code>decompression-<wbr>correct-<wbr>input.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>decompression-<wbr>correct-<wbr>input.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="compression/decompression-correct-input.any.js">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9d5b3ed490</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9d5b3ed490"><code>9d5b3ed490</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-322a054e36</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/322a054e36"><code>322a054e36</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/compression/decompression-correct-input.any.js"><code>compression/<wbr>decompression-<wbr>correct-<wbr>input.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,20 +34,20 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/compression/decompression-correct-input.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<h3 class="run-head"><code>/compression/decompression-correct-input.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-16738455"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing deflate input should work</span></summary><pre class="msg">assert_array_equals: value should match lengths differ, expected array object &quot;101,120,112,101,99,116,101,100,32,111,117,116,112,117,116&quot; length 15, got […, 173, 40, 72, 77, 46, 73, 77, 81, 200, 47, 45, 41, 40, 45, 1, 0, 48, 173, 6, 36] length 23</pre></details><a class="self" href="#s-16738455" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5740c9ac"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing gzip input should work</span></summary><pre class="msg">assert_array_equals: value should match lengths differ, expected array object &quot;101,120,112,101,99,116,101,100,32,111,117,116,112,117,116&quot; length 15, got […, 46, 73, 77, 81, 200, 47, 45, 41, 40, 45, 1, 0, 176, 1, 57, 179, 15, 0, 0, 0] length 35</pre></details><a class="self" href="#s-5740c9ac" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8d8485d0"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing deflate-raw input should work</span></summary><pre class="msg">assert_array_equals: value should match lengths differ, expected array object &quot;101,120,112,101,99,116,101,100,32,111,117,116,112,117,116&quot; length 15, got [75, 173, 40, 72, 77, 46, 73, 77, 81, 200, 47, 45, 41, 40, 45, 1, 0] length 17</pre></details><a class="self" href="#s-8d8485d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-16738455"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate input should work</span></div><a class="self" href="#s-16738455" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5740c9ac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing gzip input should work</span></div><a class="self" href="#s-5740c9ac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8d8485d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate-raw input should work</span></div><a class="self" href="#s-8d8485d0" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-6af2e971"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing brotli input should work</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-6af2e971" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/compression/decompression-correct-input.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<h3 class="run-head"><code>/compression/decompression-correct-input.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-165974ec"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing deflate input should work</span></summary><pre class="msg">assert_array_equals: value should match lengths differ, expected array object &quot;101,120,112,101,99,116,101,100,32,111,117,116,112,117,116&quot; length 15, got […, 173, 40, 72, 77, 46, 73, 77, 81, 200, 47, 45, 41, 40, 45, 1, 0, 48, 173, 6, 36] length 23</pre></details><a class="self" href="#s-165974ec" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4f7ed665"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing gzip input should work</span></summary><pre class="msg">assert_array_equals: value should match lengths differ, expected array object &quot;101,120,112,101,99,116,101,100,32,111,117,116,112,117,116&quot; length 15, got […, 46, 73, 77, 81, 200, 47, 45, 41, 40, 45, 1, 0, 176, 1, 57, 179, 15, 0, 0, 0] length 35</pre></details><a class="self" href="#s-4f7ed665" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8a2b90b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing deflate-raw input should work</span></summary><pre class="msg">assert_array_equals: value should match lengths differ, expected array object &quot;101,120,112,101,99,116,101,100,32,111,117,116,112,117,116&quot; length 15, got [75, 173, 40, 72, 77, 46, 73, 77, 81, 200, 47, 45, 41, 40, 45, 1, 0] length 17</pre></details><a class="self" href="#s-8a2b90b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-165974ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate input should work</span></div><a class="self" href="#s-165974ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4f7ed665"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing gzip input should work</span></div><a class="self" href="#s-4f7ed665" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8a2b90b6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate-raw input should work</span></div><a class="self" href="#s-8a2b90b6" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-75a68d43"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing brotli input should work</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-75a68d43" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../compression/"><code>compression/</code></a></li><li aria-current="page"><code>decompression-<wbr>empty-<wbr>input.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>decompression-<wbr>empty-<wbr>input.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="compression/decompression-empty-input.any.js">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9d5b3ed490</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9d5b3ed490"><code>9d5b3ed490</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-322a054e36</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/322a054e36"><code>322a054e36</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/compression/decompression-empty-input.any.js"><code>compression/<wbr>decompression-<wbr>empty-<wbr>input.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,20 +34,20 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/compression/decompression-empty-input.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<h3 class="run-head"><code>/compression/decompression-empty-input.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-8efafdd6"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing gzip empty input should work</span></summary><pre class="msg">assert_true: read() should set done expected true got false</pre></details><a class="self" href="#s-8efafdd6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cb0186e4"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing deflate empty input should work</span></summary><pre class="msg">assert_true: read() should set done expected true got false</pre></details><a class="self" href="#s-cb0186e4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fc30539d"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing deflate-raw empty input should work</span></summary><pre class="msg">assert_true: read() should set done expected true got false</pre></details><a class="self" href="#s-fc30539d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8efafdd6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing gzip empty input should work</span></div><a class="self" href="#s-8efafdd6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cb0186e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate empty input should work</span></div><a class="self" href="#s-cb0186e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fc30539d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate-raw empty input should work</span></div><a class="self" href="#s-fc30539d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-e58f08b7"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing brotli empty input should work</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-e58f08b7" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/compression/decompression-empty-input.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<h3 class="run-head"><code>/compression/decompression-empty-input.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-bdd2b895"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing gzip empty input should work</span></summary><pre class="msg">assert_true: read() should set done expected true got false</pre></details><a class="self" href="#s-bdd2b895" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2774b56d"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing deflate empty input should work</span></summary><pre class="msg">assert_true: read() should set done expected true got false</pre></details><a class="self" href="#s-2774b56d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fe0d7536"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing deflate-raw empty input should work</span></summary><pre class="msg">assert_true: read() should set done expected true got false</pre></details><a class="self" href="#s-fe0d7536" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bdd2b895"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing gzip empty input should work</span></div><a class="self" href="#s-bdd2b895" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2774b56d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate empty input should work</span></div><a class="self" href="#s-2774b56d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fe0d7536"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">decompressing deflate-raw empty input should work</span></div><a class="self" href="#s-fe0d7536" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-6643cc91"><details><summary><span class="mark">FAIL</span><span class="sub-name">decompressing brotli empty input should work</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-6643cc91" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>

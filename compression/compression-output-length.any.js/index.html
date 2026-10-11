@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../compression/"><code>compression/</code></a></li><li aria-current="page"><code>compression-<wbr>output-<wbr>length.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>compression-<wbr>output-<wbr>length.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="compression/compression-output-length.any.js">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9d5b3ed490</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9d5b3ed490"><code>9d5b3ed490</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-322a054e36</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/322a054e36"><code>322a054e36</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/compression/compression-output-length.any.js"><code>compression/<wbr>compression-<wbr>output-<wbr>length.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,20 +34,20 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/compression/compression-output-length.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<h3 class="run-head"><code>/compression/compression-output-length.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-6a911030"><details><summary><span class="mark">FAIL</span><span class="sub-name">the length of deflate data should be shorter than that of the original data</span></summary><pre class="msg">assert_less_than: output should be smaller expected a number less than 76501 but got 76501</pre></details><a class="self" href="#s-6a911030" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7e57ecd0"><details><summary><span class="mark">FAIL</span><span class="sub-name">the length of deflate-raw data should be shorter than that of the original data</span></summary><pre class="msg">assert_less_than: output should be smaller expected a number less than 76501 but got 76501</pre></details><a class="self" href="#s-7e57ecd0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e5bcd4fb"><details><summary><span class="mark">FAIL</span><span class="sub-name">the length of gzip data should be shorter than that of the original data</span></summary><pre class="msg">assert_less_than: output should be smaller expected a number less than 76501 but got 76501</pre></details><a class="self" href="#s-e5bcd4fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6a911030"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the length of deflate data should be shorter than that of the original data</span></div><a class="self" href="#s-6a911030" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7e57ecd0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the length of deflate-raw data should be shorter than that of the original data</span></div><a class="self" href="#s-7e57ecd0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e5bcd4fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the length of gzip data should be shorter than that of the original data</span></div><a class="self" href="#s-e5bcd4fb" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-a0fa35d4"><details><summary><span class="mark">FAIL</span><span class="sub-name">the length of brotli data should be shorter than that of the original data</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-a0fa35d4" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/compression/compression-output-length.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<h3 class="run-head"><code>/compression/compression-output-length.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-9619d91c"><details><summary><span class="mark">FAIL</span><span class="sub-name">the length of deflate data should be shorter than that of the original data</span></summary><pre class="msg">assert_less_than: output should be smaller expected a number less than 76501 but got 76501</pre></details><a class="self" href="#s-9619d91c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-034306b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">the length of deflate-raw data should be shorter than that of the original data</span></summary><pre class="msg">assert_less_than: output should be smaller expected a number less than 76501 but got 76501</pre></details><a class="self" href="#s-034306b5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-855e8af9"><details><summary><span class="mark">FAIL</span><span class="sub-name">the length of gzip data should be shorter than that of the original data</span></summary><pre class="msg">assert_less_than: output should be smaller expected a number less than 76501 but got 76501</pre></details><a class="self" href="#s-855e8af9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9619d91c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the length of deflate data should be shorter than that of the original data</span></div><a class="self" href="#s-9619d91c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-034306b5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the length of deflate-raw data should be shorter than that of the original data</span></div><a class="self" href="#s-034306b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-855e8af9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the length of gzip data should be shorter than that of the original data</span></div><a class="self" href="#s-855e8af9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-e6ac6afb"><details><summary><span class="mark">FAIL</span><span class="sub-name">the length of brotli data should be shorter than that of the original data</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: TypeError&quot;</pre></details><a class="self" href="#s-e6ac6afb" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>

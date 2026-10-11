@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../dom/"><code>dom/</code></a></li><li><a href="../../../dom/nodes/"><code>nodes/</code></a></li><li aria-current="page"><code>CharacterData-<wbr>deleteData.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>CharacterData-<wbr>deleteData.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="dom/nodes/CharacterData-deleteData.html">
-<p class="figures-main"><span class="fg-pass">14</span><span class="fg-of"> / 18</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>4</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">18</span><span class="fg-of"> / 18</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9d5b3ed490</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9d5b3ed490"><code>9d5b3ed490</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-322a054e36</code>, <span class="nowrap">11 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/322a054e36"><code>322a054e36</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/nodes/CharacterData-deleteData.html"><code>dom/<wbr>nodes/<wbr>CharacterData-<wbr>deleteData.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -42,8 +42,8 @@
 <li class="sub s-pass" id="s-02b10216"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() with zero count</span></div><a class="self" href="#s-02b10216" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-381f4585"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() with small negative count</span></div><a class="self" href="#s-381f4585" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-436dd484"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() with large negative count</span></div><a class="self" href="#s-436dd484" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9a7cd75a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Text.deleteData() with non-ascii data</span></summary><pre class="msg">assert_equals: expected &quot;This is the character data test, append 資料，更多資料&quot; but got &quot;This is the character data test, append 資於\ufffd更多測試資料&quot;</pre></details><a class="self" href="#s-9a7cd75a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cec38ab3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Text.deleteData() with non-BMP data</span></summary><pre class="msg">assert_equals: expected &quot;🌠 teST&quot; but got &quot;🌠 \ufffd TEST&quot;</pre></details><a class="self" href="#s-cec38ab3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9a7cd75a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() with non-ascii data</span></div><a class="self" href="#s-9a7cd75a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cec38ab3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Text.deleteData() with non-BMP data</span></div><a class="self" href="#s-cec38ab3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-95a53b42"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() out of bounds</span></div><a class="self" href="#s-95a53b42" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-13587ba3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() at the start</span></div><a class="self" href="#s-13587ba3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-79fa2ce4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() at the end</span></div><a class="self" href="#s-79fa2ce4" aria-label="Link to this subtest">&para;</a></li>
@@ -51,8 +51,8 @@
 <li class="sub s-pass" id="s-9806865c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() with zero count</span></div><a class="self" href="#s-9806865c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-53fb1bc5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() with small negative count</span></div><a class="self" href="#s-53fb1bc5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-664ff3c4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() with large negative count</span></div><a class="self" href="#s-664ff3c4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-dea1f8e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Comment.deleteData() with non-ascii data</span></summary><pre class="msg">assert_equals: expected &quot;This is the character data test, append 資料，更多資料&quot; but got &quot;This is the character data test, append 資於\ufffd更多測試資料&quot;</pre></details><a class="self" href="#s-dea1f8e8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-50d9e5ec"><details><summary><span class="mark">FAIL</span><span class="sub-name">Comment.deleteData() with non-BMP data</span></summary><pre class="msg">assert_equals: expected &quot;🌠 teST&quot; but got &quot;🌠 \ufffd TEST&quot;</pre></details><a class="self" href="#s-50d9e5ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dea1f8e8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() with non-ascii data</span></div><a class="self" href="#s-dea1f8e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-50d9e5ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Comment.deleteData() with non-BMP data</span></div><a class="self" href="#s-50d9e5ec" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
