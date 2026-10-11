@@ -1429,56 +1429,60 @@ pub fn call_createContextualFragment(instance: *runtime.Instance, string: typede
 }
 
 /// DOM §5.7 - Range stringifier (toString)
-/// Returns the text content of the range
+/// Returns the text content of the range.
+///
+/// Offsets are code units (DOM 4.10): the boundary pieces are CharacterData's
+/// substring data, and every piece is concatenated as code units - a pair
+/// split across two Text nodes is one pair in the result (infra.wtf8).
 pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]const u8 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     const start = internal.start_container orelse return error.InvalidStateError;
     const end = internal.end_container orelse return error.InvalidStateError;
 
+    // Step 1: "Let s be the empty string."
     var result: std.ArrayListUnmanaged(u8) = .empty;
     errdefer result.deinit(allocator);
 
+    const Pieces = struct {
+        /// Append `count` code units of `node`'s data from `offset`.
+        fn appendSubstring(gpa: std.mem.Allocator, list: *std.ArrayListUnmanaged(u8), node: *runtime.Instance, offset: u32, count: u32) !void {
+            var piece = try interfaces.CharacterData.call_substringData(node, offset, count);
+            defer piece.deinit(node.ctx.allocator);
+            try @import("infra").wtf8.appendJoined(gpa, list, piece.asSlice());
+        }
+    };
+
     const start_type = NodeImpl.getNodeType(start) orelse return error.InvalidStateError;
 
-    // Step 2: If start node == end node and it's a Text node
+    // Step 2: "If this's start node is this's end node and it is a Text
+    // node, then return the substring of that Text node's data beginning at
+    // this's start offset and ending at this's end offset."
     if (start == end and start_type == NodeImpl.NodeType.TEXT_NODE) {
-        const CharacterDataImpl = @import("CharacterData.zig");
-        const data = CharacterDataImpl.getData(start) orelse "";
-
-        // Return substring from start offset to end offset
-        if (internal.end_offset >= internal.start_offset and internal.end_offset <= data.len) {
-            const substring = data[internal.start_offset..internal.end_offset];
-            try result.appendSlice(allocator, substring);
-            return result.toOwnedSlice(allocator);
-        }
+        try Pieces.appendSubstring(allocator, &result, start, internal.start_offset, internal.end_offset -| internal.start_offset);
+        return result.toOwnedSlice(allocator);
     }
 
-    // Step 3: If start node is a Text node, append from start offset to end
+    // Step 3: "If this's start node is a Text node, then append the
+    // substring of that node's data from this's start offset until the end
+    // to s."
     if (start_type == NodeImpl.NodeType.TEXT_NODE) {
-        const CharacterDataImpl = @import("CharacterData.zig");
-        const data = CharacterDataImpl.getData(start) orelse "";
-        if (internal.start_offset <= data.len) {
-            const substring = data[internal.start_offset..];
-            try result.appendSlice(allocator, substring);
-        }
+        const length = try interfaces.CharacterData.get_length(start);
+        try Pieces.appendSubstring(allocator, &result, start, internal.start_offset, length -| internal.start_offset);
     }
 
     // Step 4: Append text content of all contained Text nodes
     const commonAncestor = (try get_commonAncestorContainer(instance));
     try appendContainedTextNodes(allocator, internal, commonAncestor, &result);
 
-    // Step 5: If end node is a Text node, append from start to end offset
+    // Step 5: "If this's end node is a Text node, then append the substring
+    // of that node's data from its start until this's end offset to s."
     const end_type = NodeImpl.getNodeType(end) orelse return error.InvalidStateError;
     if (end_type == NodeImpl.NodeType.TEXT_NODE and end != start) {
-        const CharacterDataImpl = @import("CharacterData.zig");
-        const data = CharacterDataImpl.getData(end) orelse "";
-        if (internal.end_offset <= data.len) {
-            const substring = data[0..internal.end_offset];
-            try result.appendSlice(allocator, substring);
-        }
+        try Pieces.appendSubstring(allocator, &result, end, 0, internal.end_offset);
     }
 
+    // Step 6: "Return s."
     return result.toOwnedSlice(allocator);
 }
 
@@ -1487,9 +1491,9 @@ fn appendContainedTextNodes(allocator: std.mem.Allocator, internal: *InternalSta
     // If this node is contained and is a Text node, append its data
     const node_type = NodeImpl.getNodeType(node) orelse return;
     if (isNodeContained(internal, node) and node_type == NodeImpl.NodeType.TEXT_NODE) {
-        const CharacterDataImpl = @import("CharacterData.zig");
-        const data = CharacterDataImpl.getData(node) orelse "";
-        try result.appendSlice(allocator, data);
+        var data = try interfaces.CharacterData.get_data(node);
+        defer data.deinit(node.ctx.allocator);
+        try @import("infra").wtf8.appendJoined(allocator, result, data.asSlice());
         return;
     }
 

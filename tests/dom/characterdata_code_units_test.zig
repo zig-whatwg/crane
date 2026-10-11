@@ -280,3 +280,32 @@ test "normalize joins the halves and moves a range by code units" {
         }
     }.body);
 }
+
+test "Range stringifies its Text boundaries by code units" {
+    try run(struct {
+        fn body(f: *Fixture) !void {
+            const node = try f.text("A" ++ grinning ++ "BC");
+            const inside = try f.range(node, 1, node, 3);
+            defer interfaces.Range.deinit(inside);
+            const s1 = try interfaces.Range.serialize(inside);
+            defer inside.ctx.allocator.free(s1);
+            try testing.expectEqualSlices(u8, grinning, s1);
+
+            const half = try f.range(node, 2, node, 4);
+            defer interfaces.Range.deinit(half);
+            const s2 = try interfaces.Range.serialize(half);
+            defer half.ctx.allocator.free(s2);
+            try testing.expectEqualSlices(u8, lo_de00 ++ "B", s2);
+
+            // Across two Text nodes: the end of one and the start of the next,
+            // the split halves joined back into their pair.
+            const next = try f.text(lo_df20 ++ e_acute ++ "Z");
+            try interfaces.CharacterData.set_data(node, str("xy" ++ hi_d83c));
+            const across = try f.range(node, 1, next, 2);
+            defer interfaces.Range.deinit(across);
+            const s3 = try interfaces.Range.serialize(across);
+            defer across.ctx.allocator.free(s3);
+            try testing.expectEqualSlices(u8, "y" ++ shooting_star ++ e_acute, s3);
+        }
+    }.body);
+}
