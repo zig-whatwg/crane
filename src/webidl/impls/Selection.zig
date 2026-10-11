@@ -89,6 +89,10 @@ pub const InternalState = struct {
     /// Its generation is only the teardown safety net.
     document: ?Link = null,
 
+    /// The document's has-scheduled-selectionchange-event flag. Its unique
+    /// Selection owns it; input/textarea flags belong to those controls.
+    selectionchange_scheduled: bool = false,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -106,6 +110,7 @@ pub const InternalState = struct {
     /// Make `range` the range of `selection` (whose state this is), or clear
     /// it, keeping the range while it is one (see `range`).
     fn setRange(self: *InternalState, selection: *runtime.Instance, range: ?*runtime.Instance, direction: Direction) void {
+        const before = snapshot(self);
         if (self.range != range) {
             self.range = range;
             if (range) |r|
@@ -114,6 +119,7 @@ pub const InternalState = struct {
                 engine.forgetTracedChild(selection, range_slot);
         }
         self.direction = direction;
+        if (!std.meta.eql(before, snapshot(self))) scheduleSelectionchange(selection) catch {};
     }
 };
 
@@ -797,6 +803,10 @@ pub fn call_deleteFromDocument(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (visibleBoundaries(internal) == null) return;
     // Delete through the associated live Range; preserve its object identity.
+    const before = snapshot(internal);
+    defer if (!std.meta.eql(before, snapshot(internal))) {
+        scheduleSelectionchange(instance) catch {};
+    };
     try Range.call_deleteContents(internal.range.?);
 }
 
@@ -1039,3 +1049,88 @@ fn previousSibling(node: *runtime.Instance) ?*runtime.Instance {
 fn parentNode(node: *runtime.Instance) ?*runtime.Instance {
     return interfaces.Node.get_parentNode(node) catch null;
 }
+
+/// Boundary identity determines whether a programmatic selection changed.
+/// Browsers suppress notifications for an equal selection even when its Range
+/// object was replaced, a deviation from the spec's blanket "associated
+/// with a new range" trigger: Chrome/Firefox/Safari each pass 5/5 in
+/// selection/document-selectionchange.html at WPT cc74d2669f (run IDs
+/// 6218298311311360, 4877098740350976, 5164107446878208). Blink's
+/// core/editing/dom_selection.cc UpdateFrameSelection returns when the
+/// selection did not change. https://wpt.fyi/results/selection/document-selectionchange.html
+const Snapshot = struct {
+    points: ?dom.range_boundaries.Boundaries,
+    direction: Direction,
+};
+
+fn snapshot(internal: *const InternalState) Snapshot {
+    return .{ .points = boundaries(internal), .direction = internal.direction };
+}
+
+fn scheduleSelectionchange(selection: *runtime.Instance) !void {
+    const internal = getInternal(selection) orelse return;
+    if (internal.selectionchange_scheduled) return; // Scheduling step 1.
+    const document = associatedDocument(internal) orelse return;
+    const loop = document.ctx.getOptionalEventLoop() orelse return;
+    const hold = try engine.retainValue(document.ctx, .{ .instance = document });
+    errdefer hold.release();
+    const task = try internal.allocator.create(SelectionchangeTask);
+    task.* = .{
+        .allocator = internal.allocator,
+        .selection = Link.to(selection),
+        .document = Link.to(document),
+        .document_hold = hold,
+    };
+    // Step 2, before handoff: a closing queue may synchronously drop/free task.
+    internal.selectionchange_scheduled = true;
+    // Step 3: user interaction task source. The existing runtime loop is one
+    // FIFO and cannot distinguish task sources yet (codex-selection Q5).
+    loop.queueTask(.{
+        .callback = &SelectionchangeTask.run,
+        .context = task,
+        .drop = &SelectionchangeTask.drop,
+        .document = document,
+        .document_generation = task.document.generation,
+    });
+    // task may already be destroyed; never access it after queueTask.
+}
+
+const SelectionchangeTask = struct {
+    allocator: std.mem.Allocator,
+    selection: Link,
+    document: Link,
+    document_hold: engine.Owned,
+
+    fn clearFlag(self: *SelectionchangeTask) void {
+        if (self.selection.isLive()) {
+            if (getInternal(self.selection.instance)) |internal| internal.selectionchange_scheduled = false;
+        }
+    }
+
+    fn run(context: ?*anyopaque) void {
+        const self: *SelectionchangeTask = @ptrCast(@alignCast(context orelse return));
+        defer self.destroy();
+        // Firing step 1: clear before dispatch so a listener can queue again.
+        self.clearFlag();
+        if (!self.document.isLive()) return;
+        const document = self.document.instance;
+        // Firing step 3: a trusted, non-bubbling, non-cancelable document event.
+        const event = interfaces.Event.call_constructor(document.ctx, .initInterned("selectionchange"), .notPassed()) catch return;
+        const generation = runtime.SlabAllocator.generationOf(event);
+        defer event.releaseIfUnwrapped(generation);
+        const event_hold = engine.retainValue(document.ctx, .{ .instance = event }) catch return;
+        defer event_hold.release();
+        _ = dom.fire_event.dispatchTrusted(document, event) catch {};
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *SelectionchangeTask = @ptrCast(@alignCast(context orelse return));
+        self.clearFlag();
+        self.destroy();
+    }
+
+    fn destroy(self: *SelectionchangeTask) void {
+        self.document_hold.release();
+        self.allocator.destroy(self);
+    }
+};
