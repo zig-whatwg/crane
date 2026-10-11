@@ -25,8 +25,6 @@ const dom = @import("dom");
 const boundary_points = dom.boundary_points;
 const Link = @import("same_object.zig").Link;
 
-// Import related implementations
-const NodeImpl = @import("Node.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const engine = @import("engine");
 
@@ -554,17 +552,14 @@ const PositionResult = struct {
 
 /// Move position by one character
 fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !PositionResult {
-    const CharacterDataImpl = @import("CharacterData.zig");
-    const node_type = NodeImpl.getNodeType(node) orelse 0;
+    const node_type = interfaces.Node.get_nodeType(node) catch 0;
 
     // For text nodes, we can move within the text content
-    if (node_type == NodeImpl.NodeType.TEXT_NODE or
-        node_type == NodeImpl.NodeType.COMMENT_NODE or
-        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE)
+    if (node_type == interfaces.Node.get_TEXT_NODE() or
+        node_type == interfaces.Node.get_COMMENT_NODE() or
+        node_type == interfaces.Node.get_CDATA_SECTION_NODE())
     {
-        if (CharacterDataImpl.getInternalState(node)) |char_internal| {
-            const data_len = char_internal.getLength();
-
+        if (interfaces.CharacterData.get_length(node)) |data_len| {
             if (forward) {
                 if (offset < data_len) {
                     // Move forward within same node
@@ -590,7 +585,7 @@ fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !Positio
                     return .{ .node = node, .offset = 0 };
                 }
             }
-        }
+        } else |_| {}
     }
 
     // For element nodes, offset refers to child index
@@ -611,24 +606,26 @@ fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !Positio
 
 /// Move position by one word
 fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResult {
-    const CharacterDataImpl = @import("CharacterData.zig");
-    const node_type = NodeImpl.getNodeType(node) orelse 0;
+    const node_type = interfaces.Node.get_nodeType(node) catch 0;
 
     // Only works for text nodes
-    if (node_type != NodeImpl.NodeType.TEXT_NODE and
-        node_type != NodeImpl.NodeType.COMMENT_NODE and
-        node_type != NodeImpl.NodeType.CDATA_SECTION_NODE)
+    if (node_type != interfaces.Node.get_TEXT_NODE() and
+        node_type != interfaces.Node.get_COMMENT_NODE() and
+        node_type != interfaces.Node.get_CDATA_SECTION_NODE())
     {
         // For non-text nodes, fall back to character movement
         return moveByCharacter(node, offset, forward);
     }
 
-    const char_internal = CharacterDataImpl.getInternalState(node) orelse {
-        return .{ .node = node, .offset = offset };
+    var text = interfaces.CharacterData.get_data(node) catch |err| switch (err) {
+        error.InvalidStateError => return .{ .node = node, .offset = offset },
+        else => return err,
     };
-
-    const data = char_internal.getData();
-    const data_len = char_internal.getLength();
+    defer text.deinit(node.ctx.allocator);
+    const data = text.asSlice();
+    const data_len = try interfaces.CharacterData.get_length(node);
+    // Follow-up after the utf16 lane lands: convert code-unit positions with
+    // infra.wtf8.byteOffsetOfCodeUnit before indexing the WTF-8 bytes here.
 
     if (forward) {
         // Find end of current word, then start of next word
@@ -682,10 +679,9 @@ fn moveToDocumentBoundary(node: *runtime.Instance, forward: bool) !PositionResul
         // Move to end of document
         // Find last descendant text node, position at end
         if (try findLastTextNode(current)) |last_text| {
-            const CharacterDataImpl = @import("CharacterData.zig");
-            if (CharacterDataImpl.getInternalState(last_text)) |char_internal| {
-                return .{ .node = last_text, .offset = char_internal.getLength() };
-            }
+            if (interfaces.CharacterData.get_length(last_text)) |length| {
+                return .{ .node = last_text, .offset = length };
+            } else |_| {}
         }
         // No text nodes, position at end of root's children
         return .{ .node = current, .offset = countChildren(current) };
@@ -756,17 +752,15 @@ fn getPreviousTextPosition(node: *runtime.Instance) !?PositionResult {
         if (previousSibling(current)) |sibling| {
             // Check sibling's descendants (rightmost text)
             if (try findLastTextNode(sibling)) |text| {
-                const CharacterDataImpl = @import("CharacterData.zig");
-                if (CharacterDataImpl.getInternalState(text)) |char_internal| {
-                    return .{ .node = text, .offset = char_internal.getLength() };
-                }
+                if (interfaces.CharacterData.get_length(text)) |length| {
+                    return .{ .node = text, .offset = length };
+                } else |_| {}
             }
             // Check if sibling itself is a text node
             if (isTextNode(sibling)) {
-                const CharacterDataImpl = @import("CharacterData.zig");
-                if (CharacterDataImpl.getInternalState(sibling)) |char_internal| {
-                    return .{ .node = sibling, .offset = char_internal.getLength() };
-                }
+                if (interfaces.CharacterData.get_length(sibling)) |length| {
+                    return .{ .node = sibling, .offset = length };
+                } else |_| {}
             }
             current = sibling;
         } else {
@@ -821,10 +815,10 @@ fn findLastTextNode(root: *runtime.Instance) !?*runtime.Instance {
 
 /// Check if node is a text-type node
 fn isTextNode(node: *runtime.Instance) bool {
-    const node_type = NodeImpl.getNodeType(node) orelse 0;
-    return node_type == NodeImpl.NodeType.TEXT_NODE or
-        node_type == NodeImpl.NodeType.COMMENT_NODE or
-        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE;
+    const node_type = interfaces.Node.get_nodeType(node) catch 0;
+    return node_type == interfaces.Node.get_TEXT_NODE() or
+        node_type == interfaces.Node.get_COMMENT_NODE() or
+        node_type == interfaces.Node.get_CDATA_SECTION_NODE();
 }
 
 /// Selection API - deleteFromDocument()
