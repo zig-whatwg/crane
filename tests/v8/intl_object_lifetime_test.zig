@@ -231,3 +231,19 @@ test "an agent's end frees its live Intl objects' state" {
     }
     try testing.expectEqual(control.outstanding.load(.monotonic), with_intl.outstanding.load(.monotonic));
 }
+
+test "Intl.Locale keeps the string options it was given" {
+    // Each was read by a helper that returned a slice of its own stack
+    // buffer (getStringOption), so the Locale kept whatever that memory held
+    // next: base 322a054e36 answered calendar() with "p��\t\x01".
+    const page = try Page.open(std.heap.c_allocator);
+    defer page.close();
+    try page.expect(
+        \\(() => {
+        \\  const locale = new Intl.Locale('en-US', { calendar: 'gregory', collation: 'phonebk',
+        \\    hourCycle: 'h12', numberingSystem: 'latn', caseFirst: 'upper' });
+        \\  return [locale.calendar(), locale.collation(), locale.hourCycle(),
+        \\          locale.numberingSystem(), locale.caseFirst(), locale.maximize().calendar()].join(' ');
+        \\})()
+    , "gregory phonebk h12 latn upper gregory");
+}
