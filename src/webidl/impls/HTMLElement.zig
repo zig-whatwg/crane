@@ -304,16 +304,26 @@ fn removeContentAttribute(instance: *runtime.Instance, name: []const u8) void {
 
 /// Getter for translate
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-translate
-/// Returns true if translate is "yes" or missing (inherit), false if "no"
+/// HTML 3.2.6.3: the computed translation mode, inherited through parent elements.
 pub fn get_translate(instance: *runtime.Instance) anyerror!bool {
-    if (getContentAttribute(instance, "translate")) |value| {
-        const s = value.asSlice();
-        // "no" means don't translate
-        if (std.mem.eql(u8, s, "no")) return false;
-        // "yes" or any other value means translate
-        return true;
+    var current: ?*runtime.Instance = instance;
+    while (current) |element| : (current = try interfaces.Node.get_parentElement(element)) {
+        // Only HTML elements have a translate content attribute. Foreign
+        // elements still inherit a mode, ignoring an attribute of this name.
+        var namespace = try interfaces.Element.get_namespaceURI(element);
+        defer if (namespace) |*value| value.deinit(element.ctx.allocator);
+        if (namespace == null or !std.mem.eql(u8, namespace.?.asSlice(), "http://www.w3.org/1999/xhtml")) continue;
+        var attribute = try interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("translate"));
+        defer if (attribute) |*value| value.deinit(element.ctx.allocator);
+        if (attribute) |value| {
+            const keyword = value.asSlice();
+            // Enumerated states: empty/yes -> Yes; no -> No. Missing and
+            // invalid values -> Inherit. Keywords are ASCII case-insensitive.
+            if (keyword.len == 0 or std.ascii.eqlIgnoreCase(keyword, "yes")) return true;
+            if (std.ascii.eqlIgnoreCase(keyword, "no")) return false;
+        }
     }
-    // Missing attribute: inherit from parent (default to true)
+    // No parent element (including a DocumentFragment/ShadowRoot): enabled.
     return true;
 }
 
@@ -321,15 +331,14 @@ pub fn get_translate(instance: *runtime.Instance) anyerror!bool {
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#attr-dir
 /// Reflects the dir content attribute (ltr, rtl, auto, or "")
 pub fn get_dir(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    if (getContentAttribute(instance, "dir")) |value| {
+    var attribute = try interfaces.Element.call_getAttributeNS(instance, null, runtime.DOMString.initInterned("dir"));
+    defer if (attribute) |*value| value.deinit(instance.ctx.allocator);
+    if (attribute) |value| {
         const s = value.asSlice();
-        // Only valid values are returned; invalid values return ""
-        if (std.mem.eql(u8, s, "ltr") or
-            std.mem.eql(u8, s, "rtl") or
-            std.mem.eql(u8, s, "auto"))
-        {
-            return value;
-        }
+        // HTML reflection, limited to known values: return the canonical
+        // keyword for the state, rather than the spelling in the attribute.
+        inline for (.{ "ltr", "rtl", "auto" }) |keyword|
+            if (std.ascii.eqlIgnoreCase(s, keyword)) return runtime.DOMString.initInterned(keyword);
     }
     return runtime.DOMString.initEmpty();
 }
@@ -581,17 +590,15 @@ pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Inst
 /// Getter for contentEditable
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-contenteditable
 pub fn get_contentEditable(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    if (getContentAttribute(instance, "contenteditable")) |value| {
-        const s = value.asSlice();
-        if (std.mem.eql(u8, s, "true") or s.len == 0) {
-            return runtime.DOMString.initInterned("true");
-        }
-        if (std.mem.eql(u8, s, "false")) {
-            return runtime.DOMString.initInterned("false");
-        }
-        if (std.mem.eql(u8, s, "plaintext-only")) {
-            return runtime.DOMString.initInterned("plaintext-only");
-        }
+    var attribute = try interfaces.Element.call_getAttributeNS(instance, null, runtime.DOMString.initInterned("contenteditable"));
+    defer if (attribute) |*value| value.deinit(instance.ctx.allocator);
+    if (attribute) |value| {
+        const keyword = value.asSlice();
+        // HTML 6.8.1: empty is True, missing/invalid is Inherit. Return the
+        // canonical keyword of the enumerated state.
+        if (keyword.len == 0) return runtime.DOMString.initInterned("true");
+        inline for (.{ "true", "false", "plaintext-only" }) |state|
+            if (std.ascii.eqlIgnoreCase(keyword, state)) return runtime.DOMString.initInterned(state);
     }
     return runtime.DOMString.initInterned("inherit");
 }
@@ -604,13 +611,55 @@ pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!runtime.DOMString 
 
 /// Getter for isContentEditable
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-iscontenteditable
+// Browser binding comparison, 2026-10-10 (Q14): Blink's
+// HTMLElement::isContentEditableForBinding and Gecko's nsGenericHTMLElement
+// use contenteditable without an activity gate. WebKit Node::isContentEditable
+// additionally rejects documents that cannot render; follow the 2/3 majority.
+// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/html_element.cc
+// https://searchfox.org/mozilla-central/source/dom/html/nsGenericHTMLElement.cpp
+// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/Node.cpp
+// Upstream contenteditable-enumerated-ascii-case-insensitive.html is 24/24
+// in stable Chrome 154, Firefox 157 and Safari 27 (wpt.fyi, 2026-10-10).
 pub fn get_isContentEditable(instance: *runtime.Instance) anyerror!bool {
-    const ce = try get_contentEditable(instance);
-    const s = ce.asSlice();
-    if (std.mem.eql(u8, s, "true") or std.mem.eql(u8, s, "plaintext-only")) {
-        return true;
+    var current: ?*runtime.Instance = instance;
+    while (current) |element| {
+        var namespace = try interfaces.Element.get_namespaceURI(element);
+        defer if (namespace) |*value| value.deinit(element.ctx.allocator);
+        const ns = if (namespace) |value| value.asSlice() else "";
+        const is_html = std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml");
+        const parent = try interfaces.Node.get_parentNode(element);
+        if (is_html) {
+            var state = try interfaces.HTMLElement.get_contentEditable(element);
+            defer state.deinit(element.ctx.allocator);
+            const value = state.asSlice();
+            // HTML 6.8.4: either explicit state establishes an editing host.
+            if (std.mem.eql(u8, value, "true") or std.mem.eql(u8, value, "plaintext-only")) return true;
+            // An HTML child of a design-mode document is an editing host,
+            // even if it is not itself editable (the false state).
+            if (parent) |node| {
+                if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_NODE()) {
+                    var mode = try interfaces.Document.get_designMode(node);
+                    defer mode.deinit(node.ctx.allocator);
+                    return std.mem.eql(u8, mode.asSlice(), "on");
+                }
+            }
+            if (std.mem.eql(u8, value, "false")) return false;
+        } else {
+            // execCommand's "editable" definition (specs/w3c/execCommand.md):
+            // only HTML elements and the SVG svg/MathML math roots inherit
+            // editability. Arbitrary foreign descendants end the chain.
+            var name = try interfaces.Element.get_localName(element);
+            defer name.deinit(element.ctx.allocator);
+            if (!((std.mem.eql(u8, ns, "http://www.w3.org/2000/svg") and std.mem.eql(u8, name.asSlice(), "svg")) or
+                (std.mem.eql(u8, ns, "http://www.w3.org/1998/Math/MathML") and std.mem.eql(u8, name.asSlice(), "math")))) return false;
+        }
+        // Inherit through the light-tree parent. Documents/fragments are not
+        // editable, so detached and shadow roots stop here.
+        current = if (parent) |node|
+            if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_ELEMENT_NODE()) node else null
+        else
+            null;
     }
-    // Inherit - would need to check parent, simplified to false
     return false;
 }
 
@@ -753,8 +802,22 @@ pub fn set_editContext(instance: *runtime.Instance, value: ?*runtime.Instance) a
 // ElementContentEditable Mixin Setters
 // =============================================================================
 
+/// HTML 6.8.1 contentEditable setter: canonical keywords, removal for
+/// inherit, and SyntaxError before any mutation for every other string.
 pub fn set_contentEditable(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "contenteditable", value);
+    const keyword = value.asSlice();
+    const name = runtime.DOMString.initInterned("contenteditable");
+    if (std.ascii.eqlIgnoreCase(keyword, "inherit")) {
+        try interfaces.Element.call_removeAttributeNS(instance, null, name);
+        return;
+    }
+    inline for (.{ "true", "false", "plaintext-only" }) |state| {
+        if (std.ascii.eqlIgnoreCase(keyword, state)) {
+            try interfaces.Element.call_setAttributeNS(instance, null, name, .{ .domstring = runtime.DOMString.initInterned(state) });
+            return;
+        }
+    }
+    return error.SyntaxError;
 }
 
 pub fn set_enterKeyHint(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
