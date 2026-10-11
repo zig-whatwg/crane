@@ -517,6 +517,38 @@ progress = [
   name = "Every worker (dedicated, shared, service) runs on its own thread with its own agent; cross-thread messaging through the Browser's thread-safe task queues; termination aborts the running script"
   status = "doing"
 
+[[infra]]
+id = "impls-boundary"
+title = "No impl reached outside its own interface (0.1 requirement)"
+why = """The user, 2026-09-29: an interface's impl is reached only through its own \
+generated file; and 2026-10-10: the impls-boundary baseline must be ZERO before 0.1. \
+Most of the remaining references are impls reaching their ancestors' impls - init and \
+deinit chains, internal-state casts, and plain IDL members (ownerDocument, nodeType, \
+siblings) - which the old ancestor exception allowed."""
+done_when = """tools/impls_boundary_baseline.txt is empty, zig build lint-impls passes \
+with no baseline at all, and the build's module graph makes a reference into another \
+type's impl impossible (impls not importable outside the generated layer)."""
+progress = [
+  "1a94e0043 - ancestors count; baseline recorded; lint-impls ratchet in zig build test",
+  "Codex row 13 (unmerged at writing) converts collection-code references",
+]
+
+  [[infra.items]]
+  name = "Design: how an impl initialises, tears down and reads its ancestors' state without naming their impls (codegen-emitted init/deinit chains and state accessors, or hooks)"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Mechanical conversion: IDL members through interfaces.X, constants through the interface (nodeType, ownerDocument, siblings, ...)"
+  status = "doing"
+
+  [[infra.items]]
+  name = "Non-impl callers (src/runtime, src/dom, src/html, src/browser, src/platform) through interfaces and hooks"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Baseline at zero; the ratchet becomes a hard rule enforced by the module graph"
+  status = "todo"
+
 # ---------------------------------------------------------------------------
 # Prerequisites for parallel work
 # ---------------------------------------------------------------------------

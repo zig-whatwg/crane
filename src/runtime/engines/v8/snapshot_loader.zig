@@ -102,11 +102,26 @@ const snapshot_only_flags = "--hash-seed=0 --predictable";
 /// never be given one. Genesis installs it per context, so the snapshot is
 /// generated with it too (SNAPSHOT_V8_FLAGS includes these).
 ///
+/// `--experimental-wasm-memory64` enables WebAssembly's i64 address type for
+/// memories and tables (memory64, part of Wasm 3.0): V8 13.1 has it behind
+/// this flag - it ships from 13.3 (Chrome 133), as in Firefox and Safari - so
+/// a module declaring an i64 memory or table (limits flags 0x04/0x05) was a
+/// CompileError and wasm/core/memory64/ failed. The JS API side, the
+/// descriptors' `address` member, is v8_WebAssembly_InstallAddressDescriptors.
+/// Drop it with the V8 upgrade (>= 13.3).
+///
+/// `--experimental-wasm-exnref` enables WebAssembly's exception handling with
+/// exnref (try_table, throw_ref; Wasm 3.0), behind this flag in 13.1 and
+/// shipped from V8 13.7 (wasm-feature-flags.h in the 14.6 checkout); without
+/// it those modules are CompileErrors ("invalid value type 'exn'") and
+/// wasm/core/exceptions/ failed. Measured pure gain on wasm/ (+155 subtests,
+/// no file lost a subtest, no crash). Drop it with the V8 upgrade (>= 13.7).
+///
 /// `--jitless` is appended when built for a target that cannot JIT. iOS gives
 /// third-party apps no W^X exception, so V8 generating code there gets the process
 /// killed; interpreter-only is the only way to run at all. It is a build-time
 /// decision rather than runtime because it must be set before V8 initializes.
-pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm --js-float16array" ++ if (build_options.jitless) " --jitless" else "";
+pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm --js-float16array --experimental-wasm-memory64 --experimental-wasm-exnref" ++ if (build_options.jitless) " --jitless" else "";
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.

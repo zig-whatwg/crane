@@ -3598,6 +3598,14 @@ pub extern fn v8_Isolate_SetProtocolCodeGenerationHooks(isolate: *Isolate, strin
 /// Context::IsCodeGenerationFromStringsAllowed.
 pub extern fn v8_Context_IsCodeGenerationFromStringsAllowed(context: *Context) bool;
 // ---- end lane: cspenforce ----
+// ---- lane: wasmh ----
+/// Replace `context`'s WebAssembly.Memory and WebAssembly.Table with
+/// constructors that read the descriptor's `address` member, which V8 13.1
+/// knows by its earlier name `index` (v8_wrapper.cpp says how). Every realm
+/// the adapter makes calls it once, before script runs. DELETE with the V8
+/// upgrade to >= 13.3.
+pub extern fn v8_WebAssembly_InstallAddressDescriptors(isolate: *Isolate, context: *Context) void;
+// ---- end lane: wasmh ----
 // ---- lane: csp2 ----
 /// The top frame of the current stack trace (StackTrace::CurrentStackTrace,
 /// one frame): its GetScriptNameOrSourceURL as UTF-8 in `url.*` (malloc'd,

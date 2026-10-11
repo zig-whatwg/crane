@@ -3033,9 +3033,53 @@ void* v8_Isolate_GetData(Isolate* isolate, int slot) {
 // Context Management
 // ============================================================================
 
+void DeserializeInternalFields(Local<Object> holder, int index, StartupData payload, void* data);
+
+/// A new context whose global is a plain object - ECMAScript's intrinsics,
+/// no platform objects of its own - in either kind of isolate the adapter
+/// makes. Every context the adapter makes for itself with no global of a
+/// particular shape (engine.parseJsonInNewGlobal's new global,
+/// engine.matchesPatternAttribute's utility context) is made here.
+///
+/// Never a bare Context::New(isolate). With no global template, Genesis makes
+/// the snapshot's DEFAULT context (context_snapshot_index 0) and keeps the
+/// global object deserialized with it, around a new global proxy sized from
+/// the template passed in - none, so no embedder fields (bootstrapper.cc,
+/// Genesis::Genesis: "instance_size = JSGlobalProxy::SizeWithEmbedderFields(
+/// global_proxy_template.IsEmpty() ? 0 : ...)", then HookUpGlobalProxy). In
+/// an isolate restored from Crane's snapshot, every page's and every WPT
+/// runner agent's, that default global is the snapshot generator's Window
+/// global, an instance of Window's instance template with internal fields;
+/// the bootstrapper's InitializeExperimentalGlobal then faulted installing
+/// Math.f16round (EXC_BAD_ACCESS / V8_Fatal in String::WriteToFlat <-
+/// MessageFormatter::Format <- AddDataProperty <-
+/// InitializeGlobal_js_float16array; tests/v8/new_global_snapshot_test.zig and
+/// pattern_attribute_snapshot_test.zig).
+///
+/// With a global template Genesis takes its other branch ("If a global proxy
+/// template was passed in it's used to recreate the global object and its
+/// prototype chain, and the data and the accessor properties from the
+/// deserialized global are copied onto it"): CreateNewGlobals makes a new
+/// global object and reinitializes the proxy from the template, and
+/// DeserializeInternalFields answers any internal field the default context
+/// carries. An empty template has no prototype template, so the new global's
+/// prototype is a fresh object inheriting Object.prototype, as V8's own
+/// default global's is. In an isolate made without Crane's snapshot (V8's
+/// built-in one) this is an ordinary new context with a plain global. In a
+/// snapshot isolate the new global carries copies of the default global's
+/// properties (the WebIDL interface objects); nothing here reads them.
+static Local<Context> NewPlainGlobalContext(Isolate* isolate, MicrotaskQueue* microtask_queue = nullptr) {
+    Local<ObjectTemplate> global_template = ObjectTemplate::New(isolate);
+    return Context::New(isolate, nullptr, global_template, MaybeLocal<Value>(),
+                        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr), microtask_queue);
+}
+
+/// A new context with a plain global (NewPlainGlobalContext), in either kind
+/// of isolate. Null when V8 could not make one.
 Global<Context>* v8_Context_New(Isolate* isolate) {
     HandleScope handle_scope(isolate);
-    Local<Context> context = Context::New(isolate);
+    Local<Context> context = NewPlainGlobalContext(isolate);
+    if (context.IsEmpty()) return nullptr;
     countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
@@ -9980,7 +10024,7 @@ Global<Context>* v8_Context_NewWithMicrotaskQueue(
         HandleScope handle_scope(isolate);
 
         // Create a minimal context without triggering ShadowRealm setup
-        Local<Context> context = Context::New(isolate);
+        Local<Context> context = NewPlainGlobalContext(isolate);
         if (context.IsEmpty()) {
             return nullptr;
         }
@@ -9997,16 +10041,10 @@ Global<Context>* v8_Context_NewWithMicrotaskQueue(
     // Add TryCatch to capture any exception
     TryCatch try_catch(isolate);
 
-    // Create a fresh context with the microtask queue
-    // Per V8 API: Context::New(isolate, extensions, global_template, global_object,
-    //                          internal_fields_deserializer, microtask_queue)
-    Local<Context> context = Context::New(
-        isolate,
-        nullptr,  // extensions
-        MaybeLocal<ObjectTemplate>(),  // global_template
-        MaybeLocal<Value>(),  // global_object
-        DeserializeInternalFieldsCallback(),  // no deserializer needed for fresh context
-        microtask_queue);
+    // Create a fresh context with the microtask queue: a plain global, with
+    // a global template, never a bare Context::New - in an isolate restored
+    // from Crane's snapshot that crashed (NewPlainGlobalContext says why).
+    Local<Context> context = NewPlainGlobalContext(isolate, microtask_queue);
 
     g_in_context_new = false;
 
@@ -13616,6 +13654,128 @@ bool v8_Context_IsCodeGenerationFromStringsAllowed(Global<Context>* context) {
 
 } // extern "C"
 // ---- end lane: cspenforce ----
+// ---- lane: wasmh (WebAssembly descriptors' `address` member) ----
+// DELETE THIS SECTION WITH THE V8 UPGRADE: V8 >= 13.3 reads `address` itself.
+//
+// The WebAssembly JS API's Memory and Table constructors take the address
+// type from `descriptor["address"]` (AddressType "i32" | "i64"; the memory64
+// proposal named the member `index` until late 2024). V8 13.1.203, which
+// Crane links, reads only `index` (13.1 wasm-js.cc GetIndexType, called from
+// WebAssemblyMemoryImpl and WebAssemblyTableImpl), so `{address: "i64",
+// initial: 10n}` was an i32 descriptor and ToNumber(10n) threw - the first
+// step of every wasm/core file (async_index.js reinitializeRegistry builds
+// such a table). Chrome (V8 >= 13.3), Firefox and Safari read `address`.
+//
+// So every realm's WebAssembly.Memory and WebAssembly.Table are replaced by
+// native constructors that convert the `address` member - first, as WebIDL
+// converts dictionary members in lexicographic order - and construct V8's
+// own constructor with a descriptor whose [[Prototype]] is the caller's and
+// whose one own property is `index`. V8 then reads every other member
+// through the caller's getters, in their order, and converts them itself.
+extern "C" {
+
+static void WasmAddressDescriptorConstructor(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    Local<Context> context = isolate->GetCurrentContext();
+    // The constructor V8 installed, kept as the function's data.
+    Local<Function> original = info.Data().As<Function>();
+    std::vector<Local<Value>> args;
+    args.reserve(static_cast<size_t>(info.Length()));
+    for (int i = 0; i < info.Length(); ++i) args.push_back(info[i]);
+    const int argc = static_cast<int>(args.size());
+    Local<Value> result;
+    if (!info.IsConstructCall()) {
+        // V8's own TypeError: the constructor must be invoked with new.
+        if (original->Call(context, Undefined(isolate), argc, args.data()).ToLocal(&result)) info.GetReturnValue().Set(result);
+        return;
+    }
+    // GetPrototypeFromConstructor(newTarget): read before the arguments are
+    // converted, as V8 itself reads it (it makes the receiver first).
+    Local<Value> new_target_prototype;
+    if (!info.NewTarget().As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&new_target_prototype)) return;
+    // A descriptor that is no object is V8's to reject (a TypeError, as
+    // WebIDL's dictionary conversion of a non-object gives).
+    if (argc > 0 && args[0]->IsObject()) {
+        Local<Object> descriptor = args[0].As<Object>();
+        // 1. If descriptor["address"] exists, the AddressType it converts to
+        //    (WebIDL enumeration: ToString, then one of the values or a
+        //    TypeError); otherwise i32.
+        Local<Value> address;
+        if (!descriptor->Get(context, String::NewFromUtf8Literal(isolate, "address")).ToLocal(&address)) return;
+        Local<String> address_type = String::NewFromUtf8Literal(isolate, "i32");
+        if (!address->IsUndefined()) {
+            Local<String> converted;
+            if (!address->ToString(context).ToLocal(&converted)) return;
+            if (!converted->StringEquals(String::NewFromUtf8Literal(isolate, "i32")) &&
+                !converted->StringEquals(String::NewFromUtf8Literal(isolate, "i64"))) {
+                isolate->ThrowException(Exception::TypeError(
+                    String::NewFromUtf8Literal(isolate, "Descriptor property 'address' must be 'i32' or 'i64'")));
+                return;
+            }
+            address_type = converted;
+        }
+        // V8 13.1's name for it, as the one own property of a descriptor that
+        // inherits every other member from the caller's. A caller's own
+        // `index` is no member of the dictionary, and is shadowed.
+        Local<Name> names[] = {String::NewFromUtf8Literal(isolate, "index")};
+        Local<Value> values[] = {address_type};
+        args[0] = Object::New(isolate, descriptor, names, values, 1);
+    }
+    Local<Object> made;
+    if (!original->NewInstance(context, argc, args.data()).ToLocal(&made)) return;
+    // V8 gave it the original's prototype, which is this constructor's too;
+    // a subclass, or Reflect.construct's newTarget, names another.
+    if (new_target_prototype->IsObject() && !made->GetPrototypeV2()->StrictEquals(new_target_prototype)) {
+        if (!made->SetPrototypeV2(context, new_target_prototype).FromMaybe(false)) return;
+    }
+    info.GetReturnValue().Set(made);
+}
+
+/// Replace `wasm[name]` with WasmAddressDescriptorConstructor over it. The
+/// interface object's observable shape stays WebIDL's: the same prototype
+/// object (the one V8 gives the memories and tables it makes) as a
+/// non-writable, non-enumerable, non-configurable `prototype`, that
+/// prototype's `constructor` pointing back, the original's `name` and
+/// `length`, and a writable, configurable, non-enumerable namespace member.
+static bool installWasmAddressDescriptorConstructor(Isolate* isolate, Local<Context> context, Local<Object> wasm, const char* name) {
+    Local<String> key = String::NewFromUtf8(isolate, name).ToLocalChecked();
+    Local<Value> value;
+    if (!wasm->Get(context, key).ToLocal(&value) || !value->IsFunction()) return false;
+    Local<Function> original = value.As<Function>();
+    Local<Value> prototype;
+    if (!original->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype) || !prototype->IsObject()) return false;
+    Local<Value> length_value;
+    if (!original->Get(context, String::NewFromUtf8Literal(isolate, "length")).ToLocal(&length_value) || !length_value->IsInt32()) return false;
+    Local<Function> constructor;
+    if (!Function::New(context, WasmAddressDescriptorConstructor, original, length_value.As<Int32>()->Value(), ConstructorBehavior::kAllow)
+             .ToLocal(&constructor)) {
+        return false;
+    }
+    constructor->SetName(key);
+    PropertyDescriptor prototype_descriptor(prototype, /*writable=*/false);
+    if (!constructor->DefineProperty(context, String::NewFromUtf8Literal(isolate, "prototype"), prototype_descriptor).FromMaybe(false)) return false;
+    if (!prototype.As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), constructor, DontEnum).FromMaybe(false)) return false;
+    return wasm->DefineOwnProperty(context, key, constructor, DontEnum).FromMaybe(false);
+}
+
+/// Every realm the adapter makes calls this once, before any script runs
+/// in it (protocol_realms.createWindowRealm, worker_realm.createWorkerRealm).
+/// A context with no WebAssembly (a jitless V8) is left alone; so is one
+/// where the replacement fails, which keeps V8's constructors.
+void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>* context_handle) {
+    HandleScope handle_scope(isolate);
+    Local<Context> context = context_handle->Get(isolate);
+    Context::Scope context_scope(context);
+    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
+    TryCatch try_catch(isolate);
+    Local<Value> wasm;
+    if (!context->Global()->Get(context, String::NewFromUtf8Literal(isolate, "WebAssembly")).ToLocal(&wasm) || !wasm->IsObject()) return;
+    installWasmAddressDescriptorConstructor(isolate, context, wasm.As<Object>(), "Memory");
+    installWasmAddressDescriptorConstructor(isolate, context, wasm.As<Object>(), "Table");
+}
+
+} // extern "C"
+// ---- end lane: wasmh ----
 // ---- lane: csp2 ----
 extern "C" {
 
@@ -13679,6 +13839,18 @@ struct PatternMatcher {
     std::vector<Entry> entries;
 };
 
+/// The most backtracks one match of a pattern attribute's regexp may do; past
+/// it the match fails. Blink's value: ScriptRegexp compiles every regexp,
+/// the pattern attribute's included, with RegExp::NewWithBacktrackLimit and
+/// kBacktrackLimit = 1'000'000
+/// (third_party/blink/renderer/platform/bindings/script_regexp.cc). A page
+/// writes the pattern, and without a limit a catastrophic one - `(\d+)*$`
+/// against a long run of digits ending in a letter, ~2^n backtracks - holds
+/// the agent's thread for as long as it runs: the page freezes
+/// (html/semantics/forms/constraints/infinite_backtracking.tentative.html ran
+/// into the WPT runner's timeout).
+static constexpr uint32_t kPatternAttributeBacktrackLimit = 1'000'000;
+
 /// Compile `source` as HTML 4.10.5.3.6's steps 3-6 do, in `context` (entered,
 /// under `try_catch`): 1 with the anchored regexp in `*regexp`; -1 when
 /// RegExpCreate(pattern, "v") threw (no compiled pattern regular expression);
@@ -13701,7 +13873,17 @@ static int CompilePatternAttribute(Isolate* isolate, Local<Context> context, Try
     Local<String> anchored = String::Concat(isolate, String::Concat(isolate, String::NewFromUtf8Literal(isolate, "^(?:"), source), String::NewFromUtf8Literal(isolate, ")$"));
     // 6. Return ! RegExpCreate(anchoredPattern, "v"). The "!" is the spec's
     //    claim; a failure anyway (an engine limit) is treated as step 4's.
-    if (!RegExp::New(context, anchored, v).ToLocal(regexp)) {
+    //    Compiled with a backtrack limit, which the spec does not have: a
+    //    match past it fails (v8-regexp.h, NewWithBacktrackLimit: "a match
+    //    failure is immediately returned"), so the value does not match and
+    //    the input suffers from a pattern mismatch. That is the browsers'
+    //    answer: Blink's ScriptRegexp::Match answers -1 for the failed match
+    //    and BaseTextInputType::PatternMismatchPerValue reads it as a
+    //    mismatch; wpt.fyi (stable runs, 2026-10-10) has Chrome 155 and
+    //    Safari 27 passing infinite_backtracking.tentative.html (the input is
+    //    :invalid) and Firefox 157 timing out. Only the anchored regexp is
+    //    ever matched; step 3's is compiled to validate the pattern.
+    if (!RegExp::NewWithBacktrackLimit(context, anchored, v, kPatternAttributeBacktrackLimit).ToLocal(regexp)) {
         if (try_catch.HasTerminated()) {
             try_catch.ReThrow();
             return 0;
@@ -13710,36 +13892,6 @@ static int CompilePatternAttribute(Isolate* isolate, Local<Context> context, Try
         return -1;
     }
     return 1;
-}
-
-/// The utility context engine.matchesPatternAttribute matches in, in
-/// either kind of isolate the adapter makes.
-///
-/// Not a bare Context::New(isolate). In an isolate restored from Crane's
-/// snapshot that deserializes the snapshot's DEFAULT context - the snapshot
-/// generator's Window global, an instance of Window's instance template with
-/// its internal fields - and hooks it to a new global proxy sized for no
-/// template at all (bootstrapper.cc, Genesis: for context index 0 the proxy's
-/// size comes from the template passed in; the likely mechanism). The
-/// bootstrapper's InitializeExperimentalGlobal then faulted installing
-/// Math.f16round
-/// (EXC_BAD_ACCESS in MessageFormatter::Format), so every page that read
-/// `input.validity.patternMismatch` crashed
-/// (tests/v8/pattern_attribute_snapshot_test.zig; pattern_attribute_test.zig's
-/// agents have no snapshot, so it never saw that).
-///
-/// With a global template, Genesis recreates the global object from that
-/// template and copies the deserialized global's properties onto it ("If a
-/// global proxy template was passed in it's used to recreate the global
-/// object and its prototype chain") - v8_Context_NewFromSnapshotDefault's
-/// path, with DeserializeInternalFields for any internal field the default
-/// context carries. Its intrinsics are still the context's own, untouched by
-/// any script. In an isolate made without Crane's snapshot (V8's built-in
-/// one) the same call is an ordinary new context with a plain global.
-static Local<Context> NewPatternAttributeContext(Isolate* isolate) {
-    Local<ObjectTemplate> global_template = ObjectTemplate::New(isolate);
-    return Context::New(isolate, nullptr, global_template, MaybeLocal<Value>(),
-                        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr));
 }
 
 extern "C" {
@@ -13790,13 +13942,17 @@ int v8_MatchesPatternAttribute(Isolate* isolate, PatternMatcher* matcher, const 
     Local<Context> context;
     if (matcher) {
         if (matcher->context.IsEmpty()) {
-            Local<Context> made = NewPatternAttributeContext(isolate);
+            // A plain global, never a bare Context::New: that crashed in a
+            // snapshot agent (NewPlainGlobalContext; lesson architecture-a-
+            // bare-context-new-in-a-snapshot-agent-deserializes-crane-s-
+            // window-context).
+            Local<Context> made = NewPlainGlobalContext(isolate);
             if (made.IsEmpty()) return -2;
             matcher->context.Reset(isolate, made);
         }
         context = matcher->context.Get(isolate);
     } else {
-        context = NewPatternAttributeContext(isolate);
+        context = NewPlainGlobalContext(isolate);
         if (context.IsEmpty()) return -2;
     }
     Context::Scope context_scope(context);
@@ -13840,10 +13996,11 @@ int v8_MatchesPatternAttribute(Isolate* isolate, PatternMatcher* matcher, const 
     Local<String> subject = String::Empty(isolate);
     if (value_len > 0 && !String::NewFromTwoByte(isolate, value, NewStringType::kNormal, value_len).ToLocal(&subject)) return -2;
     // "matches": ! RegExpBuiltinExec(regexp, input) is not null. Exec answers
-    // null as a Local<Object> holding Null (api.cc's own TODO). A throw the
-    // "!" rules out - an engine limit hit while matching - is no match, as in
-    // Blink (ScriptRegexp::Match answers -1, which PatternMismatchPerValue
-    // reads as not matched).
+    // null as a Local<Object> holding Null (api.cc's own TODO), and so it
+    // does past kPatternAttributeBacktrackLimit. A throw the "!" rules out -
+    // an engine limit hit while matching - is no match, as in Blink
+    // (ScriptRegexp::Match answers -1, which PatternMismatchPerValue reads as
+    // not matched).
     Local<Object> result;
     if (!regexp->Exec(context, subject).ToLocal(&result)) {
         if (try_catch.HasTerminated()) try_catch.ReThrow();
