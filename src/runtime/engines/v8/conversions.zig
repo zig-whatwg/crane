@@ -419,6 +419,43 @@ pub fn requireFinite(comptime T: type, value: T) ConversionError!void {
     }
 }
 
+/// WebIDL 3.2.11 step 2 for a value already converted as a string: "If the
+/// value of any element of x is greater than 255, then throw a TypeError." The
+/// string conversion ByteString shares with USVString (both `[]const u8`)
+/// keeps every code unit above 0xFF as such in its WTF-8 - a lone surrogate
+/// becomes U+FFFD, above 0xFF too - so the check reads the converted bytes
+/// (`codeUnitsFitInByte`). `value` is a string, its nullable form, an
+/// optional argument (`webidl.Opt`), or a sequence of them. The binding calls
+/// this where codegen marked a value a ByteString (`byte_string_arguments`,
+/// `byte_string_members`).
+pub fn requireByteString(comptime T: type, value: T) ConversionError!void {
+    switch (@typeInfo(T)) {
+        .optional => |o| if (value) |v| try requireByteString(o.child, v),
+        .pointer => |ptr| if (comptime ptr.size == .slice) {
+            if (comptime ptr.child == u8) {
+                if (!codeUnitsFitInByte(value)) return ConversionError.TypeError;
+            } else {
+                for (value) |v| try requireByteString(ptr.child, v);
+            }
+        },
+        .@"struct" => if (comptime @hasField(T, "was_passed") and @hasField(T, "value")) {
+            if (value.was_passed) try requireByteString(@FieldType(T, "value"), value.value);
+        },
+        else => {},
+    }
+}
+
+/// Whether dictionary `T` lists member `name` in `byte_string_members`.
+fn isByteStringMember(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        if (!@hasDecl(T, "byte_string_members")) return false;
+        for (T.byte_string_members) |member| {
+            if (std.mem.eql(u8, member, name)) return true;
+        }
+        return false;
+    }
+}
+
 /// Whether dictionary `T` lists member `name` in `any_members`.
 fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
     comptime {
@@ -2236,6 +2273,9 @@ pub fn fromV8Value(
                 // infinities are a TypeError, as part of this member's
                 // conversion - before the next member is read.
                 if (comptime isRestrictedMember(T, field.name)) try requireFinite(field.type, @field(result, field.name));
+                // A ByteString member (`byte_string_members`, RequestInit's
+                // method): a code unit above 0xFF is a TypeError, likewise.
+                if (comptime isByteStringMember(T, field.name)) try requireByteString(field.type, @field(result, field.name));
             } else {
                 // Get returns an empty handle only when it THREW (an absent
                 // member reads as undefined, handled above): WebIDL § 3.2.18
