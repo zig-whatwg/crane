@@ -162,6 +162,11 @@ pub const InternalState = struct {
     /// Binary type preference
     binary_type: enums.BinaryType,
 
+    /// The constructor's pending-activity keep is held: released once, by
+    /// whichever of the close task, "make disappear" and deinit comes first
+    /// (the keep is counted - a second release would end another owner's).
+    kept_alive: bool = false,
+
     /// The pump's token, while one exists. See `PollToken`.
     poll: ?*PollToken = null,
 
@@ -299,8 +304,11 @@ pub fn init(
     return EventTargetImpl.init(allocator, StateType, vtable, ctx);
 }
 
-/// End the pending-activity hold the constructor took (idempotent).
+/// End the pending-activity hold the constructor took, once.
 fn releasePendingActivity(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    if (!internal.kept_alive) return;
+    internal.kept_alive = false;
     engine.releasePlatformObject(instance);
 }
 
@@ -917,6 +925,7 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // first ~20 of websockets/Create-blocked-port.any.js's sockets in a
     // worker.) Released by the close task, and by deinit.
     engine.keepPlatformObjectAlive(instance);
+    internal.kept_alive = true;
     live_sockets.append(std.heap.page_allocator, instance) catch {};
     // Its document's end makes it disappear (`makeDisappearIn`).
 

@@ -3662,6 +3662,15 @@ pub fn instanceToV8Object(
 /// info.setReturnValue(v8_value);
 /// ```
 pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value {
+    return instanceToV8Checked(isolate, instance) catch v8.v8_Undefined(isolate) orelse unreachable;
+}
+
+/// `instanceToV8`, except that a wrap that ran out of memory - its wrapper
+/// cache could not take the instance - is that error rather than undefined:
+/// the instance is not wrapped, owns no wrapper, and stays its caller's
+/// (Codex row 15 Q22). Every other failure to wrap (no template for the
+/// interface, no context) is still undefined.
+pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) error{OutOfMemory}!*v8.Value {
     const template_registry = @import("template_registry.zig");
 
     // Safety check: if instance pointer looks invalid, return undefined
@@ -3716,7 +3725,8 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
         interface_name,
         isolate,
         context,
-    ) catch {
+    ) catch |err| {
+        if (err == error.OutOfMemory) return error.OutOfMemory;
         // Template not registered or other error, return undefined
         return v8.v8_Undefined(isolate) orelse unreachable;
     };

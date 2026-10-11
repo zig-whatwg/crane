@@ -506,9 +506,28 @@ pub fn wrapInstanceAsV8Object(
             const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
             const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
 
-            // Cache the final object (Proxy for LPOs, target for others)
+            // Cache the final object (Proxy for LPOs, target for others). The
+            // cache owns the instance through it from here - and the
+            // wrapper's counted reference (refcount step 4) is taken only
+            // once the insert succeeded (WrapperCache.set). A failed insert
+            // is this wrap's failure: handing the wrapper back anyway left
+            // the instance owned by nothing, and the caller's error path
+            // never ran (Codex row 15 Q22: an OOM trial leaked a stream graph
+            // and an AbortController). The wrapper made here goes, its
+            // fields cleared first so nothing can reach the instance
+            // through it.
             cache.set(instance, final_object, isolate) catch |err| {
-                std.log.warn("Failed to cache V8 wrapper: {s}", .{@errorName(err)});
+                if (err == error.AlreadyWrapped) {
+                    // Wrapped while this one was being made: that wrapper is
+                    // the instance's one wrapper.
+                    if (cache.existingWrapper(instance)) |existing| {
+                        discardUncachedWrapper(final_object);
+                        return existing;
+                    }
+                }
+                log.warn("the wrapper of a {s} was not cached: {s}", .{ interface_name, @errorName(err) });
+                discardUncachedWrapper(final_object);
+                return err;
             };
             if (is_iframe) {
                 log.debug("[wrapInstanceAsV8Object] Cached iframe instance={*} in cache={*}", .{ instance, cache });
@@ -539,6 +558,24 @@ pub fn wrapInstanceAsV8Object(
     }
 
     return final_object;
+}
+
+/// A wrapper `wrapInstanceAsV8Object` made but could not cache: its internal
+/// fields cleared (a proxy's on its target), so script that already reached
+/// it - nothing has yet - finds no instance through it, and its handle
+/// released.
+fn discardUncachedWrapper(wrapper: *v8.Object) void {
+    var object: *v8.Object = wrapper;
+    var target: ?*v8.Value = null;
+    if (v8.v8_Value_IsProxy(@ptrCast(wrapper))) {
+        target = v8.v8_Proxy_GetTarget(wrapper);
+        if (target) |t| object = @ptrCast(t);
+    }
+    defer if (target) |t| v8.v8_Value_Dispose(t);
+    const count = v8.v8_Object_InternalFieldCount(object);
+    if (count >= 1) v8.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
+    if (count >= 2) v8.v8_Object_SetAlignedPointerInInternalField(object, 1, null);
+    v8.v8_Object_Dispose(wrapper);
 }
 
 /// Get the interface name from an Instance

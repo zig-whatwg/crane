@@ -62,6 +62,11 @@ pub const InternalState = struct {
     /// HTML: "has been shipped".
     has_been_shipped: bool = false,
 
+    /// The port's one pending-activity keep is held (while it is enabled
+    /// and entangled): the keep is counted, so `syncPendingActivity` keeps
+    /// once and releases once.
+    kept_alive: bool = false,
+
     /// [[Detached]]: set by close(), and by the transfer steps.
     detached: bool = false,
 
@@ -303,12 +308,16 @@ fn syncPendingActivity(instance: *runtime.Instance) void {
         break :blk !internal.detached and state.enabled and state.entangled;
     } else false;
     if (active) {
-        engine.keepPlatformObjectAlive(instance);
+        if (!internal.kept_alive) engine.keepPlatformObjectAlive(instance);
+        internal.kept_alive = true;
     } else releasePendingActivity(instance);
 }
 
-/// End the pending-activity hold on a port (idempotent).
+/// End the pending-activity hold on a port, if it is held (idempotent).
 fn releasePendingActivity(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    if (!internal.kept_alive) return;
+    internal.kept_alive = false;
     engine.releasePlatformObject(instance);
 }
 

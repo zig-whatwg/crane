@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A flag made counted changes every caller - audit them all, and test each by collection](architecture-a-flag-made-counted-changes-every-caller.md) - Changing a primitive's counting semantics is a change to every caller: grep them all (no `head`), balance each with its own bool, and prove each one by collecting the object it keeps.
 - [A dying tree's holds stay on its root - unlink for teardown without moving counts](architecture-a-dying-tree-s-holds-stay-on-its-root.md) - In a dying tree, the root owns the books: unlink children without moving counts, and settle the whole total once, at the root's free.
 - [A back-link script can read must keep what it names - draw the edge where the wrapper is made, and redraw it where the link moves](architecture-a-back-link-script-can-read-must-keep-what-it-names.md) - A pointer script can read back is a reference, not a cache: give it an edge from its holder's wrapper, drawn where the wrapper is made, and route every write through one setter that redraws it - or the first collection turns it into a use-after-free.
 - [V8's RegExp::Exec is RegExpExec, not the built-in exec](architecture-v8-regexp-exec-is-regexpexec-not-the-builtin.md) - A V8 API named after a built-in may still do the spec's observable lookups; read api.cc for what it calls, and run built-in-only steps in a context no script can reach - one per agent, not one per call.

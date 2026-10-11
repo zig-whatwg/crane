@@ -63,8 +63,10 @@
 //! Multiple contexts can have separate caches on different threads.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const realm_finalizers = @import("realm_finalizers.zig");
 
 const log = std.log.scoped(.wrapper_cache);
@@ -93,6 +95,14 @@ const CacheEntry = struct {
 
     /// Reasons to hold the wrapper that only a caller can state - see `Holds`.
     holds: Holds = .{},
+
+    /// Pending activity (`holdForPendingActivity`), COUNTED: each owner's
+    /// keep is ended by its own release, and the wrapper is held while any
+    /// remains - WebKit's ActiveDOMObject `m_pendingActivityInstanceCount`,
+    /// `GCReachableRefMap`'s HashCountedSet (refcount design 2.3). A flag
+    /// could not carry a second owner: a script element's queued task and its
+    /// fetch both keep it, and the first release ended both (fix-list D15).
+    pending_activity: u32 = 0,
 
     /// Kept by an edge from its realm's global object instead of a strong
     /// handle, since the realm's navigable was destroyed
@@ -136,7 +146,38 @@ const CacheEntry = struct {
     /// The cache's list of collected entries awaiting their finalizer.
     pending_prev: ?*CacheEntry = null,
     pending_next: ?*CacheEntry = null,
+
+    /// The counted object this wrapper holds a reference on - a node's
+    /// NodeBase - as runtime.lifetime.wrapperAcquired answered it in `set`;
+    /// null for a type that does not count, and once the reference is let go
+    /// (`releaseCounted`). The second pass hands it back without looking the
+    /// node up again (refcount design 2.1, 5.1).
+    counted: ?*anyopaque = null,
 };
+
+/// Let `entry`'s counted reference go (runtime.lifetime), once - only while
+/// its node is alive. A node whose teardown began under its wrapper had it let
+/// go then (`markAsCleanedUp`); one freed some other way - its slot reissued,
+/// or a teardown this cache did not hear because the entry was waiting for
+/// its second pass - is forgotten, never read. Shadow mode (refcount step 4):
+/// the reference decides nothing yet; the collector still frees.
+fn releaseCounted(entry: *CacheEntry) void {
+    const target = entry.counted orelse return;
+    entry.counted = null;
+    if (slotReissued(entry) or runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
+        runtime.lifetime.wrapperForgotten();
+        return;
+    }
+    runtime.lifetime.wrapperReleased(target);
+}
+
+/// Forget `entry`'s counted reference without letting it go: its node goes
+/// with a batch free (`deinitWithoutCallbacks`) and must not be read.
+fn forgetCounted(entry: *CacheEntry) void {
+    if (entry.counted == null) return;
+    entry.counted = null;
+    runtime.lifetime.wrapperForgotten();
+}
 
 /// Why a wrapper is held strongly, beyond what `engineOwns` reads off the
 /// instance itself. Orthogonal reasons: each is set and cleared by its own
@@ -148,9 +189,6 @@ const CacheEntry = struct {
 const Holds = packed struct {
     /// A window's document (`holdStrong`): the window aliases the wrapper.
     document: bool = false,
-    /// Pending activity (`holdForPendingActivity`): a running Worker, which
-    /// must outlive whatever script holds of it until it is terminated.
-    pending_activity: bool = false,
 };
 
 /// Whether `entry`'s wrapper must be held strongly: a caller's reason
@@ -163,7 +201,7 @@ const Holds = packed struct {
 fn shouldBeStrong(entry: *const CacheEntry) bool {
     // A torn-down instance's wrapper is never what keeps anything.
     if (entry.instance_already_cleaned) return false;
-    if (entry.holds.document or entry.holds.pending_activity) return true;
+    if (entry.holds.document or entry.pending_activity != 0) return true;
     return engineHoldsWrapper(entry.instance);
 }
 
@@ -349,57 +387,60 @@ pub fn isStreamsGraphObject(name: []const u8) bool {
 /// parent's, and every parent's wrapper holds its wrapped children's - edges,
 /// never roots - so the wrapped part of a tree is one cycle the collector
 /// keeps or takes whole. A wrapped node's parent is always wrapped (made if
-/// script has not seen it), so the edges reach the tree's root. These hooks
-/// keep the edges current: the mutation algorithms run the insertion and
-/// removing steps for every node of a moved subtree, but only the subtree's
-/// root gains or loses a parent, so each is read per node. Installed once,
-/// at process start (initializeEngine).
+/// script has not seen it), so the edges reach the tree's root.
+///
+/// The HOST keeps the edges current (refcount design 2.2, step 4): dom.mutation
+/// calls engine.joinOpaqueRoot / leaveOpaqueRoot for a wrapped subtree root
+/// that gains or loses a parent - the only node whose edges change - and
+/// nothing for an unwrapped one. The adapter used to register its own
+/// insertion, removing and moving steps (installTreeHooks), read every node of
+/// every moved subtree and looked each one up in its cache.
 ///
 /// Before node tracing, a node's wrapper was strong while it had a parent and
 /// weak as a root: a root whose last use was done was collected while script
 /// still held a node inside its tree, and the root's teardown freed that
 /// node under its caller (gc_bench's host-in-dropped-parent; crane/r3-
 /// detached-tree-child-keeps-root.html).
-var tree_hooks_installed = false;
-
-pub fn installTreeHooks() void {
-    if (tree_hooks_installed) return;
-    tree_hooks_installed = true;
-    const mutation = @import("dom").mutation;
-    mutation.registerInsertionStepsCallback(onNodeInserted) catch {};
-    mutation.registerRemovingStepsCallback(onNodeRemoved) catch {};
-    mutation.registerMovingStepsCallback(onNodeMoved) catch {};
-}
-
-fn onNodeInserted(node: *@import("dom").NodeBase) void {
-    syncStrength(node);
-    // A wrapped node that gained a parent: the edges between them (the
-    // parent made for it if script has not seen it).
+/// engine.joinOpaqueRoot: `member`, wrapped, was inserted under `parent`: the
+/// edges between their wrappers (`parent`'s, and its unwrapped ancestors',
+/// made first). Nothing for a member with no wrapper or no parent now.
+pub fn joinOpaqueRoot(member: *runtime.Instance, parent: *runtime.Instance) void {
+    _ = parent; // The member's own parent pointer is the truth; the host passes it for engines that need it.
+    const node = @import("dom").instance_bridge.getNodeBase(@ptrCast(member)) orelse return;
     const wrapper = nodeWrapper(node) orelse return;
     if (node.parent_node == null) return;
     drawTreeEdges(node, wrapper);
 }
 
-fn onNodeRemoved(node: *@import("dom").NodeBase, old_parent: ?*@import("dom").NodeBase) void {
-    syncStrength(node);
-    // Only the removed subtree's root lost a parent: the edges between them
-    // go. The subtree keeps its own. (A descendant is visited with null - or,
-    // on the fallback walk, with its own parent, which it still has.)
-    const parent = old_parent orelse return;
-    if (node.parent_node != null) return;
+/// engine.leaveOpaqueRoot: `member`, wrapped, left `old_parent`: its upward
+/// slot holds its node document now (`eraseTreeEdges`), and `old_parent`'s
+/// wrapper lets it go. Nothing for a member with no wrapper.
+pub fn leaveOpaqueRoot(member: *runtime.Instance, old_parent: *runtime.Instance) void {
+    const dom = @import("dom");
+    const node = dom.instance_bridge.getNodeBase(@ptrCast(member)) orelse return;
     const wrapper = nodeWrapper(node) orelse return;
+    const parent = dom.instance_bridge.getNodeBase(@ptrCast(old_parent)) orelse return;
     eraseTreeEdges(node, wrapper, parent);
 }
 
-/// The move algorithm (moveBefore) changes a node's parent without the
-/// removing and insertion steps: its edges follow it - to the new parent,
-/// away from `old_parent` (given for the moved node only).
-fn onNodeMoved(node: *@import("dom").NodeBase, old_parent: ?*@import("dom").NodeBase) void {
-    const parent = old_parent orelse return;
-    const wrapper = nodeWrapper(node) orelse return;
-    if (node.parent_node == parent) return;
-    eraseTreeEdges(node, wrapper, parent);
-    if (node.parent_node != null) drawTreeEdges(node, wrapper);
+/// engine.keepOpaqueRoot: `owner`'s wrapper keeps `member`'s opaque root in
+/// `slot` - an edge drawn with engine.traceChild - to `member`'s own wrapper,
+/// else to its tree's wrapped root, else nothing (and the slot is emptied):
+/// a root script has not seen means no wrapper anywhere in its tree, and a
+/// document with a browsing context is kept by its window. nodeholds' rescue
+/// and its `isKeptRoot`, as an operation (refcount design 2.3). Never makes
+/// a wrapper.
+pub fn keepOpaqueRoot(owner: *runtime.Instance, member: *runtime.Instance, slot: engine.TracedSlot) void {
+    const tracing = @import("protocol_tracing.zig");
+    const dom = @import("dom");
+    const node = dom.instance_bridge.getNodeBase(@ptrCast(member)) orelse return tracing.traceChild(owner, member, slot);
+    if (node.bound_v8_wrapper != null) return tracing.traceChild(owner, member, slot);
+    var root = node;
+    while (root.parent_node) |parent| root = parent;
+    const root_instance = instanceOfNode(root) orelse return tracing.forgetTracedChild(owner, slot);
+    if (root.node_type == dom.NodeBase.DOCUMENT_NODE and engineHoldsWrapper(root_instance)) return tracing.forgetTracedChild(owner, slot);
+    if (root.bound_v8_wrapper == null) return tracing.forgetTracedChild(owner, slot);
+    tracing.traceChild(owner, root_instance, slot);
 }
 
 // ============================================================================
@@ -525,11 +566,6 @@ fn eraseTreeEdges(child: *@import("dom").NodeBase, child_wrapper: *v8.Value, old
     v8.v8_Object_PrivateSetUpdate(parent_wrapper, tree_children_key.ptr, tree_children_key.len, child_wrapper, false);
 }
 
-fn syncStrength(node: *@import("dom").NodeBase) void {
-    const entry = entryOf(instanceOfNode(node) orelse return) orelse return;
-    syncEntry(entry);
-}
-
 fn instanceOfNode(node: *@import("dom").NodeBase) ?*runtime.Instance {
     const instance_bridge = @import("dom").instance_bridge;
     const raw = instance_bridge.getInstance(node) orelse return null;
@@ -551,30 +587,46 @@ pub fn holdStrong(instance: *runtime.Instance) void {
 
 /// Blink's ActiveScriptWrappable: hold `instance`'s wrapper while it has
 /// pending activity - a running Worker, a timeout signal whose timer is
-/// pending - whatever script holds of it. Ended by `releasePendingActivity`.
-/// The activity can begin before script has seen the instance (a signal is
-/// made, and its timer armed, before the binding wraps it): the hold is then
-/// recorded against the instance and taken by its wrapper when it is made.
+/// pending - whatever script holds of it. COUNTED: one keep for each call,
+/// each ended by one `releasePendingActivity`. The activity can begin before
+/// script has seen the instance (a signal is made, and its timer armed,
+/// before the binding wraps it): the keeps are then recorded against the
+/// instance and taken by its wrapper when it is made.
 pub fn holdForPendingActivity(instance: *runtime.Instance) void {
     const cache = cacheOf(instance) orelse return;
     if (cache.cache.get(instance)) |entry| {
-        entry.holds.pending_activity = true;
+        entry.pending_activity +|= 1;
         syncEntry(entry);
         return;
     }
-    cache.pending_before_wrap.put(cache.allocator, instance, runtime.SlabAllocator.generationOf(instance)) catch {};
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    const gop = cache.pending_before_wrap.getOrPut(cache.allocator, instance) catch return;
+    // A dead instance's keeps at a reissued address are not the newcomer's.
+    if (!gop.found_existing or gop.value_ptr.generation != generation) gop.value_ptr.* = .{ .generation = generation, .count = 0 };
+    gop.value_ptr.count +|= 1;
 }
 
-/// `instance` has no pending activity any more (HasPendingActivity() turned
-/// false): its wrapper is collectable again, unless another reason holds it.
-/// Idempotent; a no-op for an instance never held this way.
+/// End one keep `holdForPendingActivity` took: when it was the last, the
+/// wrapper is collectable again, unless another reason holds it. A release
+/// with no keep left - one an owner never took, or took once and releases
+/// twice - would end ANOTHER owner's keep under a count; it changes nothing,
+/// and in Debug it is reported (an error log: fatal in unit tests, counted in
+/// a sweep - decision D9) and counted on the cache (`unmatched_releases`).
 pub fn releasePendingActivity(instance: *runtime.Instance) void {
     const cache = cacheOf(instance) orelse return;
-    _ = cache.pending_before_wrap.remove(instance);
-    const entry = cache.cache.get(instance) orelse return;
-    if (!entry.holds.pending_activity) return;
-    entry.holds.pending_activity = false;
-    syncEntry(entry);
+    if (cache.cache.get(instance)) |entry| {
+        if (entry.pending_activity == 0) return cache.unmatchedRelease(instance);
+        entry.pending_activity -= 1;
+        if (entry.pending_activity == 0) syncEntry(entry);
+        return;
+    }
+    const waiting = cache.pending_before_wrap.getPtr(instance) orelse return cache.unmatchedRelease(instance);
+    if (waiting.generation != runtime.SlabAllocator.generationOf(instance) or waiting.count == 0) {
+        _ = cache.pending_before_wrap.remove(instance);
+        return cache.unmatchedRelease(instance);
+    }
+    waiting.count -= 1;
+    if (waiting.count == 0) _ = cache.pending_before_wrap.remove(instance);
 }
 
 /// `instance`'s realm's cache, or null when it has none or it is being torn
@@ -745,6 +797,11 @@ fn finalizeEntry(entry: *CacheEntry) void {
         return;
     }
     entry.cache.unlinkPending(entry);
+
+    // The wrapper's reference goes first, while its node is certainly still
+    // there: everything below may free it (refcount design 2.1, "dispose the
+    // handle; deref").
+    releaseCounted(entry);
 
     // Replaced or removed before it was collected: nothing of the instance
     // is this entry's.
@@ -982,7 +1039,12 @@ pub const WrapperCache = struct {
     /// Pending-activity holds placed before the instance was wrapped
     /// (`holdForPendingActivity`), by slab generation so a reissued address
     /// does not inherit one. `set` moves a hold onto the new wrapper's entry.
-    pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, u64) = .empty,
+    pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, PendingBeforeWrap) = .empty,
+
+    /// Releases of pending activity with no keep left to end
+    /// (`releasePendingActivity`): an owner that released what it did not
+    /// keep. Zero when every owner balances its keeps.
+    unmatched_releases: usize = 0,
 
     /// Edges `traceChild` drew from an owner script had not seen yet
     /// (protocol_tracing.zig): each child's wrapper held strongly here until
@@ -1028,6 +1090,15 @@ pub const WrapperCache = struct {
 
     const Self = @This();
 
+    /// Pending activity kept on an instance script has not seen yet.
+    pub const PendingBeforeWrap = struct { generation: u64, count: u32 };
+
+    /// A release of pending activity found no keep to end.
+    fn unmatchedRelease(self: *Self, instance: *runtime.Instance) void {
+        self.unmatched_releases += 1;
+        if (builtin.mode == .Debug) log.err("releasePlatformObject on {s} {*} with no keepPlatformObjectAlive left to end: an owner released what it did not keep", .{ instance.vtable.name, instance });
+    }
+
     /// The queue a collected node of this realm goes to: its agent's - the
     /// isolate collecting, entered in a weak callback.
     fn deferredQueue(self: *Self) ?*DeferredTeardown {
@@ -1056,6 +1127,16 @@ pub const WrapperCache = struct {
             if (item.owner == @as(?*const anyopaque, self)) count += 1;
         }
         return count;
+    }
+
+    /// Let every wrapper's counted reference go - the live entries' and the
+    /// collected ones waiting for their second pass - at the realm's end,
+    /// before its sweep frees anything.
+    fn releaseAllCounted(self: *Self) void {
+        var it = self.cache.valueIterator();
+        while (it.next()) |entry_ptr| releaseCounted(entry_ptr.*);
+        var at = self.pending_head;
+        while (at) |entry| : (at = entry.pending_next) releaseCounted(entry);
     }
 
     fn linkPending(self: *Self, entry: *CacheEntry) void {
@@ -1298,6 +1379,11 @@ pub const WrapperCache = struct {
     /// type-specific deinit is called (since weak callbacks may not fire
     /// during shutdown).
     pub fn deinit(self: *Self) void {
+        // Every wrapper's counted reference goes before anything of the realm
+        // is freed: once the sweep below starts, a node's teardown can no
+        // longer tell its entry (`markAsCleanedUp` is off while tearing down).
+        self.releaseAllCounted();
+
         // The nodes this realm queued for deferred teardown go first, while
         // the cache can still answer whether one was wrapped again. Its end
         // (context_manager.removeContextByKey) drained them already, unless it
@@ -1481,6 +1567,15 @@ pub const WrapperCache = struct {
         // data freed, exactly once, as at any realm end.
         self.finalizers.drain();
 
+        // Nothing of the realm's nodes is read again: their counted
+        // references are forgotten, not let go (they go with the batch free).
+        {
+            var it = self.cache.valueIterator();
+            while (it.next()) |entry_ptr| forgetCounted(entry_ptr.*);
+            var at = self.pending_head;
+            while (at) |entry| : (at = entry.pending_next) forgetCounted(entry);
+        }
+
         // Collected entries waiting for their finalizer: nothing of theirs
         // runs now either; their handles and storage go.
         self.orphanPending();
@@ -1648,20 +1743,20 @@ pub const WrapperCache = struct {
                 .{ instance, old_entry, entry },
             );
             v8.v8_Global_ClearWeak(@ptrCast(old_entry.wrapper));
+            releaseCounted(old_entry);
             disposeEntryWrapper(old_entry);
             self.allocator.destroy(old_entry);
         }
         try self.cache.put(instance, entry);
 
-        // Set weak callback for GC cleanup
-        // The wrapper of a node in a tree - or of a window's document - is
-        // held strongly, so its identity and its expandos survive a collection
-        // the way they do in WebKit and Blink. It goes weak when the node
-        // becomes a root (installTreeHooks), and the teardown sweep frees it
-        // otherwise.
-        // A pending-activity hold placed before the wrapper existed.
+        // The wrapper owns one reference to a counted instance (a node:
+        // runtime.lifetime, refcount design 2.1) - not one made while the
+        // realm's sweep runs, which no longer lets references go.
+        if (!self.is_tearing_down) entry.counted = runtime.lifetime.wrapperAcquired(instance);
+
+        // Pending-activity keeps placed before the wrapper existed.
         if (self.pending_before_wrap.fetchRemove(instance)) |held| {
-            if (held.value == entry.original_generation) entry.holds.pending_activity = true;
+            if (held.value.generation == entry.original_generation) entry.pending_activity = held.value.count;
         }
         // Edges traced from the instance before script saw it.
         self.drawDeferredEdges(instance, entry.original_generation, wrapper);
@@ -1715,6 +1810,9 @@ pub const WrapperCache = struct {
         while (iter.next()) |entry_ptr| {
             const entry = entry_ptr.*;
 
+            // The wrapper's reference, before anything is freed.
+            releaseCounted(entry);
+
             // Call GC integration to invoke type-specific deinit
             // This is essential for cleanup since weak callbacks were disabled
             if (!wrappedElsewhere(entry.instance, self)) runtime.gc.onObjectFreed(entry.instance);
@@ -1764,6 +1862,14 @@ pub const WrapperCache = struct {
         if (self.cache.get(instance)) |entry| {
             // Mark as already cleaned - deinit will skip onObjectFreed
             entry.instance_already_cleaned = true;
+            // The node's teardown has begun under its live wrapper: the
+            // wrapper's reference goes now, while the node is still there
+            // (its cleanup is marked started, so `releaseCounted`'s guard
+            // would forget it instead).
+            if (entry.counted) |target| {
+                entry.counted = null;
+                runtime.lifetime.wrapperReleased(target);
+            }
             // The instance is gone, its wrapper not: script may still hold
             // it. Weak from here, whatever held it before (a node's tree did,
             // while it had a parent) - its weak callback, which skips an
@@ -1799,6 +1905,9 @@ pub const WrapperCache = struct {
 
             // Clear weak callback first to prevent it from firing
             v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
+
+            // The wrapper's reference goes with it.
+            releaseCounted(entry);
 
             // Dispose the Global<Object>* handle
             disposeEntryWrapper(entry);

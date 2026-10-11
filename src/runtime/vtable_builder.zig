@@ -70,6 +70,9 @@ pub fn buildVTable(comptime delegates_ptr: anytype, comptime name: []const u8, c
         // knowing the type. Free, since State is already here.
         .state_size = @sizeOf(State),
         .state_align = @alignOf(State),
+        // A node's wrapper owns a counted reference; every other type's
+        // owns its instance outright (null).
+        .counted = @import("lifetime.zig").countedOf(State),
         .deinit = deinit_fn,
         .methods_ptr = @ptrCast(delegates_ptr),
     };

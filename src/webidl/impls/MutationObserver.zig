@@ -63,6 +63,10 @@ pub const InternalState = struct {
     // not a Global of its own: a removed frame's realm turns the cache's
     // holds into edges from its global object, so a frame whose script
     // observes its own nodes is still collected once script drops it.
+    //
+    // ONE keep while any node lists it (`kept_alive`): the keep is counted,
+    // so a keep per observe() would hold the observer until its realm ended.
+    kept_alive: bool = false,
 
     /// The nodes that list a transient registered observer of this observer
     /// (DOM "remove" step 15), weak like the node list. Notify step 6.3 takes
@@ -205,7 +209,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         unregisterFromNodes(instance, internal);
         dom_module.mutation_observer_algorithms.forgetObserver(instance);
         // Whatever pending-activity hold is left goes with it.
-        engine.releasePlatformObject(instance);
+        releaseSelf(instance, internal);
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator - do NOT destroy
         // Return the block itself, not just what it points to. The comment this
@@ -387,7 +391,7 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
     }
 
     // Registered: stay alive for as long as a node lists this observer.
-    engine.keepPlatformObjectAlive(instance);
+    keepSelf(instance, internal);
 }
 
 /// Remove every registration whose observer is `instance` from the nodes in
@@ -494,7 +498,21 @@ fn nodeReleasedHook(observer: *runtime.Instance, generation: u64, node: *runtime
         }
         i += 1;
     }
-    if (internal.node_list.items.len == 0) engine.releasePlatformObject(observer);
+    if (internal.node_list.items.len == 0) releaseSelf(observer, internal);
+}
+
+/// Hold this observer's wrapper while a node lists it: one keep.
+fn keepSelf(instance: *runtime.Instance, internal: *InternalState) void {
+    if (internal.kept_alive) return;
+    internal.kept_alive = true;
+    engine.keepPlatformObjectAlive(instance);
+}
+
+/// End the one keep, if it is held.
+fn releaseSelf(instance: *runtime.Instance, internal: *InternalState) void {
+    if (!internal.kept_alive) return;
+    internal.kept_alive = false;
+    engine.releasePlatformObject(instance);
 }
 
 /// DOM §7.1 - MutationObserver.disconnect()
@@ -519,7 +537,7 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
 
     // No registration is left to use a filter, or to keep this alive.
     internal.releaseAllFilters();
-    engine.releasePlatformObject(instance);
+    releaseSelf(instance, internal);
 }
 
 /// DOM §7.1 - MutationObserver.takeRecords()
