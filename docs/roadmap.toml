@@ -531,12 +531,13 @@ with no baseline at all, and the build's module graph makes a reference into ano
 type's impl impossible (impls not importable outside the generated layer)."""
 progress = [
   "1a94e0043 - ancestors count; baseline recorded; lint-impls ratchet in zig build test",
-  "Codex row 13 (unmerged at writing) converts collection-code references",
+  "d80e120d56 - Codex row 13 converts collection-code references (1,691 -> 1,633)",
+  "2026-10-11 - design decided (tmp/plans/impls-boundary-design.md): codegen-emitted init/deinit chain, lint counts each reference once (rebase to ~980), generated on* accessors, construction facts as chain arguments; batches B0-B11",
 ]
 
   [[infra.items]]
   name = "Design: how an impl initialises, tears down and reads its ancestors' state without naming their impls (codegen-emitted init/deinit chains and state accessors, or hooks)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Mechanical conversion: IDL members through interfaces.X, constants through the interface (nodeType, ownerDocument, siblings, ...)"
