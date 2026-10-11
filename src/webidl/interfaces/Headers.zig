@@ -154,6 +154,16 @@ pub const Headers = struct {
         return try HeadersImpl.call_append(instance, name, value);
     }
 
+    /// WebIDL ByteString values: a code unit above 0xFF throws a TypeError
+    /// for (bit i = argument i; an attribute setter's value is bit 0).
+    pub const byte_string_arguments = .{
+        .{ "call_delete", 0b1 },
+        .{ "call_get", 0b1 },
+        .{ "call_has", 0b1 },
+        .{ "call_set", 0b11 },
+        .{ "call_append", 0b11 },
+    };
+
     /// Get entries for pair iterable support (used by V8 for iteration)
     /// Returns slice of entries with .name and .value fields
     pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const HeadersImpl.IterableEntry {

@@ -9,4 +9,8 @@ pub const ResponseInit = struct {
     status: ?u16 = null,
     statusText: ?runtime.ByteString = null,
     headers: ?typedefs.HeadersInit = null,
+
+    /// WebIDL ByteString members: a code unit above 0xFF throws a TypeError
+    /// when the dictionary is converted.
+    pub const byte_string_members = .{"statusText"};
 };

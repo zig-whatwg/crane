@@ -127,6 +127,12 @@ pub const NavigationPreloadManager = struct {
         return try NavigationPreloadManagerImpl.call_disable(instance);
     }
 
+    /// WebIDL ByteString values: a code unit above 0xFF throws a TypeError
+    /// for (bit i = argument i; an attribute setter's value is bit 0).
+    pub const byte_string_arguments = .{
+        .{ "call_setHeaderValue", 0b1 },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

@@ -383,4 +383,13 @@ pub const XMLHttpRequest = struct {
             .{ .function = "call_open__1", .implemented = @hasDecl(XMLHttpRequestImpl, "call_open__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.boolean} }, .{ .kinds = &.{.string}, .nullable = true, .optionality = .optional }, .{ .kinds = &.{.string}, .nullable = true, .optionality = .optional } } },
         } },
     };
+
+    /// WebIDL ByteString values: a code unit above 0xFF throws a TypeError
+    /// for (bit i = argument i; an attribute setter's value is bit 0).
+    pub const byte_string_arguments = .{
+        .{ "call_setRequestHeader", 0b11 },
+        .{ "call_getResponseHeader", 0b1 },
+        .{ "call_open", 0b1 },
+        .{ "call_open__1", 0b1 },
+    };
 };

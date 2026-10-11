@@ -14,4 +14,8 @@ pub const RouterCondition = struct {
     runningStatus: ?enums.RunningStatus = null,
     @"or": ?[]const RouterCondition = null,
     not: ?RouterCondition = null,
+
+    /// WebIDL ByteString members: a code unit above 0xFF throws a TypeError
+    /// when the dictionary is converted.
+    pub const byte_string_members = .{"requestMethod"};
 };

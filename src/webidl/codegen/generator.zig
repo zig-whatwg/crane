@@ -2919,6 +2919,9 @@ pub fn generateDictionary(
     // Which members' NaN and infinities are a TypeError (the dictionary
     // converter reads it).
     try writer.writeRestrictedMembers(w, dictionary.members, ir);
+    // Which members are ByteStrings: a code unit above 0xFF is a TypeError
+    // (the dictionary converter reads it).
+    try writer.writeByteStringMembers(w, dictionary.members, ir);
     // Which members keep a present null as `.null` (the converter reads it).
     try writer.writeAnyMembers(w, dictionary.members);
     // Which integer members take [EnforceRange]'s or [Clamp]'s conversion.

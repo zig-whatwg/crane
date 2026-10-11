@@ -3493,6 +3493,126 @@ fn isRestrictedFloatName(type_name: []const u8, model: ?*const ir.IR) bool {
     return false;
 }
 
+/// WebIDL 3.2.11 ByteString: "Let x be ? ToString(V). If the value of any
+/// element of x is greater than 255, then throw a TypeError." Codegen maps
+/// ByteString, USVString and DOMString's bytes all to `[]const u8`, so the
+/// binding learns which values are ByteStrings from this table - keyed like
+/// `restricted_floats`, bit i for argument i and bit 0 for an attribute
+/// setter's value - and checks each one at its own conversion step:
+///
+///     pub const byte_string_arguments = .{ .{ "call_append", 0b11 }, .{ "call_open", 0b1 } };
+fn writeByteStringArguments(
+    writer: anytype,
+    own_attributes: []const types.Attribute,
+    overload_ops: []const types.Operation,
+    model: ?*const ir.IR,
+) !void {
+    const allocator = std.heap.page_allocator;
+
+    var any = false;
+    for (own_attributes) |attr| {
+        if (byteStringSetter(attr, model)) any = true;
+    }
+    for (overload_ops) |op| {
+        if (byteStringMask(op, model) != 0) any = true;
+    }
+    if (!any) return;
+
+    try writer.writeAll("    /// WebIDL ByteString values: a code unit above 0xFF throws a TypeError\n");
+    try writer.writeAll("    /// for (bit i = argument i; an attribute setter's value is bit 0).\n");
+    try writer.writeAll("    pub const byte_string_arguments = .{\n");
+    for (own_attributes) |attr| {
+        if (!byteStringSetter(attr, model)) continue;
+        const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
+        defer if (!std.mem.eql(u8, sanitized_name, attr.name)) allocator.free(sanitized_name);
+        try writer.print("        .{{ \"set_{s}\", 0b1 }},\n", .{sanitized_name});
+    }
+    const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+    for (overload_sets) |set| {
+        // An unresolvable overload set binds one function taking a union of
+        // argument lists; nothing there converts argument by argument.
+        if (set.isOverloaded() and !isResolvableOverloadSet(set)) continue;
+        for (set.operations, 0..) |op, k| {
+            const mask = byteStringMask(op, model);
+            if (mask == 0) continue;
+            const name = op.name orelse continue;
+            const prefix = if (op.static) "call_static_" else "call_";
+            if (k == 0) {
+                try writer.print("        .{{ \"{s}{s}\", 0b{b} }},\n", .{ prefix, name, mask });
+            } else {
+                try writer.print("        .{{ \"{s}{s}__{d}\", 0b{b} }},\n", .{ prefix, name, k, mask });
+            }
+        }
+    }
+    try writer.writeAll("    };\n\n");
+}
+
+fn byteStringSetter(attr: types.Attribute, model: ?*const ir.IR) bool {
+    return !attr.readonly and !attr.static and isByteString(attr.idlType, model);
+}
+
+fn byteStringMask(op: types.Operation, model: ?*const ir.IR) u32 {
+    var mask: u32 = 0;
+    for (op.arguments, 0..) |arg, i| {
+        if (i >= 32) break;
+        if (isByteString(arg.idlType, model)) mask |= @as(u32, 1) << @intCast(i);
+    }
+    return mask;
+}
+
+/// Whether converting to `idl_type` is a ByteString conversion: ByteString
+/// itself, a typedef of it, its nullable form, or a sequence or FrozenArray
+/// of one (each element is such a conversion). Not a union - its conversion
+/// picks the member type itself - and not a record.
+pub fn isByteString(idl_type: types.IDLType, model: ?*const ir.IR) bool {
+    if (idl_type.unionTypes != null or idl_type.record != null) return false;
+    if (std.mem.eql(u8, idl_type.type, "sequence") or std.mem.eql(u8, idl_type.type, "FrozenArray")) {
+        const inner = idl_type.generic orelse return false;
+        return isByteStringName(std.mem.trimEnd(u8, std.mem.trim(u8, inner, " \t"), "?"), model);
+    }
+    if (idl_type.generic != null or idl_type.sequence != null) return false;
+    return isByteStringName(idl_type.type, model);
+}
+
+fn isByteStringName(type_name: []const u8, model: ?*const ir.IR) bool {
+    var name = type_name;
+    // A typedef of a typedef, a few deep at most.
+    var depth: usize = 0;
+    while (depth < 8) : (depth += 1) {
+        if (std.mem.eql(u8, name, "ByteString")) return true;
+        const m = model orelse return false;
+        const typedef = m.typedefs.get(name) orelse return false;
+        const target = typedef.idlType;
+        if (target.unionTypes != null or target.generic != null) return false;
+        name = target.type;
+    }
+    return false;
+}
+
+/// A dictionary's ByteString members, for the dictionary converter:
+///
+///     pub const byte_string_members = .{ "method" };
+///
+/// Written inside the dictionary's struct; nothing when it has none.
+pub fn writeByteStringMembers(writer: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
+    var any = false;
+    for (members) |member| {
+        if (isByteString(member.idlType, model)) any = true;
+    }
+    if (!any) return;
+    try writer.writeAll("\n    /// WebIDL ByteString members: a code unit above 0xFF throws a TypeError\n");
+    try writer.writeAll("    /// when the dictionary is converted.\n");
+    try writer.writeAll("    pub const byte_string_members = .{");
+    var first = true;
+    for (members) |member| {
+        if (!isByteString(member.idlType, model)) continue;
+        try writer.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+        first = false;
+    }
+    try writer.writeAll(" };\n");
+}
+
 /// A dictionary's restricted float members, for the dictionary converter:
 ///
 ///     pub const restricted_members = .{ "deltaX", "startTime" };
@@ -4286,6 +4406,9 @@ pub fn writeDelegateFunctions(
     // Which float arguments and attribute values NaN and the infinities throw
     // for.
     try writeRestrictedFloats(writer, own_attributes, overload_ops, options.model);
+    // Which string arguments and attribute values are ByteStrings: a code
+    // unit above 0xFF throws for them.
+    try writeByteStringArguments(writer, own_attributes, overload_ops, options.model);
     // Which integer arguments and attribute values take [EnforceRange]'s or
     // [Clamp]'s conversion.
     try writeIntegerConversions(writer, own_attributes, overload_ops);
