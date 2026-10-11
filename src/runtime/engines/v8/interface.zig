@@ -4609,7 +4609,8 @@ pub fn V8Interface(comptime Interface: type) type {
             // Handle DOMString
             if (ReturnType == runtime.DOMString) {
                 const slice = result.asSlice();
-                const v8_str = v8.v8_String_NewFromUtf8(isolate, slice.ptr, @intCast(slice.len)) orelse {
+                // WTF-8: its lone surrogates kept (conv.newStringFromWtf8).
+                const v8_str = conv.newStringFromWtf8(isolate, slice) orelse {
                     return v8.v8_Undefined(isolate);
                 };
                 owned.* = true;
@@ -4618,7 +4619,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Handle []const u8 (string slices)
             if (ReturnType == []const u8) {
-                const v8_str = v8.v8_String_NewFromUtf8(isolate, result.ptr, @intCast(result.len)) orelse {
+                const v8_str = conv.newStringFromWtf8(isolate, result) orelse {
                     return v8.v8_Undefined(isolate);
                 };
                 owned.* = true;
@@ -4642,7 +4643,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (s.data.len == 0) {
                             break :blk @ptrCast(v8.v8_String_Empty(isolate) orelse return v8.v8_Undefined(isolate));
                         }
-                        break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return v8.v8_Undefined(isolate));
+                        break :blk @ptrCast(conv.newStringFromWtf8(isolate, s.data) orelse return v8.v8_Undefined(isolate));
                     },
                     // A Global<Value>*, set as the result as it is.
                     .handle => |h| @ptrCast(h.ptr),
@@ -6438,11 +6439,12 @@ pub fn V8Interface(comptime Interface: type) type {
                                 info.setReturnValue(@ptrCast(empty_str));
                                 v8.v8_Global_Dispose(@ptrCast(empty_str));
                             } else {
-                                const v8_str = v8.v8_String_NewFromUtf8(isolate, slice.ptr, @intCast(slice.len)) orelse {
+                                // WTF-8: its lone surrogates kept.
+                                const v8_str = conv.newStringFromWtf8(isolate, slice) orelse {
                                     return .kYes;
                                 };
-                                info.setReturnValue(@ptrCast(v8_str));
-                                v8.v8_String_Dispose(v8_str);
+                                info.setReturnValue(v8_str);
+                                v8.v8_Global_Dispose(v8_str);
                             }
                             return .kYes;
                         }
@@ -7391,11 +7393,11 @@ pub fn V8Interface(comptime Interface: type) type {
             const ValueType = @TypeOf(entry.value);
             if (@typeInfo(ValueType) == .@"union") {
                 return switch (entry.value) {
-                    .usvstring => |s| @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len)) orelse return null),
+                    .usvstring => |s| conv.newStringFromWtf8(isolate, s) orelse return null,
                     else => null, // Skip non-string variants for now
                 };
             }
-            return @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)) orelse return null);
+            return conv.newStringFromWtf8(isolate, entry.value) orelse return null;
         }
 
         /// toString() callback for stringifier support
@@ -7429,11 +7431,12 @@ pub fn V8Interface(comptime Interface: type) type {
                             return;
                         };
 
-                        const v8_str = v8.v8_String_NewFromUtf8(isolate, result.ptr, @intCast(result.len)) orelse {
+                        // WTF-8: its lone surrogates kept (conv.newStringFromWtf8).
+                        const v8_str = conv.newStringFromWtf8(isolate, result) orelse {
                             info.setReturnValue(v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return);
                             return;
                         };
-                        info.setReturnValue(@ptrCast(v8_str));
+                        info.setReturnValue(v8_str);
                         return;
                     }
                 }
