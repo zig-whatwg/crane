@@ -21,6 +21,9 @@ const browser_mod = @import("browser");
 const runtime = @import("runtime");
 const html_core = @import("html_core");
 const engine = @import("engine");
+const interfaces = @import("interfaces");
+const file = @import("file");
+const fetch = @import("fetch");
 
 const web_storage = html_core.web_storage;
 const UserAgentStorage = web_storage.UserAgentStorage;
@@ -73,6 +76,17 @@ fn expectScript(browser: *browser_mod.Browser, source: []const u8) !void {
         std.debug.print("false: {s}\n", .{source});
         return error.ScriptAnsweredFalse;
     }
+}
+
+/// Turn the Browser's event loop until `source` answers true.
+fn waitFor(browser: *browser_mod.Browser, source: []const u8) !void {
+    var turns: usize = 0;
+    while (turns < 200) : (turns += 1) {
+        if (try truthy(browser, source)) return;
+        _ = try browser.runEventLoopBlocking(20);
+    }
+    std.debug.print("timed out waiting for: {s}\n", .{source});
+    return error.TimedOut;
 }
 
 // ============================================================================
@@ -144,4 +158,136 @@ fn localStorageEmptyInAFreshBrowser() !void {
 test "localStorage: a Browser's shed ends with it - the next Browser, on its thread or another, sees none of it" {
     try onThread(localStorageEndsWithItsBrowser, .{});
     try onThread(localStorageEmptyInAFreshBrowser, .{});
+}
+
+// ============================================================================
+// Blob URLs: the Browser's blob URL store
+// ============================================================================
+
+fn makeBlobURL(scope: *runtime.BrowserScope, url: *[]u8) !void {
+    const store = try scope.of(file.BlobURLStore);
+    const blob = try file.BlobData.init(testing.allocator, "hello", "text/plain");
+    defer blob.deinit();
+    url.* = try store.createObjectURL(blob, origin, null);
+}
+
+/// Scheme fetch "blob" of `url`, for a request of `origin` whose client's
+/// Browser is `scope`'s: `expected` is its body, or null for a network error.
+fn fetchBlob(scope: *runtime.BrowserScope, url: []const u8, expected: ?[]const u8) !void {
+    const request = try fetch.internal.InternalRequest.init(testing.allocator, url);
+    defer request.deinit();
+    try request.setOrigin(origin);
+    request.blob_url_store = try scope.of(file.BlobURLStore);
+    switch (try fetch.algorithms.scheme_fetch.schemeFetchRequest(testing.allocator, request)) {
+        .response => |response| {
+            defer response.deinit();
+            try testing.expectEqualStrings(expected orelse return error.ExpectedANetworkError, response.body.?.getBytes());
+        },
+        .network_error => if (expected != null) return error.UnexpectedNetworkError,
+    }
+}
+
+test "blob URLs: two Browsers' scopes on two threads share no blob URL store; a scope's own requests resolve its URLs" {
+    // Scheme fetch "blob"'s resolver, installed once for the process.
+    interfaces.process_hooks.startHooksForTest();
+    var scope_a = runtime.BrowserScope.init(testing.allocator);
+    defer scope_a.deinit();
+    var scope_b = runtime.BrowserScope.init(testing.allocator);
+    defer scope_b.deinit();
+
+    var url: []u8 = undefined;
+    try onThread(makeBlobURL, .{ &scope_a, &url });
+    defer testing.allocator.free(url);
+    try onThread(fetchBlob, .{ &scope_b, url, null });
+    try onThread(fetchBlob, .{ &scope_a, url, "hello" });
+}
+
+fn blobURLsResolveInTheirBrowserOnly() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try openPage(browser);
+    const realm = browser.getRealm() orelse return error.NoRealm;
+
+    // Another Browser's scope, which the page's realm belongs to for one
+    // script: the blob URL that script makes is that Browser's.
+    var other = runtime.BrowserScope.init(testing.allocator);
+    defer other.deinit();
+    const own = realm.browser_scope;
+    realm.browser_scope = &other;
+    const made = truthy(browser, "globalThis.other_url = URL.createObjectURL(new Blob(['other'])); true");
+    realm.browser_scope = own;
+    if (!try made) return error.NoBlobURL;
+
+    try expectScript(browser, "globalThis.own_url = URL.createObjectURL(new Blob(['own'])); true");
+    try expectScript(browser,
+        \\globalThis.results = {};
+        \\for (const [key, url] of [['other', other_url], ['own', own_url]])
+        \\  fetch(url).then(r => r.text()).then(t => results[key] = t, () => results[key] = 'network error');
+        \\true
+    );
+    try waitFor(browser, "'other' in results && 'own' in results");
+    // The other Browser's URL is a network error here; this Browser's own
+    // resolves.
+    try expectScript(browser, "results.other === 'network error'");
+    try expectScript(browser, "results.own === 'own'");
+}
+
+test "blob URLs: a URL another Browser made is a network error to this Browser's fetch; its own resolves" {
+    try onThread(blobURLsResolveInTheirBrowserOnly, .{});
+}
+
+// ============================================================================
+// IndexedDB: pinned, not moved
+//
+// IndexedDB has no process-global state: each IDBFactory - each global's
+// `indexedDB` - holds its own databases, so two Browsers already share none
+// (nor, today, do a page and its frames or workers: the queued
+// IndexedDB-sharing batch makes the databases the Browser's, per storage
+// key). This pins the two-Browser half.
+// ============================================================================
+
+/// Open the database "inst3" (no version: the current one, or 1 if it is
+/// new), recording whether it needed an upgrade - whether it was new.
+fn openDatabase(browser: *browser_mod.Browser) !void {
+    try expectScript(browser,
+        \\globalThis.opened = null;
+        \\globalThis.upgradeSeen = false;
+        \\{
+        \\const request = indexedDB.open('inst3');
+        \\request.onupgradeneeded = () => {
+        \\  upgradeSeen = true;
+        \\  request.result.createObjectStore('s');
+        \\};
+        \\request.onsuccess = () => {
+        \\  opened = { version: request.result.version };
+        \\  request.result.close();
+        \\};
+        \\request.onerror = () => opened = { error: String(request.error) };
+        \\}
+        \\true
+    );
+    try waitFor(browser, "opened !== null");
+}
+
+fn indexedDBIsNotSharedAcrossBrowsers() !void {
+    {
+        const browser = try startBrowser();
+        defer browser.deinit();
+        try openPage(browser);
+        try openDatabase(browser);
+        try expectScript(browser, "upgradeSeen === true && opened.version === 1");
+        // The same page opens it again: it exists, no upgrade.
+        try openDatabase(browser);
+        try expectScript(browser, "upgradeSeen === false && opened.version === 1");
+    }
+    // The next Browser, one origin: the database does not exist there.
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try openPage(browser);
+    try openDatabase(browser);
+    try expectScript(browser, "upgradeSeen === true && opened.version === 1");
+}
+
+test "IndexedDB: a database one Browser made does not exist in the next" {
+    try onThread(indexedDBIsNotSharedAcrossBrowsers, .{});
 }

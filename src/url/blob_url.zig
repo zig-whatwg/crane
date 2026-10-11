@@ -6,8 +6,10 @@
 //!
 //! Blob URLs are special URLs that refer to Blob objects. The actual blob URL
 //! store and resolution logic is defined in the File API specification, not
-//! the URL Standard. This module provides the hooks for integrating with an
-//! external blob URL store.
+//! the URL Standard: the store is the file module's (file.BlobURLStore, one
+//! per Browser). This module gives the URL record its blob URL entry type.
+//! (Its second, process-wide store - a resolver hook nothing installed or
+//! called - was deleted with instances B3.)
 
 const std = @import("std");
 const Origin = @import("origin").Origin;
@@ -38,62 +40,3 @@ pub const BlobURLEntry = opaque {
         return Origin{ .opaque_origin = {} };
     }
 };
-
-/// Blob URL Store (abstract interface)
-///
-/// This is the interface for resolving blob URLs. A File API implementation
-/// must provide this functionality.
-pub const BlobURLStore = struct {
-    /// Resolve a blob URL to a blob URL entry
-    ///
-    /// Spec: https://w3c.github.io/FileAPI/#blob-url-resolve
-    ///
-    /// This function is called during URL parsing (spec line 1025).
-    /// It should:
-    /// 1. Look up the URL string in the blob URL store
-    /// 2. Return the corresponding blob URL entry, or null if not found
-    ///
-    /// Note: This is a hook for external implementation. The default
-    /// implementation always returns null.
-    resolveFn: *const fn (url_string: []const u8) ?*BlobURLEntry,
-
-    /// Create a default blob URL store (no-op implementation)
-    pub fn default() BlobURLStore {
-        return .{
-            .resolveFn = &defaultResolve,
-        };
-    }
-
-    /// Resolve a blob URL using this store
-    pub fn resolve(self: BlobURLStore, url_string: []const u8) ?*BlobURLEntry {
-        return self.resolveFn(url_string);
-    }
-
-    /// Default resolve implementation (always returns null)
-    fn defaultResolve(url_string: []const u8) ?*BlobURLEntry {
-        _ = url_string;
-        return null;
-    }
-};
-
-/// Global blob URL store instance
-///
-/// This can be set by a File API implementation to provide blob URL resolution.
-/// By default, it's a no-op store that always returns null.
-pub var global_blob_store: BlobURLStore = BlobURLStore.default();
-
-/// Set the global blob URL store
-///
-/// This should be called by a File API implementation during initialization.
-pub fn setGlobalBlobStore(store: BlobURLStore) void {
-    global_blob_store = store;
-}
-
-/// Resolve a blob URL using the global store
-///
-/// This is called during URL parsing (spec line 1025).
-pub fn resolveBlobURL(url_string: []const u8) ?*BlobURLEntry {
-    return global_blob_store.resolve(url_string);
-}
-
-// Tests

@@ -1733,6 +1733,10 @@ pub fn build(b: *std.Build) void {
             // Document abort tests measure transports through a browser host.
             .{ .name = "browser", .module = testing_graph.browser },
             .{ .name = "fetch", .module = testing_graph.fetch },
+            // The Browser's stores, which instances tests reach through two
+            // Browsers' scopes (tests/html/instances_isolation_test.zig).
+            .{ .name = "file", .module = testing_graph.file },
+            .{ .name = "cookiestore", .module = testing_graph.cookiestore },
         };
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
@@ -5279,6 +5283,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
 
     // Add file module to impls (for Blob, File, FileReader implementations)
     impls_mod.addImport("file", file_mod);
+    // dom.browser_state: a realm reaches its Browser's blob URL store, a
+    // supplement of the Browser's scope (docs/instances.md).
+    dom_mod.addImport("file", file_mod);
 
     // File System Access API module (WHATWG File System Standard)
     const fs_mod = graphModule(b, public, "fs", .{

@@ -361,6 +361,14 @@ pub const InternalRequest = struct {
     /// for itself, which neither sends nor keeps cookies.
     cookie_jar: ?*CookieJar = null,
 
+    /// The user agent's blob URL store (the File API's; a `file.BlobURLStore`,
+    /// which fetch does not import), as the request's client reaches it -
+    /// its Browser's ("populate request from client"; BORROWED - the Browser
+    /// outlives every fetch). Scheme fetch "blob" obtains the blob from it
+    /// (`scheme_fetch.BlobResolver`). Null: a request no Browser's realm
+    /// made, for which every blob URL is a network error.
+    blob_url_store: ?*anyopaque = null,
+
     /// Where CSP violations this request causes are reported (CSP §2.4.2:
     /// a request's violation's global object is its client's global), as
     /// "populate request from client" takes it from the client. BORROWED:
@@ -737,6 +745,7 @@ pub const InternalRequest = struct {
             .origin = if (self.origin_owned) .client else self.origin,
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
             .cookie_jar = self.cookie_jar,
+            .blob_url_store = self.blob_url_store,
             .csp_violation_reporter = self.csp_violation_reporter,
             .timing_reporter = self.timing_reporter,
             // Cloned below: each request owns its own.

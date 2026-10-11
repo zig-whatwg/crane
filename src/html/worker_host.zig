@@ -2007,6 +2007,9 @@ const SharedConnect = struct {
         var fetched = workers.fetchWorkerScript(allocator, self.url, .{
             .worker_type = self.worker_type,
             .requesting_origin = self.origin,
+            // A blob: script's blob is in the outside settings' Browser's
+            // blob URL store.
+            .blob_url_store = @ptrCast(@import("dom").browser_state.blobURLStoreOf(self.owner_realm)),
             .shared = true,
             // The outside settings' policy container: its CSP decides
             // whether the script may be fetched at all.

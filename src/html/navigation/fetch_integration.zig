@@ -166,6 +166,12 @@ pub const NavigationFetchOptions = struct {
     /// sends the jar's cookies and stores the response's. Null: none.
     cookie_jar: ?*fetch.internal.CookieJar = null,
 
+    /// The user agent's blob URL store (a `file.BlobURLStore`), as the
+    /// navigation's source reaches it - its Browser's (BORROWED). A
+    /// navigation to a blob: URL obtains its blob there (scheme fetch
+    /// "blob"); null: every blob URL is a network error.
+    blob_url_store: ?*anyopaque = null,
+
     /// "Create navigation params by fetching" step 3's referrer policy:
     /// navigate's referrerPolicy - a hyperlink's referrerpolicy attribute, or
     /// an iframe's for "navigate an iframe or frame". The empty string defers
@@ -374,6 +380,8 @@ pub fn navigationRequest(
 
     // The cookie store its fetch sends from and stores to.
     internal_request.cookie_jar = options.cookie_jar;
+    // The blob URL store a blob: URL's blob is obtained from.
+    internal_request.blob_url_store = options.blob_url_store;
 
     // Its referrer policy, and the initiator's policy container main fetch
     // step 8 falls back to.

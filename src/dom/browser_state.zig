@@ -14,6 +14,10 @@
 
 const runtime = @import("runtime");
 const storage = @import("storage");
+const file = @import("file");
+
+pub const UserAgentStorage = storage.UserAgentStorage;
+pub const BlobURLStore = file.BlobURLStore;
 
 /// The user agent's storage shed and bucket file systems (Storage 4.3) of
 /// the Browser `realm` belongs to, made on first use; null for a realm no
@@ -21,4 +25,21 @@ const storage = @import("storage");
 pub fn userAgentStorageOf(realm: runtime.Context) ?*storage.UserAgentStorage {
     const scope = realm.browser_scope orelse return null;
     return scope.of(storage.UserAgentStorage) catch null;
+}
+
+/// The user agent's blob URL store (File API 8.1) of the Browser `realm`
+/// belongs to, made on first use: URL.createObjectURL adds to it, and a
+/// request's client carries it to scheme fetch "blob". Null for a realm no
+/// Browser made, or out of memory.
+pub fn blobURLStoreOf(realm: runtime.Context) ?*file.BlobURLStore {
+    const scope = realm.browser_scope orelse return null;
+    return scope.of(file.BlobURLStore) catch null;
+}
+
+/// `realm`'s Browser's blob URL store if it made one; never makes one (a
+/// revoke, or an environment's end, in a Browser that never made a blob URL
+/// has nothing to remove).
+pub fn existingBlobURLStoreOf(realm: runtime.Context) ?*file.BlobURLStore {
+    const scope = realm.browser_scope orelse return null;
+    return scope.existing(file.BlobURLStore);
 }
