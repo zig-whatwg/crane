@@ -241,6 +241,38 @@ test "for-in visits the indices first" {
     , "0 1 2 | 0 1 2 | 0 1 2");
 }
 
+test "an index cannot be assigned or defined on a NodeList or a DOMTokenList" {
+    const page = try Page.open();
+    defer page.close();
+    // WebIDL 3.9.3 [[DefineOwnProperty]] step 1: an array index on an object
+    // with no indexed property setter is rejected, in or out of range. So
+    // [[Set]] returns false - a TypeError in strict mode, nothing in sloppy
+    // mode - and Object.defineProperty throws a TypeError
+    // (webidl/ecmascript-binding/legacy-platform-object/DefineOwnProperty.html
+    // checks the same on a DOMTokenList). Neither has named properties, so
+    // neither is wrapped in a proxy (template_registry.zig): V8 runs the
+    // indexed setter and definer interceptors itself. (Reflect.defineProperty
+    // still answers true, and `delete list[0]` true: the definer signals no
+    // failure and there is no deleter - gaps not pinned here.)
+    try page.expect(fixture ++
+        \\(() => {
+        \\  const { root, qsa, childNodes } = lists();
+        \\  const span = root.ownerDocument.createElement('span');
+        \\  span.className = 'p q r';
+        \\  const strictSet = (list, i) => { 'use strict'; try { list[i] = 'v'; return 'set'; } catch (e) { return e.constructor.name; } };
+        \\  const sloppySet = new Function('list', 'i', "try { list[i] = 'v'; return String(list[i] === 'v'); } catch (e) { return e.constructor.name; }");
+        \\  const define = (list, i, desc) => { try { Object.defineProperty(list, i, desc); return 'defined'; } catch (e) { return e.constructor.name; } };
+        \\  const one = (list) => {
+        \\    const first = list[0];
+        \\    return [strictSet(list, 0), strictSet(list, 7), sloppySet(list, 0), sloppySet(list, 7),
+        \\      define(list, 0, { value: 'v' }), define(list, 7, { value: 'v', writable: true }), define(list, 0, { get() { return 1; } }),
+        \\      list[0] === first, list[7], list.length].join();
+        \\  };
+        \\  return [one(qsa), one(childNodes), one(span.classList)].join(' | ');
+        \\})()
+    , "TypeError,TypeError,false,false,TypeError,TypeError,TypeError,true,,3 | TypeError,TypeError,false,false,TypeError,TypeError,TypeError,true,,3 | TypeError,TypeError,false,false,TypeError,TypeError,TypeError,true,,3");
+}
+
 test "an object inheriting from a collection reads its indices through it" {
     const page = try Page.open();
     defer page.close();
