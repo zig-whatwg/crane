@@ -849,10 +849,38 @@ pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, a
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const b = boundaries(internal) orelse return false;
     if (!isInDocument(internal, node) or getRoot(node) != getRoot(b.start_container)) return false;
+    // Browser rule: plain DOM containment overcounts nodes absent from the
+    // flat tree. Chrome/Firefox pass 24/24 in selection-at-nodes-not-part-of-
+    // flattened-tree.html, Safari 13/24 (cc74d2669f). Blink containsNode uses
+    // ComputeVisibleSelectionInDomTree after layout; this is its structural
+    // exclusion only. Line-box/visible-selection checks require host layout.
+    if (!try participatesInFlatTree(internal.allocator, node)) return false;
     const partial = allowPartialContainment.was_passed and allowPartialContainment.value;
     const length = try nodeLength(node);
     return boundary_points.position(DomTree, b.start_container, b.start_offset, node, if (partial) length else 0) != .after and
         boundary_points.position(DomTree, b.end_container, b.end_offset, node, if (partial) 0 else length) != .before;
+}
+
+fn participatesInFlatTree(allocator: std.mem.Allocator, node: *runtime.Instance) !bool {
+    var current = node;
+    while (true) {
+        if (dom.shadow_dom_algorithms.assignedSlotOf(current)) |slot| {
+            current = slot;
+            continue;
+        }
+        if (current.stateAs(interfaces.ShadowRoot.State) != null) {
+            current = interfaces.ShadowRoot.get_host(current) catch return false;
+            continue;
+        }
+        const parent = parentNode(current) orelse return (try interfaces.Node.get_nodeType(current)) == interfaces.Node.get_DOCUMENT_NODE();
+        if (dom.shadow_hosts.rootForHost(parent) != null) return false;
+        if (parent.stateAs(interfaces.HTMLSlotElement.State) != null) {
+            const assigned = try dom.shadow_dom_algorithms.assignedNodes(allocator, parent, false, false);
+            defer allocator.free(assigned);
+            if (assigned.len != 0) return false;
+        }
+        current = parent;
+    }
 }
 
 /// Selection API - getComposedRanges(options)
