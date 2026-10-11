@@ -46,10 +46,27 @@ pub const BridgeContext = struct {
 /// template_registry.zig), and a worker's objects live on the worker's own
 /// thread (docs/instances.md). So every access takes `mutex`.
 pub const Bridge = struct {
-    /// Protects `map` and `guard`; held for one map operation, never across
-    /// a call out of this file.
+    /// Protects `map`, `guard` and `cache`; held for one map operation, never
+    /// across a call out of this file.
     mutex: std.Io.Mutex = .init,
     map: std.AutoHashMap(*anyopaque, *NodeBase),
+    /// A direct-mapped cache in front of `map`, for getNodeBase - which
+    /// wrapping asks once per object handed to script: every `list[i]`
+    /// (template_registry.wrapInstanceAsV8Object). A map lookup hashes the
+    /// address (wyhash) and probes; in the Debug build that was ~22% of a
+    /// NodeList index read (gc_bench profile, 2026-10-11).
+    ///
+    /// The cache answers exactly what the map would. An entry records the
+    /// instance, the slab generation it was written under, and the map's
+    /// answer then. Only register and unregister change the map, and each
+    /// writes or clears the entry for its address; the slab never reissues
+    /// a generation. So an entry whose instance and generation both match
+    /// the instance's live slot was written after the last map change for
+    /// that address, and holds the map's current answer. Anything else - a
+    /// collision, a freed slot (dead generation), a slot reused without an
+    /// unregister (its entry's generation is the old occupant's) - asks the
+    /// map and caches its answer under the current generation.
+    cache: [cache_slots]CacheEntry = [_]CacheEntry{.{}} ** cache_slots,
     /// Every node a page makes enters this map and leaves it when the page
     /// ends; the guard rehashes before an insert once the tombstones those
     /// removals leave could take half the free slots
@@ -71,7 +88,25 @@ pub const Bridge = struct {
     fn unlock(self: *Bridge) void {
         std.Io.Threaded.mutexUnlock(&self.mutex);
     }
+
+    const cache_slots = 1024;
+
+    const CacheEntry = struct {
+        instance: ?*anyopaque = null,
+        generation: u64 = runtime.SlabAllocator.dead_generation,
+        node_base: ?*NodeBase = null,
+    };
+
+    /// `instance`'s cache entry: by address, a slab slot being 32 bytes.
+    fn cacheEntry(self: *Bridge, instance: *anyopaque) *CacheEntry {
+        return &self.cache[(@intFromPtr(instance) >> 5) & (cache_slots - 1)];
+    }
 };
+
+/// The slab generation of `instance`'s slot: `dead_generation` once freed.
+fn generationOf(instance: *anyopaque) u64 {
+    return runtime.SlabAllocator.generationOf(@ptrCast(@alignCast(instance)));
+}
 
 /// The Browser of `instance` - a runtime.Instance - read from its address.
 fn scopeOf(instance: *anyopaque) *runtime.BrowserScope {
@@ -117,6 +152,7 @@ pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
     defer bridge.unlock();
     bridge.guard.beforeInsert(&bridge.map);
     try bridge.map.put(instance, node_base);
+    bridge.cacheEntry(instance).* = .{ .instance = instance, .generation = generationOf(instance), .node_base = node_base };
     // Reverse direction lives on the node itself - see NodeBase.owner_instance.
     node_base.owner_instance = instance;
 }
@@ -134,6 +170,8 @@ pub fn unregister(instance: *anyopaque) void {
         node_base.owner_instance = null;
     }
     if (bridge.map.remove(instance)) bridge.guard.noteRemoval(&bridge.map);
+    const entry = bridge.cacheEntry(instance);
+    if (entry.instance == instance) entry.* = .{};
 }
 
 /// Get the NodeBase for a runtime.Instance
@@ -143,7 +181,17 @@ pub fn getNodeBase(instance: *anyopaque) ?*NodeBase {
     const bridge = bridgeOf(instance) orelse return null;
     bridge.lock();
     defer bridge.unlock();
-    return bridge.map.get(instance);
+    // The cache's answer is the map's (Bridge.cache says why).
+    const generation = generationOf(instance);
+    const entry = bridge.cacheEntry(instance);
+    if (entry.instance == instance and entry.generation == generation and generation != runtime.SlabAllocator.dead_generation) {
+        return entry.node_base;
+    }
+    const found = bridge.map.get(instance);
+    if (generation != runtime.SlabAllocator.dead_generation) {
+        entry.* = .{ .instance = instance, .generation = generation, .node_base = found };
+    }
+    return found;
 }
 
 /// Get the runtime.Instance for a NodeBase
