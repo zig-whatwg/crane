@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Free a parser buffer on one cleanup path](architecture-free-a-parser-buffer-on-one-cleanup-path.md) - Use one deferred cleanup for temporary storage, and test failure at the final allocation as well as success.
 - [Find an object's Browser from its address, not from its context](architecture-find-an-objects-browser-from-its-address-not-its-context.md) - An owner you can only reach through a context dies with the context; put the owner where the object's memory is - an allocation block aligned to its size names its allocator for free.
 - [A traced edge keeps an object from the collector, not from its realm's end](architecture-a-traced-edge-keeps-an-object-from-the-collector-not-from-its-realm-s-end.md) - A traced edge is a reason for the collector to keep an object, not a guarantee that it lives: if the object can come from another realm, its realm's end frees it - read it through a generation check everywhere, and find out by ending that realm in a test.
 - [A flag made counted changes every caller - audit them all, and test each by collection](architecture-a-flag-made-counted-changes-every-caller.md) - Changing a primitive's counting semantics is a change to every caller: grep them all (no `head`), balance each with its own bool, and prove each one by collecting the object it keeps.
@@ -270,6 +271,11 @@ A lane brief now carries the lessons chosen for its batch.
 - [Every native callback owns what `info` hands it - a dispatcher written beside interface.zig repeats its leaks](architecture-every-native-callback-owns-what-info-hands-it.md) - Run each callback's statement 10,000 times under `gc_bench --c-alloc` and read `global_handle_bytes`; a dispatcher that bypasses interface.zig's release predicates must be measured on its own.
 
 ### Spec Compliance
+- [MIME parameters compare string contents](spec-compliance-mime-parameters-compare-string-contents.md) - Check collection equality before using it for specification strings, and test parsing independently of its callers.
+- [Preserve quotes until MIME parsing](spec-compliance-preserve-quotes-until-mime-parsing.md) - Header splitting preserves the quoted representation that later MIME parsing consumes; test the composed algorithms and allocation failures.
+- [Blob type is not a MIME parser](spec-compliance-blob-type-is-not-a-mime-parser.md) - Split WPT results by API and browser before changing shared-looking type handling; Blob normalization and Fetch MIME extraction are different contracts.
+- [Check broken sniffing arithmetic against an engine](spec-compliance-check-broken-sniffing-arithmetic-against-an-engine.md) - Verify frame arithmetic against real byte vectors and an existing browser when the specification is inconsistent.
+- [Check the failing subtest before following WPT](spec-compliance-check-the-failing-subtest-before-following-wpt.md) - A file's aggregate score does not prove consensus for an assertion; inspect browser subtests and the actual engine algorithm.
 - [IDNA validity errors are fatal after normalization](spec-compliance-idna-validity-is-fatal-after-normalization.md) - Validate normalized Unicode status, domain-wide Bidi and ContextJ; an output string alone is not success.
 - [A trailing-data error follows the complete output](spec-compliance-a-trailing-data-error-follows-the-complete-output.md) - Preserve the specified output/error order and recovery state.
 - [A decoder error can restore input and retain state](spec-compliance-a-decoder-error-can-restore-input-and-retain-state.md) - Carry restored input and retained state across the decoder/caller boundary.
