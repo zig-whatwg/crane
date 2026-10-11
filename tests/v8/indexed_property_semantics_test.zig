@@ -11,6 +11,10 @@
 //! the last test here: a `length` redefined on the instance changes what
 //! Array.prototype.indexOf sees and not what `list[i]` answers.
 //!
+//! The attribute getter `list.length` is the other half of those files'
+//! reads: the last tests pin what a number or boolean attribute answers and
+//! that a read makes no handle for its receiver.
+//!
 //! The file shares tests/v8's process: it starts the engine as any file may
 //! (initializeEngine is idempotent) and makes its own agents.
 
@@ -18,6 +22,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
+const ffi = @import("v8").ffi;
 
 const WindowHost = struct {
     fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
@@ -76,6 +81,20 @@ const Page = struct {
     fn close(self: Page) void {
         protocol.destroyWindowRealm(self.realm, .global_detached);
         protocol.destroyAgent(self.agent);
+    }
+
+    fn isolate(self: Page) *ffi.Isolate {
+        return @ptrCast(@alignCast(self.agent));
+    }
+
+    fn collect(self: Page) !void {
+        const Collect = struct {
+            fn steps(data: ?*anyopaque) void {
+                protocol.requestGarbageCollection(@ptrCast(@alignCast(data.?)));
+            }
+        };
+        try protocol.runInRealm(self.realm, Collect.steps, self.agent);
+        try protocol.runInRealm(self.realm, Collect.steps, self.agent);
     }
 
     /// `source`'s completion value, as a string; nothing reported.
@@ -385,6 +404,68 @@ test "an indexed read and an `in` check make no handle for the list" {
     const contexts_left = try counter("live_context_globals") - contexts_before;
     if (this_made != 0 or contexts_left != 0) {
         std.debug.print("384 indexed reads and 384 `in` checks made {d} `this` Globals and left {d} Context Globals\n", .{ this_made, contexts_left });
+        return error.HandlesMade;
+    }
+}
+
+test "a number or boolean attribute answers its value" {
+    const page = try Page.open();
+    defer page.close();
+    // Each primitive kind an attribute getter returns: unsigned long
+    // (NodeList.length), unsigned short (Node.nodeType, Event.eventPhase),
+    // boolean (Event.bubbles), unsigned long long (ProgressEvent.loaded),
+    // long (UIEvent.detail), double (Event.timeStamp) - the values WebIDL's
+    // conversions to ECMAScript give, and numbers, not objects.
+    try page.expect(fixture ++
+        \\(() => {
+        \\  const { qsa, root } = lists();
+        \\  const ev = new Event('x');
+        \\  const bubbling = new Event('y', { bubbles: true });
+        \\  const big = new ProgressEvent('p', { loaded: 9007199254740991 });
+        \\  const ui = new UIEvent('u', { detail: -2 });
+        \\  const wide = new UIEvent('w', { detail: 2147483647 });
+        \\  const t = ev.timeStamp;
+        \\  return [qsa.length, typeof qsa.length, root.nodeType, ev.eventPhase, ev.bubbles, bubbling.bubbles, typeof ev.bubbles,
+        \\    big.loaded, ui.detail, wide.detail, typeof t === 'number' && t >= 0 && t === ev.timeStamp].join();
+        \\})()
+    , "3,number,1,0,false,true,boolean,9007199254740991,-2,2147483647,true");
+}
+
+test "an attribute read makes no handle for its receiver and leaves none" {
+    const page = try Page.open();
+    defer page.close();
+    // `list.length` ran ~6e7 times per NodeList-static-length-getter-
+    // tampered-[123].html, and each made a Global for `this` and one for the
+    // Number, then released both. A number, a boolean, a string and a node
+    // result: no `this` Global (object_globals_from.FunctionCallbackInfo_This
+    // counts creations), and V8's live global handle bytes flat.
+    try page.expect(fixture ++
+        \\globalThis.attrs = lists();
+        \\globalThis.attrEvent = new Event('x');
+        \\'ready'
+    , "ready");
+    const reads =
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let k = 0; k < 64; k++) {
+        \\    n += attrs.qsa.length + attrs.childNodes.length + attrs.root.nodeType;
+        \\    if (attrEvent.bubbles === false) n++;
+        \\    if (attrs.root.firstChild.localName === 'a') n++;
+        \\    n += attrEvent.timeStamp >= 0 ? 1 : 0;
+        \\  }
+        \\  return String(n);
+        \\})()
+    ;
+    try page.expect(reads, "640");
+    try page.collect();
+    const this_before = try counter("object_globals_from.FunctionCallbackInfo_This");
+    const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate()));
+    try page.expect(reads, "640");
+    try page.collect();
+    const this_made = try counter("object_globals_from.FunctionCallbackInfo_This") - this_before;
+    const bytes_left = @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate()))) - bytes_before;
+    if (this_made != 0 or bytes_left > 0) {
+        std.debug.print("64 rounds of attribute reads made {d} `this` Globals and left {d} global handle bytes\n", .{ this_made, bytes_left });
         return error.HandlesMade;
     }
 }

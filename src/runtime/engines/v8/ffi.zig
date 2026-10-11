@@ -97,6 +97,18 @@ pub const FunctionCallbackInfo = opaque {
     /// Get the 'this' object for the function call
     pub extern fn v8_FunctionCallbackInfo_This(self: *const FunctionCallbackInfo) *Object;
 
+    /// Internal fields 0 and 1 of the receiver (the instance and its
+    /// WrapperTypeInfo), looked through a legacy platform object's proxy, in
+    /// one call; a field the receiver lacks, or a receiver that is not an
+    /// object, reads as null. Makes no handle.
+    pub extern fn v8_FunctionCallbackInfo_ThisInstanceFields(self: *const FunctionCallbackInfo, instance: *?*anyopaque, type_info: *?*anyopaque) void;
+
+    /// A primitive return value, written into the return slot: no handle.
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValueDouble(self: *const FunctionCallbackInfo, value: f64) void;
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValueInt32(self: *const FunctionCallbackInfo, value: i32) void;
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValueUint32(self: *const FunctionCallbackInfo, value: u32) void;
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValueBool(self: *const FunctionCallbackInfo, value: bool) void;
+
     /// Check if this is a constructor call (called with 'new')
     pub extern fn v8_FunctionCallbackInfo_IsConstructCall(self: *const FunctionCallbackInfo) bool;
 
