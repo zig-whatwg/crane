@@ -269,6 +269,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Every native callback owns what `info` hands it - a dispatcher written beside interface.zig repeats its leaks](architecture-every-native-callback-owns-what-info-hands-it.md) - Run each callback's statement 10,000 times under `gc_bench --c-alloc` and read `global_handle_bytes`; a dispatcher that bypasses interface.zig's release predicates must be measured on its own.
 
 ### Spec Compliance
+- [IDNA validity errors are fatal after normalization](spec-compliance-idna-validity-is-fatal-after-normalization.md) - Validate normalized Unicode status, domain-wide Bidi and ContextJ; an output string alone is not success.
 - [A trailing-data error follows the complete output](spec-compliance-a-trailing-data-error-follows-the-complete-output.md) - Preserve the specified output/error order and recovery state.
 - [A decoder error can restore input and retain state](spec-compliance-a-decoder-error-can-restore-input-and-retain-state.md) - Carry restored input and retained state across the decoder/caller boundary.
 - [DOM offsets are UTF-16 code units, and Crane's strings are WTF-8 bytes](spec-compliance-dom-offsets-are-utf16-code-units-over-wtf8-bytes.md) - A DOM offset or length is UTF-16 code units, never bytes: never slice a DOMString with one - map it with infra.wtf8 (positionOfCodeUnit, Pieces, appendJoined), and test with an astral character AND a lone surrogate (ASCII hides the bug, std.unicode rejects the surrogate).
