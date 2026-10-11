@@ -1092,11 +1092,9 @@ pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     return instance.ctx.allocator.dupe(u8, text);
 }
 
-/// DOM node length through the owning interfaces: CharacterData length,
-/// child count otherwise, and zero for attributes and doctypes.
-/// TODO(CharacterData length: UTF-16 units, see codex-selection Q7): the
-/// shared getter currently counts bytes; keep Selection and Range in the
-/// same units until the DOM-core fix lands.
+/// DOM node length through the owning interfaces: CharacterData length (in
+/// UTF-16 code units, as Range's), child count otherwise, and zero for
+/// attributes and doctypes.
 fn nodeLength(node: *runtime.Instance) !u32 {
     return switch (try interfaces.Node.get_nodeType(node)) {
         2, 10 => 0,
