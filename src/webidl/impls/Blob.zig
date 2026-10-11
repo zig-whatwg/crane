@@ -171,7 +171,11 @@ pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSVa
         break :blk .transparent;
     };
 
-    // Get MIME type from options
+    // File API Blob constructor steps 3.1-3.2: printable ASCII, lowercased.
+    // Do not MIME-parse it: at wpt.fyi cc74d2669f, parsing.any.html's
+    // Blob/File subset is 353/955 in Chrome, Firefox and Safari, with the
+    // same status for every case. All three preserve non-MIME ASCII syntax.
+    // https://wpt.fyi/results/mimesniff/mime-types/parsing.any.html?sha=cc74d2669f
     const mime_type: []const u8 = if (options.wasPassed() and options.value.type != null) options.value.type.?.asSlice() else "";
 
     // Process blob parts if provided. An optional argument that is

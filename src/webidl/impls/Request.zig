@@ -18,12 +18,6 @@ const fetch = @import("fetch");
 const InternalRequest = fetch.internal.InternalRequest;
 const abort_algorithms = @import("dom").abort_algorithms;
 
-// Import File API for Blob support
-const file = @import("file");
-const BlobData = file.BlobData;
-
-// Import Blob WebIDL wrapper
-const BlobImpl = @import("Blob.zig");
 const webidl = @import("webidl");
 
 // RequestInit is now properly defined in dictionaries with all Fetch spec fields
@@ -886,19 +880,26 @@ fn bodyStreamToSend(request_object: *runtime.Instance) ?*runtime.Instance {
 fn packageSteps(instance: *runtime.Instance, method: fetch_body.Method, bytes: []const u8) anyerror!*runtime.Instance {
     const internal = instance.getState(State).own._internal.?;
     const allocator = internal.allocator;
-    const content_type = internal.request.header_list.get(allocator, "content-type") catch null;
-    defer if (content_type) |ct| allocator.free(ct);
     switch (method) {
-        // blob(): a Blob whose contents are bytes and whose type is this's
-        // MIME type (BlobData lowercases it, and drops one it cannot hold).
+        // Fetch Body: get the MIME type by extracting it from the header list.
+        // wpt.fyi cc74d2669f, parsing.any.html, Request/Response: Chrome
+        // 358/942, Firefox 677/942, Safari 344/942. For
+        // text/html;charset=gbk;charset=windows-1255 they respectively keep
+        // both parameters, keep the first, or drop both. The three-way tie
+        // follows Fetch's extraction; Blob still lowercases/range-filters it.
+        // https://wpt.fyi/results/mimesniff/mime-types/parsing.any.html?sha=cc74d2669f
         .blob => {
-            const blob_data = try BlobData.init(allocator, bytes, content_type orelse "");
-            errdefer blob_data.deinit();
-            return BlobImpl.createFromBlobData(allocator, instance.ctx, blob_data);
+            var mime_type = try fetch.internal.mime.extractMimeType(allocator, &internal.request.header_list);
+            defer if (mime_type) |*mime| mime.deinit();
+            const blob_type = if (mime_type) |mime| try @import("mimesniff").serializeMimeTypeToBytes(allocator, mime) else "";
+            defer if (mime_type != null) allocator.free(blob_type);
+            return @import("dom").blob_bytes.create(instance.ctx, bytes, blob_type);
         },
         // formData(): the entries this's Content-Type says how to parse
         // bytes into.
         .form_data => {
+            const content_type = internal.request.header_list.get(allocator, "content-type") catch null;
+            defer if (content_type) |ct| allocator.free(ct);
             const FormDataImpl = @import("FormData.zig");
             const form_data = try fetch_body.parseFormData(allocator, content_type, bytes);
             errdefer form_data.deinit();
