@@ -167,7 +167,7 @@ pub fn parseMimeType(
 
     const arena_alloc = parse_arena.allocator();
 
-    // Convert UTF-8 → UTF-16 (temp allocation in arena)
+    // Isomorphic-decode each byte to its UTF-16 code point (arena scratch).
     const input_utf16 = try infra.bytes.isomorphicDecode(arena_alloc, input);
     // No defer needed - arena handles cleanup
 
