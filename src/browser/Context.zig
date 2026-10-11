@@ -1267,6 +1267,8 @@ pub const Context = struct {
             .timer = self.timer,
             .event_loop = self.event_loop,
             .origin = null,
+            // The realm's Browser, recorded before its Window is made.
+            .browser_scope = self.browser_scope,
             .create_global_object = createWindow,
             .host = self,
         }) catch |err| {
@@ -1274,8 +1276,7 @@ pub const Context = struct {
             return error.ContextCreateFailed;
         };
         self.realm = realm;
-        // The realm's Browser, and the inbox other threads post its tasks to.
-        realm.browser_scope = self.browser_scope;
+        // The inbox other threads post the realm's tasks to.
         realm.task_sink = self.task_sink;
 
         // __internal and GLOBAL, before the singletons stored in __internal.

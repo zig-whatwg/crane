@@ -3555,14 +3555,15 @@ fn attachRealm(
         .origin = origin,
         .global_this = global_this,
         .parent = parent,
+        // Its Browser is the parent's, recorded before its Window is made.
+        .browser_scope = parent.browser_scope,
         .create_global_object = FrameWindow.create,
         .host = &frame_window,
     }) catch |err| {
         log.debug("a frame's realm was not made: {}", .{err});
         return null;
     };
-    // Its Browser and its loop's cross-thread inbox are the parent's too.
-    realm.browser_scope = parent.browser_scope;
+    // Its loop's cross-thread inbox is the parent's too.
     realm.task_sink = parent.task_sink;
     const window_instance = frame_window.window.?;
 
