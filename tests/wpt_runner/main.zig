@@ -1279,7 +1279,7 @@ pub fn main(init: std.process.Init) !void {
 /// The runner's allocator, chosen at startup: `runner_allocator.Fast`, or
 /// `runner_allocator.Traced` under `CRANE_LEAK_TRACES=1`. Both are pinned there
 /// so that double-free and leak detection, and the traces, are the same in a
-/// Debug runner and a ReleaseSafe one (`-Dwpt-runner-optimize=ReleaseSafe`).
+/// ReleaseSafe runner (the default) and a Debug one (`-Dwpt-runner-optimize=Debug`).
 ///
 /// `init.gpa` is a `DebugAllocator(.{})`, whose Debug-mode default is
 /// `stack_trace_frames = 6`: every allocation AND every free captures a
@@ -1321,10 +1321,16 @@ fn run(init: std.process.Init) !u8 {
     defer options.deinit();
 
     // Which build produced this run, once per run (not per supervised child):
-    // a ReleaseSafe runner (`-Dwpt-runner-optimize`) is several times faster on
-    // CPU-bound files and not yet at parity with Debug (build.zig), so a log
-    // must say which one it came from.
-    if (!options.isChild() or options.wantsSupervisor()) print("wpt_runner: {s} build\n", .{@tagName(builtin.mode)});
+    // the runner is ReleaseSafe by default and Debug on request
+    // (`-Dwpt-runner-optimize=Debug`), timeouts differ between the two, and a
+    // log must say which one it came from. The root's mode is the LLVM
+    // pipeline; Crane's modules keep their own `builtin.mode`
+    // (tests/wpt_runner/build_mode.zig).
+    if (!options.isChild() or options.wantsSupervisor()) print("wpt_runner: {s} build (Crane modules {s}, C libraries {s})\n", .{
+        @tagName(builtin.mode),
+        @tagName(wpt_options.crane_modules_mode),
+        @tagName(wpt_options.c_libraries_mode),
+    });
 
     if (options.allocator_self_check) {
         const check = runner_allocator.selfCheck();

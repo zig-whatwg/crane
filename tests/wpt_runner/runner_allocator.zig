@@ -1,9 +1,9 @@
 //! The WPT runner's allocators, pinned so they behave the same in every build
 //! mode the runner is built in.
 //!
-//! The runner builds Debug by default and ReleaseSafe on request
-//! (build.zig, `-Dwpt-runner-optimize`), and what a run reports must not depend
-//! on which.
+//! The runner builds ReleaseSafe by default and Debug on request
+//! (`-Dwpt-runner-optimize=Debug`; tests/wpt_runner/build_mode.zig), and what a
+//! run reports must not depend on which.
 //!
 //! `std.heap.DebugAllocator`'s defaults do depend on it:
 //!
