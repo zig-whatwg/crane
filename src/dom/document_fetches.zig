@@ -101,7 +101,12 @@ pub fn tryInstall(slots: *OwnerSlots, owner: Owner) error{OwnerSlotsFull}!void {
     var available: ?*?Owner = null;
     for (slots) |*slot| {
         if (slot.*) |existing| {
-            if (existing.discard == owner.discard) return;
+            // The same owner only if EVERY step it names is: two owners
+            // whose `discard` steps have the same body are one function in a
+            // release build (LLVM folds identical functions), and keying by
+            // it dropped the second owner's abort steps there
+            // (docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md).
+            if (std.meta.eql(existing, owner)) return;
             continue;
         }
         if (available == null) available = slot;
@@ -225,6 +230,37 @@ test "document abort prepares every owner before callbacks and destruction stays
     try std.testing.expect(state.second_marked);
     try std.testing.expectEqual(@as(usize, 11), state.aborted);
     try std.testing.expectEqual(@as(usize, 0), state.discarded);
+}
+
+test "owners that share a discard step are both installed: a release build can make two steps one function" {
+    // Two kinds of fetch owner whose `discard` steps have the same body share
+    // one function in a release build. Each owner's abort steps still run,
+    // as they do in Debug.
+    const saved = cancelers;
+    defer cancelers = saved;
+    cancelers = .{null} ** slot_count;
+    const Owners = struct {
+        fn aborted(document: *runtime.Instance) *usize {
+            return @ptrCast(@alignCast(document.state));
+        }
+        fn discard(_: runtime.Context) void {}
+        fn prepare(_: *runtime.Instance) bool {
+            return true;
+        }
+        fn abortFirst(document: *runtime.Instance) void {
+            aborted(document).* += 1;
+        }
+        fn abortSecond(document: *runtime.Instance) void {
+            aborted(document).* += 10;
+        }
+    };
+    var aborted: usize = 0;
+    var document: runtime.Instance = undefined;
+    document.state = &aborted;
+    install(.{ .discard = Owners.discard, .prepare_abort = Owners.prepare, .abort = Owners.abortFirst });
+    install(.{ .discard = Owners.discard, .prepare_abort = Owners.prepare, .abort = Owners.abortSecond });
+    try std.testing.expect(abort(&document));
+    try std.testing.expectEqual(@as(usize, 11), aborted);
 }
 
 test "full owner table rejects a new owner and accepts an already installed owner" {
