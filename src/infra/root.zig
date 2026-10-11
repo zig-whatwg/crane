@@ -9,6 +9,7 @@
 const std = @import("std");
 
 pub const string = @import("string.zig");
+pub const wtf8 = @import("wtf8.zig");
 pub const code_point = @import("code_point.zig");
 pub const bytes = @import("bytes.zig");
 pub const list = @import("list.zig");

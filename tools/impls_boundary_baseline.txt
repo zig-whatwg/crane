@@ -433,7 +433,6 @@ src/webidl/impls/ProcessingInstruction.zig CharacterData.init 1
 src/webidl/impls/ProcessingInstruction.zig CharacterData.setData 1
 src/webidl/impls/ProcessingInstruction.zig Node.NodeType 1
 src/webidl/impls/ProcessingInstruction.zig Node.setNodeType 1
-src/webidl/impls/Range.zig CharacterData.getData 16
 src/webidl/impls/Range.zig Node.NodeType 9
 src/webidl/impls/Range.zig Node.getFirstChild 2
 src/webidl/impls/Range.zig Node.getNextSibling 2
@@ -479,7 +478,6 @@ src/webidl/impls/StorageEvent.zig Event.call_initEvent 1
 src/webidl/impls/StorageEvent.zig Event.getDispatchFlag 1
 src/webidl/impls/StorageEvent.zig Event.innerEventCreationSteps 1
 src/webidl/impls/Text.zig CharacterData.deinit 2
-src/webidl/impls/Text.zig CharacterData.getData 1
 src/webidl/impls/Text.zig CharacterData.init 1
 src/webidl/impls/Text.zig CharacterData.setData 1
 src/webidl/impls/Text.zig Node.NodeType 3

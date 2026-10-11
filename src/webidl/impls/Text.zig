@@ -160,8 +160,9 @@ pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
     // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
     // The V8 property getter callback will free returned strings using instance.ctx.allocator
-    var result = infra.List(u8).init(instance.ctx.allocator);
-    errdefer result.deinit();
+    const allocator = instance.ctx.allocator;
+    var result: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer result.deinit(allocator);
 
     // Step 1: Walk backwards to find the first contiguous Text node
     var first: *runtime.Instance = instance;
@@ -177,16 +178,17 @@ pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
         const node_type = NodeImpl.getNodeType(node) orelse break;
         if (node_type != NodeImpl.NodeType.TEXT_NODE) break;
 
-        // Get this Text node's data
-        if (CharacterDataImpl.getData(node)) |data| {
-            try result.appendSlice(data);
-        }
+        // Get this Text node's data. Concatenated as code units: a pair
+        // split across two nodes is one pair in the result (infra.wtf8).
+        var data = try interfaces.CharacterData.get_data(node);
+        defer data.deinit(node.ctx.allocator);
+        try infra.wtf8.appendJoined(allocator, &result, data.asSlice());
 
         // Move to next sibling
         current = NodeImpl.getNextSibling(node);
     }
 
-    const owned = try result.toOwnedSlice();
+    const owned = try result.toOwnedSlice(allocator);
     return runtime.DOMString.initOwned(owned);
 }
 
