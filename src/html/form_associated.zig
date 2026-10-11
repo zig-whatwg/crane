@@ -28,6 +28,7 @@
 //! HTMLFormElement::removingSteps -> formOwnerRemovedFromTree.
 
 const std = @import("std");
+const infra = @import("infra");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
@@ -730,27 +731,18 @@ pub const TextSelection = struct {
     }
 };
 
-/// The length of `text` (UTF-8) in UTF-16 code units, which is how WebIDL
-/// and the selection APIs measure strings.
+/// The length of `text` (WTF-8, as a DOMString holds it) in UTF-16 code
+/// units, which is how WebIDL and the selection APIs measure strings. A lone
+/// surrogate is one code unit (infra.wtf8).
 pub fn utf16Length(text: []const u8) u32 {
-    const units = std.unicode.calcUtf16LeLen(text) catch return @intCast(text.len);
-    return @intCast(units);
+    return @intCast(@min(infra.wtf8.codeUnitLength(text), std.math.maxInt(u32)));
 }
 
-/// The byte offset in `text` (UTF-8) of the code point starting at UTF-16
+/// The byte offset in `text` (WTF-8) of the code point starting at UTF-16
 /// offset `units`, or text.len past the end. An offset inside a surrogate
-/// pair - half a code point, which UTF-8 cannot hold - rounds down.
+/// pair - half a code point - rounds down to the pair.
 pub fn byteOffsetOfUtf16(text: []const u8, units: u32) usize {
-    var counted: u32 = 0;
-    var i: usize = 0;
-    while (i < text.len) {
-        const len = std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
-        const width: u32 = if (len == 4) 2 else 1;
-        if (counted + width > units) return i;
-        counted += width;
-        i += len;
-    }
-    return text.len;
+    return infra.wtf8.positionOfCodeUnit(text, units).byte;
 }
 
 /// The outcome of setRangeText() steps 3-13 over a relevant value.
