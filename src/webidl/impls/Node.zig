@@ -109,7 +109,10 @@ pub const InternalState = struct {
     owner_document_generation: u64 = 0,
 
     /// Cached childNodes NodeList (lazily created)
-    /// This is a live NodeList that reflects changes to the tree
+    /// This is a live NodeList that reflects changes to the tree. RAW: the
+    /// list holds this node (a counted reference, refcount design 5h), never
+    /// the reverse, and clears this - and the interface's [SameObject] cache
+    /// of it - when it is freed (`childNodesFreed`).
     child_nodes_list: ?*runtime.Instance = null,
 
     /// For tracking if node is in a document tree (for isConnected)
@@ -162,7 +165,7 @@ pub fn installHooks() void {
     // here, before anything can hold this node to set its document.
     dom_module.node_document.install(.{ .set = &setNodeDocumentHook });
     // The reference counts reach a node's live node document through here.
-    dom_module.refcount.install(.{ .node_document_counts = &nodeDocumentCounts });
+    dom_module.refcount.install(.{ .node_document_counts = &nodeDocumentCounts, .child_nodes_freed = &childNodesFreed });
     // And a parser's DOM adapter frees a node it made and never inserted
     // through `dom.node_creation`, as the tree teardown frees a child.
     dom_module.node_creation.installNode(.{
@@ -767,6 +770,18 @@ pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     }
 
     return null;
+}
+
+/// dom.refcount's hook: `list`, `node`'s childNodes list, is being freed.
+/// The node's two caches of it - this impl's and the generated interface's
+/// [SameObject] one - are raw (the list holds the node, never the reverse:
+/// refcount design section 3), and let it go: the next read makes a new list.
+fn childNodesFreed(node: *runtime.Instance, list: *runtime.Instance) void {
+    if (getInternal(node)) |internal| {
+        if (internal.child_nodes_list == list) internal.child_nodes_list = null;
+    }
+    const state = node.getState(State);
+    if (state.own.cached_childNodes == list) state.own.cached_childNodes = null;
 }
 
 /// Getter for childNodes

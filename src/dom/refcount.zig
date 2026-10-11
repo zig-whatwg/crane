@@ -470,6 +470,8 @@ pub fn attributeChanged(element: *runtime.Instance) void {
 pub const Hooks = struct {
     document_counts: ?*const fn (document: *runtime.Instance) ?*DocumentCounts = null,
     node_document_counts: ?*const fn (node: *runtime.Instance) ?*DocumentCounts = null,
+    /// The Node impl's: `list`, `node`'s childNodes list, is being freed.
+    child_nodes_freed: ?*const fn (node: *runtime.Instance, list: *runtime.Instance) void = null,
 };
 
 // process-wide: the Document and Node impls' accessors for the counts - the same functions for every Browser, installed only at process start (process_start.zig)
@@ -570,6 +572,16 @@ fn unledgeredDeref(node: *NodeBase, comptime who: []const u8) void {
     node.rc -= NodeBase.rc_one;
     if (isHeld(node)) return;
     adjustForeign(walkAdd(null, node, -1), -1);
+}
+
+/// `list`, the childNodes list of `node` (live, and holding `node`), is
+/// being freed: `node`'s caches of it let it go. A node's caches of its
+/// collections are RAW - the list holds the node, never the reverse (design
+/// section 3, "node -> childNodes list -> node"), so no cycle - and must not
+/// outlive the list: the next read makes a new one.
+pub fn childNodesFreed(node: *runtime.Instance, list: *runtime.Instance) void {
+    const accessor = hooks.child_nodes_freed orelse return;
+    accessor(node, list);
 }
 
 /// `document`'s counts, or null for an instance that is not a live Document
