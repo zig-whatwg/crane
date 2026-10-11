@@ -606,14 +606,27 @@ fn noDeinit(_: ?*anyopaque, _: std.mem.Allocator) void {}
 /// Set up a new TransformStream whose algorithms are `transformer`'s: HWM 1
 /// and 0, size 1, startPromise resolved with undefined. The stream is
 /// wrapped, so the wrapper cache owns it.
+/// Ownership of `transformer` passes at this call, including on failure.
+/// Failed setup destroys its native algorithms once. Objects already held by
+/// the realm's wrapper cache remain its responsibility until realm teardown.
 pub fn setUp(realm: Realm, ctx: runtime.Context, transformer: Transformer) !*runtime.Instance {
+    var owns_transformer = true;
+    errdefer if (owns_transformer) transformer.vtable.deinit(transformer.ctx, ctx.allocator);
     const stream_instance = try newStream(ctx);
+    const stream_generation = runtime.SlabAllocator.generationOf(stream_instance);
+    errdefer stream_instance.releaseIfUnwrapped(stream_generation);
     // Step 8: Let startPromise be a promise resolved with undefined.
     const start = try Deferred.initResolved(realm);
     // Step 9: InitializeTransformStream(stream, startPromise, 1, size 1, 0, size 1).
     try initialize(realm, stream_instance, start, 1, .one, 0, .one);
     // Steps 10-11: a new controller with the given algorithms.
     const controller = try newController(ctx, stream_instance, transformer);
+    owns_transformer = false;
+    const controller_generation = runtime.SlabAllocator.generationOf(controller);
+    errdefer {
+        clearAlgorithms(controllerOf(controller).?);
+        controller.releaseIfUnwrapped(controller_generation);
+    }
     try setUpController(realm, stream_instance, controller);
     return stream_instance;
 }

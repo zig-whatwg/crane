@@ -9,8 +9,8 @@
 //!
 //! ```zig
 //! const keepalive_fetch = @import("dom").keepalive_fetch;
-//! // sendBeacon(): false when the fetch group's keepalive budget cannot
-//! // take the body (Beacon 3.2 step 6.2), true when the request started.
+//! // sendBeacon(): false for a mixed-content block or when the fetch
+//! // group's keepalive budget cannot take the body (Beacon 3.2 step 6.2).
 //! return keepalive_fetch.send(global, request, .{});
 //! ```
 //!
@@ -30,10 +30,16 @@
 //!   HTTP-network-or-cache fetch step 8.10). Nothing is sent. Otherwise the
 //!   body's bytes are in flight until the fetch ends, finished or
 //!   terminated - once.
-//! - `send` returns true when the fetch started. Its response is ignored
-//!   ("User agents must ignore any entity bodies returned in the
-//!   responses"). An error (out of memory) means nothing was sent.
-//! - `start` is the same, with an `Observer` and a handle: the observer
+//! - `send`, for a `.fetch` load with empty destination, also returns false
+//!   when mixed content would block it after upgrade-insecure-requests.
+//!   A CSP block returns true, reports the violation and sends nothing,
+//!   before consulting the budget. An accepted request reaches main fetch
+//!   unchanged so report-only CSP still sees its original URL before UIR.
+//!   `.ping` keeps its asynchronous policy checks. Other true results mean
+//!   the fetch started; its response is ignored. An error (out of memory)
+//!   means nothing was sent.
+//! - `start` performs the budget check and dispatches with an `Observer`
+//!   and a handle, without `send`'s acceptance precheck: the observer
 //!   hears the response's status and the dispatch's end, and the handle
 //!   can `cancel` the fetch until the end is heard. Hyperlink auditing
 //!   cancels its pings when their document is aborted; Reporting reads
@@ -257,10 +263,55 @@ pub fn start(global: *runtime.Instance, request: *fetch.internal.InternalRequest
     return self;
 }
 
-/// `start` without a handle: true when the request was accepted and its
-/// fetch started; false when the fetch group's keepalive budget rejected
-/// it - sendBeacon's return value.
+/// Beacon's immediate acceptance: false for mixed content or budget
+/// rejection, true for a CSP block or a started fetch. Takes `request` on
+/// every path. `.ping` callers keep `start`'s asynchronous policy checks.
 pub fn send(global: *runtime.Instance, request: *fetch.internal.InternalRequest, options: Options) Error!bool {
+    var owns_request = true;
+    defer if (owns_request) request.deinit();
+    if (options.load == .fetch) {
+        std.debug.assert(request.destination == .empty);
+        const csp_check = fetch.algorithms.csp_check;
+        const container = switch (request.policy_container) {
+            .client => null,
+            .container => |*value| value,
+        };
+        // Blink SendBeaconCommon checks CSP before creating its fetch and
+        // returns true on a block; otherwise it returns whether the resource
+        // is not a LoadError. A CSP-blocked mixed request thus returns true,
+        // without reserving quota. The silent probe precedes the one report.
+        // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/loader/ping_loader.cc
+        if (container) |policy| {
+            if (csp_check.isBlockedFor(policy, request.currentUrl(), .empty, null)) {
+                csp_check.reportViolationsForRequest(request);
+                _ = csp_check.shouldRequestBeBlocked(request);
+                return true;
+            }
+        }
+        // Main fetch steps 5-7, without changing the real request: step 4's
+        // report-only CSP must still see the original URL. Mixed Content's
+        // step 6 upgrade only touches image/audio/video, never this empty
+        // destination. Reuse the same predicates as the mutating fetch path.
+        // Beacon §3.2's final true differs from the browsers' synchronous
+        // mixed-content rejection: at WPT revision 521d168d63, Chrome,
+        // Firefox and Safari each pass all 8 HTTP/HTTPS cases in the four
+        // beacon/headers/header-referrer-*.https.html files (run IDs
+        // 5071749074124800, 5195569390944256, 5823052670828544). Blink's
+        // SendBeaconCommon LoadError check above is the implementation model.
+        const allocator = request.allocator;
+        const upgraded: ?[]const u8 = if (fetch.algorithms.main_fetch.wouldUpgradeToPotentiallyTrustworthyUrl(request))
+            try std.mem.concat(allocator, u8, &.{ "https", request.currentUrl()[4..] })
+        else
+            null;
+        defer if (upgraded) |url| allocator.free(url);
+        if (try fetch.mixed_content.shouldBlockRequestAt(request, upgraded orelse request.currentUrl())) {
+            // Main fetch will not run; perform its preceding report-only
+            // step once before releasing this rejected request.
+            csp_check.reportViolationsForRequest(request);
+            return false;
+        }
+    }
+    owns_request = false; // start takes the request, including on failure.
     return (try start(global, request, options)) != null;
 }
 

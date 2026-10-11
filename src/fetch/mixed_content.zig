@@ -113,12 +113,19 @@ pub fn upgradeRequest(request: *Request) error{OutOfMemory}!void {
 /// Mixed Content 4.4. Crane's document destination denotes a top-level
 /// navigation; nested navigations use iframe/frame/object/embed.
 pub fn shouldBlockRequest(request: *const Request) error{OutOfMemory}!bool {
+    if (!try shouldBlockRequestAt(request, request.currentUrl())) return false;
+    log.warn("blocked mixed content request {s}", .{request.currentUrl()});
+    return true;
+}
+
+/// The same request check at an effective URL, without changing the request
+/// or reporting a block. Used by Beacon's pre-dispatch UIR acceptance probe.
+pub fn shouldBlockRequestAt(request: *const Request, url: []const u8) error{OutOfMemory}!bool {
     // 1.1, 1.4. No mixed-content override (1.3) is configured by this UA.
     if (!request.prohibits_mixed_security_contexts or request.destination == .document) return false;
     // 1.2. A priori authenticated URLs are allowed.
-    if (try isAPrioriAuthenticated(request.allocator, request.currentUrl())) return false;
+    if (try isAPrioriAuthenticated(request.allocator, url)) return false;
     // 2. Blocked.
-    log.warn("blocked mixed content request {s}", .{request.currentUrl()});
     return true;
 }
 

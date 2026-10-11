@@ -701,11 +701,17 @@ fn appendFieldEntries(allocator: std.mem.Allocator, entries: *EntryList, field: 
         const value = (try attributeValue(allocator, field, "value")) orelse try allocator.dupe(u8, "on");
         try appendEntry(allocator, entries, name, value);
     } else if (is_input and eql(input_type, "file")) {
-        // HTML 4.10.22.4 step 5.8.1: an empty selection contributes an empty
-        // File, not a string. Its root uses the existing File-entry lifetime.
-        // TODO(FileList/DataTransfer lane): enumerate a live nonempty selection
-        // through the input owner's read hook, without creating a FileList.
-        if (field.ctx.hasEngine()) {
+        // HTML 4.10.22.4 step 5.8: append each selected File unchanged and
+        // in order. The entry list holds it by the existing File-entry rule.
+        // Blink FileInputType::AppendToFormData uses the same File objects.
+        const selected = try interfaces.HTMLInputElement.get_files(field);
+        const count = if (selected) |list| try interfaces.FileList.get_length(list) else 0;
+        if (count != 0) {
+            for (0..count) |index| {
+                const file = (try interfaces.FileList.call_item(selected.?, @intCast(index))) orelse continue;
+                try appendFileEntry(allocator, entries, field.ctx, name, file);
+            }
+        } else if (field.ctx.hasEngine()) {
             const parts = try engine.createSequenceOfValues(field.ctx, &.{});
             defer parts.release();
             const file = try interfaces.File.call_constructor(field.ctx, parts.value, "", .passed(.{
@@ -778,18 +784,22 @@ fn appendDataToEntries(allocator: std.mem.Allocator, entries: *EntryList, data: 
     for (interfaces.FormData.getEntriesForIterable(data) orelse &.{}) |entry| {
         switch (entry.value) {
             .usvstring => |value| try appendEntry(allocator, entries, entry.name, try allocator.dupe(u8, value)),
-            .file => |file| {
-                const held: ?engine.Owned = if (data.ctx.hasEngine()) try engine.retainValue(data.ctx, .{ .instance = file }) else null;
-                errdefer if (held) |root| root.release();
-                const filename = try takeString(allocator, file, try interfaces.File.get_name(file));
-                try appendEntry(allocator, entries, entry.name, filename);
-                const added = &entries.items[entries.items.len - 1];
-                added.is_file = true;
-                added.file = file;
-                added.file_root = held;
-            },
+            .file => |file| try appendFileEntry(allocator, entries, data.ctx, entry.name, file),
         }
     }
+}
+
+// The same hold as cloning a FormData entry list: the filename is owned by
+// the entry, and the File's wrapper is held for exactly the entry list's life.
+fn appendFileEntry(allocator: std.mem.Allocator, entries: *EntryList, ctx: runtime.Context, name: []const u8, file: *runtime.Instance) !void {
+    const held: ?engine.Owned = if (ctx.hasEngine()) try engine.retainValue(ctx, .{ .instance = file }) else null;
+    errdefer if (held) |root| root.release();
+    const filename = try takeString(allocator, file, try interfaces.File.get_name(file));
+    try appendEntry(allocator, entries, name, filename);
+    const added = &entries.items[entries.items.len - 1];
+    added.is_file = true;
+    added.file = file;
+    added.file_root = held;
 }
 
 fn appendEntryToData(data: *runtime.Instance, entry: Entry) !void {
@@ -1105,7 +1115,7 @@ const PostResource = struct {
 /// "Submit as entity body": "Switch on enctype" - the body and mimeType for
 /// the entry list, given the submitter's enctype.
 fn entityBody(allocator: std.mem.Allocator, enctype: []const u8, form_data: *runtime.Instance, entries: []const Entry, encoding: *const encoding_mod.Encoding) !PostResource {
-    if (eql(enctype, "multipart/form-data")) return multipartBody(allocator, form_data);
+    if (eql(enctype, "multipart/form-data")) return multipartBody(allocator, form_data, encoding);
     if (eql(enctype, "text/plain")) {
         // "Let body be the result of running the text/plain encoding
         // algorithm with pairs. Set body to the result of encoding body using
@@ -1123,14 +1133,10 @@ fn entityBody(allocator: std.mem.Allocator, enctype: []const u8, form_data: *run
     return .{ .body = body, .content_type = try allocator.dupe(u8, "application/x-www-form-urlencoded") };
 }
 
-/// "The multipart/form-data encoding algorithm with entry list and
-/// encoding", through Fetch's own - "extract a body" of a FormData over the
-/// entry list - whose boundary makes the mimeType "multipart/form-data;
-/// boundary=...". Stated: that encoding is UTF-8 whatever the form's, and a
-/// file control's empty File is an empty string field, since FormData cannot
-/// yet be handed a Blob (its append(name, blob) is not implemented).
-fn multipartBody(allocator: std.mem.Allocator, form_data: *runtime.Instance) !PostResource {
-    var extracted = fetch_body.extract(allocator, .{ .xmlhttp_request_body_init = .{ .form_data = form_data } }, false) catch |err| return switch (err) {
+/// HTML multipart encoding shares Fetch's FormData serializer and boundary.
+/// File bytes stay unchanged; names and string fields use the form's encoding.
+fn multipartBody(allocator: std.mem.Allocator, form_data: *runtime.Instance, encoding: *const encoding_mod.Encoding) !PostResource {
+    var extracted = fetch_body.extractFormData(allocator, form_data, encoding) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         error.TypeError => error.TypeError,
     };
@@ -1144,8 +1150,7 @@ fn multipartBody(allocator: std.mem.Allocator, form_data: *runtime.Instance) !Po
 }
 
 /// A FormData over the entry list - a new one in the form's realm, with the
-/// entries appended (a file control's empty File as an empty string: see
-/// multipartBody). Nothing holds it yet.
+/// entries appended. Nothing holds it yet.
 fn entryListFormData(form: *runtime.Instance, entries: []const Entry) !*runtime.Instance {
     const form_data = try interfaces.FormData.call_constructor(form.ctx, webidl.Opt(*runtime.Instance).notPassed(), webidl.Opt(?*runtime.Instance).notPassed());
     errdefer form_data.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(form_data));

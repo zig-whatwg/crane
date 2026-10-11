@@ -207,6 +207,9 @@ pub const Decoder = struct {
         var out_pos: usize = 0;
 
         while (true) {
+            const state_before = self.state;
+            const input_before = in_pos;
+            const output_before = out_pos;
             const result = self.decode(input[in_pos..], output[out_pos..], is_last);
             out_pos += result.code_units_written;
             in_pos += result.bytes_consumed;
@@ -218,27 +221,86 @@ pub const Decoder = struct {
                     .code_units_written = out_pos,
                 },
                 .malformed => {
-                    if (out_pos >= output.len) return .{
-                        .status = .output_full,
-                        .bytes_consumed = in_pos,
-                        .code_units_written = out_pos,
-                    };
+                    if (out_pos >= output.len) {
+                        // An error is output too. Preserve preceding output,
+                        // but stop before the error when its replacement does
+                        // not fit. Replaying only this call's produced prefix
+                        // reconstructs that exact state without an extra queue.
+                        self.state = state_before;
+                        if (result.code_units_written != 0) {
+                            const prefix = self.decode(input[input_before..], output[output_before..][0..result.code_units_written], false);
+                            std.debug.assert(prefix.status != .malformed and prefix.code_units_written == result.code_units_written);
+                            return .{ .status = .output_full, .bytes_consumed = input_before + prefix.bytes_consumed, .code_units_written = output_before + prefix.code_units_written };
+                        }
+                        return .{ .status = .output_full, .bytes_consumed = input_before, .code_units_written = output_before };
+                    }
+                    const consumed = result.bytes_consumed + result.error_length;
+                    if (consumed == 0 and result.code_units_written == 0 and std.meta.eql(state_before, self.state)) {
+                        // A restored byte can consume nothing, but its handler
+                        // must have changed state. Never spin on a broken one.
+                        return .{ .status = .malformed, .bytes_consumed = in_pos, .code_units_written = out_pos };
+                    }
                     output[out_pos] = 0xFFFD;
                     out_pos += 1;
+                    // Encoding §5: the handler defines the state after an
+                    // error. Zero means restore this chunk's next byte, not
+                    // skip it. Continue through EOF to drain restored bytes.
+                    in_pos += result.error_length;
+                },
+            }
+        }
+    }
 
-                    // An error resets the decoder per spec, so no half-read
-                    // sequence survives into the next iteration. `error_length`
-                    // of 0 can only mean "the bad bytes were in an earlier
-                    // chunk"; advance by one so this cannot spin.
-                    const skip: usize = if (result.error_length > 0) result.error_length else 1;
-                    in_pos = @min(in_pos + skip, input.len);
-                    self.state = .neutral;
+    /// Replacement mode for the direct UTF-8 path, with the same handler
+    /// error/state contract as decodeReplacement.
+    pub fn decodeToUtf8Replacement(
+        self: *Decoder,
+        input: []const u8,
+        output: []u8,
+        is_last: bool,
+    ) streaming.DecodeToUtf8Result {
+        var in_pos: usize = 0;
+        var out_pos: usize = 0;
 
-                    if (in_pos >= input.len) return .{
-                        .status = .input_empty,
-                        .bytes_consumed = in_pos,
-                        .code_units_written = out_pos,
-                    };
+        while (true) {
+            const state_before = self.state;
+            const input_before = in_pos;
+            const output_before = out_pos;
+            const result = self.decodeToUtf8(input[in_pos..], output[out_pos..], is_last);
+            out_pos += result.bytes_written;
+            in_pos += result.bytes_consumed;
+
+            switch (result.status) {
+                .input_empty, .output_full => return .{
+                    .status = result.status,
+                    .bytes_consumed = in_pos,
+                    .bytes_written = out_pos,
+                },
+                .malformed => {
+                    if (output.len - out_pos < 3) {
+                        // Retain ordinary output before the error. Rolling
+                        // back that prefix as well would make a small output
+                        // buffer retry the same prefix/error forever.
+                        self.state = state_before;
+                        if (result.bytes_written != 0) {
+                            const prefix = self.decodeToUtf8(input[input_before..], output[output_before..][0..result.bytes_written], false);
+                            std.debug.assert(prefix.status != .malformed and prefix.bytes_written == result.bytes_written);
+                            return .{ .status = .output_full, .bytes_consumed = input_before + prefix.bytes_consumed, .bytes_written = output_before + prefix.bytes_written };
+                        }
+                        return .{ .status = .output_full, .bytes_consumed = input_before, .bytes_written = output_before };
+                    }
+                    const consumed = result.bytes_consumed + result.error_length;
+                    if (consumed == 0 and result.bytes_written == 0 and std.meta.eql(state_before, self.state)) {
+                        // A restored byte can consume nothing, but its handler
+                        // must have changed state. Never spin on a broken one.
+                        return .{ .status = .malformed, .bytes_consumed = in_pos, .bytes_written = out_pos };
+                    }
+                    @memcpy(output[out_pos..][0..3], "\xef\xbf\xbd");
+                    out_pos += 3;
+                    // Encoding §5: the handler defines the state after an
+                    // error. Zero means restore this chunk's next byte, not
+                    // skip it. Continue through EOF to drain restored bytes.
+                    in_pos += result.error_length;
                 },
             }
         }
@@ -425,6 +487,8 @@ pub const DecoderState = union(enum) {
         output_state: japanese.iso_2022_jp.DecoderState,
         iso2022jp_lead: u8,
         iso2022jp_output_flag: bool,
+        prepended_bytes: [2]u8 = .{ 0, 0 },
+        prepended_len: u2 = 0,
     },
     x_user_defined: struct {},
     big5: struct {
@@ -807,7 +871,7 @@ pub const EUC_JP: Encoding = .{
 };
 
 pub const ISO_2022_JP: Encoding = .{
-    .name = "iso-2022-jp",
+    .name = "ISO-2022-JP",
     .whatwg_name = "iso-2022-jp",
     .decode_fn = japanese.iso_2022_jp_streaming.decode,
     .encode_fn = japanese.iso_2022_jp_streaming.encode,

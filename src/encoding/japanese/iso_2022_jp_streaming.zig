@@ -41,6 +41,8 @@ fn writeUtf8CodePoint(output: []u8, out_pos: usize, code_point: u21) ?usize {
 }
 
 pub const Iso2022JpDecoderState = struct {
+    prepended_bytes: [2]u8 = .{ 0, 0 },
+    prepended_len: u2 = 0,
     state: iso_2022_jp_impl.DecoderState = .ascii,
     output_state: iso_2022_jp_impl.DecoderState = .ascii,
     iso2022jp_lead: u8 = 0x00,
@@ -52,112 +54,83 @@ pub const Iso2022JpEncoderState = struct {
     pending_high_surrogate: ?u16 = null,
 };
 
-pub fn decode(
-    decoder: *Decoder,
-    input: []const u8,
-    output: []u16,
-    is_last: bool,
-) streaming.DecodeResult {
+pub fn decode(decoder: *Decoder, input: []const u8, output: []u16, is_last: bool) streaming.DecodeResult {
+    return decodeUnits(u16, decoder, input, output, is_last);
+}
+
+fn decodeUnits(comptime Unit: type, decoder: *Decoder, input: []const u8, output: []Unit, is_last: bool) if (Unit == u16) streaming.DecodeResult else streaming.DecodeToUtf8Result {
     std.debug.assert(decoder.state == .iso_2022_jp or decoder.state == .neutral);
-
-    if (decoder.state == .neutral) {
-        decoder.state = .{ .iso_2022_jp = .{
-            .state = .ascii,
-            .output_state = .ascii,
-            .iso2022jp_lead = 0x00,
-            .iso2022jp_output_flag = false,
-        } };
-    }
-
-    var state_wrapper = &decoder.state.iso_2022_jp;
-    var byte_decoder = iso_2022_jp_impl.Decoder{
-        .state = state_wrapper.state,
-        .output_state = state_wrapper.output_state,
-        .iso2022jp_lead = state_wrapper.iso2022jp_lead,
-        .iso2022jp_output_flag = state_wrapper.iso2022jp_output_flag,
+    if (decoder.state == .neutral) decoder.state = .{ .iso_2022_jp = .{
+        .state = .ascii,
+        .output_state = .ascii,
+        .iso2022jp_lead = 0,
+        .iso2022jp_output_flag = false,
+    } };
+    const state = &decoder.state.iso_2022_jp;
+    var byte_decoder: iso_2022_jp_impl.Decoder = .{
+        .state = state.state,
+        .output_state = state.output_state,
+        .iso2022jp_lead = state.iso2022jp_lead,
+        .iso2022jp_output_flag = state.iso2022jp_output_flag,
+        .prepended_bytes = state.prepended_bytes,
+        .prepended_len = state.prepended_len,
     };
-
-    var in_pos: usize = 0;
-    var out_pos: usize = 0;
-
-    while (in_pos < input.len) {
-        if (out_pos >= output.len) {
-            state_wrapper.state = byte_decoder.state;
-            state_wrapper.output_state = byte_decoder.output_state;
-            state_wrapper.iso2022jp_lead = byte_decoder.iso2022jp_lead;
-            state_wrapper.iso2022jp_output_flag = byte_decoder.iso2022jp_output_flag;
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
+    defer {
+        state.state = byte_decoder.state;
+        state.output_state = byte_decoder.output_state;
+        state.iso2022jp_lead = byte_decoder.iso2022jp_lead;
+        state.iso2022jp_output_flag = byte_decoder.iso2022jp_output_flag;
+        state.prepended_bytes = byte_decoder.prepended_bytes;
+        state.prepended_len = byte_decoder.prepended_len;
+    }
+    const Result = if (Unit == u16) streaming.DecodeResult else streaming.DecodeToUtf8Result;
+    var result: Result = if (Unit == u16)
+        .{ .status = .input_empty, .bytes_consumed = 0, .code_units_written = 0 }
+    else
+        .{ .status = .input_empty, .bytes_consumed = 0, .bytes_written = 0 };
+    const written = &@field(result, if (Unit == u16) "code_units_written" else "bytes_written");
+    var checkpoint: iso_2022_jp_impl.Decoder = undefined;
+    while (true) {
+        if (byte_decoder.prepended_len == 0 and result.bytes_consumed == input.len and !is_last) return result;
+        if (written.* == output.len) {
+            result.status = .output_full;
+            return result;
         }
-
-        const byte = input[in_pos];
-
-        const result = byte_decoder.decode(byte) catch {
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            in_pos += 1;
-            continue;
+        // Every ISO-2022-JP scalar is in the BMP: three free UTF-8 bytes
+        // suffice. Save the replay queue and state only when output can fail.
+        const can_fill_output = Unit == u8 and output.len - written.* < 3;
+        if (can_fill_output) checkpoint = byte_decoder;
+        const input_before = result.bytes_consumed;
+        const byte: ?u8 = if (byte_decoder.takePrepended()) |restored| restored else if (result.bytes_consumed < input.len) blk: {
+            const b = input[result.bytes_consumed];
+            result.bytes_consumed += 1;
+            break :blk b;
+        } else null;
+        const point = byte_decoder.decode(byte) catch {
+            // The handler has consumed this item; any restored bytes are in
+            // its two-byte queue. There are no external bytes to skip.
+            result.status = .malformed;
+            return result;
         };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            if (code_point <= 0xFFFF) {
-                output[out_pos] = @intCast(code_point);
-                out_pos += 1;
+        if (point) |value| {
+            if (Unit == u16) {
+                // ASCII/Roman/katakana and every jis0208 entry are in the BMP.
+                output[written.*] = @intCast(value);
+                written.* += 1;
             } else {
-                if (out_pos + 1 >= output.len) {
-                    in_pos -= 1;
-                    state_wrapper.state = byte_decoder.state;
-                    state_wrapper.output_state = byte_decoder.output_state;
-                    state_wrapper.iso2022jp_lead = byte_decoder.iso2022jp_lead;
-                    state_wrapper.iso2022jp_output_flag = byte_decoder.iso2022jp_output_flag;
-                    return .{
-                        .status = .output_full,
-                        .bytes_consumed = in_pos,
-                        .code_units_written = out_pos,
-                    };
-                }
-
-                const adjusted = code_point - 0x10000;
-                const high: u16 = @intCast(0xD800 + (adjusted >> 10));
-                const low: u16 = @intCast(0xDC00 + (adjusted & 0x3FF));
-                output[out_pos] = high;
-                output[out_pos + 1] = low;
-                out_pos += 2;
+                const count = writeUtf8CodePoint(output, written.*, value) orelse {
+                    // Restore both the input cursor and the prepended queue.
+                    std.debug.assert(can_fill_output);
+                    byte_decoder = checkpoint;
+                    result.bytes_consumed = input_before;
+                    result.status = .output_full;
+                    return result;
+                };
+                written.* += count;
             }
         }
+        if (byte == null) return result;
     }
-
-    state_wrapper.state = byte_decoder.state;
-    state_wrapper.output_state = byte_decoder.output_state;
-    state_wrapper.iso2022jp_lead = byte_decoder.iso2022jp_lead;
-    state_wrapper.iso2022jp_output_flag = byte_decoder.iso2022jp_output_flag;
-
-    if (is_last and byte_decoder.state != .ascii and byte_decoder.state != .roman and byte_decoder.state != .katakana) {
-        if (out_pos < output.len) {
-            output[out_pos] = 0xFFFD;
-            out_pos += 1;
-            state_wrapper.state = .ascii;
-            state_wrapper.output_state = .ascii;
-            state_wrapper.iso2022jp_lead = 0x00;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .code_units_written = out_pos,
-            };
-        }
-    }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .code_units_written = out_pos,
-    };
 }
 
 pub fn encode(
@@ -188,6 +161,9 @@ pub fn encode(
     const allocator = fba.allocator();
 
     while (in_pos < input.len) {
+        const input_before = in_pos;
+        const pending_before = state_wrapper.pending_high_surrogate;
+        const encoder_before = byte_encoder.state;
         const code_unit = input[in_pos];
 
         var code_point: u21 = undefined;
@@ -224,14 +200,11 @@ pub fn encode(
             if (state_before == .jis0208) {
                 const escape = [_]u8{ 0x1B, 0x28, 0x42 };
                 if (out_pos + escape.len > output.len) {
-                    in_pos -= 1;
-                    if (code_point >= 0x10000) {
-                        state_wrapper.pending_high_surrogate = input[in_pos - 1];
-                    }
-                    state_wrapper.state = byte_encoder.state;
+                    state_wrapper.pending_high_surrogate = pending_before;
+                    state_wrapper.state = encoder_before;
                     return .{
                         .status = .output_full,
-                        .code_units_consumed = in_pos,
+                        .code_units_consumed = input_before,
                         .bytes_written = out_pos,
                     };
                 }
@@ -252,14 +225,13 @@ pub fn encode(
         };
 
         if (out_pos + encoded.len > output.len) {
-            in_pos -= 1;
-            if (code_point >= 0x10000) {
-                state_wrapper.pending_high_surrogate = input[in_pos - 1];
-            }
-            state_wrapper.state = byte_encoder.state;
+            // A designation changes state only when its bytes fit. Restore
+            // the input item too, including a carried leading surrogate.
+            state_wrapper.pending_high_surrogate = pending_before;
+            state_wrapper.state = encoder_before;
             return .{
                 .status = .output_full,
-                .code_units_consumed = in_pos,
+                .code_units_consumed = input_before,
                 .bytes_written = out_pos,
             };
         }
@@ -323,107 +295,6 @@ pub fn encode(
 /// Decodes ISO-2022-JP input bytes directly to UTF-8 output without
 /// going through a UTF-16 intermediate buffer. This encoding uses escape
 /// sequences to switch between character sets, making it stateful.
-pub fn decodeToUtf8(
-    decoder: *Decoder,
-    input: []const u8,
-    output: []u8,
-    is_last: bool,
-) streaming.DecodeToUtf8Result {
-    std.debug.assert(decoder.state == .iso_2022_jp or decoder.state == .neutral);
-
-    if (decoder.state == .neutral) {
-        decoder.state = .{ .iso_2022_jp = .{
-            .state = .ascii,
-            .output_state = .ascii,
-            .iso2022jp_lead = 0x00,
-            .iso2022jp_output_flag = false,
-        } };
-    }
-
-    var state_wrapper = &decoder.state.iso_2022_jp;
-    var byte_decoder = iso_2022_jp_impl.Decoder{
-        .state = state_wrapper.state,
-        .output_state = state_wrapper.output_state,
-        .iso2022jp_lead = state_wrapper.iso2022jp_lead,
-        .iso2022jp_output_flag = state_wrapper.iso2022jp_output_flag,
-    };
-
-    var in_pos: usize = 0;
-    var out_pos: usize = 0;
-
-    while (in_pos < input.len) {
-        const byte = input[in_pos];
-
-        const result = byte_decoder.decode(byte) catch {
-            // Write replacement character (U+FFFD = 0xEF 0xBF 0xBD in UTF-8)
-            if (out_pos + 2 >= output.len) {
-                state_wrapper.state = byte_decoder.state;
-                state_wrapper.output_state = byte_decoder.output_state;
-                state_wrapper.iso2022jp_lead = byte_decoder.iso2022jp_lead;
-                state_wrapper.iso2022jp_output_flag = byte_decoder.iso2022jp_output_flag;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
-            }
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            in_pos += 1;
-            continue;
-        };
-
-        in_pos += 1;
-
-        if (result) |code_point| {
-            if (writeUtf8CodePoint(output, out_pos, code_point)) |bytes_written| {
-                out_pos += bytes_written;
-            } else {
-                // Output buffer full - back up
-                in_pos -= 1;
-                state_wrapper.state = byte_decoder.state;
-                state_wrapper.output_state = byte_decoder.output_state;
-                state_wrapper.iso2022jp_lead = byte_decoder.iso2022jp_lead;
-                state_wrapper.iso2022jp_output_flag = byte_decoder.iso2022jp_output_flag;
-                return .{
-                    .status = .output_full,
-                    .bytes_consumed = in_pos,
-                    .bytes_written = out_pos,
-                };
-            }
-        }
-    }
-
-    state_wrapper.state = byte_decoder.state;
-    state_wrapper.output_state = byte_decoder.output_state;
-    state_wrapper.iso2022jp_lead = byte_decoder.iso2022jp_lead;
-    state_wrapper.iso2022jp_output_flag = byte_decoder.iso2022jp_output_flag;
-
-    // Handle incomplete sequences at end of stream
-    if (is_last and byte_decoder.state != .ascii and byte_decoder.state != .roman and byte_decoder.state != .katakana) {
-        // Write replacement character for incomplete sequence
-        if (out_pos + 2 < output.len) {
-            output[out_pos] = 0xEF;
-            output[out_pos + 1] = 0xBF;
-            output[out_pos + 2] = 0xBD;
-            out_pos += 3;
-            state_wrapper.state = .ascii;
-            state_wrapper.output_state = .ascii;
-            state_wrapper.iso2022jp_lead = 0x00;
-        } else {
-            return .{
-                .status = .output_full,
-                .bytes_consumed = in_pos,
-                .bytes_written = out_pos,
-            };
-        }
-    }
-
-    return .{
-        .status = .input_empty,
-        .bytes_consumed = in_pos,
-        .bytes_written = out_pos,
-    };
+pub fn decodeToUtf8(decoder: *Decoder, input: []const u8, output: []u8, is_last: bool) streaming.DecodeToUtf8Result {
+    return decodeUnits(u8, decoder, input, output, is_last);
 }
