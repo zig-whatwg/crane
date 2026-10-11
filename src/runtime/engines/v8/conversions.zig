@@ -796,59 +796,41 @@ fn convertHeadersInit(
 
 const buffer_sources = @import("webidl").buffer_sources;
 
-/// Convert V8 TypedArray/DataView to AllowSharedBufferSource
+/// WebIDL 3.2.25 for AllowSharedBufferSource = (ArrayBuffer or
+/// SharedArrayBuffer or [AllowShared] ArrayBufferView) - TextDecoder.decode's
+/// input among others - whose flattened member types are ArrayBuffer,
+/// SharedArrayBuffer, DataView and the typed arrays:
 ///
-/// WHATWG Encoding Standard § 5.1.4 - TextDecoder.decode() input parameter
-/// typedef (ArrayBuffer or SharedArrayBuffer or [AllowShared] ArrayBufferView) AllowSharedBufferSource
+/// - Step 6: an ArrayBuffer (a detached one holds no bytes).
+/// - Step 7: a SharedArrayBuffer.
+/// - Steps 8-9: a DataView or a typed array, over either kind of buffer
+///   ([AllowShared]): its own window of the buffer, [[ByteOffset]] for
+///   [[ByteLength]] (none when the buffer is detached).
+/// - Step 20: anything else is a TypeError.
 ///
-/// This function creates a non-owning byte slice view into the V8 buffer data.
-/// The V8 buffer remains valid during the synchronous decode operation, so no copy is needed.
-/// IMPORTANT: The returned byte_slice is only valid during the current V8 call - do not
-/// store it beyond the scope of the function call that triggered this conversion.
+/// `v8_AllowSharedBufferSource_Bytes` answers all four, the way
+/// `engine.getCopyOfAllowSharedBufferSourceBytes` reads them. (This used to
+/// accept only typed arrays and DataViews, measuring a DataView with the typed
+/// array accessors: `decode(arrayBuffer)` was a TypeError and `decode(dataView)`
+/// read as empty.)
+///
+/// null and undefined still read as no bytes, as before, rather than WebIDL's
+/// TypeError: an omitted optional argument reaches here as undefined.
+///
+/// The result is a non-owning byte slice over the backing store, valid only for
+/// the synchronous call that converted it - never stored past it.
 fn convertAllowSharedBufferSource(
     allocator: std.mem.Allocator,
     value: *v8.Value,
 ) ConversionError!typedefs.AllowSharedBufferSource {
-    _ = allocator; // Not needed - we create a non-owning view
-
-    // Check for TypedArray (Uint8Array, Int8Array, etc.) or DataView
-    const is_typed_array = v8.v8_Value_IsTypedArray(value);
-    const is_data_view = v8.v8_Value_IsDataView(value);
-
-    if (is_typed_array or is_data_view) {
-        // Get byte range from the view
-        const byte_length = v8.v8_TypedArray_ByteLength(value);
-        const byte_offset = v8.v8_TypedArray_ByteOffset(value);
-
-        // Get the underlying ArrayBuffer from V8
-        const v8_ab = v8.v8_TypedArray_Buffer(value) orelse {
-            // Empty buffer - return empty byte slice
-            return .{ .byte_slice = &[_]u8{} };
-        };
-        // NOTE: We do NOT dispose the V8 ArrayBuffer here because we're creating
-        // a non-owning view into it. The buffer will be disposed by V8 GC after
-        // the JS call completes.
-
-        // Get raw data pointer from V8 ArrayBuffer
-        const v8_data = v8.v8_ArrayBuffer_Data(v8_ab);
-        if (v8_data == null or byte_length == 0) {
-            return .{ .byte_slice = &[_]u8{} };
-        }
-
-        // Create a non-owning byte slice view directly into the V8 buffer
-        // This is safe because:
-        // 1. The V8 buffer remains valid during the synchronous decode call
-        // 2. We're not storing this pointer beyond the current call scope
-        const src_ptr = @as([*]const u8, @ptrCast(v8_data.?)) + byte_offset;
-        return .{ .byte_slice = src_ptr[0..byte_length] };
+    _ = allocator; // A view over the engine's bytes: nothing to allocate.
+    var data: ?*anyopaque = null;
+    var length: usize = 0;
+    if (v8.v8_AllowSharedBufferSource_Bytes(value, &data, &length)) {
+        if (data == null or length == 0) return .{ .byte_slice = &[_]u8{} };
+        return .{ .byte_slice = @as([*]const u8, @ptrCast(data.?))[0..length] };
     }
-
-    // For null/undefined, return empty byte slice
-    if (v8.v8_Value_IsNullOrUndefined(value)) {
-        return .{ .byte_slice = &[_]u8{} };
-    }
-
-    // Unsupported type
+    if (v8.v8_Value_IsNullOrUndefined(value)) return .{ .byte_slice = &[_]u8{} };
     return ConversionError.TypeError;
 }
 
@@ -873,7 +855,7 @@ fn convertAllowSharedBufferSource(
 fn convertArrayBufferView(value: *v8.Value) ConversionError!typedefs.ArrayBufferView {
     var info: v8.ViewInfo = undefined;
     // Steps 1-2: a typed array or a DataView (Describe answers false for
-    // anything else, and for a kind the FFI does not know - Float16Array).
+    // anything else).
     if (!v8.v8_ArrayBufferView_Describe(value, &info)) return ConversionError.TypeError;
     // Step 3: not [AllowShared].
     if (info.buffer_shared) return ConversionError.TypeError;
@@ -1106,9 +1088,9 @@ pub fn typedArrayNameOf(value: *v8.Value) ?[]const u8 {
     if (v8.v8_Value_IsUint32Array(value)) return "Uint32Array";
     if (v8.v8_Value_IsBigInt64Array(value)) return "BigInt64Array";
     if (v8.v8_Value_IsBigUint64Array(value)) return "BigUint64Array";
+    if (v8.v8_Value_IsFloat16Array(value)) return "Float16Array";
     if (v8.v8_Value_IsFloat32Array(value)) return "Float32Array";
     if (v8.v8_Value_IsFloat64Array(value)) return "Float64Array";
-    // Float16Array: no predicate in the FFI yet.
     return null;
 }
 

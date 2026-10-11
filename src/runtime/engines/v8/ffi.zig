@@ -1406,6 +1406,7 @@ pub extern fn v8_RunWithMicrotasksSuppressed(
 pub extern fn v8_Promise_MarkAsHandled(promise: ?*Value) void;
 
 /// ArrayBufferView kinds; the order is shared with v8_wrapper.cpp (CraneViewKind).
+/// A new kind is appended: float16 came after data_view.
 pub const ViewKind = enum(c_int) {
     int8,
     uint8,
@@ -1419,12 +1420,13 @@ pub const ViewKind = enum(c_int) {
     bigint64,
     biguint64,
     data_view,
+    float16,
 
     /// Element size from the typed array constructors table (1 for DataView).
     pub fn elementSize(self: ViewKind) usize {
         return switch (self) {
             .int8, .uint8, .uint8_clamped, .data_view => 1,
-            .int16, .uint16 => 2,
+            .int16, .uint16, .float16 => 2,
             .int32, .uint32, .float32 => 4,
             .float64, .bigint64, .biguint64 => 8,
         };
@@ -2178,6 +2180,9 @@ pub extern fn v8_Value_IsUint32Array(value: *Value) bool;
 
 /// Check if a Value is an Int32Array
 pub extern fn v8_Value_IsInt32Array(value: *Value) bool;
+
+/// Check if a Value is a Float16Array
+pub extern fn v8_Value_IsFloat16Array(value: *Value) bool;
 
 /// Check if a Value is a Float32Array
 pub extern fn v8_Value_IsFloat32Array(value: *Value) bool;

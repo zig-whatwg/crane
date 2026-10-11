@@ -699,6 +699,7 @@ pub fn createArrayBufferView(realm: Context, view_type: engine.ViewType, buffer:
         .bigint64_array => .bigint64,
         .biguint64_array => .biguint64,
         .data_view => .data_view,
+        .float16_array => .float16,
     };
     const entered = try enter(realm);
     defer entered.leave();

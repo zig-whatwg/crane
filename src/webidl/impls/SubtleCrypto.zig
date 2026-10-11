@@ -362,14 +362,18 @@ fn copyBufferValue(realm: runtime.Context, value: runtime.JSValue) ![]u8 {
     return (try engine.getCopyOfBufferSourceBytes(realm, value, realm.allocator)) orelse error.TypeError;
 }
 
+/// WebIDL "get a copy of the bytes held by the buffer source" for a typed
+/// BufferSource argument, at the step the calling method names - after
+/// normalize-an-algorithm, whose getters may alter the bytes or transfer the
+/// buffer (a detached buffer copies as empty).
+///
+/// The binding converted the argument to a REFERENCE to its object (WebIDL
+/// 3.2.26), borrowed for this synchronous call; the copy goes through it,
+/// never through `asBytes`, which would read bytes frozen before the getters
+/// ran. Blink copies the same way: subtle_crypto.cc keeps a
+/// `const V8BufferSource*` and copies it after NormalizeAlgorithm.
 fn copyTypedBufferSource(realm: runtime.Context, source: typedefs.BufferSource) ![]u8 {
-    // Q18 supersedes Q7's early byte copy. The adapter lane supplies a borrowed
-    // JS-value accessor; wire that value into copyBufferValue here when it
-    // lands. An asBytes copy would freeze data BEFORE algorithm getters run.
-    // TODO(Q18): use the adapter's exact accessor, without retyping the IDL.
-    _ = realm;
-    _ = source;
-    return error.NotSupportedError;
+    return copyBufferValue(realm, source.jsValue(runtime.JSValue) orelse return error.TypeError);
 }
 
 fn keyFormat(format: enums.KeyFormat) webcrypto.operations.Format {

@@ -454,6 +454,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Measure the WPT process, not its supervisor](testing-measure-the-wpt-process-not-its-supervisor.md) - Even `--parallel=1` changes the process measured by `leaks --atExit`; compare direct runners.
 - [A red test for a step that has not landed asserts that it is still red](testing-a-red-test-for-an-unlanded-step-asserts-that-it-is-still-red.md) - Wrap the verdict in `knownRed(step_landed, ...)`: it passes while red, fails when it turns green unannounced, and is required once the flag is flipped in the commit that earns it.
 
+- [A union conversion needs a case per member type](testing-a-union-conversion-needs-a-case-per-member-type.md) - Enumerate the flattened member types from the IDL and give each its own case - plus an offset view and a detached buffer - before calling a conversion done.
 ### Debugging
 
 - [When every file in a directory fails, find the setup step that fails once per file, not the commonest message](debugging-a-harness-setup-step-failing-in-every-file-is-the-cause-not-the-commonest-message.md) - Rank failure clusters by how many files they hit and where they first appear, not by how many subtests they hold: a setup step that fails once in every file looks small in the counts but is the cause of everything after it.
@@ -523,3 +524,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [A branch's WPT run replaces main's in the progress report](workflow-a-branchs-wpt-run-replaces-mains-in-the-report.md) - The report's "latest result" is the newest journal, whatever tree it measured - only main's runs may feed it; a branch's run goes under `wpt-results/lanes/`.
 - [A probe of hundreds of files in one runner process hits V8's heap limit](workflow-a-probe-of-hundreds-of-files-in-one-process-hits-the-heap-limit.md) - Never run a long list in one runner process: chunk it, or a late crash is the heap limit, not the file.
 - [A recently fetched spec cache can hold old text](workflow-a-recently-fetched-spec-cache-can-hold-old-text.md) - A cache fresh by date can hold an old TR text: specs/get the Editor's Draft URL and check its date line.
+- [A mechanism that lands does not wire the stubs waiting for it](workflow-a-mechanism-that-lands-does-not-wire-the-stubs-waiting-for-it.md) - Landing a mechanism is half the change; the stubs that wait for it are the other half - find them by their TODO when it lands.
