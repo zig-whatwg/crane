@@ -3935,7 +3935,11 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
     // Special handling for Window instances with bound V8 global
     // This enables cross-realm support: iframe.contentWindow returns the V8 global
     // which has DOMRectReadOnly and other constructors on it.
-    if (std.mem.eql(u8, interface_name, "Window")) {
+    // The length first: the compare runs for every object wrapped - every
+    // `list[i]` - and std.mem.eql is a call chain in the Debug build (5% of
+    // an Array.prototype.indexOf over a NodeList, with the same test in
+    // wrapInstanceAsV8Object). Same answer: only "Window" has both.
+    if (interface_name.len == "Window".len and std.mem.eql(u8, interface_name, "Window")) {
         const WindowImpl = @import("impls").Window;
         if (WindowImpl.getBoundV8Global(instance)) |bound_global| {
             // bound_global is a Global<Object>* - a persistent handle that was created

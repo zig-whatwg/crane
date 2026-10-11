@@ -570,6 +570,34 @@ pub fn setterValueLeavesHandle(comptime T: type, value: T) bool {
     return false;
 }
 
+/// Whether an attribute getter's result of type `T` is a number or a boolean
+/// that `setPrimitiveReturn` writes straight into the return slot, with no
+/// handle. An allowlist: anything not named here - optionals included, whose
+/// null is a value of its own - takes the conversion path, as before.
+pub fn primitiveGetterResult(comptime T: type) bool {
+    const primitive = [_]type{ u8, u16, u32, i8, i16, i32, u64, i64, f32, f64, bool };
+    inline for (primitive) |P| {
+        if (T == P) return true;
+    }
+    return false;
+}
+
+/// Set `value` (a `primitiveGetterResult` type) as the callback's return
+/// value: the JS value the getter's conversion gives - an integer of up to 32
+/// bits as that integer, a 64-bit integer or a float as the double it converts
+/// to (`@floatFromInt`, `@floatCast`, as conv.toV8* do), a boolean as itself.
+fn setPrimitiveReturn(info: *const v8.FunctionCallbackInfo, comptime T: type, value: T) void {
+    switch (T) {
+        u8, u16, u32 => v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueUint32(info, value),
+        i8, i16, i32 => v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueInt32(info, value),
+        u64, i64 => v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueDouble(info, @floatFromInt(value)),
+        f32 => v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueDouble(info, @floatCast(value)),
+        f64 => v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueDouble(info, value),
+        bool => v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueBool(info, value),
+        else => @compileError("setPrimitiveReturn: not a primitive getter result: " ++ @typeName(T)),
+    }
+}
+
 /// Free the text of a JSValue string result an impl handed over owned
 /// (`owned` true) - the one arm whose memory is the impl's allocation rather
 /// than an engine handle. The same rule as the operation path: every result
@@ -3068,10 +3096,6 @@ pub fn V8Interface(comptime Interface: type) type {
                             if (answerWindowGetter(info)) return;
                         }
 
-                        // Instance getter - extract instance from 'this' and call
-                        const this_obj = info.getThis();
-                        defer v8.v8_Object_Dispose(this_obj);
-
                         // Derive property name from getter_name (strip "get_" prefix)
                         const prop_name = comptime blk: {
                             if (getter_name.len > 4 and std.mem.eql(u8, getter_name[0..4], "get_")) {
@@ -3079,6 +3103,20 @@ pub fn V8Interface(comptime Interface: type) type {
                             }
                             break :blk getter_name;
                         };
+
+                        // Instance getter - extract instance from 'this' and call.
+                        //
+                        // A handle for `this` only where one is used: a [Global]
+                        // interface compares it with globals and asks its
+                        // creation context, and a [SameObject] attribute draws an
+                        // edge from it. Every other getter reads the receiver's
+                        // internal fields from `info` (ThisInstanceFields), which
+                        // makes no handle: the Global, made and disposed per read,
+                        // was most of `list.length` in NodeList-static-length-
+                        // getter-tampered-[123].html (~6e7 reads each).
+                        const needs_this_handle = comptime is_global_interface or stateCachesSameObject("cached_" ++ prop_name);
+                        const this_handle: ?*v8.Object = if (needs_this_handle) info.getThis() else null;
+                        defer if (this_handle) |held| v8.v8_Object_Dispose(held);
 
                         // Check if this is a [LegacyLenientThis] attribute
                         // Per WebIDL §4.3.10: these attributes do NOT throw TypeError on invalid this
@@ -3102,6 +3140,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         // If it's not, we throw TypeError.
                         const resolved_instance: ?*anyopaque = blk: {
                             if (is_global_interface) {
+                                const this_obj = this_handle.?;
                                 // Get the method's context - V8 enters the function's creation context
                                 if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
                                     // The last of the two per-element context leaks that
@@ -3217,6 +3256,8 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // Use comptime-generated registry which has ALL interfaces
                                 const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
                                 if (wrapper_type_info_registry.getWrapperTypeInfoByName(interface_name)) |expected_type| {
+                                    const this_obj = info.getThis();
+                                    defer v8.v8_Object_Dispose(this_obj);
                                     if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
                                         break :blk @ptrCast(inst);
                                     }
@@ -3229,7 +3270,12 @@ pub fn V8Interface(comptime Interface: type) type {
                                     // Regular attribute - fall through to throw TypeError
                                 } else {
                                     // Type info not found via comptime lookup - check WrapperTypeInfo in slot 1
-                                    if (getWrapperTypeInfo(this_obj)) |stored_type_info| {
+                                    // (read from `info` with slot 0, as getWrapperTypeInfo and
+                                    // getInstance read them from a handle)
+                                    var this_instance: ?*anyopaque = null;
+                                    var this_type_info: ?*anyopaque = null;
+                                    v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisInstanceFields(info, &this_instance, &this_type_info);
+                                    if (if (this_type_info) |ptr| @as(?*const WrapperTypeInfo, @ptrCast(@alignCast(ptr))) else null) |stored_type_info| {
                                         // WrapperTypeInfo is present - use it for type checking
                                         // Per WebIDL spec: "If the this value is null or undefined, or is not a
                                         // platform object that implements the interface, then throw a TypeError"
@@ -3247,7 +3293,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                                         if (type_matches) {
                                             // Type matches (including inheritance) - get instance pointer from slot 0
-                                            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                            const instance_ptr = this_instance;
                                             if (instance_ptr != null) {
                                                 break :blk instance_ptr;
                                             }
@@ -3255,7 +3301,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         // Type mismatch - fall through to throw TypeError
                                     } else {
                                         // No WrapperTypeInfo in slot 1 - fall back to legacy getInstance check
-                                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                        const instance_ptr = this_instance;
                                         if (instance_ptr != null) {
                                             break :blk instance_ptr;
                                         }
@@ -3461,6 +3507,19 @@ pub fn V8Interface(comptime Interface: type) type {
                             // reclaimed when the context/isolate is disposed.
                         };
 
+                        // A number or boolean goes straight into the return
+                        // slot: no Global to make and release per read (200,000
+                        // v8_Number_New for 200,000 `list.length` reads). The
+                        // value is the one the conversions below give: a WebIDL
+                        // integer type up to 32 bits as that integer, a 64-bit
+                        // one or a float as the double it converts to, a
+                        // boolean as itself (WebIDL 3.2.x, "converted to an
+                        // ECMAScript value").
+                        if (comptime primitiveGetterResult(PayloadType)) {
+                            setPrimitiveReturn(info, PayloadType, result);
+                            return;
+                        }
+
                         // Convert to V8 using comptime type dispatch
                         const v8_value: *v8.Value = comptime_convert: {
                             // WebIDL primitive types
@@ -3594,7 +3653,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         // Blink traces the same edge - or a collection frees it
                         // under the cache.
                         if (comptime stateCachesSameObject("cached_" ++ prop_name)) {
-                            recordSameObjectEdge(isolate_inner, this_obj, prop_name, v8_value);
+                            recordSameObjectEdge(isolate_inner, this_handle.?, prop_name, v8_value);
                         }
 
                         info.setReturnValue(v8_value);
@@ -5692,12 +5751,12 @@ pub fn V8Interface(comptime Interface: type) type {
             var current_context: CurrentContext = .{ .isolate = isolate };
             defer current_context.release();
 
-            // Get the 'this' object (the interface instance)
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            // The instance: WebIDL's O, the object that has the interceptor
+            // (the list, for `list[i]` and for `heir[i]` whose prototype is
+            // the list), read from its internal field without a handle - a
+            // Global for `this`, made and disposed per read, was a third of
+            // `list[i]` (gc_bench profile, 2026-10-11).
+            const instance_ptr = info.holderAlignedPointer(0);
             if (instance_ptr == null) {
                 // Called on prototype, not an instance - let V8 continue normal lookup
                 return .kNo;
@@ -5728,6 +5787,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (err == conv.ConversionError.ExceptionPending) {
                     return .kNo;
                 }
+                // The receiver's realm, the error's: `this` is taken here,
+                // on the throwing path only.
+                const this_obj = info.getThis();
+                defer v8.v8_Object_Dispose(this_obj);
                 // Owned when V8 answers it - a fresh Global<Context>.
                 const creation_ctx = v8.v8_Object_GetCreationContext(this_obj);
                 defer if (creation_ctx) |made| v8.v8_Context_Dispose(made);
@@ -5751,18 +5814,24 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Optional type - check for null
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
-                    const v8_context = current_context.get() orelse {
-                        conv.throwError(isolate, "No V8 context");
-                        return .kNo;
-                    };
                     // Check if it's an Instance pointer
                     if (ChildType == *runtime.Instance) {
                         // Its wrapper in its relevant realm (`conv.instanceToV8`),
-                        // the wrapper cache's.
+                        // the wrapper cache's - or, when it could not be
+                        // wrapped, a fresh undefined that is ours to release.
+                        // No current context: wrapping uses the item's own
+                        // realm, and taking it here (a Global made and
+                        // disposed) was a fifth of `list[i]`.
                         const wrapped = conv.instanceToV8(isolate, unwrapped_result);
                         info.setReturnValue(wrapped);
-                        if (v8.v8_Value_IsUndefined(wrapped)) v8.v8_Value_Dispose(wrapped);
+                        // An empty handle (a wrapper the collector took)
+                        // answers undefined too, and is still the cache's.
+                        if (!v8.v8_Global_IsEmpty(@ptrCast(wrapped)) and info.returnValueIsUndefined()) v8.v8_Value_Dispose(wrapped);
                     } else {
+                        const v8_context = current_context.get() orelse {
+                            conv.throwError(isolate, "No V8 context");
+                            return .kNo;
+                        };
                         // Other type (like DOMString, CSSOMString) - convert to V8 string
                         const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
                             conv.throwError(isolate, "Failed to convert result to V8");
@@ -5873,14 +5942,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 return .kNo;
             }
 
-            const isolate = info.getIsolate();
-
-            // Get the 'this' object
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            // The instance: the object that has the interceptor (`i in list`,
+            // and `i in heir` for an object whose prototype is the list),
+            // read without a handle, as the getter reads it.
+            const instance_ptr = info.holderAlignedPointer(0);
             if (instance_ptr == null) {
                 return .kNo;
             }
@@ -5909,11 +5974,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // Check if interface has an indexed setter
             const has_setter = comptime @hasDecl(Interface, "call_setter") or @hasDecl(Interface, "set_item");
             const attributes: i32 = if (has_setter) 0 else 1; // 1 = ReadOnly
-            const v8_attrs = v8.v8_Integer_New(isolate, attributes);
-            info.setReturnValue(@ptrCast(v8_attrs));
-            // Made here, read into a Local by setReturnValue: ours (as the
-            // named query's is).
-            v8.v8_Global_Dispose(@ptrCast(v8_attrs));
+            // A Smi in the return slot: no handle to make or release. Every
+            // `i in list` and every element Array.prototype.indexOf visits
+            // (HasProperty, then Get) asks this.
+            info.setReturnValueInt32(attributes);
             return .kYes;
         }
 
@@ -5931,16 +5995,14 @@ pub fn V8Interface(comptime Interface: type) type {
             const indexed_getter = @field(Interface, indexed_getter_name.?);
 
             const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
-            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
-            defer v8.v8_Context_Dispose(v8_context);
 
-            // Get the 'this' object
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            // The instance: the object whose own property this is - for
+            // [[GetOwnProperty]] the holder is the receiver - read without a
+            // handle, as the getter and the query read it. A proxy's
+            // [[HasProperty]] that answers false asks this too (its
+            // invariant check, ES 10.5.7 step 9), for every index past the
+            // end of an HTMLCollection.
+            const instance_ptr = info.holderAlignedPointer(0);
             if (instance_ptr == null) {
                 return .kNo;
             }
@@ -5964,6 +6026,12 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Property doesn't exist
                 return .kNo;
             }
+
+            // The current context, for the descriptor and a converted value:
+            // taken past the early returns. Owned: v8_Isolate_GetCurrentContext
+            // allocates a Global per call.
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+            defer v8.v8_Context_Dispose(v8_context);
 
             // Get the value at this index
             const result_allocator = instance.ctx.allocator;

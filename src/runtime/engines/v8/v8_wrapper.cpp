@@ -6336,6 +6336,66 @@ int v8_FunctionCallbackInfo_Length(const FunctionCallbackInfo<Value>* info) {
     return info->Length();
 }
 
+// FunctionCallbackInfo - internal fields 0 (the instance) and 1 (its
+// WrapperTypeInfo) of the receiver (This()), looked through a legacy platform
+// object's proxy to its target as v8_Object_GetAlignedPointerFromInternalField
+// does; a field the receiver lacks - or a receiver that is not an object -
+// reads as nullptr. No Global: This() is a slot of the callback's arguments,
+// and an attribute getter runs once per read - `list.length` ~6e7 times in
+// NodeList-static-length-getter-tampered-[123].html, where
+// v8_FunctionCallbackInfo_This's Global, made, tracked and disposed per call,
+// and a HandleScope per field read were most of the binding's cost. Both
+// fields in one crossing: the getter's brand check reads both, and at -O0
+// (the Debug build) each read is a few kilobytes of sanitized inline V8
+// code. A Local the proxy's target makes lives in the callback's own
+// HandleScope (V8 opens one around every API callback).
+void v8_FunctionCallbackInfo_ThisInstanceFields(const FunctionCallbackInfo<Value>* info, void** instance, void** type_info) {
+    *instance = nullptr;
+    *type_info = nullptr;
+    Local<Value> receiver = info->This();
+    if (!receiver->IsObject()) return;
+    Local<Object> self = receiver.As<Object>();
+    if (self->IsProxy()) {
+        Local<Value> target = self.As<Proxy>()->GetTarget();
+        if (!target->IsObject()) return;
+        self = target.As<Object>();
+    }
+    const int count = self->InternalFieldCount();
+    Isolate* isolate = info->GetIsolate();
+    if (count >= 1) *instance = self->GetAlignedPointerFromInternalField(isolate, 0);
+    if (count >= 2) *type_info = self->GetAlignedPointerFromInternalField(isolate, 1);
+}
+
+// FunctionCallbackInfo - set a primitive return value straight into the
+// return slot (a Smi where it fits, else a heap number made in the callback's
+// HandleScope): no Global for a number or boolean result.
+void v8_FunctionCallbackInfo_SetReturnValueDouble(const FunctionCallbackInfo<Value>* info, double value) {
+    info->GetReturnValue().Set(value);
+}
+
+// A value that fits 16 bits takes ReturnValue::Set(int16_t / uint16_t), a
+// Smi with no range test: Set(int32_t)'s TryIntegralToSmi goes through
+// std::optional, which at -O0 (the Debug build) is a chain of calls.
+void v8_FunctionCallbackInfo_SetReturnValueInt32(const FunctionCallbackInfo<Value>* info, int32_t value) {
+    if (value >= INT16_MIN && value <= INT16_MAX) {
+        info->GetReturnValue().Set(static_cast<int16_t>(value));
+    } else {
+        info->GetReturnValue().Set(value);
+    }
+}
+
+void v8_FunctionCallbackInfo_SetReturnValueUint32(const FunctionCallbackInfo<Value>* info, uint32_t value) {
+    if (value <= UINT16_MAX) {
+        info->GetReturnValue().Set(static_cast<uint16_t>(value));
+    } else {
+        info->GetReturnValue().Set(value);
+    }
+}
+
+void v8_FunctionCallbackInfo_SetReturnValueBool(const FunctionCallbackInfo<Value>* info, bool value) {
+    info->GetReturnValue().Set(value);
+}
+
 Global<Value>* v8_FunctionCallbackInfo_GetArgument(const FunctionCallbackInfo<Value>* info, int index) {
     Isolate* isolate = info->GetIsolate();
     Local<Value> arg = (*info)[index];
@@ -7241,6 +7301,48 @@ Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* 
     return trackHandle(new Global<Object>(isolate, info->This()));
 }
 
+// PropertyCallbackInfo - the aligned pointer in internal field `index` of the
+// object that has the interceptor (HolderV2), or nullptr when it has no such
+// field. That object is WebIDL's O for a legacy platform object's [[Get]] and
+// [[HasProperty]]: `list[i]` asks the list, and so does `heir[i]` for an
+// object whose prototype is the list (ES OrdinaryGet hands the lookup to the
+// prototype with the heir as receiver; This() is then the heir, which has no
+// fields). An interceptor's holder is the API object the interceptor is on -
+// never a JS proxy: a legacy platform object's proxy forwards to its target,
+// and the target is the holder.
+//
+// No Global and no HandleScope: the holder is a slot of the callback's
+// arguments, and an indexed getter runs once per `list[i]` (~1e8 times in
+// dom/nodes/NodeList-static-length-getter-tampered-*.html), where
+// v8_PropertyCallbackInfo_This's Global - made, tracked and disposed per call
+// - was a third of the read (gc_bench profile, 2026-10-11).
+void* v8_PropertyCallbackInfo_HolderAlignedPointer(const PropertyCallbackInfo<Value>* info, int index) {
+    Local<Object> holder = info->HolderV2();
+    if (holder->InternalFieldCount() <= index) return nullptr;
+    // The isolate overload: the one without it finds the isolate from the
+    // object's page (GetIsolateForSandbox) on every read.
+    return holder->GetAlignedPointerFromInternalField(info->GetIsolate(), index);
+}
+
+// PropertyCallbackInfo - whether the return value set so far is undefined.
+// Reads the return slot; makes no handle.
+bool v8_PropertyCallbackInfo_ReturnValueIsUndefined(const PropertyCallbackInfo<Value>* info) {
+    return info->GetReturnValue().Get()->IsUndefined();
+}
+
+// PropertyCallbackInfo<Integer> - set a query interceptor's answer, the
+// property's attributes (a v8::PropertyAttribute): a Smi written into the
+// return slot, where v8_Integer_New made a Global per call.
+void v8_PropertyCallbackInfo_SetReturnValueInt32(const PropertyCallbackInfo<Integer>* info, int32_t value) {
+    // Attributes fit 16 bits: Set(int16_t) is a Smi with no range test (see
+    // v8_FunctionCallbackInfo_SetReturnValueInt32).
+    if (value >= INT16_MIN && value <= INT16_MAX) {
+        info->GetReturnValue().Set(static_cast<int16_t>(value));
+    } else {
+        info->GetReturnValue().Set(value);
+    }
+}
+
 // PropertyCallbackInfo - get holder object
 // Returns nullptr if not available (e.g., accessing property on prototype)
 Global<Object>* v8_PropertyCallbackInfo_Holder(const PropertyCallbackInfo<Value>* info) {
@@ -7260,18 +7362,17 @@ Global<Object>* v8_PropertyCallbackInfo_Void_Holder(const PropertyCallbackInfo<v
     return trackHandle(new Global<Object>(isolate, holder));
 }
 
-// PropertyCallbackInfo - set return value
+// PropertyCallbackInfo - set return value. The Global's value is written into
+// the return slot (ReturnValue::Set(const Global&)): no Local, so no
+// HandleScope - this runs once per interceptor answer, `list[i]` included.
+// The caller keeps the handle; nothing here retains it.
 void v8_PropertyCallbackInfo_SetReturnValue(const PropertyCallbackInfo<Value>* info, Global<Value>* value) {
-    Isolate* isolate = info->GetIsolate();
-    HandleScope handle_scope(isolate);
-
     if (!value || value->IsEmpty()) {
         info->GetReturnValue().SetUndefined();
         return;
     }
 
-    Local<Value> val = value->Get(isolate);
-    info->GetReturnValue().Set(val);
+    info->GetReturnValue().Set(*value);
 }
 
 // PropertyCallbackInfo (void) - set return value (mostly for Boolean results)

@@ -97,6 +97,18 @@ pub const FunctionCallbackInfo = opaque {
     /// Get the 'this' object for the function call
     pub extern fn v8_FunctionCallbackInfo_This(self: *const FunctionCallbackInfo) *Object;
 
+    /// Internal fields 0 and 1 of the receiver (the instance and its
+    /// WrapperTypeInfo), looked through a legacy platform object's proxy, in
+    /// one call; a field the receiver lacks, or a receiver that is not an
+    /// object, reads as null. Makes no handle.
+    pub extern fn v8_FunctionCallbackInfo_ThisInstanceFields(self: *const FunctionCallbackInfo, instance: *?*anyopaque, type_info: *?*anyopaque) void;
+
+    /// A primitive return value, written into the return slot: no handle.
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValueDouble(self: *const FunctionCallbackInfo, value: f64) void;
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValueInt32(self: *const FunctionCallbackInfo, value: i32) void;
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValueUint32(self: *const FunctionCallbackInfo, value: u32) void;
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValueBool(self: *const FunctionCallbackInfo, value: bool) void;
+
     /// Check if this is a constructor call (called with 'new')
     pub extern fn v8_FunctionCallbackInfo_IsConstructCall(self: *const FunctionCallbackInfo) bool;
 
@@ -205,6 +217,19 @@ pub const PropertyCallbackInfo = opaque {
     /// Get the holder object
     pub extern fn v8_PropertyCallbackInfo_Holder(self: *const PropertyCallbackInfo) ?*Object;
 
+    /// The aligned pointer in internal field `index` of the object that has
+    /// the interceptor (V8's HolderV2) - WebIDL's O for an indexed [[Get]]
+    /// or [[HasProperty]], the list for `heir[i]` too - or null when it has
+    /// no such field. Makes no handle (the C++ side says why that matters).
+    pub extern fn v8_PropertyCallbackInfo_HolderAlignedPointer(self: *const PropertyCallbackInfo, index: c_int) ?*anyopaque;
+
+    /// Whether the return value set so far is undefined. Makes no handle.
+    pub extern fn v8_PropertyCallbackInfo_ReturnValueIsUndefined(self: *const PropertyCallbackInfo) bool;
+
+    /// A query interceptor's answer, the property's attributes: a Smi in the
+    /// return slot, no handle.
+    pub extern fn v8_PropertyCallbackInfo_SetReturnValueInt32(self: *const PropertyCallbackInfo, value: i32) void;
+
     /// Set the return value for the getter
     pub extern fn v8_PropertyCallbackInfo_SetReturnValue(self: *const PropertyCallbackInfo, value: *Value) void;
 
@@ -228,6 +253,18 @@ pub const PropertyCallbackInfo = opaque {
 
     pub inline fn getHolder(self: *const PropertyCallbackInfo) ?*Object {
         return v8_PropertyCallbackInfo_Holder(self);
+    }
+
+    pub inline fn holderAlignedPointer(self: *const PropertyCallbackInfo, index: c_int) ?*anyopaque {
+        return v8_PropertyCallbackInfo_HolderAlignedPointer(self, index);
+    }
+
+    pub inline fn returnValueIsUndefined(self: *const PropertyCallbackInfo) bool {
+        return v8_PropertyCallbackInfo_ReturnValueIsUndefined(self);
+    }
+
+    pub inline fn setReturnValueInt32(self: *const PropertyCallbackInfo, value: i32) void {
+        v8_PropertyCallbackInfo_SetReturnValueInt32(self, value);
     }
 
     pub inline fn setReturnValue(self: *const PropertyCallbackInfo, value: *Value) void {
