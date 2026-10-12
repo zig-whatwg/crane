@@ -30,7 +30,18 @@
 //!   to transparent black (Blink's seen_non_zero_alpha_pixel_);
 //! - rejected as Blink rejects them: a width or height of 0, or of 65536 or
 //!   more; planes or bit counts a header type does not allow; a header that
-//!   overruns the pixel data offset; data that ends before the image does;
+//!   overruns the pixel data offset; bit masks or a colour table the data
+//!   does not hold;
+//! - the dimensions are known once the headers, the bit masks and the colour
+//!   table are read - where Chrome's BMP codec (Skia's SkBmpRustDecoder over
+//!   the image crate, whose metadata read takes the palette) knows them, and
+//!   ImageIO, probed on macOS 27, wants even a byte of pixel data; Gecko's
+//!   nsBMPDecoder posts the size before the colour table. Pixel data that
+//!   ends before the image does, or that is invalid (an RLE run past the
+//!   image or its row), leaves a partial image (the protocol's
+//!   ImageDecodeStatus): the pixels decoded before that point, the rest
+//!   transparent black - a row of uncompressed data only when the data holds
+//!   all of it;
 //! - no colour management: the V4/V5 colour space fields and an embedded
 //!   ICC profile are ignored (decision 19).
 
@@ -149,12 +160,12 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.
         cursor += table_len;
     }
     if (data_offset != 0) cursor = data_offset;
-    if (cursor > bytes.len) return error.Corrupt;
 
     const pixel_len = @as(usize, info.width) * info.height * 4;
     const pixels = allocator.alloc(u8, pixel_len) catch return error.OutOfMemory;
     errdefer allocator.free(pixels);
-    // Pixels nothing writes (an RLE skip) are transparent black.
+    // Pixels nothing writes (an RLE skip, or data that ends) are
+    // transparent black.
     @memset(pixels, 0);
 
     var writer: PixelWriter = .{
@@ -165,11 +176,25 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.
         .masks = if (info.bit_count >= 16) masks else undefined,
         .y = if (info.top_down) 0 else @intCast(info.height - 1),
     };
-    switch (info.compression) {
-        .rle8, .rle4, .rle24 => try writer.decodeRle(bytes, cursor),
-        else => try writer.decodeRows(bytes, cursor),
-    }
-    return .{ .width = info.width, .height = info.height, .pixels = platform.Bytes.from(pixels) };
+    // From here the dimensions are known: the pixel data's failures leave a
+    // partial image.
+    const result: PixelError!void = if (cursor > bytes.len)
+        error.Truncated
+    else switch (info.compression) {
+        .rle8, .rle4, .rle24 => writer.decodeRle(bytes, cursor),
+        else => writer.decodeRows(bytes, cursor),
+    };
+    const status: platform.ImageDecodeStatus = if (result) |_| .complete else |err| switch (err) {
+        error.Truncated => .truncated,
+        error.Invalid => .corrupt,
+    };
+    return .{
+        .width = info.width,
+        .height = info.height,
+        .pixels = platform.Bytes.from(pixels),
+        .status = status,
+        .empty = status != .complete and !writer.wrote,
+    };
 }
 
 /// The info header at `at`: its size decides its type.
@@ -343,6 +368,10 @@ fn readMasks(bytes: []const u8, info: *Info, cursor: *usize, data_offset: usize)
     return masks;
 }
 
+/// How the pixel data failed: it ended before the image did, or it was
+/// invalid.
+const PixelError = error{ Truncated, Invalid };
+
 const PixelWriter = struct {
     pixels: []u8,
     info: *const Info,
@@ -355,6 +384,8 @@ const PixelWriter = struct {
     y: i64,
     seen_zero_alpha: bool = false,
     seen_non_zero_alpha: bool = false,
+    /// Whether any pixel has been decoded.
+    wrote: bool = false,
 
     fn pastEnd(self: *const PixelWriter, rows: u32) bool {
         return if (self.info.top_down) self.y + rows >= self.info.height else self.y - rows < 0;
@@ -369,6 +400,7 @@ const PixelWriter = struct {
         const at = (@as(usize, @intCast(self.y)) * self.info.width + self.x) * 4;
         self.pixels[at..][0..4].* = rgba;
         self.x += 1;
+        self.wrote = true;
     }
 
     fn setIndex(self: *PixelWriter, index: usize) void {
@@ -398,11 +430,11 @@ const PixelWriter = struct {
 
     /// `count` pixels of the current row from uncompressed data at `at`;
     /// the number of bytes they take, unpadded.
-    fn writePixels(self: *PixelWriter, bytes: []const u8, at: usize, count: u32) ImageError!usize {
-        if (self.x + count > self.info.width) return error.Corrupt;
+    fn writePixels(self: *PixelWriter, bytes: []const u8, at: usize, count: u32) PixelError!usize {
+        if (self.x + count > self.info.width) return error.Invalid;
         const bit_count = self.info.bit_count;
         const len: usize = if (bit_count < 16) (@as(usize, count) * bit_count + 7) / 8 else @as(usize, count) * (bit_count / 8);
-        if (at > bytes.len or bytes.len - at < len) return error.Corrupt;
+        if (at > bytes.len or bytes.len - at < len) return error.Truncated;
         const data = bytes[at..][0..len];
         if (bit_count < 16) {
             // Packed most significant bits first.
@@ -428,30 +460,29 @@ const PixelWriter = struct {
         return len;
     }
 
-    /// Uncompressed rows, each padded to 4 bytes.
-    fn decodeRows(self: *PixelWriter, bytes: []const u8, start: usize) ImageError!void {
+    /// Uncompressed rows, each padded to 4 bytes - the last row's padding
+    /// not needed: every pixel is decoded without it.
+    fn decodeRows(self: *PixelWriter, bytes: []const u8, start: usize) PixelError!void {
         var at = start;
         while (!self.pastEnd(0)) {
             const len = try self.writePixels(bytes, at, self.info.width);
-            const padded = (len + 3) & ~@as(usize, 3);
-            if (bytes.len - at < padded) return error.Corrupt;
-            at += padded;
+            at += (len + 3) & ~@as(usize, 3);
             self.nextRow(1);
         }
     }
 
     /// RLE8, RLE4 and RLE24 (Blink's ProcessRLEData): a stream of entries
     /// until the end of bitmap.
-    fn decodeRle(self: *PixelWriter, bytes: []const u8, start: usize) ImageError!void {
+    fn decodeRle(self: *PixelWriter, bytes: []const u8, start: usize) PixelError!void {
         var at = start;
         const width = self.info.width;
         while (true) {
-            if (bytes.len - at < 2) return error.Corrupt;
+            if (bytes.len - at < 2) return error.Truncated;
             const count = bytes[at];
             const code = bytes[at + 1];
             const past_end = self.pastEnd(0);
             // Only the end of bitmap may follow the image's last row.
-            if ((count != 0 or code != 1) and past_end) return error.Corrupt;
+            if ((count != 0 or code != 1) and past_end) return error.Invalid;
             if (count == 0) switch (code) {
                 // End of line: the rest of the row is skipped.
                 0 => {
@@ -462,10 +493,10 @@ const PixelWriter = struct {
                 1 => return,
                 // Delta: skip dx pixels right and dy rows on.
                 2 => {
-                    if (bytes.len - at < 4) return error.Corrupt;
+                    if (bytes.len - at < 4) return error.Truncated;
                     const dx = bytes[at + 2];
                     const dy = bytes[at + 3];
-                    if (self.x + dx > width or self.pastEnd(dy)) return error.Corrupt;
+                    if (self.x + dx > width or self.pastEnd(dy)) return error.Invalid;
                     const x = self.x + dx;
                     if (self.info.top_down) self.y += dy else self.y -= dy;
                     self.x = x;
@@ -477,7 +508,7 @@ const PixelWriter = struct {
                     at += 2;
                     const len = try self.writePixels(bytes, at, code);
                     const padded = (len + 1) & ~@as(usize, 1);
-                    if (bytes.len - at < padded) return error.Corrupt;
+                    if (bytes.len - at < padded) return error.Truncated;
                     at += padded;
                 },
             } else {
@@ -486,7 +517,7 @@ const PixelWriter = struct {
                 // dropped.
                 const end_x = @min(self.x + count, width);
                 if (self.info.compression == .rle24) {
-                    if (bytes.len - at < 4) return error.Corrupt;
+                    if (bytes.len - at < 4) return error.Truncated;
                     const rgba: [4]u8 = .{ bytes[at + 3], bytes[at + 2], code, 255 };
                     while (self.x < end_x) self.set(rgba);
                     at += 4;

@@ -59,10 +59,19 @@
 //!   (Firefox, Safari: "some broken GIF files do not have enough LZW blocks
 //!   to fully decode all rows but we treat it as frame complete"; WPT's own
 //!   26-byte 1x1 GIF has no LZW data at all). Data past the last pixel is
-//!   ignored. A file that ENDS before the frame's data does - no end code,
-//!   no terminator, pixels missing - is truncated: corrupt, as png.zig and
-//!   bmp.zig treat a short image. A missing trailer after the first frame
-//!   is no matter.
+//!   ignored. A missing trailer after the first frame is no matter.
+//! - The dimensions are known at the first image descriptor (the screen as
+//!   adjusted below): Gecko's nsGIFDecoder2 posts the size there (BeginGIF),
+//!   and Chrome's Wuffs decoder has the image's configuration from it;
+//!   ImageIO, probed on macOS 27, has no size until the whole first frame
+//!   has arrived - the minority. Before it, a file that ends or breaks has no
+//!   image (corrupt). After it, nothing is fatal: a file that ENDS before the
+//!   frame's data does (no end code, no terminator, pixels missing) is a
+//!   truncated partial image, and data that breaks - a minimum code size
+//!   over 11, an LZW string the table cannot hold - a corrupt one (the
+//!   protocol's ImageDecodeStatus), with the pixels decoded before that
+//!   point and the rest transparent (Gecko's FinishInternal: "If the GIF got
+//!   cut off, handle it anyway").
 //! - Limits: the logical screen, as adjusted above, is checked against them
 //!   before the canvas is allocated.
 
@@ -107,7 +116,8 @@ fn readU16(bytes: []const u8, at: usize) u16 {
     return std.mem.readInt(u16, bytes[at..][0..2], .little);
 }
 
-/// Decode `bytes`, a whole GIF. The pixels are OWNED by `allocator`.
+/// Decode `bytes`, a GIF - whole, or as much of one as the fetch delivered.
+/// The pixels are OWNED by `allocator`.
 pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.ImageLimits) ImageError!platform.DecodedImage {
     var r: Reader = .{ .bytes = bytes };
 
@@ -164,16 +174,6 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.
     if (screen_width > limits.max_dimension or screen_height > limits.max_dimension or
         @as(u64, screen_width) * screen_height > limits.max_pixels) return error.TooLarge;
 
-    // 21. Local Color Table.
-    var colors: ?[]const u8 = global;
-    if (flags & 0x80 != 0) {
-        colors = r.take(3 * (@as(usize, 2) << @intCast(flags & 0x07))) orelse return error.Corrupt;
-    }
-
-    // 22. Table Based Image Data: the LZW minimum code size.
-    const min_code_size = r.byte() orelse return error.Corrupt;
-    if (min_code_size > max_min_code_size) return error.Corrupt;
-
     const pixel_len = @as(u64, screen_width) * screen_height * 4;
     if (pixel_len > std.math.maxInt(usize)) return error.TooLarge;
     const pixels = allocator.alloc(u8, @intCast(pixel_len)) catch return error.OutOfMemory;
@@ -181,10 +181,9 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.
     // A transparent canvas.
     @memset(pixels, 0);
 
-    const lzw = allocator.create(Lzw) catch return error.OutOfMemory;
-    defer allocator.destroy(lzw);
-    lzw.init(@intCast(min_code_size));
-    var out: Output = .{
+    // From here the dimensions are known: what fails leaves a partial image.
+    var any_pixel = false;
+    const status: platform.ImageDecodeStatus = if (decodeFrame(allocator, &r, .{
         .pixels = pixels,
         .screen_width = screen_width,
         .screen_height = screen_height,
@@ -193,27 +192,62 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.
         .width = width,
         .height = height,
         .interlaced = flags & 0x40 != 0,
-        .colors = colors orelse &.{},
+        .colors = &.{},
         .transparent = transparent,
         .rows_left = height,
+    }, global, flags, &any_pixel)) |_| .complete else |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.Truncated => .truncated,
+        error.Invalid => .corrupt,
     };
+    return .{
+        .width = screen_width,
+        .height = screen_height,
+        .pixels = platform.Bytes.from(pixels),
+        .status = status,
+        .empty = status != .complete and !any_pixel,
+    };
+}
+
+/// How a frame's data failed after the dimensions: it ended, or it broke.
+const FrameError = error{ OutOfMemory, Truncated, Invalid };
+
+/// The first frame's colour table and data (21, 22) onto `out`'s canvas;
+/// `any_pixel` says whether any pixel was decoded.
+fn decodeFrame(allocator: std.mem.Allocator, r: *Reader, frame: Output, global: ?[]const u8, flags: u8, any_pixel: *bool) FrameError!void {
+    var out = frame;
+    defer any_pixel.* = out.decoded;
+    // 21. Local Color Table.
+    var colors: ?[]const u8 = global;
+    if (flags & 0x80 != 0) {
+        colors = r.take(3 * (@as(usize, 2) << @intCast(flags & 0x07))) orelse return error.Truncated;
+    }
+    out.colors = colors orelse &.{};
+
+    // 22. Table Based Image Data: the LZW minimum code size.
+    const min_code_size = r.byte() orelse return error.Truncated;
+    if (min_code_size > max_min_code_size) return error.Invalid;
+
+    const lzw = allocator.create(Lzw) catch return error.OutOfMemory;
+    defer allocator.destroy(lzw);
+    lzw.init(@intCast(min_code_size));
 
     // The data sub-blocks, one continuous bit stream.
+    const bytes = r.bytes;
     while (!out.done()) {
-        const len = r.byte() orelse return error.Corrupt;
+        const len = r.byte() orelse return error.Truncated;
         // The block terminator: the data ends, complete or not.
         if (len == 0) break;
         const available = @min(len, bytes.len - r.pos);
         const data = bytes[r.pos..][0..available];
         r.pos += available;
-        switch (try lzw.feed(data, &out)) {
+        switch (lzw.feed(data, &out) catch return error.Invalid) {
             .more => {},
             .end => break,
         }
         // The file ends inside the sub-block, pixels still to come.
-        if (available < len and !out.done()) return error.Corrupt;
+        if (available < len and !out.done()) return error.Truncated;
     }
-    return .{ .width = screen_width, .height = screen_height, .pixels = platform.Bytes.from(pixels) };
 }
 
 /// Firefox and Safari: the clear code, 2^size, must be below 4096.
@@ -279,6 +313,8 @@ const Output = struct {
     rows_left: u32,
     /// The interlace pass (Appendix E), 0 to 3.
     pass: u2 = 0,
+    /// Whether any pixel has been decoded (a transparent one included).
+    decoded: bool = false,
 
     const pass_start = [4]u32{ 0, 4, 2, 1 };
     const pass_step = [4]u32{ 8, 8, 4, 2 };
@@ -290,6 +326,7 @@ const Output = struct {
     /// The next pixel's index. Past the last pixel, ignored.
     fn put(self: *Output, index: u8) void {
         if (self.rows_left == 0) return;
+        self.decoded = true;
         const sx = self.x + self.column;
         const sy = self.y + self.row;
         const is_transparent = if (self.transparent) |t| index == t else false;

@@ -33,11 +33,18 @@ fn free(image: platform.DecodedImage) void {
 }
 
 fn expectPixels(bytes: []const u8, width: u32, height: u32, expected: []const [4]u8) !void {
+    try expectPartial(bytes, width, height, expected, .complete);
+}
+
+/// `bytes` decodes to `expected` pixels with `status` - a partial image
+/// when it is not complete (its `empty` when none of them is decoded).
+fn expectPartial(bytes: []const u8, width: u32, height: u32, expected: []const [4]u8, status: platform.ImageDecodeStatus) !void {
     const image = try decode(bytes);
     defer free(image);
     try testing.expectEqual(width, image.width);
     try testing.expectEqual(height, image.height);
     try testing.expectEqualSlices(u8, std.mem.sliceAsBytes(expected), image.pixels.slice());
+    try testing.expectEqual(status, image.status);
 }
 
 // ---------------------------------------------------------------------------
@@ -83,11 +90,34 @@ test "bmp: image.py's bitmaps read back as the request headers they encode" {
     }
 }
 
-test "bmp: every truncation of image.py's bitmap is corrupt, and flipped bytes never crash" {
+test "bmp: a truncation of image.py's bitmap is corrupt in its headers, a partial image in its pixels; flipped bytes never crash" {
     if (platform.capabilities.image_decoding == .unsupported) return;
     const original = image_py[1][0];
+    // The pixel data's offset: the headers end there (a 24-bit bitmap has
+    // no colour table).
+    const pixel_data = std.mem.readInt(u32, original[10..14], .little);
+    const whole = try decode(original);
+    defer free(whole);
     for (0..original.len) |len| {
-        try testing.expectError(error.Corrupt, decode(original[0..len]));
+        if (len < pixel_data) {
+            try testing.expectError(error.Corrupt, decode(original[0..len]));
+            continue;
+        }
+        const image = try decode(original[0..len]);
+        defer free(image);
+        try testing.expectEqual(whole.width, image.width);
+        // Complete once every pixel is decoded - the last row's padding is
+        // not needed - and truncated before.
+        const every_pixel = std.mem.eql(u8, whole.pixels.slice(), image.pixels.slice());
+        try testing.expectEqual(if (every_pixel) platform.ImageDecodeStatus.complete else .truncated, image.status);
+        // 29 pixels of 3 bytes: one byte of padding a row.
+        try testing.expect(every_pixel == (len + 1 >= original.len));
+        // Rows are bottom-up: those the data reached are the whole image's.
+        var i: usize = 0;
+        while (i < image.pixels.len) : (i += 4) {
+            const pixel = image.pixels.slice()[i..][0..4];
+            if (!std.mem.eql(u8, pixel, whole.pixels.slice()[i..][0..4])) try testing.expectEqualSlices(u8, &clear, pixel);
+        }
     }
     const bytes = try testing.allocator.dupe(u8, original);
     defer testing.allocator.free(bytes);
@@ -188,6 +218,12 @@ fn expectBitmap(bitmap: Bitmap, width: u32, height: u32, expected: []const [4]u8
     const bytes = try bitmap.build();
     defer testing.allocator.free(bytes);
     try expectPixels(bytes, width, height, expected);
+}
+
+fn expectBitmapPartial(bitmap: Bitmap, width: u32, height: u32, expected: []const [4]u8, status: platform.ImageDecodeStatus) !void {
+    const bytes = try bitmap.build();
+    defer testing.allocator.free(bytes);
+    try expectPartial(bytes, width, height, expected, status);
 }
 
 fn expectBitmapError(bitmap: Bitmap, expected: platform.ImageError) !void {
@@ -291,15 +327,22 @@ test "bmp: RLE4 alternates a run's two indexes" {
     try expectBitmap(.{ .width = 8, .height = 1, .bit_count = 4, .compression = 2, .colors_used = 3, .palette = &palette, .data = &.{ 5, 0x12, 0, 3, 0x20, 0x10, 0, 1 } }, 8, 1, &.{ red, green, red, green, red, green, black, red });
 }
 
-test "bmp: an RLE stream without its end, or with data past the image, is corrupt" {
+test "bmp: an RLE stream without its end is truncated, and one with data past the image or its row corrupt, keeping what decoded" {
     if (platform.capabilities.image_decoding == .unsupported) return;
     const palette = [_][3]u8{ .{ 0, 0, 0 }, .{ 255, 0, 0 } };
-    // No end of bitmap.
-    try expectBitmapError(.{ .width = 2, .height = 1, .bit_count = 8, .compression = 1, .colors_used = 2, .palette = &palette, .data = &.{ 2, 1, 0, 0 } }, error.Corrupt);
+    // No end of bitmap: the data ends.
+    try expectBitmapPartial(.{ .width = 2, .height = 1, .bit_count = 8, .compression = 1, .colors_used = 2, .palette = &palette, .data = &.{ 2, 1, 0, 0 } }, 2, 1, &.{ red, red }, .truncated);
     // A run after the last row.
-    try expectBitmapError(.{ .width = 2, .height = 1, .bit_count = 8, .compression = 1, .colors_used = 2, .palette = &palette, .data = &.{ 2, 1, 0, 0, 2, 1, 0, 1 } }, error.Corrupt);
-    // An absolute run wider than the row.
-    try expectBitmapError(.{ .width = 2, .height = 1, .bit_count = 8, .compression = 1, .colors_used = 2, .palette = &palette, .data = &.{ 0, 3, 1, 1, 1, 0, 0, 1 } }, error.Corrupt);
+    try expectBitmapPartial(.{ .width = 2, .height = 1, .bit_count = 8, .compression = 1, .colors_used = 2, .palette = &palette, .data = &.{ 2, 1, 0, 0, 2, 1, 0, 1 } }, 2, 1, &.{ red, red }, .corrupt);
+    // An absolute run wider than the row, after a first row.
+    try expectBitmapPartial(.{ .width = 2, .height = 2, .bit_count = 8, .compression = 1, .colors_used = 2, .palette = &palette, .data = &.{ 2, 1, 0, 0, 0, 3, 1, 1, 1, 0, 0, 1 } }, 2, 2, &.{ clear, clear, red, red }, .corrupt);
+    // Nothing decoded before the bad run: an empty partial image.
+    const empty = try (Bitmap{ .width = 2, .height = 1, .bit_count = 8, .compression = 1, .colors_used = 2, .palette = &palette, .data = &.{ 0, 3, 1, 1, 1, 0, 0, 1 } }).build();
+    defer testing.allocator.free(empty);
+    const image = try decode(empty);
+    defer free(image);
+    try testing.expectEqual(platform.ImageDecodeStatus.corrupt, image.status);
+    try testing.expect(image.empty);
 }
 
 test "bmp: headers and data a browser rejects are corrupt" {
@@ -314,8 +357,8 @@ test "bmp: headers and data a browser rejects are corrupt" {
     try expectBitmapError(.{ .header_size = 41, .width = 1, .height = 1, .bit_count = 24, .data = &row }, error.Corrupt);
     // Pixel data said to begin inside the header.
     try expectBitmapError(.{ .width = 1, .height = 1, .bit_count = 24, .data = &row, .data_offset = 20 }, error.Corrupt);
-    // Pixel data that ends early.
-    try expectBitmapError(.{ .width = 2, .height = 1, .bit_count = 24, .data = &row }, error.Corrupt);
+    // (Pixel data that ends early is past the dimensions: a partial image.)
+    try expectBitmapPartial(.{ .width = 2, .height = 1, .bit_count = 24, .data = &row }, 2, 1, &.{ clear, clear }, .truncated);
     // Overlapping, and non-contiguous, bit masks.
     try expectBitmapError(.{ .width = 1, .height = 1, .bit_count = 16, .compression = 3, .masks = .{ 0xf800, 0x0fe0, 0x001f, 0 }, .extra_masks = 3, .data = &row }, error.Corrupt);
     try expectBitmapError(.{ .width = 1, .height = 1, .bit_count = 16, .compression = 3, .masks = .{ 0xf400, 0x07e0, 0x001f, 0 }, .extra_masks = 3, .data = &row }, error.Corrupt);

@@ -32,11 +32,18 @@ fn free(image: platform.DecodedImage) void {
 }
 
 fn expectPixels(bytes: []const u8, width: u32, height: u32, expected: []const [4]u8) !void {
+    try expectPartial(bytes, width, height, expected, .complete);
+}
+
+/// `bytes` decodes to `expected` pixels with `status` - a partial image
+/// when it is not complete.
+fn expectPartial(bytes: []const u8, width: u32, height: u32, expected: []const [4]u8, status: platform.ImageDecodeStatus) !void {
     const image = try decode(bytes);
     defer free(image);
     try testing.expectEqual(width, image.width);
     try testing.expectEqual(height, image.height);
     try testing.expectEqualSlices(u8, std.mem.sliceAsBytes(expected), image.pixels.slice());
+    try testing.expectEqual(status, image.status);
 }
 
 fn hexDigest(pixels: []const u8) [64]u8 {
@@ -759,7 +766,7 @@ test "gif: data past the last pixel is ignored" {
     try expectPixels(bytes, 2, 2, &.{ red, green, blue, white });
 }
 
-test "gif: minimum code sizes 9 to 11 decode, 12 and more are corrupt" {
+test "gif: minimum code sizes 9 to 11 decode, 12 and more are a corrupt partial image with nothing decoded" {
     if (platform.capabilities.image_decoding == .unsupported) return;
     // Firefox and Safari read up to 11 (the clear code must fit 12 bits);
     // a literal is the low 8 bits of its code (their 8-bit string table).
@@ -772,7 +779,12 @@ test "gif: minimum code sizes 9 to 11 decode, 12 and more are corrupt" {
     for ([_]u8{ 12, 13, 255 }) |size| {
         const bad = try build(.{ .width = 1, .height = 1, .global = &rgbw, .frame = .{ .width = 1, .height = 1, .min_code_size = size, .data = "\x00\x00" } });
         defer testing.allocator.free(bad);
-        try testing.expectError(error.Corrupt, decode(bad));
+        // Past the image descriptor: the dimensions are known.
+        const image = try decode(bad);
+        defer free(image);
+        try testing.expectEqual(platform.ImageDecodeStatus.corrupt, image.status);
+        try testing.expect(image.empty);
+        try testing.expectEqualSlices(u8, &clear, image.pixels.slice());
     }
 }
 
@@ -789,7 +801,7 @@ test "gif: a code past the next free one repeats the previous string (Firefox, S
     try expectPixels(bytes, 4, 1, &.{ green, green, green, clear });
 }
 
-test "gif: a code table that refers to itself is corrupt" {
+test "gif: a code table that refers to itself is corrupt, keeping the pixels before it" {
     if (platform.capabilities.image_decoding == .unsupported) return;
     // After clear: 0; then 7 (past the next free code 6, taken as 6: entry
     // 6 = (0, 0), and the previous code becomes 7); then the literal 1 makes
@@ -799,30 +811,45 @@ test "gif: a code table that refers to itself is corrupt" {
     defer testing.allocator.free(data);
     const bytes = try build(.{ .width = 8, .height = 1, .global = &rgbw, .frame = .{ .width = 8, .height = 1, .data = data } });
     defer testing.allocator.free(bytes);
-    try testing.expectError(error.Corrupt, decode(bytes));
+    // 0; 7 as 6, "0 0"; 1: four pixels before the loop.
+    try expectPartial(bytes, 8, 1, &.{ red, red, red, green, clear, clear, clear, clear }, .corrupt);
 }
 
 // ---------------------------------------------------------------------------
 // Truncation and damage
 // ---------------------------------------------------------------------------
 
-test "gif: every truncation fails cleanly, or decodes the whole first frame" {
+test "gif: every truncation is corrupt before the first image descriptor, and a partial image after it" {
     if (platform.capabilities.image_decoding == .unsupported) return;
     inline for (.{ "css/css-lists/resources/white.gif", "images/anim-rgb.gif", "css/CSS2/backgrounds/support/animated.gif", "css/css-ui/support/cursors/tp1n3p08.gif" }) |path| {
         const bytes = try readWpt(path);
         defer testing.allocator.free(bytes);
         const whole = try decode(bytes);
         defer free(whole);
+        try testing.expectEqual(platform.ImageDecodeStatus.complete, whole.status);
+        var dimensions = false;
         for (0..bytes.len) |len| {
             const image = decode(bytes[0..len]) catch |err| {
                 try testing.expectEqual(error.Corrupt, err);
+                // Once a cut has the dimensions, every longer one does.
+                try testing.expect(!dimensions);
                 continue;
             };
             defer free(image);
-            // A cut after the first frame's last pixel may succeed, and then
-            // with every pixel.
-            try testing.expectEqualSlices(u8, whole.pixels.slice(), image.pixels.slice());
+            dimensions = true;
+            try testing.expectEqual(whole.width, image.width);
+            try testing.expectEqual(whole.height, image.height);
+            // Each pixel the whole frame's, or not reached; complete only
+            // with every pixel, truncated otherwise.
+            const every_pixel = std.mem.eql(u8, whole.pixels.slice(), image.pixels.slice());
+            if (image.status == .complete) try testing.expect(every_pixel) else try testing.expectEqual(platform.ImageDecodeStatus.truncated, image.status);
+            var i: usize = 0;
+            while (i < image.pixels.len) : (i += 4) {
+                const pixel = image.pixels.slice()[i..][0..4];
+                if (!std.mem.eql(u8, pixel, whole.pixels.slice()[i..][0..4])) try testing.expectEqualSlices(u8, &clear, pixel);
+            }
         }
+        try testing.expect(dimensions);
     }
 }
 

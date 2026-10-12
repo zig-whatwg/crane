@@ -1,6 +1,7 @@
 //! The testing platform's PNG decoder (decision 19): PNG datastreams to
-//! RGBA8, in Zig over std.compress.flate, so the WPT runner's results do not
-//! depend on the machine's image libraries. W3C PNG (Third Edition),
+//! RGBA8, in Zig - its zlib data through inflate.zig, which stops exactly
+//! where truncated data does - so the WPT runner's results do not depend on
+//! the machine's image libraries. W3C PNG (Third Edition),
 //! specs/w3c/png-3.md, as a decoder that extracts the image:
 //!
 //! - every colour type and bit depth of Table 11.1, Adam7 interlacing (8.2),
@@ -12,15 +13,35 @@
 //! - 16-bit samples rescaled to 8 by 13.12's "most accurate" equation,
 //!   floor(v * 255 / 65535 + 0.5), after tRNS is compared exactly (13.12);
 //!   sub-8-bit greys by the same equation (v * 255 / (2^depth - 1));
-//! - errors as 13.1 says: a signature or CRC mismatch on a critical chunk,
-//!   an unknown critical chunk, a bad IHDR, a missing PLTE for an indexed
-//!   image, missing or short image data, are fatal (`Corrupt`); an ancillary
-//!   chunk with a bad CRC, misplaced or of the wrong length is discarded; an
-//!   out-of-range palette index is opaque black (13.1, now required); a
-//!   missing IEND is tolerated once the image data is complete.
+//! - errors as 13.1 says, up to the image's dimensions: a signature or CRC
+//!   mismatch on a critical chunk, an unknown critical chunk, a bad IHDR, a
+//!   missing PLTE for an indexed image, a datastream that ends before its
+//!   image data begins, are fatal (`Corrupt`); an ancillary chunk with a bad
+//!   CRC, misplaced or of the wrong length is discarded; an out-of-range
+//!   palette index is opaque black (13.1, now required); a missing IEND is
+//!   tolerated once the image data is complete;
+//! - the dimensions are known once the first IDAT chunk begins - its length
+//!   and type read - as the browsers know them (libpng calls its info
+//!   callback there, which is where Gecko's nsPNGDecoder posts the size; the
+//!   png crate's read_info, under Chrome's SkPngRustCodec, stops there; and
+//!   ImageIO, probed on macOS 27, has no size for smiley.png cut before it
+//!   and one cut 8 bytes into it). From there nothing is fatal: data that
+//!   ends early or goes bad leaves a partial image (the protocol's
+//!   ImageDecodeStatus) - the whole scanlines decoded before that point, the
+//!   rest transparent black - as libpng, which hands a row over only when it
+//!   is whole, and the png crate decode it. An IDAT chunk's data is decoded
+//!   as it arrives, before its CRC (streaming, as both do): a chunk cut short
+//!   is decoded as far as it goes, and an IDAT whose CRC does not match is
+//!   decoded and then ends the datastream, corrupt. A bad filter type, a
+//!   zlib stream that is invalid or holds too few scanlines, and an invalid
+//!   chunk after the image data are corrupt; a datastream that ends before
+//!   the image data does is truncated. Of an interlaced image, the pixels of
+//!   the passes decoded so far (not blown up to fill the gaps, as Gecko's
+//!   ADAM7 interpolation shows a progressive load).
 
 const std = @import("std");
 const platform = @import("platform");
+const inflate = @import("inflate.zig");
 
 const ImageError = platform.ImageError;
 
@@ -95,8 +116,8 @@ pub fn hasSignature(data: []const u8) bool {
     return data.len >= signature.len and std.mem.eql(u8, data[0..signature.len], signature);
 }
 
-/// Decode `bytes`, a whole PNG datastream. The pixels are OWNED by
-/// `allocator`.
+/// Decode `bytes`, a PNG datastream - whole, or as much of one as the fetch
+/// delivered. The pixels are OWNED by `allocator`.
 pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.ImageLimits) ImageError!platform.DecodedImage {
     if (!hasSignature(bytes)) return error.Corrupt;
 
@@ -107,42 +128,85 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.
     defer image_data.deinit(allocator);
     // IDAT chunks are consecutive (5.6); the run ends at the next chunk.
     var idat_state: enum { before, in_run, after } = .before;
+    // How the chunk stream ended once the image data had begun (before
+    // that, an error is fatal): at IEND or the data's end between chunks
+    // (null), with the data ending inside a chunk, or at an invalid chunk.
+    var ended: ?platform.ImageDecodeStatus = null;
+    var saw_iend = false;
 
     var pos: usize = signature.len;
-    chunks: while (bytes.len - pos >= 12) {
-        // 5.3: length, type, data, CRC. A chunk cut short ends the datastream
-        // (an unexpected end, 13.1): what came before decides.
+    chunks: while (bytes.len - pos >= 8) {
+        // 5.3: length, type, data, CRC.
         const length = std.mem.readInt(u32, bytes[pos..][0..4], .big);
-        if (length > std.math.maxInt(i32)) return error.Corrupt;
-        if (bytes.len - pos - 12 < length) break;
         const kind = bytes[pos + 4 ..][0..4];
+        const valid_kind = for (kind) |c| {
+            if (!std.ascii.isAlphabetic(c)) break false;
+        } else true;
+        if (length > std.math.maxInt(i32) or !valid_kind) {
+            if (idat_state == .before) return error.Corrupt;
+            ended = .corrupt;
+            break;
+        }
+        const is_idat = std.mem.eql(u8, kind, "IDAT");
+        // 5.4: bit 5 of the first byte clear means critical.
+        const critical = kind[0] & 0x20 == 0;
+        if (bytes.len - pos - 8 < @as(usize, length) + 4) {
+            // A chunk cut short ends the datastream (an unexpected end,
+            // 13.1). Before the image data, what came before decides; an
+            // IDAT's data is decoded as far as it goes, as a streaming
+            // decoder decodes it before its CRC arrives.
+            if (is_idat and idat_state != .after) {
+                const h = header orelse return error.Corrupt;
+                if (h.color == .indexed and palette == null) return error.Corrupt;
+                const available = bytes[pos + 8 ..][0..@min(length, bytes.len - pos - 8)];
+                image_data.appendSlice(allocator, available) catch return error.OutOfMemory;
+                idat_state = .in_run;
+            }
+            if (idat_state != .before) ended = .truncated;
+            break;
+        }
         const data = bytes[pos + 8 ..][0..length];
         const stored_crc = std.mem.readInt(u32, bytes[pos + 8 + length ..][0..4], .big);
         pos += 12 + @as(usize, length);
 
-        for (kind) |c| if (!std.ascii.isAlphabetic(c)) return error.Corrupt;
-        // 5.4: bit 5 of the first byte clear means critical.
-        const critical = kind[0] & 0x20 == 0;
         var crc: std.hash.Crc32 = .init();
         crc.update(kind);
         crc.update(data);
         if (crc.final() != stored_crc) {
             // 13.1 item 3: a CRC mismatch is a corrupted datastream - fatal
             // for the chunks the image needs; an ancillary chunk is dropped.
-            if (critical) return error.Corrupt;
-            continue;
+            if (!critical) continue;
+            if (idat_state == .before and !is_idat) return error.Corrupt;
+            // Once the image data has begun: an IDAT's data has been decoded
+            // by the time its CRC is checked; the datastream ends there.
+            if (is_idat and idat_state != .after) {
+                const h = header orelse return error.Corrupt;
+                if (h.color == .indexed and palette == null) return error.Corrupt;
+                image_data.appendSlice(allocator, data) catch return error.OutOfMemory;
+                idat_state = .in_run;
+            }
+            ended = .corrupt;
+            break;
         }
 
-        if (idat_state == .in_run and !std.mem.eql(u8, kind, "IDAT")) idat_state = .after;
+        if (idat_state == .in_run and !is_idat) idat_state = .after;
         if (header == null and !std.mem.eql(u8, kind, "IHDR")) return error.Corrupt;
 
         if (std.mem.eql(u8, kind, "IHDR")) {
-            if (header != null) return error.Corrupt;
+            if (header != null) {
+                if (idat_state == .before) return error.Corrupt;
+                ended = .corrupt;
+                break;
+            }
             header = try parseHeader(data);
             try checkLimits(header.?, limits);
         } else if (std.mem.eql(u8, kind, "PLTE")) {
             // 11.2.2: one PLTE, before the image data.
-            if (palette != null or idat_state != .before) return error.Corrupt;
+            if (idat_state != .before) {
+                ended = .corrupt;
+                break;
+            }
+            if (palette != null) return error.Corrupt;
             const entries = data.len / 3;
             const valid = data.len % 3 == 0 and entries >= 1 and entries <= 256;
             switch (header.?.color) {
@@ -158,7 +222,7 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.
                 // truecolour image" leniency).
                 .greyscale, .greyscale_alpha => {},
             }
-        } else if (std.mem.eql(u8, kind, "IDAT")) {
+        } else if (is_idat) {
             if (header.?.color == .indexed and palette == null) return error.Corrupt;
             switch (idat_state) {
                 .before, .in_run => {
@@ -170,6 +234,7 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.
                 .after => {},
             }
         } else if (std.mem.eql(u8, kind, "IEND")) {
+            saw_iend = true;
             break :chunks;
         } else if (std.mem.eql(u8, kind, "tRNS")) {
             // 11.3.1.1: before the image data, after PLTE, of the length its
@@ -189,16 +254,28 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, limits: platform.
                 .greyscale_alpha, .truecolor_alpha => {},
             }
         } else if (critical) {
-            // 13.1: an unknown critical chunk is fatal.
-            return error.Corrupt;
+            // 13.1: an unknown critical chunk is fatal - before the image
+            // data; after it, the datastream ends there.
+            if (idat_state == .before) return error.Corrupt;
+            ended = .corrupt;
+            break;
         }
         // Any other ancillary chunk - colour space, text, time, animation,
         // and every unknown one - is skipped.
+    } else {
+        // Fewer bytes than a chunk's length and type: the datastream ended
+        // inside a chunk, unless it ended between two.
+        if (bytes.len != pos and idat_state != .before) ended = .truncated;
     }
 
     const h = header orelse return error.Corrupt;
+    // No image data begun: the dimensions were never known (libpng's info
+    // callback comes with the first IDAT).
     if (idat_state == .before) return error.Corrupt;
-    return decodeImageData(allocator, h, image_data.items, palette, transparency);
+    // How the datastream ended: whole, at its IEND; truncated, before it; or
+    // at an invalid chunk.
+    const datastream: platform.ImageDecodeStatus = ended orelse if (saw_iend) .complete else .truncated;
+    return decodeImageData(allocator, h, image_data.items, palette, transparency, datastream);
 }
 
 /// IHDR's 13 bytes (11.2.1), checked.
@@ -222,12 +299,18 @@ fn checkLimits(header: Header, limits: platform.ImageLimits) ImageError!void {
 }
 
 /// Inflate the image data, undo the filters pass by pass and write RGBA8.
+/// The scanlines the data holds whole are decoded; the image is partial
+/// when that is not all of them, and `datastream` - how the chunk stream
+/// ended - says why: truncated when it ended before its IEND, corrupt when
+/// an invalid chunk ended it or when, whole, it holds too little image data
+/// (13.1's "short image data").
 fn decodeImageData(
     allocator: std.mem.Allocator,
     header: Header,
     compressed: []const u8,
     palette: ?[]const u8,
     transparency: ?[]const u8,
+    datastream: platform.ImageDecodeStatus,
 ) ImageError!platform.DecodedImage {
     const passes: []const Pass = if (header.interlaced) &adam7 else &no_interlace;
     // The size of the filtered image data (7.2, 8.2): each pass's scanlines,
@@ -241,16 +324,23 @@ fn decodeImageData(
     const pixel_len = @as(u64, header.width) * header.height * 4;
     if (raw_len > std.math.maxInt(usize) or pixel_len > std.math.maxInt(usize)) return error.TooLarge;
 
-    const inflated = try inflate(allocator, compressed, @intCast(raw_len));
-    defer allocator.free(inflated);
-    const raw = inflated[0..@intCast(raw_len)];
+    // zlib (10.1): as many bytes as the scanlines take, as far as the data
+    // goes - exactly, so that a truncated image's last rows are the ones its
+    // data holds whole.
+    const buffer = allocator.alloc(u8, @intCast(raw_len)) catch return error.OutOfMemory;
+    defer allocator.free(buffer);
+    const raw = buffer[0..inflate.zlib(buffer, compressed).len];
 
     const pixels = allocator.alloc(u8, @intCast(pixel_len)) catch return error.OutOfMemory;
     errdefer allocator.free(pixels);
+    // What the data does not reach is transparent black.
+    @memset(pixels, 0);
     var converter: Converter = .{ .header = header, .palette = palette orelse &.{}, .transparency = transparency };
 
     var offset: usize = 0;
-    for (passes) |pass| {
+    var rows: u64 = 0;
+    var bad_filter = false;
+    passes: for (passes) |pass| {
         const w, const h = passSize(header, pass);
         if (w == 0 or h == 0) continue;
         const stride: usize = @intCast(rowBytes(header, w));
@@ -259,57 +349,35 @@ fn decodeImageData(
         const bpp: usize = @max(1, (@as(usize, header.color.channels()) * header.depth) / 8);
         var previous: ?[]const u8 = null;
         for (0..h) |row| {
+            // A scanline the data does not hold whole is not decoded.
+            if (raw.len - offset < stride + 1) break :passes;
             const filter = raw[offset];
             const line = raw[offset + 1 ..][0..stride];
             offset += stride + 1;
-            try unfilter(filter, line, previous, bpp);
+            unfilter(filter, line, previous, bpp) catch {
+                bad_filter = true;
+                break :passes;
+            };
             previous = line;
             converter.writeRow(pixels, line, pass, @intCast(row), w);
+            rows += 1;
         }
     }
-    return .{ .width = header.width, .height = header.height, .pixels = platform.Bytes.from(pixels) };
-}
-
-/// zlib (10.1): at least `len` bytes of inflated data, OWNED (longer than
-/// `len`: the tail is scratch). Data that ends before `len` is corrupt; data
-/// after it is not read.
-///
-/// std.compress.flate in Zig 0.16 cannot be handed input that simply stops:
-/// its short-input check in `tossBitsShort` adds `consumed_bits` where it
-/// should subtract them, and tosses past the end of the reader's buffer (an
-/// assertion) - see docs/lessons/debugging-a-pull-inflater-needs-short-input-
-/// and-block-transition-tests.md, where src/compression met it. So the input
-/// is followed by zero padding, every step is checked to have consumed only
-/// real input, and the inflater writes straight into one fixed buffer (its
-/// direct mode: no read-ahead, the buffer is the history) in steps whose
-/// overshoot - a stored block after compressed output in one step may write
-/// up to the step's limit again - the buffer's slack absorbs.
-fn inflate(allocator: std.mem.Allocator, compressed: []const u8, len: usize) ImageError![]u8 {
-    const padding = 8;
-    const padded = allocator.alloc(u8, compressed.len + padding) catch return error.OutOfMemory;
-    defer allocator.free(padded);
-    @memcpy(padded[0..compressed.len], compressed);
-    @memset(padded[compressed.len..], 0);
-
-    const step = std.compress.flate.history_len;
-    const out = allocator.alloc(u8, len + 2 * step) catch return error.OutOfMemory;
-    errdefer allocator.free(out);
-    var writer: std.Io.Writer = .fixed(out);
-    var input: std.Io.Reader = .fixed(padded);
-    var decompress: std.compress.flate.Decompress = .init(&input, .zlib, &.{});
-    const real_bits = @as(u64, compressed.len) * 8;
-    while (writer.end < len) {
-        const before = writer.end;
-        const consumed_before = @as(u64, input.seek) * 8 + decompress.consumed_bits;
-        // The vtable, not Reader.stream: the overshoot above trips its
-        // "no more than the limit" assertion.
-        _ = decompress.reader.vtable.stream(&decompress.reader, &writer, .limited(@min(len - writer.end, step))) catch return error.Corrupt;
-        const consumed = @as(u64, input.seek) * 8 + decompress.consumed_bits;
-        // Output that needed the padding: the real data ended first.
-        if (consumed > real_bits) return error.Corrupt;
-        if (writer.end == before and consumed == consumed_before) return error.Corrupt;
-    }
-    return out;
+    const status: platform.ImageDecodeStatus = if (offset == raw_len and !bad_filter)
+        // Every scanline: complete - unless an invalid chunk came after
+        // them (the pixels are whole, the datastream is not without errors).
+        (if (datastream == .corrupt) .corrupt else .complete)
+    else if (bad_filter or datastream == .complete)
+        .corrupt
+    else
+        datastream;
+    return .{
+        .width = header.width,
+        .height = header.height,
+        .pixels = platform.Bytes.from(pixels),
+        .status = status,
+        .empty = status != .complete and rows == 0,
+    };
 }
 
 /// Undo filter type `filter` on `line` in place (9.2-9.4); `previous` is the
