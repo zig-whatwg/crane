@@ -492,6 +492,8 @@ A lane brief now carries the lessons chosen for its batch.
 
 - [A union conversion needs a case per member type](testing-a-union-conversion-needs-a-case-per-member-type.md) - Enumerate the flattened member types from the IDL and give each its own case - plus an offset view and a detached buffer - before calling a conversion done.
 - [A test encoder written beside its decoder can share its mistake](testing-a-test-encoder-written-beside-its-decoder-can-share-its-mistake.md) - An encoder and decoder written together agree with each other, not with the format: anchor one of them to an independent implementation, and build truncated streams that end where you think they do.
+- [The WebDriver remote end reads the browsing context, not script's getters](testing-the-webdriver-remote-end-reads-the-browsing-context-not-script-getters.md) - Remote-end code is not script: reach a window's document and cookie store through its browsing context, never through an IDL getter that checks the accessor or a top-level-only field.
+
 ### Debugging
 
 - [A Range oracle can overflow on contradictory node order](debugging-range-oracle-stack-overflow-can-start-in-node-order.md) - Check oracle dependencies and native ordering antisymmetry before replacing a correct Range helper.
