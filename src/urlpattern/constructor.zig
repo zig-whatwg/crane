@@ -557,74 +557,6 @@ fn hasRegexpGroups(parts: []const Part) bool {
     return false;
 }
 
-/// Generate a pattern string from parts
-fn generatePatternString(allocator: Allocator, parts: []const Part) ![]u8 {
-    var result: std.ArrayListUnmanaged(u8) = .empty;
-    errdefer result.deinit(allocator);
-
-    for (parts) |part| {
-        // Add prefix
-        try result.appendSlice(allocator, part.prefix);
-
-        switch (part.type) {
-            .fixed_text => {
-                // Escape special characters in fixed text
-                for (part.value) |c| {
-                    if (c == ':' or c == '*' or c == '(' or c == ')' or c == '{' or c == '}' or c == '\\') {
-                        try result.append(allocator, '\\');
-                    }
-                    try result.append(allocator, c);
-                }
-            },
-            .segment_wildcard => {
-                // :name format
-                try result.append(allocator, ':');
-                try result.appendSlice(allocator, part.name);
-            },
-            .full_wildcard => {
-                if (part.name.len > 0 and !isNumericName(part.name)) {
-                    // Named full wildcard: :name(.*) or :name* format
-                    // According to spec, this should serialize as :name(.*)
-                    try result.append(allocator, ':');
-                    try result.appendSlice(allocator, part.name);
-                    // Must include the (.*) to distinguish from segment wildcard
-                    try result.appendSlice(allocator, "(.*)");
-                } else {
-                    // * wildcard
-                    try result.append(allocator, '*');
-                }
-            },
-            .regexp => {
-                // :name(regexp) or (regexp) format
-                if (part.name.len > 0 and !isNumericName(part.name)) {
-                    try result.append(allocator, ':');
-                    try result.appendSlice(allocator, part.name);
-                }
-                try result.append(allocator, '(');
-                try result.appendSlice(allocator, part.value);
-                try result.append(allocator, ')');
-            },
-        }
-
-        // Add suffix
-        try result.appendSlice(allocator, part.suffix);
-
-        // Add modifier
-        try result.appendSlice(allocator, part.modifier.toString());
-    }
-
-    return result.toOwnedSlice(allocator);
-}
-
-/// Check if a name is numeric (auto-generated)
-fn isNumericName(name: []const u8) bool {
-    if (name.len == 0) return false;
-    for (name) |c| {
-        if (c < '0' or c > '9') return false;
-    }
-    return true;
-}
-
 /// Compile a single URL pattern component
 fn compileComponent(
     allocator: Allocator,
@@ -690,7 +622,7 @@ fn compileComponent(
     }
 
     // Step 6: Generate pattern string from parts
-    const pattern_string = generatePatternString(allocator, parse_result.parts) catch {
+    const pattern_string = @import("pattern_string.zig").generate(allocator, parse_result.parts, options) catch {
         if (regex) |*r| r.deinit();
         gen_result.deinit();
         return ConstructorError.OutOfMemory;

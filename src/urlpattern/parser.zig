@@ -351,6 +351,7 @@ pub const PatternParser = struct {
         // Determine name
         var name: []const u8 = "";
         var name_copy: ?[]u8 = null;
+        errdefer if (name_copy) |copy| self.allocator.free(copy);
 
         if (name_token) |nt| {
             name_copy = try self.allocator.alloc(u8, nt.value.len);
@@ -368,7 +369,6 @@ pub const PatternParser = struct {
 
         // Check for duplicate name
         if (self.isDuplicateName(name)) {
-            if (name_copy) |nc| self.allocator.free(nc);
             return error.DuplicateName;
         }
 
@@ -381,6 +381,7 @@ pub const PatternParser = struct {
 
         // Copy regexp value if needed
         var value_copy: ?[]u8 = null;
+        errdefer if (value_copy) |copy| self.allocator.free(copy);
         if (regexp_value.len > 0) {
             value_copy = try self.allocator.alloc(u8, regexp_value.len);
             @memcpy(value_copy.?, regexp_value);

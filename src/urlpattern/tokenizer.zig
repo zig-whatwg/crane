@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const identifiers = @import("url").infra.unicode_identifiers;
 
 /// Token types as defined in the URLPattern spec
 pub const TokenType = enum {
@@ -63,8 +64,8 @@ pub const Tokenizer = struct {
     index: usize,
     /// Position after current code point
     next_index: usize,
-    /// Current code point (as byte for ASCII)
-    code_point: u8,
+    /// Current Unicode code point; input positions are UTF-8 byte offsets.
+    code_point: u21,
     /// Allocator for token list
     allocator: Allocator,
 
@@ -89,17 +90,21 @@ pub const Tokenizer = struct {
     }
 
     /// Get the next code point from input
-    fn getNextCodePoint(self: *Self) void {
+    fn getNextCodePoint(self: *Self) error{InvalidPattern}!void {
         if (self.next_index < self.input.len) {
-            self.code_point = self.input[self.next_index];
-            self.next_index += 1;
+            // Get the next code point, steps 2-3. The tokenizer consumes
+            // scalar values, including after an escape and within a name.
+            const len = std.unicode.utf8ByteSequenceLength(self.input[self.next_index]) catch return error.InvalidPattern;
+            if (len > self.input.len - self.next_index) return error.InvalidPattern;
+            self.code_point = std.unicode.utf8Decode(self.input[self.next_index..][0..len]) catch return error.InvalidPattern;
+            self.next_index += len;
         }
     }
 
     /// Seek to position and get the next code point
-    fn seekAndGetNextCodePoint(self: *Self, position: usize) void {
+    fn seekAndGetNextCodePoint(self: *Self, position: usize) error{InvalidPattern}!void {
         self.next_index = position;
-        self.getNextCodePoint();
+        try self.getNextCodePoint();
     }
 
     /// Add a token with explicit parameters
@@ -134,19 +139,16 @@ pub const Tokenizer = struct {
     }
 
     /// Check if code point is valid for identifier (per ECMAScript IdentifierStart/IdentifierPart)
-    fn isValidNameCodePoint(code_point: u8, first: bool) bool {
-        // Simplified: allow ASCII letters, digits (not first), underscore, dollar
-        if (code_point == '_' or code_point == '$') return true;
-        if (code_point >= 'a' and code_point <= 'z') return true;
-        if (code_point >= 'A' and code_point <= 'Z') return true;
-        if (!first and code_point >= '0' and code_point <= '9') return true;
-        return false;
+    fn isValidNameCodePoint(code_point: u21, first: bool) bool {
+        // Is a valid name code point, steps 1-2: ECMAScript's Unicode
+        // IdentifierStart and IdentifierPart, including $/_, ZWNJ and ZWJ.
+        return if (first) identifiers.isIdentifierStart(code_point) else identifiers.isIdentifierPart(code_point);
     }
 
     /// Run the tokenization algorithm
     pub fn tokenize(self: *Self) !void {
         while (self.index < self.input.len) {
-            self.seekAndGetNextCodePoint(self.index);
+            try self.seekAndGetNextCodePoint(self.index);
 
             // Asterisk (*)
             if (self.code_point == '*') {
@@ -167,7 +169,7 @@ pub const Tokenizer = struct {
                     continue;
                 }
                 const escaped_index = self.next_index;
-                self.getNextCodePoint();
+                try self.getNextCodePoint();
                 try self.addTokenWithDefaultLength(.escaped_char, self.next_index, escaped_index);
                 continue;
             }
@@ -190,7 +192,7 @@ pub const Tokenizer = struct {
                 const name_start = name_position;
 
                 while (name_position < self.input.len) {
-                    self.seekAndGetNextCodePoint(name_position);
+                    try self.seekAndGetNextCodePoint(name_position);
                     const first_code_point = (name_position == name_start);
                     const valid_code_point = isValidNameCodePoint(self.code_point, first_code_point);
 
@@ -215,7 +217,7 @@ pub const Tokenizer = struct {
                 var has_error = false;
 
                 while (regexp_position < self.input.len) {
-                    self.seekAndGetNextCodePoint(regexp_position);
+                    try self.seekAndGetNextCodePoint(regexp_position);
 
                     // Regexp must be ASCII
                     if (self.code_point > 127) {
@@ -238,7 +240,7 @@ pub const Tokenizer = struct {
                             has_error = true;
                             break;
                         }
-                        self.getNextCodePoint();
+                        try self.getNextCodePoint();
                         if (self.code_point > 127) {
                             try self.processTokenizingError(regexp_start, self.index);
                             has_error = true;
@@ -265,7 +267,7 @@ pub const Tokenizer = struct {
                             break;
                         }
                         const temporary_position = self.next_index;
-                        self.getNextCodePoint();
+                        try self.getNextCodePoint();
                         // Must be followed by ? for non-capturing group
                         if (self.code_point != '?') {
                             try self.processTokenizingError(regexp_start, self.index);
