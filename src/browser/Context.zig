@@ -1776,10 +1776,9 @@ pub const Context = struct {
         const sniffing = html_mod.parser.encoding_sniffing;
         const markup: []const u8 = switch (kind) {
             .html => result.body,
-            // "Loading an XML document". Deviation, stated: Crane has no XML
-            // parser. An XHTML page is parsed as HTML, as it always was here;
-            // any other XML document is left as it is, empty.
-            .xml => if (std.mem.eql(u8, computed, "application/xhtml+xml")) result.body else return,
+            // "Loading an XML document": the response's bytes, which the XML
+            // parser reads (parseXmlLoadDocument).
+            .xml => result.body,
             // "Loading a text document": one pre holding the text, decoded
             // by the type's rules - a BOM, the charset parameter, else the
             // default (the sniffing algorithm without the prescan).
@@ -1837,13 +1836,20 @@ pub const Context = struct {
         // origin in the page's browsing context group. Before any of its
         // script runs.
         self.obtainAgentCluster(result.final_url, result.origin_agent_cluster);
+        if (kind == .xml) {
+            // "Create and initialize a Document object" given "xml" and the
+            // response's computed type.
+            try dom_mod.document_internals.setDocumentType(document, .xml);
+            try dom_mod.document_internals.setContentType(document, computed);
+            try self.parseXmlLoadDocument(made, markup, result.content_type, options.script_loader);
+            return;
+        }
         try self.parseLoadDocument(made, markup, html_options);
         // A load the page's own script started has replaced it.
         if (self.document_instance != document) return;
         if (text_encoding) |name| dom_mod.document_internals.setEncoding(document, name) catch {};
         // "Create and initialize a Document object" step 11: its content type
-        // is the response's computed type. An XHTML page parsed as HTML keeps
-        // the HTML document it was always given.
+        // is the response's computed type.
         if (kind == .text or kind == .media) {
             dom_mod.document_internals.setContentType(document, computed) catch {};
         }
@@ -2063,6 +2069,56 @@ pub const Context = struct {
         // are the parser's: it queued them as tasks when parsing stopped, with
         // readiness and pageshow around them (dom.document_lifecycle). Firing
         // load here as well, synchronously, ran every load listener twice.
+    }
+
+    /// HTML §7.5.3 "load an XML document": an XML parser for the load's new
+    /// document, over the response's `bytes` - decoded by a BOM, the
+    /// Content-Type's charset, the XML declaration, else UTF-8
+    /// (xml_document_parser.decodeBytes) - with XML scripting support, its
+    /// external classic scripts fetched with `script_loader`. Errors are
+    /// "reported inline by mutating the Document": the tree up to the first
+    /// stays, and Chrome's and Safari's message block goes in
+    /// (xml_document_parser.insertErrorMessageBlock says why that shape).
+    /// Then "the end", which XML shares with HTML (§14.2).
+    fn parseXmlLoadDocument(self: *Context, made: LoadDocument, bytes: []const u8, content_type: []const u8, script_loader: ?ScriptLoader) !void {
+        const document = made.document;
+        made.load.retain();
+        defer made.load.release();
+        made.load.parsing = true;
+        defer made.load.parsing = false;
+        const xml_parser = html_mod.xml_document_parser;
+        const sniffing = html_mod.parser.encoding_sniffing;
+        const transport = if (content_type.len > 0) sniffing.transportEncoding(self.allocator, content_type) else null;
+        if (try xml_parser.decodeBytes(self.allocator, bytes, transport)) |decoded| {
+            defer self.allocator.free(decoded.text);
+            dom_mod.document_internals.setEncoding(document, sniffing.canonicalName(decoded.encoding)) catch {};
+            const loader: ?html_mod.script_execution.ParserScriptLoader = if (script_loader) |embedder| .{
+                .context = embedder.context,
+                .load = embedder.loadScript,
+                .allocator = self.allocator,
+            } else null;
+            const failure = xml_parser.parseInto(document, decoded.text, .{ .scripting = true, .script_loader = loader }) catch |err| {
+                log.debug("XML parse stopped: {}\n", .{err});
+                return error.ParseError;
+            };
+            // A load the page's own script started has replaced it.
+            if (self.document_instance != document) return;
+            if (failure) |found| xml_parser.insertErrorMessageBlock(document, found) catch {};
+        } else {
+            // A declaration naming an encoding there is none of: libxml2's
+            // fatal error at the declaration.
+            var failure: xml_parser.Failure = .{ .line = 1, .column = 1 };
+            const message = "Unsupported encoding";
+            @memcpy(failure.message_buffer[0..message.len], message);
+            failure.message_len = message.len;
+            xml_parser.insertErrorMessageBlock(document, failure) catch {};
+        }
+        self.initializeIframeBrowsingContexts(document) catch |err| {
+            log.debug("Warning: Failed to initialize iframe browsing contexts: {}\n", .{err});
+        };
+        // "The end" (HTML §13.2.7, which XML's parser follows: §14.2):
+        // readiness, DOMContentLoaded and load, as tasks.
+        dom_mod.document_lifecycle.finishWithoutParser(document);
     }
 
     /// Initialize browsing contexts for all iframes in a document.
