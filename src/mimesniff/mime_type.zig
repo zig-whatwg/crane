@@ -9,8 +9,7 @@
 //! - WHATWG Infra Standard: https://infra.spec.whatwg.org/
 //!   - infra.String (UTF-16): String representation
 //!   - infra.OrderedMap: Ordered map for MIME type parameters
-//!   - infra.bytes.isomorphicDecode/Encode: UTF-8 ↔ UTF-16 conversion
-//!   - infra.string.isAsciiWhitespace: ASCII whitespace detection
+//!   - infra.bytes.isomorphicDecode/Encode: bytes ↔ UTF-16 conversion
 
 const std = @import("std");
 const infra = @import("infra");
@@ -168,7 +167,7 @@ pub fn parseMimeType(
 
     const arena_alloc = parse_arena.allocator();
 
-    // Convert UTF-8 → UTF-16 (temp allocation in arena)
+    // Isomorphic-decode each byte to its UTF-16 code point (arena scratch).
     const input_utf16 = try infra.bytes.isomorphicDecode(arena_alloc, input);
     // No defer needed - arena handles cleanup
 
@@ -287,7 +286,7 @@ fn parseParameters(
         if (pos >= input.len) break;
 
         // 11.2. Collect a sequence of HTTP whitespace
-        while (pos < input.len and infra.string.isAsciiWhitespace(input[pos])) : (pos += 1) {}
+        while (pos < input.len and isHttpWhitespace(input[pos])) : (pos += 1) {}
         if (pos >= input.len) break;
 
         // 11.3. Let parameterName be result of collecting sequence NOT ';' or '='
@@ -345,13 +344,24 @@ fn parseParameters(
             isHttpTokenString(parameter_name_lower) and
             parameter_value != null and
             isHttpQuotedStringTokenString(parameter_value.?) and
-            !parameters.contains(parameter_name_lower))
+            !hasParameter(parameters, parameter_name_lower))
         {
             const key_copy = try allocator.dupe(u16, parameter_name_lower);
+            errdefer allocator.free(key_copy);
             const value_copy = try allocator.dupe(u16, parameter_value.?);
+            errdefer allocator.free(value_copy);
             try parameters.set(key_copy, value_copy);
         }
     }
+}
+
+// Infra's generic map compares slice addresses. MIME parameter names are
+// strings: step 11.10 keeps the first valid occurrence by text, after lowercasing.
+fn hasParameter(parameters: *const infra.OrderedMap(infra.String, infra.String), name: infra.String) bool {
+    for (parameters.entries.items()) |entry| {
+        if (std.mem.eql(u16, entry.key, name)) return true;
+    }
+    return false;
 }
 
 /// Collect HTTP quoted string (§3.4 step 11.8.1)
@@ -387,6 +397,9 @@ fn collectHttpQuotedString(
         }
     }
 
+    // Fetch's collect-an-HTTP-quoted-string, step 5.5.1: a backslash at
+    // end of input is part of the value, even without a closing quote.
+    if (in_escape) try result.append('\\');
     return result.toOwnedSlice();
 }
 
@@ -598,36 +611,32 @@ pub fn isValidMimeTypeWithNoParameters(input: []const u8) bool {
 
 /// Strip leading and trailing HTTP whitespace (non-allocating, returns slice)
 ///
-/// Per WHATWG MIME Sniffing spec: "HTTP whitespace" is equivalent to
-/// "ASCII whitespace" as defined in the Infra Standard.
-///
-/// ASCII whitespace (WHATWG Infra §4.2):
-/// - 0x09 (HT), 0x0A (LF), 0x0C (FF), 0x0D (CR), 0x20 (SP)
-///
-/// Spec: https://infra.spec.whatwg.org/#ascii-whitespace
+/// HTTP whitespace excludes form feed, unlike Infra ASCII whitespace.
+/// Spec: https://fetch.spec.whatwg.org/#http-whitespace
 fn stripHttpWhitespace(s: infra.String) infra.String {
     var start: usize = 0;
     var end: usize = s.len;
 
     // Strip leading
-    while (start < end and infra.string.isAsciiWhitespace(s[start])) : (start += 1) {}
+    while (start < end and isHttpWhitespace(s[start])) : (start += 1) {}
 
     // Strip trailing
-    while (end > start and infra.string.isAsciiWhitespace(s[end - 1])) : (end -= 1) {}
+    while (end > start and isHttpWhitespace(s[end - 1])) : (end -= 1) {}
 
     return s[start..end];
 }
 
 /// Strip trailing HTTP whitespace (non-allocating, returns slice)
 ///
-/// Per WHATWG MIME Sniffing spec: "HTTP whitespace" is equivalent to
-/// "ASCII whitespace" as defined in the Infra Standard.
-///
-/// Spec: https://infra.spec.whatwg.org/#ascii-whitespace
+/// Spec: https://fetch.spec.whatwg.org/#http-whitespace
 fn stripTrailingHttpWhitespace(s: infra.String) infra.String {
     var end: usize = s.len;
-    while (end > 0 and infra.string.isAsciiWhitespace(s[end - 1])) : (end -= 1) {}
+    while (end > 0 and isHttpWhitespace(s[end - 1])) : (end -= 1) {}
     return s[0..end];
+}
+
+fn isHttpWhitespace(c: u16) bool {
+    return c == '\t' or c == '\n' or c == '\r' or c == ' ';
 }
 
 /// Check if string contains only HTTP token code points

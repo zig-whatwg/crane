@@ -5,8 +5,9 @@
 //! property indices (those below `length`), and any other index is no
 //! property at all. The binding installed indexed access only for a named
 //! `item` getter (call_item), so `dataTransfer.items[0]` read undefined.
-//! Codegen gates the anonymous getter (Meta.indexed_getter_implemented),
-//! and the binding installs indexed access only where the impl has it.
+//! Codegen gates the anonymous getter (Meta.special_operations'
+//! `.implemented`), and the binding installs indexed access only where the
+//! impl has it.
 //!
 //! The file shares tests/v8's process: it starts the engine as any file may
 //! (initializeEngine is idempotent) and makes its own agents.
@@ -15,18 +16,20 @@ const std = @import("std");
 const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
+const specialBinding = @import("v8").interface_mod.specialBinding;
 
 comptime {
     // Implemented: the binding installs indexed access.
-    std.debug.assert(interfaces.DataTransferItemList.Meta.indexed_getter_implemented);
-    std.debug.assert(interfaces.TextTrackList.Meta.indexed_getter_implemented);
+    std.debug.assert(interfaces.DataTransferItemList.Meta.special_operations.indexed_getter.?.implemented);
+    std.debug.assert(interfaces.TextTrackList.Meta.special_operations.indexed_getter.?.implemented);
+    std.debug.assert(std.mem.eql(u8, specialBinding(interfaces.TextTrackList).indexed_getter.?, "call_getter"));
     // Not implemented yet: no indexed access, and the gated delegate compiles.
-    std.debug.assert(!interfaces.AudioTrackList.Meta.indexed_getter_implemented);
-    std.debug.assert(!interfaces.SourceBufferList.Meta.indexed_getter_implemented);
-    // A named `item` getter, and a merged indexed+named anonymous pair, carry
-    // no constant.
+    std.debug.assert(!interfaces.AudioTrackList.Meta.special_operations.indexed_getter.?.implemented);
+    std.debug.assert(!interfaces.SourceBufferList.Meta.special_operations.indexed_getter.?.implemented);
+    std.debug.assert(specialBinding(interfaces.AudioTrackList).indexed_getter == null);
+    // A named `item` getter is no gated delegate.
+    std.debug.assert(interfaces.HTMLCollection.Meta.special_operations.indexed_getter.?.implemented);
     std.debug.assert(!@hasDecl(interfaces.HTMLCollection.Meta, "indexed_getter_implemented"));
-    std.debug.assert(!@hasDecl(interfaces.HTMLFormElement.Meta, "indexed_getter_implemented"));
 }
 
 const WindowHost = struct {

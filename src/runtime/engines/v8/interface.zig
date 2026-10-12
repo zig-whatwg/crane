@@ -39,6 +39,7 @@ pub const overload_resolver = @import("overload_resolver.zig");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const template_registry = @import("template_registry.zig");
 const window_properties = @import("window_properties.zig");
+const value_operations = @import("value_operations.zig");
 
 /// Re-export WrapperTypeInfo for use by generated bindings
 pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
@@ -1476,6 +1477,89 @@ fn takesIndex(comptime Interface: type, comptime name: []const u8) bool {
     return (params[1].type orelse return false) == u32;
 }
 
+/// What the binding installs for an interface's special operations (WebIDL
+/// 2.5.6, 3.9 legacy platform objects): the generated functions codegen's
+/// `Meta.special_operations` (webidl.SpecialOperations) names - each only
+/// when its impl implements it - and the extended attributes that change its
+/// named properties. Never a function guessed from its name: Storage's
+/// `getter DOMString? getItem(DOMString key)` is `call_getItem`,
+/// SVGNumberList's indexed `getItem(unsigned long)` too, and NamedNodeMap's
+/// regular `setNamedItem(Attr)` is no setter at all.
+pub const SpecialBinding = struct {
+    indexed_getter: ?[]const u8 = null,
+    indexed_setter: ?[]const u8 = null,
+    named_getter: ?[]const u8 = null,
+    named_setter: ?[]const u8 = null,
+    named_deleter: ?[]const u8 = null,
+    legacy_override_built_ins: bool = false,
+    legacy_unenumerable_named_properties: bool = false,
+    /// The named getter and setter stand in for CSSOM's camel-cased
+    /// attributes (webidl.SpecialOperations.crane_css_properties).
+    crane_css_properties: bool = false,
+};
+
+const SpecialShape = enum { index, index_value, name, name_value };
+
+/// The function `op` (a ?webidl.special_operations.Operation) names, when
+/// the impl implements it; a compile error when the generated interface
+/// does not declare it with `shape`'s parameters - the codegen's contract.
+fn boundSpecialOperation(comptime Interface: type, comptime op: anytype, comptime shape: SpecialShape) ?[]const u8 {
+    const o = op orelse return null;
+    if (!o.implemented) return null;
+    if (!@hasDecl(Interface, o.function))
+        @compileError(@typeName(Interface) ++ ": Meta.special_operations names " ++ o.function ++ ", which the generated interface does not declare");
+    const params = @typeInfo(@TypeOf(@field(Interface, o.function))).@"fn".params;
+    const key: type = switch (shape) {
+        .index, .index_value => u32,
+        .name, .name_value => runtime.DOMString,
+    };
+    const arity: usize = switch (shape) {
+        .index, .name => 2,
+        .index_value, .name_value => 3,
+    };
+    if (params.len != arity or params[0].type != *runtime.Instance or params[1].type != key)
+        @compileError(@typeName(Interface) ++ "." ++ o.function ++ " is not a special operation of the shape Meta.special_operations says");
+    return o.function;
+}
+
+/// `Interface`'s special operations as the binding installs them. A [Global]
+/// interface's named properties are its named properties object's (WebIDL
+/// 3.7.4, HTML's WindowProperties), not the global object's own, so it has
+/// none here. A named getter comes with the generated
+/// `getSupportedPropertyNames`, its supported property names (2.5.6.2).
+pub fn specialBinding(comptime Interface: type) SpecialBinding {
+    comptime {
+        const Meta = Interface.Meta;
+        if (!@hasDecl(Meta, "special_operations")) return .{};
+        const ops = Meta.special_operations;
+        var binding: SpecialBinding = .{};
+        binding.indexed_getter = boundSpecialOperation(Interface, ops.indexed_getter, .index);
+        if (binding.indexed_getter != null) binding.indexed_setter = boundSpecialOperation(Interface, ops.indexed_setter, .index_value);
+        if (!isGlobalInterface(Meta)) {
+            binding.named_getter = boundSpecialOperation(Interface, ops.named_getter, .name);
+            if (binding.named_getter != null) {
+                if (!@hasDecl(Interface, "getSupportedPropertyNames"))
+                    @compileError(@typeName(Interface) ++ " has a named getter and no getSupportedPropertyNames");
+                binding.named_setter = boundSpecialOperation(Interface, ops.named_setter, .name_value);
+                binding.named_deleter = boundSpecialOperation(Interface, ops.named_deleter, .name);
+                binding.legacy_override_built_ins = ops.legacy_override_built_ins;
+                binding.legacy_unenumerable_named_properties = ops.legacy_unenumerable_named_properties;
+                binding.crane_css_properties = ops.crane_css_properties;
+            }
+        }
+        return binding;
+    }
+}
+
+/// Whether `Meta`'s interface is declared [Global] (WebIDL 3.4.8).
+fn isGlobalInterface(comptime Meta: type) bool {
+    if (!@hasDecl(Meta, "extended_attributes")) return false;
+    for (Meta.extended_attributes) |attr| {
+        if (@hasField(@TypeOf(attr), "name") and std.mem.eql(u8, attr.name, "Global")) return true;
+    }
+    return false;
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -1494,24 +1578,32 @@ pub fn V8Interface(comptime Interface: type) type {
     const Meta = Interface.Meta;
     const interface_name = Meta.name;
 
-    // WebIDL 2.5.6.1: the indexed property getter - a named one, `getter T?
-    // item(unsigned long index)` (codegen's `call_item`), or an anonymous
-    // one, `getter T (unsigned long index)` (`call_getter`). Codegen gates an
-    // anonymous one: its delegate answers NotImplemented until the impl
-    // declares it, and Meta.indexed_getter_implemented says whether it has
-    // (DataTransferItemList, TextTrackList yes; AudioTrackList and most
-    // others not yet). Indexed access is installed only through a getter the
-    // impl implements - the default, with no constant, is not to install it.
-    const indexed_getter_name: ?[]const u8 = comptime blk: {
-        if (takesIndex(Interface, "call_item")) break :blk "call_item";
-        if (@hasDecl(Meta, "indexed_getter_implemented") and Meta.indexed_getter_implemented and takesIndex(Interface, "call_getter")) break :blk "call_getter";
-        break :blk null;
-    };
+    // WebIDL 2.5.6: the special operations, from codegen's table
+    // (specialBinding). The indexed getter is `call_item` for `getter T?
+    // item(unsigned long index)`, `call_getItem` for SVGNumberList's, and an
+    // anonymous one's `call_getter` - installed only once its impl implements
+    // it (DataTransferItemList, TextTrackList yes; AudioTrackList and most
+    // others not yet).
+    const special = comptime specialBinding(Interface);
+    const indexed_getter_name: ?[]const u8 = special.indexed_getter;
     const has_indexed_getter = indexed_getter_name != null;
-    // An anonymous getter is the impl's for a supported property index only
-    // (an impl answers IndexSizeError past the end, where an `item` answers
-    // null): its supported indices are those below `length`.
-    const indexed_getter_checks_length = comptime has_indexed_getter and std.mem.eql(u8, indexed_getter_name.?, "call_getter") and @hasDecl(Interface, "get_length");
+    // A getter that answers null past the end (`item`) says itself which
+    // indices are supported; one that answers a value or throws (an
+    // anonymous getter: IndexSizeError; SVGNumberList's getItem;
+    // CSSStyleDeclaration's item, "" past the end) is asked only for a
+    // supported property index - those below `length` (3.9.1 step 1.2).
+    const indexed_getter_checks_length = comptime has_indexed_getter and @hasDecl(Interface, "get_length") and
+        @typeInfo(@typeInfo(@typeInfo(@TypeOf(@field(Interface, indexed_getter_name.?))).@"fn".return_type.?).error_union.payload) != .optional;
+    const has_indexed_setter = comptime special.indexed_setter != null;
+    const has_named_getter = comptime special.named_getter != null;
+    const has_named_setter = comptime special.named_setter != null;
+    const has_named_deleter = comptime special.named_deleter != null;
+    // An interface with named properties and no indexed ones (none declared:
+    // HTMLAllCollection's unimplemented anonymous getter is still its
+    // indexed one) takes an array index as a name (WebIDL 3.9 knows only
+    // String keys; V8 routes an index to the indexed interceptors).
+    const forwards_indices = comptime has_named_getter and
+        (!@hasDecl(Meta, "special_operations") or Meta.special_operations.indexed_getter == null);
 
     // WebIDL 2.5.9: one type parameter is a value iterator, two a pair
     // iterator. Codegen's Meta.iterable carries a null key type for the first.
@@ -1554,15 +1646,7 @@ pub fn V8Interface(comptime Interface: type) type {
     // HostHooks.htmlConstructor (its generated `html_constructor`).
     const is_html_constructor = comptime @hasDecl(Interface, "html_constructor") and Interface.html_constructor;
 
-    const is_global_interface = comptime blk: {
-        if (!@hasDecl(Meta, "extended_attributes")) break :blk false;
-        for (Meta.extended_attributes) |attr| {
-            if (@hasField(@TypeOf(attr), "name") and std.mem.eql(u8, attr.name, "Global")) {
-                break :blk true;
-            }
-        }
-        break :blk false;
-    };
+    const is_global_interface = comptime isGlobalInterface(Meta);
 
     return struct {
         const Self = @This();
@@ -1762,26 +1846,21 @@ pub fn V8Interface(comptime Interface: type) type {
                 ext_refs.registerPointer(@intFromPtr(&indexedPropertyEnumerator));
                 ext_refs.registerPointer(@intFromPtr(&indexedPropertyDefiner));
                 ext_refs.registerPointer(@intFromPtr(&indexedPropertyDescriptor));
+                ext_refs.registerPointer(@intFromPtr(&indexedPropertyDeleter));
+            }
+            if (forwards_indices) {
+                ext_refs.registerPointer(@intFromPtr(&forwardedIndexGetter));
+                ext_refs.registerPointer(@intFromPtr(&forwardedIndexSetter));
+                ext_refs.registerPointer(@intFromPtr(&forwardedIndexQuery));
+                ext_refs.registerPointer(@intFromPtr(&forwardedIndexDeleter));
+                ext_refs.registerPointer(@intFromPtr(&forwardedIndexDefiner));
+                ext_refs.registerPointer(@intFromPtr(&forwardedIndexDescriptor));
             }
 
             // Register named property callbacks if interface has named getter
             // This matches the condition in createTemplate() for named property handler registration
             ext_refs.setRegistrationContext(interface_name, .interface_named_property);
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
-            const is_global_object = comptime std.mem.eql(u8, interface_name, "Window") or
-                std.mem.eql(u8, interface_name, "WorkerGlobalScope");
-            const has_named_enumerator = comptime @hasDecl(Interface, "getSupportedPropertyNames");
-
-            if (has_named_getter and !is_global_object and has_named_enumerator) {
+            if (has_named_getter) {
                 ext_refs.registerPointer(@intFromPtr(&namedPropertyGetter));
                 ext_refs.registerPointer(@intFromPtr(&namedPropertySetter));
                 ext_refs.registerPointer(@intFromPtr(&namedPropertySetterReadOnly));
@@ -1789,6 +1868,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 ext_refs.registerPointer(@intFromPtr(&namedPropertyEnumerator));
                 ext_refs.registerPointer(@intFromPtr(&namedPropertyDefiner));
                 ext_refs.registerPointer(@intFromPtr(&namedPropertyDescriptor));
+                ext_refs.registerPointer(@intFromPtr(&namedPropertyDeleter));
             }
 
             // Register HTMLAllCollection call handler if this is HTMLAllCollection
@@ -2712,14 +2792,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // - iterable only: supports for...of but not obj[0]
             // - both: supports both features
             //
-            // Only register if call_item takes u32 index (not Opt(DOMString) like HTMLAllCollection)
-            // call_item or an implemented anonymous call_getter, taking a u32
-            // index (`indexed_getter_name`).
+            // The indexed getter Meta.special_operations names (specialBinding).
             const has_indexed_item = has_indexed_getter;
             // Check if interface has get_length for enumerator support
             const has_length = comptime @hasDecl(Interface, "get_length");
-            // Check if interface has indexed setter (set_item or call_setter)
-            const has_indexed_setter = comptime @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
             if (has_indexed_item) {
                 if (has_length) {
                     // Use full indexed property handler with query and descriptor callbacks
@@ -2728,6 +2804,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         indexedPropertyGetter,
                         if (has_indexed_setter) indexedPropertySetter else indexedPropertySetterReadOnly,
                         indexedPropertyQuery,
+                        indexedPropertyDeleter,
                         indexedPropertyEnumerator,
                         indexedPropertyDefiner,
                         indexedPropertyDescriptor,
@@ -2768,87 +2845,42 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_ObjectTemplate_SetValueIteratorToArrayMethods(proto_tmpl);
             }
 
-            // Register named property handler if interface has named getter operations
-            // This enables named property access: obj.name, obj["name"]
-            // WebIDL interfaces with "getter" operations on DOMString support named property access
-            // Examples: NamedNodeMap, DOMStringMap, HTMLCollection (with named item getter)
-            //
-            // Named getter method names vary by IDL definition:
-            // - call_getNamedItem: NamedNodeMap (getter Attr? getNamedItem(DOMString name))
-            // - call_namedItem: HTMLCollection (getter Element? namedItem(DOMString name))
-            // - call_getter: DOMStringMap (getter DOMString (DOMString name)) - anonymous getter
-            //   NOTE: call_getter is ALSO used for indexed getters (taking u32), so we must
-            //   check the parameter type to distinguish named vs indexed getters
-            //
-            // IMPORTANT: Don't enable named property handler for global objects (Window)
-            // because it interferes with global property setting
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                // Check if second param is DOMString (which is runtime.DOMString)
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
-            const is_global_object = comptime std.mem.eql(u8, interface_name, "Window") or
-                std.mem.eql(u8, interface_name, "WorkerGlobalScope");
-
-            // Named property handler for legacy platform objects
-            // Enables named property access (obj.name, obj["name"]) and enumeration
-            // Only enable for interfaces with:
-            // 1. Named getter (call_getNamedItem or call_namedItem)
-            // 2. getSupportedPropertyNames delegate for enumeration
-            // 3. Not a global object (Window/WorkerGlobalScope)
-            const has_named_enumerator = comptime @hasDecl(Interface, "getSupportedPropertyNames");
-            if (has_named_getter and !is_global_object and has_named_enumerator) {
-                // Check if interface has named setter
-                // Named setter method names vary by IDL definition:
-                // - call_setNamedItem: NamedNodeMap (setter void setNamedItem(Attr attr))
-                // - set_namedItem: HTMLCollection-style setter
-                // - call_setter: DOMStringMap (setter void (DOMString name, DOMString value)) - anonymous setter
-                //   NOTE: call_setter could be for indexed setters too, so check param type
-                const has_call_setter_with_domstring = comptime blk: {
-                    if (!@hasDecl(Interface, "call_setter")) break :blk false;
-                    const fn_info = @typeInfo(@TypeOf(Interface.call_setter)).@"fn";
-                    if (fn_info.params.len < 2) break :blk false;
-                    const second_param_type = fn_info.params[1].type orelse break :blk false;
-                    break :blk second_param_type == runtime.DOMString;
-                };
-                const has_named_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
-                    @hasDecl(Interface, "set_namedItem") or
-                    has_call_setter_with_domstring;
-
-                // Check for [LegacyOverrideBuiltIns] extended attribute
-                // Per WebIDL §3.9.1, this allows named properties to shadow built-ins on the prototype chain
-                const has_legacy_override_builtins = comptime blk: {
-                    if (!@hasDecl(Meta, "extended_attributes")) break :blk false;
-                    for (Meta.extended_attributes) |attr| {
-                        if (@hasField(@TypeOf(attr), "name") and std.mem.eql(u8, attr.name, "LegacyOverrideBuiltIns")) {
-                            break :blk true;
-                        }
-                    }
-                    break :blk false;
-                };
-
-                // CSSStyleDeclaration needs masking mode because CSS properties like "display"
-                // may exist on a parent prototype (CSS2Properties), but we need the named
-                // property getter to intercept them first to provide computed style values.
-                const is_css_style_declaration = comptime std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
-                const use_masking = has_legacy_override_builtins or is_css_style_declaration;
-
+            // WebIDL 3.9: the named property handler of a legacy platform
+            // object with a named getter (Meta.special_operations, through
+            // specialBinding: never for a [Global] interface, whose named
+            // properties are its named properties object's). Its names come
+            // from the generated getSupportedPropertyNames. It masks the
+            // prototype chain with [LegacyOverrideBuiltIns] (3.4.7) on the
+            // interface or an ancestor, and for CSSStyleDeclaration's CSS
+            // attributes (computed style answers every property, and
+            // CSS2Properties-style accessors may sit on a prototype).
+            if (has_named_getter) {
                 v8.v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
                     instance_tmpl,
                     namedPropertyGetter,
                     if (has_named_setter) namedPropertySetter else namedPropertySetterReadOnly,
                     namedPropertyQuery,
-                    null,
+                    namedPropertyDeleter,
                     namedPropertyEnumerator,
                     namedPropertyDefiner,
                     namedPropertyDescriptor,
-                    if (use_masking) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
+                    if (named_properties_mask) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
+                );
+            }
+            // Named properties and no indexed ones: an array index is a
+            // String P (3.9) that V8 hands to the indexed interceptors, which
+            // run the named steps with its text. No enumerator: the named
+            // one lists every supported name, an index-like key included.
+            if (forwards_indices) {
+                v8.v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
+                    instance_tmpl,
+                    forwardedIndexGetter,
+                    forwardedIndexSetter,
+                    forwardedIndexQuery,
+                    forwardedIndexDeleter,
+                    null,
+                    forwardedIndexDefiner,
+                    forwardedIndexDescriptor,
                 );
             }
 
@@ -5993,9 +6025,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Property exists - return attributes
             // Indexed properties are: enumerable, configurable, NOT writable (read-only) for most collections
-            // Check if interface has an indexed setter
-            const has_setter = comptime @hasDecl(Interface, "call_setter") or @hasDecl(Interface, "set_item");
-            const attributes: i32 = if (has_setter) 0 else 1; // 1 = ReadOnly
+            // 3.9.1 step 1.2.7: writable when there is an indexed setter.
+            const attributes: i32 = if (has_indexed_setter) 0 else 1; // 1 = ReadOnly
             // A Smi in the return slot: no handle to make or release. Every
             // `i in list` and every element Array.prototype.indexOf visits
             // (HasProperty, then Get) asks this.
@@ -6098,13 +6129,8 @@ pub fn V8Interface(comptime Interface: type) type {
             if (v8_value == null) return .kNo;
             defer if (value_owned) v8.v8_Global_Dispose(v8_value.?);
 
-            // Check if interface has an indexed setter (makes it writable)
-            // Use same logic as indexedPropertyDefiner - prefer Meta.has_indexed_setter from codegen
-            const has_setter = comptime blk: {
-                if (@hasDecl(Meta, "has_indexed_setter")) break :blk Meta.has_indexed_setter;
-                break :blk @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
-            };
-            const writable = has_setter;
+            // 3.9.1 step 1.2.7: writable when there is an indexed setter.
+            const writable = has_indexed_setter;
 
             // { value: v8_value, writable, enumerable: true, configurable: true },
             // made in one call (as the named descriptor's is).
@@ -6120,6 +6146,27 @@ pub fn V8Interface(comptime Interface: type) type {
             // The descriptor is made for this call, and setReturnValue reads
             // it into a Local.
             v8.v8_Global_Dispose(@ptrCast(desc));
+            return .kYes;
+        }
+
+        /// [[Delete]] (WebIDL 3.9.4) step 1, for an array index P of an
+        /// object with indexed properties: "If index is not a supported
+        /// property index, then return true. Return false." - a TypeError in
+        /// strict code, which the interceptor throws (V8 throws nothing for a
+        /// deleter's false). `delete list[0]` answered true.
+        fn indexedPropertyDeleter(
+            index: u32,
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) v8.Intercepted {
+            if (comptime !has_indexed_getter or !@hasDecl(Interface, "get_length")) return .kNo;
+            const instance = instanceOf(info.holderAlignedPointer(0)) orelse return .kNo;
+            const length = Interface.get_length(instance) catch return .kNo;
+            if (index >= length) {
+                info.setReturnValueBool(true);
+                return .kYes;
+            }
+            info.setReturnValueBool(false);
+            if (info.shouldThrowOnError()) conv.throwTypeError(info.getIsolate(), "Cannot delete an indexed property");
             return .kYes;
         }
 
@@ -6191,7 +6238,7 @@ pub fn V8Interface(comptime Interface: type) type {
             return .kYes;
         }
 
-        /// Indexed property setter for writable collections (has set_item or call_setter)
+        /// Indexed property setter for a collection with an indexed setter
         /// Actually sets the value at the given index
         fn indexedPropertySetter(
             index: u32,
@@ -6199,8 +6246,7 @@ pub fn V8Interface(comptime Interface: type) type {
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
             // Only compile if Interface has indexed setter
-            const has_setter = comptime @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
-            if (comptime !has_setter) {
+            if (comptime !has_indexed_setter) {
                 return .kNo;
             }
 
@@ -6228,12 +6274,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
-            // Get the setter function at comptime
-            const setter_fn = comptime if (@hasDecl(Interface, "set_item"))
-                Interface.set_item
-            else
-                Interface.call_setter;
-            const setter_name = comptime if (@hasDecl(Interface, "set_item")) "set_item" else "call_setter";
+            // The indexed setter Meta.special_operations names.
+            const setter_name = comptime special.indexed_setter.?;
+            const setter_fn = @field(Interface, setter_name);
 
             // Get the value type from the setter function signature
             const SetterFnType = @TypeOf(setter_fn);
@@ -6295,41 +6338,22 @@ pub fn V8Interface(comptime Interface: type) type {
             // and taken here at entry it was never released - every
             // Object.defineProperty on an indexed collection pinned the realm.
 
-            // Check for indexed setter via Meta (from codegen) or fallback to method detection
-            const has_indexed_setter = comptime blk: {
-                // Prefer Meta.has_indexed_setter from codegen (authoritative for IDL-defined setters)
-                if (@hasDecl(Meta, "has_indexed_setter")) break :blk Meta.has_indexed_setter;
-                // Fallback: check if impl has set_item (for interfaces with impl-defined setters)
-                break :blk @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
-            };
-
             // WebIDL §3.9.3 step 1: Interface supports indexed properties
             // This callback is only registered for interfaces with indexed property support,
             // so we know we're handling an indexed property access.
 
-            if (!has_indexed_setter) {
-                // No indexed property setter - reject all define operations per WebIDL §3.9.3
-                // Return false from internal method = throw TypeError in Object.defineProperty
-                if (info.shouldThrowOnError()) {
-                    // The message and the error are made here, and thrown -
-                    // V8 keeps the exception it throws, not these handles.
-                    const msg = "Cannot define property on read-only indexed collection";
-                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
-                    defer v8.v8_String_Dispose(msg_str);
-                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
-                    defer v8.v8_Global_Dispose(exception);
-                    v8.v8_Isolate_ThrowException(isolate, exception);
-                }
-                return .kYes;
-            }
-
-            // Interface HAS indexed property setter - validate descriptor per WebIDL §3.9.3 step 1.2
-
-            // Step 1.3: If Desc is accessor descriptor, throw TypeError
-            if (v8.v8_PropertyDescriptor_IsAccessorDescriptor(desc)) {
-                conv.throwTypeError(isolate, "Cannot define accessor property on indexed collection");
-                return .kYes;
-            }
+            // WebIDL 3.9.3 [[DefineOwnProperty]] step 1, P an array index:
+            // 1.1. "If the result of calling IsDataDescriptor(Desc) is
+            //      false, then return false."
+            // 1.2. "If O does not implement an interface with an indexed
+            //      property setter, then return false."
+            // Both are refuseDefine's false - a TypeError for
+            // Object.defineProperty and strict code, Reflect.defineProperty's
+            // and the legacy platform object proxy's false otherwise. Thrown
+            // unconditionally, a sloppy-mode `collection[0] = x` through the
+            // proxy threw too.
+            if (!has_indexed_setter) return refuseDefine(info, isolate);
+            if (!v8.v8_PropertyDescriptor_IsDataDescriptor(desc)) return refuseDefine(info, isolate);
 
             // Step 1.4-1.6: Ignore writable, enumerable, configurable flags for indexed setters per WebIDL §3.9.3
 
@@ -6347,39 +6371,22 @@ pub fn V8Interface(comptime Interface: type) type {
                     // keeps this handle (a value it keeps, it keeps through
                     // its own).
                     defer v8.v8_Global_Dispose(value);
-                    // Call the setter (set_item or call_setter)
-                    if (@hasDecl(Interface, "set_item")) {
-                        // Get value type from set_item signature
-                        const it_val_type = comptime blk: {
-                            const info_si = @typeInfo(@TypeOf(Interface.set_item)).@"fn";
-                            break :blk info_si.params[2].type.?;
-                        };
+                    // Step 1.3: invoke the indexed setter with P and
+                    // Desc.[[Value]] (the setter Meta.special_operations
+                    // names; this definer is installed only with one).
+                    if (comptime has_indexed_setter) {
+                        const setter_name = comptime special.indexed_setter.?;
+                        const setter_fn = @field(Interface, setter_name);
+                        const value_type = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".params[2].type.?;
                         // Released unless converting the value can keep it
                         // (typeRetainsContext).
                         const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
-                        defer if (comptime !typeRetainsContext(it_val_type)) v8.v8_Context_Dispose(v8_context);
-                        const zig_value = conv.fromV8Value(it_val_type, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
+                        defer if (comptime !typeRetainsContext(value_type)) v8.v8_Context_Dispose(v8_context);
+                        const zig_value = conv.fromV8Value(value_type, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
                             conv.throwTypeError(isolate, @errorName(err));
                             return .kYes;
                         };
-                        callInCatchScopeIfListed(Interface, "set_item", isolate, Interface.set_item, .{ instance, index, zig_value }) catch |err| {
-                            conv.throwTypeError(isolate, @errorName(err));
-                        };
-                    } else if (@hasDecl(Interface, "call_setter")) {
-                        // Get value type from call_setter signature
-                        const cs_val_type = comptime blk: {
-                            const info_cs = @typeInfo(@TypeOf(Interface.call_setter)).@"fn";
-                            break :blk info_cs.params[2].type.?;
-                        };
-                        // Released unless converting the value can keep it
-                        // (typeRetainsContext).
-                        const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
-                        defer if (comptime !typeRetainsContext(cs_val_type)) v8.v8_Context_Dispose(v8_context);
-                        const zig_value = conv.fromV8Value(cs_val_type, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
-                            conv.throwTypeError(isolate, @errorName(err));
-                            return .kYes;
-                        };
-                        callInCatchScopeIfListed(Interface, "call_setter", isolate, Interface.call_setter, .{ instance, index, zig_value }) catch |err| {
+                        callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, index, zig_value }) catch |err| {
                             conv.throwTypeError(isolate, @errorName(err));
                         };
                     }
@@ -6390,401 +6397,123 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         // =====================================================================
-        // Named Property Handlers for Legacy Platform Objects
-        // WebIDL spec: https://webidl.spec.whatwg.org/#legacy-platform-object
+        // Named properties of a legacy platform object (WebIDL 3.9)
+        //
+        // The named getter, setter and deleter are the functions
+        // Meta.special_operations names (specialBinding). Each V8 named
+        // interceptor reads its key's text (PropertyName) and runs one of the
+        // `named*` steps below, which take the name as text: the indexed
+        // interceptors of an interface with named properties and no indexed
+        // ones run the same steps with an index's decimal text (WebIDL 3.9
+        // knows only String property names; V8 routes an array index to the
+        // indexed interceptors - Blink forwards them the same way,
+        // bind_gen/interface.py make_indexed_property_*_callback).
+        //
+        // O, the legacy platform object, is the interceptor's holder for a
+        // read ([[Get]] on an heir reaches its prototype's interceptor) and
+        // the receiver for a write (V8 calls a setter or definer interceptor
+        // only when they are the same object).
         // =====================================================================
 
-        /// Named property definer callback for Object.defineProperty() on named properties.
-        /// Implements WebIDL §3.9.3 [[DefineOwnProperty]] for named properties.
-        fn namedPropertyDefiner(
-            property: *v8.Name,
-            desc: *const v8.PropertyDescriptor,
-            info: *const v8.PropertyCallbackInfoVoid,
-        ) callconv(.c) v8.Intercepted {
-            const isolate = info.getIsolate();
-            // Check for named setter via Meta (from codegen) or fallback to method detection
-            const has_named_setter = comptime blk: {
-                // Prefer Meta.has_named_setter from codegen (authoritative for IDL-defined setters)
-                if (@hasDecl(Meta, "has_named_setter")) break :blk Meta.has_named_setter;
-                // Fallback: check if impl has named setter methods
-                break :blk @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem");
-            };
+        /// CSSStyleDeclaration's named properties are Crane's camel-cased CSS
+        /// attributes (crane_css_properties): every CSS property name, not
+        /// only the set ones, and the interceptor masks the prototype.
+        const is_css_style_declaration = std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
 
-            // Verify property is a string (not a Symbol)
-            if (!v8.v8_Name_IsString(property)) {
-                return .kNo;
+        /// Whether named properties shadow the prototype chain: WebIDL 3.4.7
+        /// [LegacyOverrideBuiltIns] (the named property visibility
+        /// algorithm's step 3, and a masking interceptor), or CSS's.
+        const named_properties_mask = special.legacy_override_built_ins or is_css_style_declaration;
+
+        /// A property key's text as a DOMString holds it: WTF-8 (WriteUtf8
+        /// without REPLACE_INVALID_UTF8 keeps a lone surrogate as its three
+        /// bytes), of any length, the empty string included - a key past the
+        /// stack buffer is copied to the heap, where a 256-byte buffer used
+        /// to refuse it. Not copied once read: the text may be its buffer.
+        const PropertyName = struct {
+            stack: [256]u8 = undefined,
+            heap: ?[]u8 = null,
+
+            /// `property`'s text, or null for a Symbol (or no memory).
+            fn read(self: *PropertyName, property: *v8.Name) ?[]const u8 {
+                if (!v8.v8_Name_IsString(property)) return null;
+                const str: *v8.String = @ptrCast(property);
+                const length: usize = @intCast(@max(v8.v8_String_Utf8Length_Raw(str), 0));
+                // Room for WriteUtf8's terminating NUL.
+                const buffer: []u8 = if (length < self.stack.len) self.stack[0 .. length + 1] else blk: {
+                    const bytes = std.heap.c_allocator.alloc(u8, length + 1) catch return null;
+                    self.heap = bytes;
+                    break :blk bytes;
+                };
+                const written = v8.v8_String_WriteUtf8_Raw(str, buffer.ptr, @intCast(buffer.len));
+                if (written < 0) return null;
+                return buffer[0..@min(@as(usize, @intCast(written)), length)];
             }
 
-            // WebIDL §3.9.3 step 2.1: If no named property setter, delegate to OrdinaryDefineOwnProperty
-            if (!has_named_setter) {
-                return .kNo;
+            fn deinit(self: *PropertyName) void {
+                if (self.heap) |bytes| std.heap.c_allocator.free(bytes);
+                self.heap = null;
             }
+        };
 
-            // Step 2.2.1: If not a data descriptor (accessor descriptor), throw TypeError
-            if (v8.v8_PropertyDescriptor_IsAccessorDescriptor(desc)) {
-                const msg = "Cannot define accessor property on named property collection";
-                const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
-                const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
-                v8.v8_Isolate_ThrowException(isolate, exception);
-                return .kYes;
+        /// An array index's text: the property name WebIDL sees.
+        const IndexName = struct {
+            buffer: [10]u8 = undefined,
+
+            fn of(self: *IndexName, index: u32) []const u8 {
+                return std.fmt.bufPrint(&self.buffer, "{d}", .{index}) catch unreachable;
             }
+        };
 
-            // Step 2.2.2-2.2.4: Ignore writable, enumerable, configurable flags for named setters per WebIDL §3.9.3
-
-            // Step 2.2.5: Invoke named property setter with value - delegate to setter callback
-            return .kNo;
-        }
-
-        /// Named property getter for legacy platform objects (obj.name, obj["name"])
-        /// Called when JavaScript accesses a named property on objects with WebIDL "getter" operations.
-        /// For example:
-        /// - NamedNodeMap has "getter Attr? getNamedItem(DOMString name)" -> call_getNamedItem
-        /// - HTMLCollection has "getter Element? namedItem(DOMString name)" -> call_namedItem
-        /// - DOMStringMap has "getter DOMString (DOMString name)" -> call_getter (anonymous)
-        fn namedPropertyGetter(
-            property: *v8.Name,
-            info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) v8.Intercepted {
-            // Only compile if Interface has named item getter
-            // Named getter method names vary by IDL definition:
-            // - call_getNamedItem: NamedNodeMap (getter Attr? getNamedItem(DOMString name))
-            // - call_namedItem: HTMLCollection (getter Element? namedItem(DOMString name))
-            // - call_getter: DOMStringMap (getter DOMString (DOMString name)) - anonymous getter
-            //   NOTE: call_getter is also used for indexed getters (u32), so check param type
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
-            if (comptime !has_named_getter) {
-                return .kNo;
-            }
-
-            const isolate = info.getIsolate();
-
-            // Get the 'this' object
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-            if (instance_ptr == null) {
-                return .kNo;
-            }
-
-            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-
-            // Verify property is a string (not a Symbol) before processing
-            if (!v8.v8_Name_IsString(property)) {
-                return .kNo;
-            }
-
-            // Convert property name to Zig string using raw API
-            const prop_str: *v8.String = @ptrCast(property);
-            const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
-            if (prop_len <= 0) return .kNo;
-
-            var prop_buf: [256]u8 = undefined;
-            var actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
-            if (actual_len <= 0) return .kNo;
-            if (actual_len > 0 and prop_buf[@intCast(actual_len - 1)] == 0) {
-                actual_len -= 1;
-            }
-            if (actual_len <= 0) return .kNo;
-            const prop_name = prop_buf[0..@intCast(actual_len)];
-
-            // WebIDL named property visibility algorithm step 1:
-            // If P is NOT a supported property name, do not intercept.
-            // This ensures that properties like __proto__, toString, etc. fall through
-            // to the prototype chain instead of being incorrectly intercepted.
-            //
-            // SPECIAL CASE: CSSStyleDeclaration should intercept ALL valid CSS property names,
-            // not just ones currently in getSupportedPropertyNames (which returns only
-            // properties that are currently set). This is critical for getComputedStyle()
-            // which returns computed values for all CSS properties, not just set ones.
-            const is_css_style_declaration = comptime std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
-            if (!is_css_style_declaration and !isSupportedPropertyName(instance, prop_name)) {
-                return .kNo;
-            }
-
-            const dom_str = runtime.DOMString.initInterned(prop_name);
-
-            // Select the appropriate getter function based on what the interface declares
-            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
-                Interface.call_getNamedItem
-            else if (@hasDecl(Interface, "call_namedItem"))
-                Interface.call_namedItem
-            else
-                Interface.call_getter;
-
-            const result_allocator = instance.ctx.allocator;
-            const result = getter_fn(instance, dom_str) catch {
-                return .kNo;
-            };
-            // A string the named getter made for the result is the binding's.
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
-
-            // Acquired HERE, not at entry. `v8_Isolate_GetCurrentContext` heap-
-            // allocates a Global<Context> where V8 hands back a borrowed Local, and
-            // every `return .kNo` above it abandoned one. That is the common case,
-            // not a corner: this interceptor runs for EVERY property miss on a
-            // named-property interface, and `isSupportedPropertyName` rejects all
-            // of them - `document.createElement` included. `leaks --atExit` put it
-            // at 31,597 abandoned contexts per 200,000 cycles from this line alone.
-            //
-            // Still not disposed on the paths below. Whether `wrapInstanceAsV8Object`
-            // stores the pointer is unproven, and releasing a context that is kept
-            // is a use-after-free - which is what happened in 6c64a3925 and again
-            // in the getter fix reverted by 5abd41550. Not allocating is safe
-            // without needing that answer; disposing is not.
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                conv.throwError(isolate, "No V8 context");
-                return .kYes;
-            };
-            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
-            defer v8.v8_Context_Dispose(v8_context);
-
-            const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
-            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
-            const type_info = @typeInfo(ActualReturnType);
-
-            if (type_info == .optional) {
-                if (result) |unwrapped_result| {
-                    const ChildType = type_info.optional.child;
-                    if (ChildType == *runtime.Instance) {
-                        // Its wrapper in its relevant realm, the wrapper cache's.
-                        const wrapped = conv.instanceToV8(isolate, unwrapped_result);
-                        info.setReturnValue(wrapped);
-                        if (v8.v8_Value_IsUndefined(wrapped)) v8.v8_Value_Dispose(wrapped);
-                        return .kYes;
-                    } else {
-                        // Special case for DOMString - convert to string directly.
-                        // Each string is made here, and setReturnValue only
-                        // reads it into a Local, so it is released after.
-                        if (ChildType == runtime.DOMString) {
-                            const slice = unwrapped_result.asSlice();
-                            if (slice.len == 0) {
-                                const empty_str = v8.v8_String_Empty(isolate) orelse {
-                                    return .kYes;
-                                };
-                                info.setReturnValue(@ptrCast(empty_str));
-                                v8.v8_Global_Dispose(@ptrCast(empty_str));
-                            } else {
-                                // WTF-8: its lone surrogates kept.
-                                const v8_str = conv.newStringFromWtf8(isolate, slice) orelse {
-                                    return .kYes;
-                                };
-                                info.setReturnValue(v8_str);
-                                v8.v8_Global_Dispose(v8_str);
-                            }
-                            return .kYes;
-                        }
-                        const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
-                            return .kYes;
-                        };
-                        info.setReturnValue(@ptrCast(v8_value));
-                        if (comptime getterValueIsOwned(ChildType)) v8.v8_Global_Dispose(@ptrCast(v8_value));
-                        return .kYes;
-                    }
-                }
-                return .kNo;
-            } else {
-                // DOMStringMap's anonymous getter comes here: one string per
-                // `el.dataset.x` read - 60,000 a page on the legacy
-                // multi-byte decode tests - each kept for the life of the
-                // process until the conversion's handle was released.
-                const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch return .kYes;
-                info.setReturnValue(@ptrCast(v8_value));
-                if (comptime getterValueIsOwned(ActualReturnType)) v8.v8_Global_Dispose(@ptrCast(v8_value));
-                return .kYes;
-            }
-        }
-
-        /// Named property enumerator for Reflect.ownKeys support
-        /// Implements WebIDL §3.9.6 [[OwnPropertyKeys]] semantics:
-        /// 1. Indexed property keys in ascending order
-        /// 2. Named property names in list order
-        /// 3. Own property keys (strings first, then symbols) - but NOT duplicates of named properties
-        ///
-        /// Per WebIDL spec: "append P to keys if P is not already in keys"
-        /// This means named properties come before own properties, and own properties
-        /// that have the same name as named properties should NOT be added.
-        fn namedPropertyEnumerator(
-            info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) void {
-            // Only compile if Interface has named getter
-            // Named getter method names vary by IDL definition:
-            // - call_getNamedItem: NamedNodeMap
-            // - call_namedItem: HTMLCollection
-            // - call_getter: DOMStringMap (anonymous getter with DOMString param)
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
-            if (comptime !has_named_getter) {
-                return;
-            }
-
-            // Every handle made here is this callback's (see the indexed
-            // enumerator): released once V8 has copied it.
-            const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                return;
-            };
-            defer v8.v8_Context_Dispose(v8_context);
-
-            // Get the 'this' object
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-            if (instance_ptr == null) {
-                // Return empty array for prototype
-                const empty_arr = v8.v8_Array_New(isolate, 0);
-                defer v8.v8_Array_Dispose(empty_arr);
-                info.setReturnValue(@ptrCast(empty_arr));
-                return;
-            }
-
-            // Safety check
-            const ptr_as_int = @intFromPtr(instance_ptr);
+        /// The instance behind `object` - O - or null for a prototype or a
+        /// wrapper whose instance has gone.
+        fn instanceOf(instance_ptr: ?*anyopaque) ?*runtime.Instance {
+            const ptr = instance_ptr orelse return null;
+            const as_int = @intFromPtr(ptr);
             const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
             const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
-            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
-                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
-            {
-                return;
-            }
-
-            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-
-            // Check if Interface has getSupportedPropertyNames delegate
-            if (comptime @hasDecl(Interface, "getSupportedPropertyNames")) {
-                // Get property names from interface delegate
-                const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
-                    const empty_arr = v8.v8_Array_New(isolate, 0);
-                    defer v8.v8_Array_Dispose(empty_arr);
-                    info.setReturnValue(@ptrCast(empty_arr));
-                    return;
-                };
-                // Deinit and free names after use
-                defer {
-                    for (names) |*prop_name| {
-                        prop_name.deinit(std.heap.c_allocator);
-                    }
-                    if (names.len > 0) std.heap.c_allocator.free(names);
-                }
-
-                // Per WebIDL §3.9.6 [[OwnPropertyKeys]], we need to return:
-                // 1. Indexed property keys in ascending order
-                // 2. Named property names in list order (from getSupportedPropertyNames)
-                //
-                // V8 calls indexed enumerator first, then named. To satisfy WebIDL ordering
-                // constraints where indices MUST come before names, we include both here
-                // in the prescribed order. V8 will merge/deduplicate with the indexed
-                // enumerator results.
-                var keys: std.ArrayListUnmanaged(*v8.Value) = .empty;
-                defer {
-                    for (keys.items) |key| v8.v8_Value_Dispose(key);
-                    keys.deinit(std.heap.c_allocator);
-                }
-
-                // 1. Add indexed properties (ascending) if interface supports them
-                const has_indexed_item = has_indexed_getter;
-
-                if (has_indexed_item and comptime @hasDecl(Interface, "get_length")) {
-                    const length = Interface.get_length(instance) catch 0;
-                    var i: u32 = 0;
-                    while (i < length) : (i += 1) {
-                        const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
-                        keys.append(std.heap.c_allocator, @ptrCast(v8_idx)) catch {};
-                    }
-                }
-
-                // 2. Add named properties (list order)
-                for (names) |prop_name| {
-                    const v8_str = v8.v8_String_NewFromUtf8(
-                        isolate,
-                        prop_name.asSlice().ptr,
-                        @intCast(prop_name.asSlice().len),
-                    );
-                    if (v8_str) |str| {
-                        keys.append(std.heap.c_allocator, @ptrCast(str)) catch {};
-                    }
-                }
-
-                // Create V8 array from keys
-                const result_arr = v8.v8_Array_New(isolate, @intCast(keys.items.len));
-                defer v8.v8_Array_Dispose(result_arr);
-                for (keys.items, 0..) |v8_val, idx| {
-                    _ = v8.v8_Array_Set(result_arr, v8_context, @intCast(idx), v8_val);
-                }
-
-                info.setReturnValue(@ptrCast(result_arr));
-            } else {
-                // No getSupportedPropertyNames - return empty array
-                const empty_arr = v8.v8_Array_New(isolate, 0);
-                defer v8.v8_Array_Dispose(empty_arr);
-                info.setReturnValue(@ptrCast(empty_arr));
-            }
+            if (as_int == poison_pattern_aa or as_int == poison_pattern_dead or
+                (as_int & 0xFFFF000000000000) == 0xaaaa000000000000) return null;
+            return @ptrCast(@alignCast(ptr));
         }
 
-        /// Check if a property name is a supported property name per WebIDL spec.
-        /// This implements step 1 of the named property visibility algorithm (WebIDL §3.9).
-        ///
-        /// The named property visibility algorithm determines if a named property should be exposed:
-        /// 1. If P is NOT a supported property name of O, return false <- THIS CHECK
-        /// 2. If O has an own property named P, return false
-        /// 3. If O has [LegacyOverrideBuiltIns], return true
-        /// 4. Otherwise, check prototype chain for property P
-        ///
-        /// This check ensures that properties like __proto__, toString, etc. are NOT intercepted
-        /// because they are never in the list of supported property names.
-        fn isSupportedPropertyName(instance: *runtime.Instance, prop_name: []const u8) bool {
-            // Only check if interface has getSupportedPropertyNames
-            if (comptime !@hasDecl(Interface, "getSupportedPropertyNames")) {
-                return false;
+        /// O for a read: the interceptor's holder, without a handle.
+        fn holderInstance(info: *const v8.PropertyCallbackInfo) ?*runtime.Instance {
+            return instanceOf(info.holderAlignedPointer(0));
+        }
+
+        /// O for a write: the receiver (V8 runs a setter or definer
+        /// interceptor only on the holder itself).
+        fn receiverInstance(info: anytype) ?*runtime.Instance {
+            const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
+            return instanceOf(v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0));
+        }
+
+        /// The named property visibility algorithm's step 1 (WebIDL 3.9.7):
+        /// whether `name` is one of `instance`'s supported property names
+        /// (2.5.6.2), the generated getSupportedPropertyNames' list. The list
+        /// is made in an arena over a stack buffer that spills to the heap: a
+        /// fixed 8 KB buffer said "not supported" for every name of a long
+        /// list (a Storage of many keys).
+        fn isSupportedPropertyName(instance: *runtime.Instance, key: []const u8) bool {
+            var fallback = std.heap.stackFallback(8192, std.heap.c_allocator);
+            var arena = std.heap.ArenaAllocator.init(fallback.get());
+            defer arena.deinit();
+            const names = Interface.getSupportedPropertyNames(instance, arena.allocator()) catch return false;
+            for (names) |supported| {
+                if (std.mem.eql(u8, supported.asSlice(), key)) return true;
             }
-
-            // Get supported property names from the interface
-            // Use a fixed buffer allocator to avoid heap allocation in hot path
-            var buf: [8192]u8 = undefined;
-            var fba = std.heap.FixedBufferAllocator.init(&buf);
-
-            const names = Interface.getSupportedPropertyNames(instance, fba.allocator()) catch {
-                return false;
-            };
-
-            // Check if prop_name is in the list of supported property names
-            for (names) |supported_name| {
-                if (std.mem.eql(u8, supported_name.asSlice(), prop_name)) {
-                    return true;
-                }
-            }
-
-            // For CSS properties, JavaScript uses camelCase (backgroundColor) but
-            // CSS property names are kebab-case (background-color). Try converting.
-            var kebab_buf: [256]u8 = undefined;
-            if (camelToKebab(prop_name, &kebab_buf)) |kebab_name| {
-                for (names) |supported_name| {
-                    if (std.mem.eql(u8, supported_name.asSlice(), kebab_name)) {
-                        return true;
+            // CSS: script names a property camel-cased (backgroundColor), the
+            // declaration lists it dashed (background-color).
+            if (comptime special.crane_css_properties) {
+                var kebab_buf: [256]u8 = undefined;
+                if (camelToKebab(key, &kebab_buf)) |kebab_name| {
+                    for (names) |supported| {
+                        if (std.mem.eql(u8, supported.asSlice(), kebab_name)) return true;
                     }
                 }
             }
-
             return false;
         }
 
@@ -6814,565 +6543,466 @@ pub fn V8Interface(comptime Interface: type) type {
             return buf[0..out_idx];
         }
 
-        /// Check if a string is a valid array index (non-negative integer < 2^32 - 1)
-        fn isArrayIndex(s: []const u8) bool {
-            if (s.len == 0 or s.len > 10) return false;
-            // Leading zeros are not valid (except for "0" itself)
-            if (s.len > 1 and s[0] == '0') return false;
-            var val: u64 = 0;
-            for (s) |c| {
-                if (c < '0' or c > '9') return false;
-                val = val * 10 + (c - '0');
-                if (val >= 0xFFFFFFFF) return false;
+        /// Whether O - the holder of `info` - has a real own property named
+        /// `name`, and whether its prototype chain does: interceptors'
+        /// properties are neither (v8_LegacyPlatformObject_NamedPropertyState).
+        const NameState = struct {
+            own: bool,
+            in_prototype_chain: bool,
+
+            fn of(info: *const anyopaque, key: []const u8) NameState {
+                // The name's code units: a lone surrogate stays itself.
+                var fallback = std.heap.stackFallback(1024, std.heap.c_allocator);
+                const allocator = fallback.get();
+                const units = allocator.alloc(u16, key.len) catch return .{ .own = false, .in_prototype_chain = false };
+                defer allocator.free(units);
+                const count = value_operations.wtf8ToUtf16(key, units);
+                const bits = v8.v8_LegacyPlatformObject_NamedPropertyState(info, units.ptr, @intCast(count));
+                return .{ .own = bits & 1 != 0, .in_prototype_chain = bits & 2 != 0 };
             }
+        };
+
+        /// WebIDL 3.9.7 "named property visibility algorithm" for `name` on
+        /// O: 1. a supported property name; 2. not an own property of O;
+        /// 3. with [LegacyOverrideBuiltIns], visible; 4-6. otherwise visible
+        /// unless a prototype has it (no named properties object: never for
+        /// a [Global]'s, which have none of these handlers).
+        fn isVisible(instance: *runtime.Instance, info: *const anyopaque, key: []const u8) bool {
+            if (!isSupportedPropertyName(instance, key)) return false;
+            const state = NameState.of(info, key);
+            if (state.own) return false;
+            if (named_properties_mask) return true;
+            return !state.in_prototype_chain;
+        }
+
+        /// The named property's value - the named getter's result for
+        /// `name` (3.9.1 step 2.1.3-4) - as a V8 value, or null when the
+        /// getter answers null (or fails). `owned`: a handle the caller
+        /// releases once read; a wrapper is the wrapper cache's.
+        const NamedValue = struct { value: *v8.Value, owned: bool };
+
+        fn namedPropertyValue(instance: *runtime.Instance, isolate: *v8.Isolate, v8_context: *v8.Context, key: []const u8) ?NamedValue {
+            const getter_fn = @field(Interface, special.named_getter.?);
+            const result_allocator = instance.ctx.allocator;
+            const result = getter_fn(instance, runtime.DOMString.initInterned(key)) catch return null;
+            // A string the named getter made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
+
+            const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
+            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
+            const type_info = @typeInfo(ActualReturnType);
+            if (type_info == .optional) {
+                const unwrapped = result orelse return null;
+                const ChildType = type_info.optional.child;
+                if (ChildType == *runtime.Instance) {
+                    // Its wrapper in its relevant realm, the wrapper cache's -
+                    // or, when it could not be wrapped, a fresh undefined.
+                    const wrapped = conv.instanceToV8(isolate, unwrapped);
+                    return .{ .value = wrapped, .owned = v8.v8_Value_IsUndefined(wrapped) };
+                }
+                if (ChildType == runtime.DOMString) {
+                    // WTF-8: its lone surrogates kept.
+                    const string = conv.newStringFromWtf8(isolate, unwrapped.asSlice()) orelse return null;
+                    return .{ .value = string, .owned = true };
+                }
+                const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped) catch return null;
+                return .{ .value = @ptrCast(v8_value), .owned = comptime getterValueIsOwned(ChildType) };
+            }
+            // DOMStringMap's anonymous getter comes here: one string per
+            // `el.dataset.x` read - 60,000 a page on the legacy multi-byte
+            // decode tests - each kept for the life of the process until the
+            // conversion's handle was released.
+            const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch return null;
+            return .{ .value = @ptrCast(v8_value), .owned = comptime getterValueIsOwned(ActualReturnType) };
+        }
+
+        /// LegacyPlatformObjectGetOwnProperty step 2, for [[Get]]: the value
+        /// of a visible named property. A named interceptor is consulted
+        /// after the prototype chain unless named properties mask it (V8's
+        /// non-masking interceptor answers steps 2 and 4-6 of the visibility
+        /// algorithm for a read), so only step 1 is asked of it
+        /// (`whole_visibility` false); an indexed one always masks, so a
+        /// forwarded array index asks the whole algorithm
+        /// (`Storage.prototype[9] = p` hides storage's key "9").
+        fn namedGet(info: *const v8.PropertyCallbackInfo, key: []const u8, comptime whole_visibility: bool) v8.Intercepted {
+            if (comptime !has_named_getter) return .kNo;
+            const instance = holderInstance(info) orelse return .kNo;
+            if (whole_visibility) {
+                if (!isVisible(instance, info, key)) return .kNo;
+            } else if (!is_css_style_declaration and !isSupportedPropertyName(instance, key)) {
+                // CSSStyleDeclaration answers every CSS property name -
+                // computed style's are all set - not only the declared ones.
+                return .kNo;
+            }
+            const isolate = info.getIsolate();
+            // Taken past the early returns: this runs for every property miss
+            // on a named-property interface. Owned: a Global per call.
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+            defer v8.v8_Context_Dispose(v8_context);
+            const named = namedPropertyValue(instance, isolate, v8_context, key) orelse return .kNo;
+            info.setReturnValue(named.value);
+            // setReturnValue reads the handle into the return slot.
+            if (named.owned) v8.v8_Value_Dispose(named.value);
+            return .kYes;
+        }
+
+        /// [[GetOwnProperty]] (3.9.1, LegacyPlatformObjectGetOwnProperty step
+        /// 2) as attributes: a visible named property is configurable,
+        /// writable only with a named setter (step 2.1.7), and enumerable
+        /// unless [LegacyUnenumerableNamedProperties] (step 2.1.8).
+        fn namedQuery(info: *const v8.PropertyCallbackInfo, key: []const u8) v8.Intercepted {
+            if (comptime !has_named_getter) return .kNo;
+            const instance = holderInstance(info) orelse return .kNo;
+            if (!isVisible(instance, info, key)) return .kNo;
+            var attributes: i32 = 0;
+            if (special.legacy_unenumerable_named_properties) attributes |= v8.PropertyAttribute.DontEnum;
+            if (!has_named_setter) attributes |= v8.PropertyAttribute.ReadOnly;
+            info.setReturnValueInt32(attributes);
+            return .kYes;
+        }
+
+        /// [[GetOwnProperty]] (3.9.1, LegacyPlatformObjectGetOwnProperty step
+        /// 2): a visible named property's descriptor - {[[Value]]: the named
+        /// getter's result, [[Writable]]: a named setter exists,
+        /// [[Enumerable]]: no [LegacyUnenumerableNamedProperties],
+        /// [[Configurable]]: true}.
+        fn namedDescriptor(info: *const v8.PropertyCallbackInfo, key: []const u8) v8.Intercepted {
+            if (comptime !has_named_getter) return .kNo;
+            const instance = holderInstance(info) orelse return .kNo;
+            if (!isVisible(instance, info, key)) return .kNo;
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+            defer v8.v8_Context_Dispose(v8_context);
+            const named = namedPropertyValue(instance, isolate, v8_context, key) orelse return .kNo;
+            defer if (named.owned) v8.v8_Value_Dispose(named.value);
+            const desc = v8.v8_CreateDataPropertyDescriptor(
+                v8_context,
+                named.value,
+                has_named_setter,
+                !special.legacy_unenumerable_named_properties,
+                true,
+            ) orelse return .kNo;
+            info.setReturnValue(@ptrCast(desc));
+            // Made for this call; setReturnValue reads it into a Local.
+            v8.v8_Global_Dispose(@ptrCast(desc));
+            return .kYes;
+        }
+
+        /// "Invoke a named property setter" (WebIDL 3.9.7) on `instance` with
+        /// P = `name` and V = `value` (a Global, the caller's): convert V to
+        /// the setter's second argument type, then run it. False when it
+        /// threw - the exception is pending (an exception the setter raises
+        /// propagates, in sloppy code too: `dataset['-x'] = v` is a
+        /// SyntaxError).
+        fn invokeNamedSetter(isolate: *v8.Isolate, instance: *runtime.Instance, key: []const u8, value: *v8.Value, rethrow: bool) bool {
+            const setter_name = comptime special.named_setter.?;
+            const setter_fn = @field(Interface, setter_name);
+            const ValueType = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".params[2].type.?;
+            // Released unless converting a `ValueType` can keep it
+            // (typeRetainsContext). A fresh Global of the callee's realm per
+            // call; acquired at entry and never released, every
+            // `el.dataset.x = v` pinned the realm.
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return false;
+            defer if (comptime !typeRetainsContext(ValueType)) v8.v8_Context_Dispose(v8_context);
+            // Step 4: convert V to an IDL value of type T.
+            const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
+                // ExceptionPending: the conversion rethrew script's exception.
+                if (err != conv.ConversionError.ExceptionPending and rethrow) conv.throwWebIDLError(isolate, @errorName(err));
+                return false;
+            };
+            defer freeConvertedValue(ValueType, instance.ctx.allocator, zig_value);
+            // Step 6: the operation's method steps with « P, value » (in a
+            // binding catch scope when it is [CEReactions]).
+            callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, runtime.DOMString.initInterned(key), zig_value }) catch |err| {
+                if (rethrow) conv.throwWebIDLError(isolate, @errorName(err));
+                return false;
+            };
             return true;
         }
 
-        /// Named property query callback for 'name' in obj
-        /// Returns Intercepted::kYes if property exists, Intercepted::kNo otherwise
-        fn namedPropertyQuery(
-            property: *v8.Name,
-            info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) v8.Intercepted {
-            // Named getter method names vary by IDL definition
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
-            if (comptime !has_named_getter) {
-                return .kNo;
+        /// [[Set]] (3.9.2) step 1.2: O is the receiver (V8 calls a setter
+        /// interceptor only then) and has a named setter, and P is a String -
+        /// invoke the named setter with P and V, and return true. Every
+        /// String: one not yet supported creates the property.
+        fn namedSet(info: *const v8.PropertyCallbackInfo, key: []const u8, value: *v8.Value) v8.Intercepted {
+            if (comptime !has_named_setter) return .kNo;
+            const instance = receiverInstance(info) orelse return .kNo;
+            // Crane's CSS attributes: CSSStyleDeclaration takes every CSS
+            // property name, the other declaration interfaces their set ones.
+            if (comptime special.crane_css_properties) {
+                if (!is_css_style_declaration and !isSupportedPropertyName(instance, key)) return .kNo;
             }
-
             const isolate = info.getIsolate();
-
-            // Get the 'this' object
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-            if (instance_ptr == null) {
-                return .kNo;
-            }
-
-            // Safety check
-            const ptr_as_int = @intFromPtr(instance_ptr);
-            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
-            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
-            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
-                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
-            {
-                return .kNo;
-            }
-
-            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-
-            // Verify property is a string (not a Symbol) before processing
-            if (!v8.v8_Name_IsString(property)) {
-                return .kNo;
-            }
-
-            // Convert property name to Zig string using raw API (safer for callback context)
-            const prop_str: *v8.String = @ptrCast(property);
-            const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
-            if (prop_len <= 0) return .kNo;
-
-            var prop_buf: [256]u8 = undefined;
-            var actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
-            if (actual_len <= 0) return .kNo;
-            // Strip null terminator if present (V8's WriteUtf8 may include it in the length)
-            if (actual_len > 0 and prop_buf[@intCast(actual_len - 1)] == 0) {
-                actual_len -= 1;
-            }
-            if (actual_len <= 0) return .kNo;
-            const prop_name = prop_buf[0..@intCast(actual_len)];
-
-            // WebIDL named property visibility algorithm step 1:
-            // If P is NOT a supported property name, do not intercept.
-            if (!isSupportedPropertyName(instance, prop_name)) {
-                return .kNo;
-            }
-
-            // Create a DOMString from the property name
-            const dom_str = runtime.DOMString.initInterned(prop_name);
-
-            // Call the named item getter to check if property exists
-            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
-                Interface.call_getNamedItem
-            else if (@hasDecl(Interface, "call_namedItem"))
-                Interface.call_namedItem
-            else
-                Interface.call_getter;
-
-            const result_allocator = instance.ctx.allocator;
-            const result = getter_fn(instance, dom_str) catch {
-                return .kNo;
-            };
-            // A string the named getter made for the result is the binding's.
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
-
-            // Check if result is non-null (property exists)
-            const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
-            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
-            const type_info = @typeInfo(ActualReturnType);
-
-            if (type_info == .optional) {
-                // Use Zig's if-unwrap pattern for optionals (works for all optional types including unions)
-                if (result) |_| {
-                    // Property exists - set attribute flags (enumerable, configurable)
-                    // Per WebIDL §3.9.1, named properties are enumerable by default
-                    // unless [LegacyUnenumerableNamedProperties] is specified.
-                    const has_unenumerable_attr = comptime blk: {
-                        if (@hasDecl(Meta, "extended_attributes")) {
-                            for (Meta.extended_attributes) |attr| {
-                                if (std.mem.eql(u8, attr.name, "LegacyUnenumerableNamedProperties")) {
-                                    break :blk true;
-                                }
-                            }
-                        }
-                        break :blk false;
-                    };
-
-                    // If LegacyUnenumerableNamedProperties, set DontEnum flag (2)
-                    var attr_value: c_int = if (has_unenumerable_attr) v8.PropertyAttribute.DontEnum else 0;
-
-                    // Also check for named setter presence to set ReadOnly flag
-                    const has_setter = comptime @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem") or @hasDecl(Interface, "call_setter");
-                    if (!has_setter) attr_value |= v8.PropertyAttribute.ReadOnly;
-
-                    const v8_attr = v8.v8_Integer_New(isolate, attr_value);
-                    info.setReturnValue(@ptrCast(v8_attr));
-                    // Made here, read into a Local by setReturnValue: ours.
-                    v8.v8_Global_Dispose(@ptrCast(v8_attr));
-                    return .kYes;
-                }
-            }
-
-            return .kNo;
-        }
-
-        /// Named property setter for legacy platform objects (obj.name = value)
-        /// Implements WebIDL §3.9.2 [[Set]] for named properties.
-        fn namedPropertySetter(
-            property: ?*v8.Name,
-            value: ?*v8.Value,
-            info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) v8.Intercepted {
-            // Only compile if Interface has named setter
-            // Named setter method names vary by IDL definition:
-            // - call_setNamedItem: NamedNodeMap
-            // - set_namedItem: some collections
-            // - call_setter: DOMStringMap (anonymous setter)
-            const has_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
-                @hasDecl(Interface, "set_namedItem") or
-                @hasDecl(Interface, "call_setter");
-            if (comptime !has_setter) {
-                return .kNo;
-            }
-
-            // Validate inputs - V8 may pass null in edge cases
-            if (property == null or value == null) {
-                return .kNo;
-            }
-
-            // Verify property is a string (not a Symbol)
-            if (!v8.v8_Name_IsString(property.?)) {
-                return .kNo;
-            }
-
-            const isolate = info.getIsolate();
-
-            // Get the 'this' object
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-            if (instance_ptr == null) {
-                return .kNo;
-            }
-
-            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-
-            // Unwrap the optional value for use below
-            const raw_value = value.?;
-
-            // Persist the raw V8 value to a Global handle
-            // Interceptor callbacks pass raw V8 internal pointers, but fromV8Value expects Global<Value>*
-            const v8_value = v8.v8_Value_Persist(isolate, @ptrCast(raw_value)) orelse return .kNo;
-            defer v8.v8_Value_Dispose(v8_value);
-
-            // Convert property name to Zig string
-            const prop_str: *v8.String = @ptrCast(property.?);
-            const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
-            if (prop_len <= 0) return .kNo;
-
-            var prop_buf: [256]u8 = undefined;
-            var actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
-            if (actual_len <= 0) return .kNo;
-            if (actual_len > 0 and prop_buf[@intCast(actual_len - 1)] == 0) {
-                actual_len -= 1;
-            }
-            if (actual_len <= 0) return .kNo;
-            const prop_name = prop_buf[0..@intCast(actual_len)];
-
-            // WebIDL named property visibility algorithm step 1:
-            // If P is NOT a supported property name, do not intercept.
-            // This allows built-in properties like __proto__ to fall through to prototype chain.
-            // Note: For named setters, we still intercept even for unsupported names if
-            // the interface allows creating new named properties. However, the visibility
-            // check ensures we don't shadow prototype chain properties.
-            //
-            // SPECIAL CASE: CSSStyleDeclaration allows setting ANY valid CSS property name,
-            // not just ones currently in getSupportedPropertyNames (which returns only
-            // properties that are currently set). Skip the visibility check for CSS.
-            const is_css_style_declaration = comptime std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
-            if (!is_css_style_declaration and !isSupportedPropertyName(instance, prop_name)) {
-                return .kNo;
-            }
-
-            // Create a DOMString from the property name
-            const dom_str = runtime.DOMString.initInterned(prop_name);
-
-            // Get the setter function at comptime
-            // Named setter method names vary by IDL definition
-            const setter_fn = comptime if (@hasDecl(Interface, "call_setNamedItem"))
-                Interface.call_setNamedItem
-            else if (@hasDecl(Interface, "set_namedItem"))
-                Interface.set_namedItem
-            else
-                Interface.call_setter;
-            const setter_name = comptime if (@hasDecl(Interface, "call_setNamedItem"))
-                "call_setNamedItem"
-            else if (@hasDecl(Interface, "set_namedItem"))
-                "set_namedItem"
-            else
-                "call_setter";
-
-            // Get the value type from the setter function signature
-            const SetterFnType = @TypeOf(setter_fn);
-            const fn_info = @typeInfo(SetterFnType).@"fn";
-            const params = fn_info.params;
-
-            // Expected signature: fn(instance: *runtime.Instance, name: DOMString, value: ValueType) !void
-            if (params.len < 3) {
-                return .kNo;
-            }
-
-            const ValueType = params[2].type orelse return .kNo;
-
-            // The current context, for the conversion: acquired here, past the
-            // early returns, and released unless converting a `ValueType` can
-            // keep it (typeRetainsContext). A fresh Global of the callee's
-            // realm per call; acquired at entry and never released, every
-            // `el.dataset.x = v` pinned the realm.
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
-            defer if (comptime !typeRetainsContext(ValueType)) v8.v8_Context_Dispose(v8_context);
-
-            // Convert V8 value to the expected Zig type
-            const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, v8_value) catch |err| {
-                // ExceptionPending means an exception was already rethrown
-                if (err == conv.ConversionError.ExceptionPending) {
-                    return .kYes;
-                }
-                if (info.shouldThrowOnError()) {
-                    conv.throwWebIDLError(isolate, @errorName(err));
-                }
-                return .kYes; // Intercepted even if it failed
-            };
-
-            // Free the converted value after use (handles DOMString, USVString, []const u8, etc.)
-            defer freeConvertedValue(ValueType, instance.ctx.allocator, zig_value);
-
-            // Call the setter (in a binding catch scope when it is [CEReactions])
-            callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, dom_str, zig_value }) catch |err| {
-                if (info.shouldThrowOnError()) {
-                    conv.throwWebIDLError(isolate, @errorName(err));
-                }
-            };
-
+            // V8 hands an interceptor the value as a LOCAL; fromV8Value reads
+            // a Global<Value>*.
+            const value_global = v8.v8_Value_Persist(isolate, @ptrCast(value)) orelse return .kNo;
+            defer v8.v8_Value_Dispose(value_global);
+            // A CSS property's setter fails quietly in sloppy code, as an
+            // attribute's would not: kept as it was.
+            const rethrow = comptime !special.crane_css_properties;
+            _ = invokeNamedSetter(isolate, instance, key, value_global, rethrow or info.shouldThrowOnError());
             return .kYes;
         }
 
-        /// Named property setter for read-only named properties (no setter defined)
-        /// Implements WebIDL [[Set]] semantics §3.9.2:
-        /// - If property name is a supported property name: fail silently (sloppy) or throw TypeError (strict)
-        /// - If property name is NOT supported: don't set return value to allow OrdinarySet (create own property)
-        /// - Symbols always fall through to OrdinarySet
-        fn namedPropertySetterReadOnly(
-            property: *v8.Name,
-            _: *v8.Value, // value - ignored since we don't actually set
-            info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) v8.Intercepted {
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
-            if (comptime !has_named_getter) {
-                return .kNo; // Don't intercept - allow fallthrough
-            }
-
-            // Symbols should always be settable as own properties
-            if (!v8.v8_Name_IsString(property)) {
-                return .kNo; // Don't intercept
-            }
-
-            // Get the 'this' object
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-            if (instance_ptr == null) {
-                return .kNo; // Don't intercept
-            }
-
-            // Safety check for poisoned pointers
-            const ptr_as_int = @intFromPtr(instance_ptr);
-            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
-            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
-            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
-                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
-            {
-                return .kNo; // Don't intercept
-            }
-
-            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-
-            // Convert property name to Zig string
-            const prop_str: *v8.String = @ptrCast(property);
-            const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
-            if (prop_len <= 0) return .kNo;
-
-            var prop_buf: [256]u8 = undefined;
-            const actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
-            if (actual_len <= 0) return .kNo;
-            const prop_name = prop_buf[0..@intCast(actual_len)];
-
-            // WebIDL named property visibility algorithm step 1:
-            // If P is NOT a supported property name, do not intercept.
-            if (!isSupportedPropertyName(instance, prop_name)) {
-                return .kNo;
-            }
-
-            // Create a DOMString from the property name
-            const dom_str = runtime.DOMString.initInterned(prop_name);
-
-            // Check if this is a supported property name by calling the getter
-            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
-                Interface.call_getNamedItem
-            else if (@hasDecl(Interface, "call_namedItem"))
-                Interface.call_namedItem
-            else
-                Interface.call_getter;
-
-            const result_allocator = instance.ctx.allocator;
-            const result = getter_fn(instance, dom_str) catch {
-                // Error calling getter - allow fallthrough
-                return .kNo;
-            };
-            // A string the named getter made for the result is the binding's.
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
-
-            // Check if result is non-null (property exists as supported name)
-            const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
-            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
-            const type_info = @typeInfo(ActualReturnType);
-
-            if (type_info == .optional) {
-                if (result != null) {
-                    // Property IS a supported property name - cannot set without a setter
-                    // Per WebIDL: in strict mode throw TypeError, in sloppy mode fail silently
-                    if (info.shouldThrowOnError()) {
-                        const isolate = info.getIsolate();
-                        conv.throwTypeError(isolate, "Cannot set read-only named property");
-                    }
-                    return .kYes;
-                }
-            }
-
-            // Property is NOT a supported property name - don't intercept
-            return .kNo;
+        /// [[Set]] (3.9.2) with no named setter, where V8 consults the
+        /// interceptor (a masking one consults it first): [[Set]] ignores
+        /// named properties (step 2's ignoreNamedProps), so the assignment
+        /// is ordinary unless it would create an own property for a
+        /// supported name - [[DefineOwnProperty]] step 2.2.1 refuses that:
+        /// false, a TypeError in strict code. With [LegacyOverrideBuiltIns]
+        /// a property of the prototype chain is the ordinary one's (Blink:
+        /// GetRealNamedPropertyAttributesInPrototypeChain), so an accessor
+        /// such as Document's `title` still runs.
+        fn namedSetReadOnly(info: *const v8.PropertyCallbackInfo, key: []const u8) v8.Intercepted {
+            if (comptime !has_named_getter) return .kNo;
+            const instance = receiverInstance(info) orelse return .kNo;
+            if (!isSupportedPropertyName(instance, key)) return .kNo;
+            const state = NameState.of(info, key);
+            if (state.own) return .kNo;
+            if (named_properties_mask and state.in_prototype_chain) return .kNo;
+            if (info.shouldThrowOnError()) conv.throwTypeError(info.getIsolate(), "Cannot set a named property that has no setter");
+            return .kYes;
         }
 
-        /// Named property descriptor callback for Object.getOwnPropertyDescriptor
-        fn namedPropertyDescriptor(
-            property: *v8.Name,
-            info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) v8.Intercepted {
-            // Named getter method names vary by IDL definition
-            const has_call_getter_with_domstring = comptime blk: {
-                if (!@hasDecl(Interface, "call_getter")) break :blk false;
-                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
-                if (fn_info.params.len < 2) break :blk false;
-                const second_param_type = fn_info.params[1].type orelse break :blk false;
-                break :blk second_param_type == runtime.DOMString;
-            };
-            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem") or
-                has_call_getter_with_domstring;
-            if (comptime !has_named_getter) {
+        /// [[DefineOwnProperty]] (3.9.3) step 2, for a String P:
+        ///   1. creating: P is not a supported property name.
+        ///   2. With [LegacyOverrideBuiltIns], or when O has no own property P:
+        ///      1. Not creating and no named setter: return false.
+        ///      2. A named setter: not a data descriptor - return false;
+        ///         otherwise invoke it with P and Desc.[[Value]], return true.
+        ///   3. Otherwise OrdinaryDefineOwnProperty.
+        /// "Return false" is refuseDefine's.
+        fn namedDefine(info: *const v8.PropertyCallbackInfoVoid, key: []const u8, desc: *const v8.PropertyDescriptor) v8.Intercepted {
+            if (comptime !has_named_getter) return .kNo;
+            const isolate = info.getIsolate();
+            if (comptime special.crane_css_properties) {
+                // Crane's CSS attributes, as they were: an accessor is a
+                // TypeError, a value goes to the setter interceptor.
+                if (v8.v8_PropertyDescriptor_IsAccessorDescriptor(desc)) {
+                    conv.throwTypeError(isolate, "Cannot define accessor property on named property collection");
+                    return .kYes;
+                }
                 return .kNo;
             }
+            const instance = receiverInstance(info) orelse return .kNo;
+            // Step 2.1.
+            const creating = !isSupportedPropertyName(instance, key);
+            // Step 2.2.
+            if (!named_properties_mask and NameState.of(info, key).own) return .kNo;
+            if (comptime !has_named_setter) {
+                // Step 2.2.1; a new name is ordinary (step 3).
+                if (creating) return .kNo;
+                return refuseDefine(info, isolate);
+            }
+            // Step 2.2.2.1.
+            if (!v8.v8_PropertyDescriptor_IsDataDescriptor(desc)) return refuseDefine(info, isolate);
+            // Step 2.2.2.2: Desc.[[Value]] (undefined when the descriptor has
+            // only [[Writable]]). A fresh Global the wrapper made: ours.
+            const value = v8.v8_PropertyDescriptor_GetValue(desc) orelse (v8.v8_Undefined(isolate) orelse return .kYes);
+            defer v8.v8_Value_Dispose(value);
+            _ = invokeNamedSetter(isolate, instance, key, value, true);
+            return .kYes;
+        }
 
+        /// [[DefineOwnProperty]]'s "return false" (3.9.3, indexed and
+        /// named): the return slot's false
+        /// (Reflect.defineProperty answers it) and, where the caller throws
+        /// on failure (Object.defineProperty, a strict-mode definition), the
+        /// TypeError, thrown here. Left to V8, a definer's false reached
+        /// Object.defineProperty as a Just(false) with nothing thrown, and V8
+        /// aborted on its CHECK (JSReceiver::DefineProperty, "Check failed:
+        /// success.FromJust()", 2026-10-11: `Object.defineProperty(dataset,
+        /// 'x', {get() {}})`). With the exception pending, V8 propagates it
+        /// (GetBooleanReturnValue answers Nothing). The indexed definer
+        /// throws its own the same way.
+        fn refuseDefine(info: *const v8.PropertyCallbackInfoVoid, isolate: *v8.Isolate) v8.Intercepted {
+            info.setFalse();
+            if (info.shouldThrowOnError()) conv.throwTypeError(isolate, "Cannot define this property of a legacy platform object");
+            return .kYes;
+        }
+
+        /// [[Delete]] (3.9.4) step 2: a visible named property of O -
+        /// deleted by the named deleter, or, with none, not deletable
+        /// (false: a TypeError in strict code, which the interceptor throws,
+        /// v8-template.h NamedPropertyDeleterCallback). Anything else is
+        /// step 3, ordinary.
+        fn namedDelete(info: *const v8.PropertyCallbackInfo, key: []const u8) v8.Intercepted {
+            if (comptime !has_named_getter) return .kNo;
+            const instance = holderInstance(info) orelse return .kNo;
+            if (!isVisible(instance, info, key)) return .kNo;
             const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                return .kNo;
-            };
-            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+            if (comptime has_named_deleter) {
+                const deleter_name = comptime special.named_deleter.?;
+                const deleter_fn = @field(Interface, deleter_name);
+                // Step 2.4.1: the operation's method steps with « P ».
+                const result = callInCatchScopeIfListed(Interface, deleter_name, isolate, deleter_fn, .{ instance, runtime.DOMString.initInterned(key) }) catch |err| {
+                    conv.throwWebIDLError(isolate, @errorName(err));
+                    return .kYes;
+                };
+                // Step 2.4.2: a deleter declared to return boolean that
+                // answered false did not delete.
+                const deleted = if (comptime @TypeOf(result) == bool) result else true;
+                if (!deleted) return refuseDelete(info, isolate);
+                info.setReturnValueBool(true);
+                return .kYes;
+            }
+            // Step 2.1.
+            return refuseDelete(info, isolate);
+        }
+
+        /// [[Delete]]'s "return false": `delete` evaluates to false, and is
+        /// a TypeError in strict code.
+        fn refuseDelete(info: *const v8.PropertyCallbackInfo, isolate: *v8.Isolate) v8.Intercepted {
+            info.setReturnValueBool(false);
+            if (info.shouldThrowOnError()) conv.throwTypeError(isolate, "Cannot delete a named property");
+            return .kYes;
+        }
+
+        // The V8 named interceptors: each reads its key's text and runs the
+        // step above.
+
+        fn namedPropertyGetter(property: *v8.Name, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: PropertyName = .{};
+            defer key.deinit();
+            return namedGet(info, key.read(property) orelse return .kNo, false);
+        }
+
+        fn namedPropertyQuery(property: *v8.Name, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: PropertyName = .{};
+            defer key.deinit();
+            return namedQuery(info, key.read(property) orelse return .kNo);
+        }
+
+        fn namedPropertyDescriptor(property: *v8.Name, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: PropertyName = .{};
+            defer key.deinit();
+            return namedDescriptor(info, key.read(property) orelse return .kNo);
+        }
+
+        fn namedPropertySetter(property: ?*v8.Name, value: ?*v8.Value, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: PropertyName = .{};
+            defer key.deinit();
+            return namedSet(info, key.read(property orelse return .kNo) orelse return .kNo, value orelse return .kNo);
+        }
+
+        fn namedPropertySetterReadOnly(property: *v8.Name, _: *v8.Value, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: PropertyName = .{};
+            defer key.deinit();
+            return namedSetReadOnly(info, key.read(property) orelse return .kNo);
+        }
+
+        fn namedPropertyDefiner(property: *v8.Name, desc: *const v8.PropertyDescriptor, info: *const v8.PropertyCallbackInfoVoid) callconv(.c) v8.Intercepted {
+            var key: PropertyName = .{};
+            defer key.deinit();
+            return namedDefine(info, key.read(property) orelse return .kNo, desc);
+        }
+
+        fn namedPropertyDeleter(property: *v8.Name, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: PropertyName = .{};
+            defer key.deinit();
+            return namedDelete(info, key.read(property) orelse return .kNo);
+        }
+
+        // An interface with named properties and no indexed ones: an array
+        // index is a String P like any other (WebIDL 3.9), which V8 hands to
+        // the indexed interceptors - these run the named steps with its text.
+
+        fn forwardedIndexGetter(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: IndexName = .{};
+            return namedGet(info, key.of(index), true);
+        }
+
+        fn forwardedIndexQuery(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: IndexName = .{};
+            return namedQuery(info, key.of(index));
+        }
+
+        fn forwardedIndexDescriptor(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: IndexName = .{};
+            return namedDescriptor(info, key.of(index));
+        }
+
+        fn forwardedIndexSetter(index: u32, value: *v8.Value, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: IndexName = .{};
+            if (comptime has_named_setter) return namedSet(info, key.of(index), value);
+            return namedSetReadOnly(info, key.of(index));
+        }
+
+        fn forwardedIndexDefiner(index: u32, desc: *const v8.PropertyDescriptor, info: *const v8.PropertyCallbackInfoVoid) callconv(.c) v8.Intercepted {
+            var key: IndexName = .{};
+            return namedDefine(info, key.of(index), desc);
+        }
+
+        fn forwardedIndexDeleter(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+            var key: IndexName = .{};
+            return namedDelete(info, key.of(index));
+        }
+
+        /// [[OwnPropertyKeys]] (3.9.6) for the named interceptor: step 2's
+        /// supported property indices in ascending order (V8 lists the
+        /// indexed interceptor's after; the legacy platform object proxy puts
+        /// them first), then step 3's supported property names that are
+        /// visible, in their order. Own properties (steps 4-5) are V8's.
+        fn namedPropertyEnumerator(info: *const v8.PropertyCallbackInfo) callconv(.c) void {
+            if (comptime !has_named_getter) return;
+
+            // Every handle made here is this callback's: SetReturnValue and
+            // Array::Set copy what they are given.
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(v8_context);
 
-            // Get the 'this' object
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-            if (instance_ptr == null) {
-                return .kNo;
-            }
-
-            // Safety check
-            const ptr_as_int = @intFromPtr(instance_ptr);
-            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
-            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
-            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
-                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
-            {
-                return .kNo;
-            }
-
-            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-
-            // Verify property is a string (not a Symbol) before processing
-            if (!v8.v8_Name_IsString(property)) {
-                return .kNo;
-            }
-
-            // Convert property name to Zig string using raw API (safer for callback context)
-            const prop_str: *v8.String = @ptrCast(property);
-            const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
-            if (prop_len <= 0) return .kNo;
-
-            var prop_buf: [256]u8 = undefined;
-            var actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
-            if (actual_len <= 0) return .kNo;
-            // WriteUtf8_Raw may include null terminator in length - trim it
-            if (actual_len > 0 and prop_buf[@intCast(actual_len - 1)] == 0) {
-                actual_len -= 1;
-            }
-            if (actual_len <= 0) return .kNo;
-            const prop_name = prop_buf[0..@intCast(actual_len)];
-
-            // WebIDL named property visibility algorithm step 1:
-            // If P is NOT a supported property name, do not intercept.
-            if (!isSupportedPropertyName(instance, prop_name)) {
-                return .kNo;
-            }
-
-            // Create a DOMString from the property name
-            const dom_str = runtime.DOMString.initInterned(prop_name);
-
-            // Call the named item getter
-            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
-                Interface.call_getNamedItem
-            else if (@hasDecl(Interface, "call_namedItem"))
-                Interface.call_namedItem
-            else
-                Interface.call_getter;
-
-            const result_allocator = instance.ctx.allocator;
-            const result = getter_fn(instance, dom_str) catch {
-                return .kNo;
+            const instance = holderInstance(info) orelse {
+                const empty_arr = v8.v8_Array_New(isolate, 0);
+                defer v8.v8_Array_Dispose(empty_arr);
+                info.setReturnValue(@ptrCast(empty_arr));
+                return;
             };
-            // A string the named getter made for the result is the binding's.
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
-            // Convert result to V8 value
-            const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
-            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
-            const type_info = @typeInfo(ActualReturnType);
+            const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
+                const empty_arr = v8.v8_Array_New(isolate, 0);
+                defer v8.v8_Array_Dispose(empty_arr);
+                info.setReturnValue(@ptrCast(empty_arr));
+                return;
+            };
+            defer {
+                for (names) |*prop_name| prop_name.deinit(std.heap.c_allocator);
+                if (names.len > 0) std.heap.c_allocator.free(names);
+            }
 
-            var v8_value: ?*v8.Value = null;
-            // Whether `v8_value` is a handle the conversion made, which the
-            // descriptor copies and the binding then releases - never a
-            // wrapper, which is the wrapper cache's.
-            var value_owned = false;
-            if (type_info == .optional) {
-                if (result) |unwrapped_result| {
-                    const ChildType = type_info.optional.child;
-                    if (ChildType == *runtime.Instance) {
-                        // Its wrapper in its relevant realm, the wrapper cache's.
-                        v8_value = conv.instanceToV8(isolate, unwrapped_result);
-                        value_owned = v8.v8_Value_IsUndefined(v8_value.?);
-                    } else {
-                        v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
-                            return .kNo;
-                        };
-                        value_owned = comptime getterValueIsOwned(ChildType);
-                    }
-                } else {
-                    // null value - property doesn't exist
-                    return .kNo;
+            var keys: std.ArrayListUnmanaged(*v8.Value) = .empty;
+            defer {
+                for (keys.items) |key| v8.v8_Value_Dispose(key);
+                keys.deinit(std.heap.c_allocator);
+            }
+
+            // Step 2: the supported property indices, ascending.
+            if (comptime has_indexed_getter and @hasDecl(Interface, "get_length")) {
+                const length = Interface.get_length(instance) catch 0;
+                var i: u32 = 0;
+                while (i < length) : (i += 1) {
+                    const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
+                    keys.append(std.heap.c_allocator, @ptrCast(v8_idx)) catch {};
                 }
-            } else {
-                v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch {
-                    return .kNo;
-                };
-                value_owned = comptime getterValueIsOwned(ActualReturnType);
             }
 
-            if (v8_value == null) return .kNo;
-            defer if (value_owned) v8.v8_Global_Dispose(v8_value);
+            // Step 3: the visible supported property names, in order.
+            for (names) |prop_name| {
+                const text = prop_name.asSlice();
+                const state = NameState.of(info, text);
+                if (state.own) continue;
+                if (!named_properties_mask and state.in_prototype_chain) continue;
+                const v8_str = conv.newStringFromWtf8(isolate, text) orelse continue;
+                keys.append(std.heap.c_allocator, v8_str) catch v8.v8_Value_Dispose(v8_str);
+            }
 
-            // Per WebIDL §3.9.1, named properties are NOT enumerable by default
-            // unless [LegacyEnumerableNamedProperties] is specified.
-            const has_enumerable_attr = comptime blk: {
-                if (@hasDecl(Meta, "extended_attributes")) {
-                    for (Meta.extended_attributes) |attr| {
-                        if (std.mem.eql(u8, attr.name, "LegacyEnumerableNamedProperties")) {
-                            break :blk true;
-                        }
-                    }
-                }
-                break :blk false;
-            };
-
-            const enumerable = has_enumerable_attr;
-
-            // Check if interface has a named setter (makes it writable)
-            const has_named_setter = comptime blk: {
-                if (@hasDecl(Meta, "has_named_setter")) break :blk Meta.has_named_setter;
-                break :blk @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem") or @hasDecl(Interface, "call_setter");
-            };
-            const writable = has_named_setter;
-
-            // Create property descriptor object
-            const desc = v8.v8_CreateDataPropertyDescriptor(
-                v8_context,
-                v8_value.?,
-                writable, // writable if interface has named setter
-                enumerable,
-                true, // configurable
-            ) orelse return .kNo;
-
-            info.setReturnValue(@ptrCast(desc));
-            // The descriptor is made for this call, and setReturnValue reads
-            // it into a Local.
-            v8.v8_Global_Dispose(@ptrCast(desc));
-            return .kYes;
+            const result_arr = v8.v8_Array_New(isolate, @intCast(keys.items.len));
+            defer v8.v8_Array_Dispose(result_arr);
+            for (keys.items, 0..) |v8_val, idx| {
+                _ = v8.v8_Array_Set(result_arr, v8_context, @intCast(idx), v8_val);
+            }
+            info.setReturnValue(@ptrCast(result_arr));
         }
 
         /// entries() callback - returns iterator yielding [index, value] pairs

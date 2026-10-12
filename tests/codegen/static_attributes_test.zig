@@ -28,7 +28,7 @@ fn table(output: []const u8, name: []const u8) ![]const u8 {
 }
 
 fn metadata(buffer: *std.Io.Writer.Allocating) !void {
-    try writer.writeMetadata(&buffer.writer, "Notification", null, null, true, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, true, false, false, null, &attrs, null, &.{});
+    try writer.writeMetadata(&buffer.writer, "Notification", null, null, true, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, true, false, false, null, &attrs, null, &.{}, null);
 }
 
 test "a static attribute is bound through static_properties with get_static_ and set_static_" {

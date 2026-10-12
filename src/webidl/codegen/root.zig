@@ -26,6 +26,7 @@ pub const duplicates = @import("duplicates.zig");
 pub const member_overrides = @import("member_overrides.zig");
 pub const adapter = @import("adapter.zig");
 pub const overload = @import("overload.zig");
+pub const special_operations = @import("special_operations.zig");
 pub const property_classifier = @import("property_classifier.zig");
 // v8_bindings removed - will be replaced by proper JS bindings system (epic webidl-gbjt)
 

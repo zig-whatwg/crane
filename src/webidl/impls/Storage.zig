@@ -151,6 +151,26 @@ pub fn call_key(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMSt
     return runtime.DOMString.initInterned(key_name);
 }
 
+/// HTML 12.2.1: "The supported property names on a Storage object storage
+/// are the result of running get the keys on storage's map" - in the order
+/// key() numbers them. WebIDL 2.5.6.2 makes them Storage's named properties
+/// (`localStorage.k`, `localStorage[k] = v`), through the generated
+/// interface's getSupportedPropertyNames. The slice and every name are
+/// allocated with `allocator`; the caller frees them.
+pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return &.{};
+    const keys = try internal.storage.keys(allocator);
+    // An empty map answers a static empty slice: nothing to free.
+    if (keys.len == 0) return &.{};
+    errdefer WebStorage.freeKeys(allocator, keys);
+    const names = try allocator.alloc(runtime.DOMString, keys.len);
+    // Each key is a copy keys() made with `allocator`: the name owns it.
+    for (keys, names) |key_name, *name| name.* = runtime.DOMString.initOwned(@constCast(key_name));
+    allocator.free(keys);
+    return names;
+}
+
 /// Operation: getItem
 /// Returns the current value associated with the given key, or null if not found.
 pub fn call_getItem(instance: *runtime.Instance, key: runtime.DOMString) anyerror!?runtime.DOMString {

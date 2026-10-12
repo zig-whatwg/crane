@@ -300,6 +300,38 @@ mid-run. Both are gone; but on a shared machine prefer the binary directly:
 ./zig-out/bin/wpt_runner --from-file=<list> --parallel=1 --wpt-root=tests/wpt --output=<dir>
 ```
 
+**The WPT runner is built optimized: ReleaseSafe** (the user, 2026-10-11). Zig
+optimizes a compilation at its root module's level, so `zig build wpt-runner`
+puts ALL of the runner's Zig through LLVM's O3 pipeline. v8_wrapper.cpp and the
+runner's own libcurl, mbedTLS, zlib and nghttp2 build at -O2, with the full C
+sanitizer, so a failed check names itself as it does in Debug. Crane's modules
+keep `-Doptimize`'s `builtin.mode` (Debug), so the refcount ledger, the
+ownership checks and the cleanup validation stay.
+`tests/wpt_runner/build_mode.zig` decides each part and pins it, and the banner
+names all three: `wpt_runner: ReleaseSafe build (Crane modules Debug, C
+libraries ReleaseSafe)`. gc_bench is built the same way. The snapshot generator
+and every unit test stay Debug: `zig build test` builds neither the runner nor
+gc_bench.
+
+- **The price is the compile.** Any edit recompiles the whole runner: about
+  7 min and 14 GB, against 2 min and 10 GB in Debug. Locally, on a 32 GB Mac,
+  run only one ReleaseSafe runner compile at a time.
+- **`-Dwpt-runner-optimize=Debug`** (or an explicit `-Doptimize=Debug`) builds
+  the Debug runner and gc_bench. Use it for red/green iteration and for a
+  diagnosis. The leak and double-free reports are the same in both modes, but
+  `CRANE_LEAK_TRACES=1` traces need the Debug runner. Optimized, an allocation
+  inlined into its caller is traced from that caller's return address, so the
+  trace names no allocation site, and the runner says so when it starts.
+- **An A/B compares runners built in the same mode as its baseline**, and
+  main's baselines are ReleaseSafe. Between modes, timeouts move. The
+  parity sweep (2026-10-11, 10,035 files in each mode) found the
+  dom/nodes tampered NodeList files timing out at 60 s in Debug and passing
+  in 24 s, a few timing-sensitive resource-timing files passing more often,
+  and nothing else once the release-only defects it exposed were fixed. The
+  bars ran 2-5x faster. A release build folds identical functions and merges
+  equal constants: an identity built on either is Debug-only
+  ([lesson](docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md)).
+
 **The macOS SDK is chosen by `build.zig`, not by you.** Zig 0.16's bundled
 libcxx does not compile against the macOS 27 SDK:
 
@@ -439,6 +471,7 @@ else:
 | static attribute | `get_static_<name>`, `set_static_<name>` - accessors of the interface object |
 | static operation | `call_static_<name>` |
 | constant | none - the generated interface answers it (`get_<NAME>()`) |
+| special operation (indexed/named getter, setter, deleter) | bound from the generated `Meta.special_operations`, never by name; an anonymous one's delegate is `call_<keyword>`, or `call_<keyword>__<k>` for the k-th of its keyword |
 
 - **A private function never takes one of those prefixes.** Name helpers in
   camelCase.

@@ -63,9 +63,13 @@ pub const CSSUnparsedValue = struct {
 
         pub const has_constructor = true;
 
-        /// The anonymous indexed getter (`getter T (unsigned long index)`,
-        /// `call_getter`) is implemented: the binding installs indexed access.
-        pub const indexed_getter_implemented = @hasDecl(CSSUnparsedValueImpl, "call_getter");
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_getter", .implemented = @hasDecl(CSSUnparsedValueImpl, "call_getter") },
+            .indexed_setter = .{ .function = "call_setter", .implemented = @hasDecl(CSSUnparsedValueImpl, "call_setter") },
+        };
 
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
@@ -132,13 +136,17 @@ pub const CSSUnparsedValue = struct {
         return try CSSUnparsedValueImpl.get_length(instance);
     }
 
-    pub fn call_setter(instance: *runtime.Instance, index: u32, val: CSSUnparsedSegment) anyerror!void {
-        return try CSSUnparsedValueImpl.call_setter(instance, index, val);
-    }
-
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!CSSUnparsedSegment {
         if (comptime @hasDecl(CSSUnparsedValueImpl, "call_getter")) {
             return try CSSUnparsedValueImpl.call_getter(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_setter(instance: *runtime.Instance, index: u32, val: CSSUnparsedSegment) anyerror!void {
+        if (comptime @hasDecl(CSSUnparsedValueImpl, "call_setter")) {
+            return try CSSUnparsedValueImpl.call_setter(instance, index, val);
         } else {
             return error.NotImplemented;
         }

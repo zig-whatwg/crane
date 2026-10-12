@@ -90,7 +90,7 @@ pub fn collectHttpQuotedString(
     extract_value: bool,
 ) ![]const u8 {
     var result: std.ArrayListUnmanaged(u8) = .empty;
-    errdefer result.deinit(allocator);
+    defer result.deinit(allocator);
 
     // Step 1: Assert position is at "
     std.debug.assert(position.* < input.len and input[position.*] == '"');
@@ -133,7 +133,6 @@ pub fn collectHttpQuotedString(
         return try result.toOwnedSlice(allocator);
     } else {
         // Return the full quoted string including quotes
-        result.deinit(allocator);
         return try allocator.dupe(u8, input[quote_start..position.*]);
     }
 }

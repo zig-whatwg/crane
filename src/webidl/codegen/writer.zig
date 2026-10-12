@@ -10,6 +10,7 @@ const reflect = @import("reflect.zig");
 const property_classifier = @import("property_classifier.zig");
 const ir = @import("ir.zig");
 const argument_unions = @import("argument_unions.zig");
+const special_operations = @import("special_operations.zig");
 
 /// Whether `union_types` is a (TrustedType or DOMString/USVString) pattern -
 /// a Trusted Types sink's type. Its arguments and attribute setters take a
@@ -377,35 +378,6 @@ fn isRegularOperation(op: types.Operation) bool {
     return op.name != null;
 }
 
-/// Whether `op` is an anonymous indexed property getter, `getter T (unsigned
-/// long index)` (WebIDL 2.5.6.1): its delegate is `call_getter(instance,
-/// u32)`, and the binding installs indexed access through it. Most impls of
-/// such interfaces do not implement it yet, so its delegate is gated (it
-/// answers error.NotImplemented until the impl declares `call_getter`), and
-/// Meta.indexed_getter_implemented tells the binding whether to install it.
-pub fn isAnonymousIndexedGetter(op: types.Operation) bool {
-    const special = op.special orelse return false;
-    if (special != .getter or op.name != null or op.static) return false;
-    return op.arguments.len == 1 and std.mem.eql(u8, op.arguments[0].idlType.type, "unsigned long");
-}
-
-/// The interface's one anonymous getter when it is an indexed getter - not
-/// one merged with an anonymous named getter into an overload set
-/// (HTMLFormElement's `getter Element (unsigned long index)` and
-/// `getter (RadioNodeList or Element) (DOMString name)`), whose delegate
-/// takes a union instead.
-pub fn soleAnonymousIndexedGetter(overload_ops: []const types.Operation) bool {
-    var anonymous_getters: usize = 0;
-    var indexed = false;
-    for (overload_ops) |op| {
-        const special = op.special orelse continue;
-        if (special != .getter or op.name != null or op.static) continue;
-        anonymous_getters += 1;
-        if (isAnonymousIndexedGetter(op)) indexed = true;
-    }
-    return anonymous_getters == 1 and indexed;
-}
-
 pub fn writeMetadata(
     writer: anytype,
     interface_name: []const u8,
@@ -428,6 +400,9 @@ pub fn writeMetadata(
     /// Every overload of every own operation (see `writeOverloadDelegates`);
     /// only each method's `length` is taken from it here.
     overload_ops: []const types.Operation,
+    /// The interface's special operations (special_operations.zig), for
+    /// Meta's `special_operations` table; null writes none.
+    special_ops: ?*const special_operations.Model,
 ) !void {
     _ = attributes; // Unused - we now use own_attributes for properties/lazy_properties
 
@@ -906,15 +881,10 @@ pub fn writeMetadata(
     try writer.writeAll("        \n");
     try writer.print("        pub const has_constructor = {};\n", .{has_constructor});
 
-    // WebIDL 2.5.6.1: an anonymous indexed getter's delegate is gated (the
-    // impl may not implement it yet); the binding installs indexed access
-    // through it only when the impl does.
-    if (!is_mixin and !is_callback and soleAnonymousIndexedGetter(overload_ops)) {
-        try writer.writeAll("        \n");
-        try writer.writeAll("        /// The anonymous indexed getter (`getter T (unsigned long index)`,\n");
-        try writer.writeAll("        /// `call_getter`) is implemented: the binding installs indexed access.\n");
-        try writer.print("        pub const indexed_getter_implemented = @hasDecl({s}Impl, \"call_getter\");\n", .{interface_name});
-    }
+    // WebIDL 2.5.6: which function runs each special operation - an
+    // anonymous one's delegate is gated, and the table says whether its impl
+    // implements it.
+    if (!is_mixin and !is_callback) if (special_ops) |model| try special_operations.writeMeta(writer, model, interface_name);
 
     // Generate iterable metadata if present
     if (iterable) |iter| {
@@ -2746,9 +2716,9 @@ fn writeSingleOperation(
     type_registry: ?*const @import("ir.zig").TypeRegistry,
     ce_functions: *CEReactionsFunctions,
 ) !void {
-    // An anonymous indexed getter is gated: Meta.indexed_getter_implemented
-    // says whether the impl has it.
-    return writeOperationDelegate(writer, impl_name, op, type_registry, "", isAnonymousIndexedGetter(op), ce_functions);
+    // (An anonymous getter, setter or deleter has its own gated delegate:
+    // writeDelegateFunctions.)
+    return writeOperationDelegate(writer, impl_name, op, type_registry, "", false, ce_functions);
 }
 
 /// HTML 3.2.3 "HTML element constructors": an interface whose constructor
@@ -4376,8 +4346,24 @@ pub fn writeDelegateFunctions(
     const overload_sets = try overload.groupOperationsByName(allocator, own_operations);
     defer overload.freeOverloadSets(allocator, overload_sets);
 
+    // An anonymous getter, setter or deleter is no regular operation and so
+    // never overloaded (WebIDL 2.5.8 overloads regular and static operations
+    // by identifier): each has a delegate of its own, named after its keyword
+    // and numbered within it (special_operations.anonymousFunctions) -
+    // HTMLFormElement's indexed getter `call_getter`, its named getter
+    // `call_getter__1`. Each is gated: it answers error.NotImplemented until
+    // the impl declares it, and Meta.special_operations says whether it has.
+    const anonymous = try special_operations.anonymousFunctions(allocator, own_operations);
+    defer special_operations.freeAnonymous(allocator, anonymous);
+    for (anonymous) |a| {
+        const suffix = a.function["call_".len + @tagName(a.op.special.?).len ..];
+        try writeOperationDelegate(writer, impl_name, a.op, type_registry, suffix, true, &ce_functions);
+    }
+
     // Write operation delegates (with overload support) - ONLY for own operations
     for (overload_sets) |set| {
+        // The anonymous getters, setters and deleters are written above.
+        if (special_operations.isAnonymous(set.operations[0])) continue;
         // An inherited mixin operation is the includer's by inheritance.
         if (inheritedFrom(options, set.operations[0].mixin)) |mixin| {
             try writer.print("    pub const call_{s} = mixins.{s}.call_{s};\n\n", .{ set.name, mixin, set.name });
@@ -4534,32 +4520,6 @@ pub fn isCSSDeclarationInterface(name: []const u8) bool {
         std.mem.eql(u8, name, "CSSStyleProperties") or
         std.mem.eql(u8, name, "CSSPageDescriptors") or
         std.mem.eql(u8, name, "CSSMarginDescriptors");
-}
-
-/// Check if an interface has a named property getter operation
-/// A named property getter is: getter <type> <name>(<DOMString param>)
-/// Examples:
-///   getter Element? namedItem(DOMString name);
-///   getter Attr? getNamedItem(DOMString qualifiedName);
-pub fn hasNamedPropertyGetter(operations: []const types.Operation) bool {
-    for (operations) |op| {
-        // Must be a getter special operation
-        if (op.special) |special| {
-            if (special == .getter) {
-                // Must have a DOMString parameter (named property getter, not indexed)
-                // Indexed getters have unsigned long parameter
-                if (op.arguments.len > 0) {
-                    const first_arg_type = op.arguments[0].idlType.type;
-                    if (std.mem.eql(u8, first_arg_type, "DOMString") or
-                        std.mem.eql(u8, first_arg_type, "USVString"))
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    return false;
 }
 
 /// Escape Zig reserved keywords by appending underscore
@@ -5108,7 +5068,7 @@ test "writeMetadata generates Meta struct" {
 
     const writer = &buffer.writer;
 
-    try writeMetadata(writer, "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{});
+    try writeMetadata(writer, "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const Meta = struct {") != null);
@@ -5122,7 +5082,7 @@ test "writeMetadata handles no base type" {
 
     const writer = &buffer.writer;
 
-    try writeMetadata(writer, "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{});
+    try writeMetadata(writer, "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = null;") != null);
@@ -5135,7 +5095,7 @@ test "writeMetadata includes mixins" {
     const writer = &buffer.writer;
 
     const mixins = [_][]const u8{"ParentNode"};
-    try writeMetadata(writer, "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{});
+    try writeMetadata(writer, "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const MixinTypes = &.{") != null);
@@ -5152,7 +5112,7 @@ test "writeMetadata includes extended attributes" {
         .{ .name = "Exposed", .rhs = .{ .identifier = "Window" } },
         .{ .name = "LegacyUnforgeable", .rhs = null },
     };
-    try writeMetadata(writer, "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{});
+    try writeMetadata(writer, "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const extended_attributes = .{") != null);
@@ -5184,7 +5144,7 @@ test "writeMetadata includes legacy unforgeable properties" {
         },
     };
 
-    try writeMetadata(writer, "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null, &.{});
+    try writeMetadata(writer, "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null, &.{}, null);
 
     const output = buffer.written();
 

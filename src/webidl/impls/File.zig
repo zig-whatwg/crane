@@ -90,8 +90,10 @@ pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileNam
     const bytes = try BlobImpl.processBlobParts(ctx, fileBits, endings);
     defer if (bytes.len > 0) ctx.allocator.free(bytes);
 
-    // Steps 3.1-3.2: the type - BlobData drops one with a character outside
-    // U+0020-U+007E and lowercases the rest.
+    // File API steps 3.1-3.2: BlobData rejects outside U+0020-U+007E
+    // and lowercases the rest, without MIME parsing. Chrome/Firefox/Safari
+    // agree on all Blob/File cases (353/955 each, wpt.fyi cc74d2669f):
+    // https://wpt.fyi/results/mimesniff/mime-types/parsing.any.html?sha=cc74d2669f
     const mime_type: []const u8 = if (options.wasPassed() and options.value.base.type != null) options.value.base.type.?.asSlice() else "";
     {
         const blob_data = try file.BlobData.init(ctx.allocator, bytes, mime_type);

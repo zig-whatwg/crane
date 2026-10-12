@@ -41,14 +41,26 @@ const max_controls = 16;
 var controls: [max_controls]Control = undefined;
 var count: usize = 0;
 
-/// Install `control`. Idempotent: the same brand check installs once.
+/// Install `control`. Idempotent: installing the same control again adds
+/// nothing - and a control is the same only if EVERY function it names is the
+/// installed one's. Two installs that share a brand check but supply other
+/// algorithms are two entries, and each dispatch below takes the first entry
+/// whose check accepts the element and that has the algorithm.
+///
+/// Not keyed by the brand check: two types may supply algorithms for one
+/// predicate (HTMLSelectElement a select's validity flags, HTMLOptionElement
+/// its selection model and reset), and a release build makes their two
+/// checks, which have the same body, ONE function - LLVM folds identical
+/// functions, so `&HTMLSelectElement.isValidationControl ==
+/// &HTMLOptionElement.isSelectElement` in the ReleaseSafe runner, and keying
+/// by it dropped one type's algorithms in release builds only. Folding can
+/// make two predicates equal but never two whole entries that differ, so this
+/// table holds what a Debug build's holds, less exact duplicates
+/// (docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md).
 pub fn install(control: Control) void {
     process_start.assertInstalling();
-    for (controls[0..count]) |*existing| {
-        if (existing.is == control.is) {
-            existing.* = control;
-            return;
-        }
+    for (controls[0..count]) |existing| {
+        if (std.meta.eql(existing, control)) return;
     }
     if (count == max_controls) return;
     controls[count] = control;
@@ -140,6 +152,40 @@ test "an element runs the reset algorithm whose brand check accepts it, installe
     install(.{ .is = &testIs, .reset = &testReset });
     install(.{ .is = &testIs, .reset = &testReset });
     try std.testing.expectEqual(@as(usize, 1), count);
+    reset(&element);
+    try std.testing.expectEqual(@as(usize, 1), test_resets);
+}
+
+test "installs that share a brand check keep their algorithms: a release build makes two types' identical checks one function" {
+    // HTMLSelectElement installs a select's validity flags and
+    // HTMLOptionElement its selection model and reset, each with its own
+    // "is this a select" check. The two checks have the same body, and the
+    // ReleaseSafe runner folds them into ONE function (nm: Debug has both
+    // symbols, ReleaseSafe only the option's), so both installs arrive with
+    // the same `is`. Each must keep its algorithms.
+    const saved_controls = controls;
+    const saved_count = count;
+    const saved_resets = test_resets;
+    defer {
+        controls = saved_controls;
+        count = saved_count;
+        test_resets = saved_resets;
+    }
+    const Select = struct {
+        fn flags(_: *runtime.Instance) ValidityFlags {
+            return .{ .valueMissing = true };
+        }
+        fn selected(_: *runtime.Instance) !?usize {
+            return 3;
+        }
+    };
+    var element: runtime.Instance = undefined;
+    count = 0;
+    test_resets = 0;
+    install(.{ .is = &testIs, .validity_flags = &Select.flags });
+    install(.{ .is = &testIs, .reset = &testReset, .selected_index = &Select.selected });
+    try std.testing.expect(validityFlags(&element).valueMissing orelse false);
+    try std.testing.expectEqual(@as(?usize, 3), try selectedIndex(&element));
     reset(&element);
     try std.testing.expectEqual(@as(usize, 1), test_resets);
 }

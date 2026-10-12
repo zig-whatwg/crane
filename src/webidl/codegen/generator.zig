@@ -14,6 +14,7 @@ const config_mod = @import("config.zig");
 const overload = @import("overload.zig");
 const reflect = @import("reflect.zig");
 const argument_unions = @import("argument_unions.zig");
+const special_operations = @import("special_operations.zig");
 const host = @import("host");
 const CodegenConfig = config_mod.CodegenConfig;
 
@@ -1070,6 +1071,59 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
 /// Generate implementation stub file with full method stubs
 /// NOTE: Always generates to impls_tmp/ directory (gitignored).
 /// Developers must manually migrate stubs to impls/ to preserve custom code.
+/// An impl stub for one operation, `call_<op_name>`, answering NotImplemented
+/// (or null).
+fn writeImplOperationStub(
+    w: anytype,
+    interface: types.Interface,
+    op: types.Operation,
+    op_name: []const u8,
+    type_reg: anytype,
+) !void {
+    const is_nullable_return = op.idlType.nullable;
+
+    // Check for [Default] toJSON - needs special return type
+    const is_default_to_json = std.mem.eql(u8, op_name, "toJSON") and types.hasDefaultExtAttr(op);
+
+    try w.print("/// Operation: {s}\n", .{op_name});
+    try w.print("pub fn call_{s}(instance: *runtime.Instance", .{op_name});
+    for (op.arguments) |arg| {
+        try w.writeAll(", ");
+        try writeEscapedImplParamName(w, arg.name);
+        try w.writeAll(": ");
+        try writeParamType(w, arg, type_reg);
+    }
+    try w.writeAll(") anyerror!");
+    // For [Default] toJSON, return the ToJSON struct type
+    if (is_default_to_json) {
+        try w.print("interfaces.{s}.{s}ToJSON", .{ interface.name, interface.name });
+    } else {
+        // For nullable return types, return ?T instead of T
+        if (is_nullable_return) {
+            try w.writeAll("?");
+        }
+        try writeTypeSimple(w, op.idlType, type_reg);
+    }
+    try w.writeAll(" {\n");
+    try w.writeAll("    _ = instance;\n");
+    for (op.arguments) |arg| {
+        try w.writeAll("    _ = ");
+        try writeEscapedImplParamName(w, arg.name);
+        try w.writeAll(";\n");
+    }
+    // For [Default] toJSON, return a stub struct
+    if (is_default_to_json) {
+        try w.writeAll("    // TODO: Populate ToJSON struct from instance state\n");
+        try w.writeAll("    return error.NotImplemented;\n");
+    } else if (is_nullable_return) {
+        // For nullable types, return null instead of error.NotImplemented
+        try w.writeAll("    return null;\n");
+    } else {
+        try w.writeAll("    return error.NotImplemented;\n");
+    }
+    try w.writeAll("}\n\n");
+}
+
 fn generateImplFile(
     allocator: std.mem.Allocator,
     interface: types.Interface,
@@ -1336,6 +1390,8 @@ fn generateImplFile(
     defer overload_mod.freeOverloadSets(allocator, overload_sets);
 
     for (overload_sets) |set| {
+        // The anonymous getters, setters and deleters are written below.
+        if (special_operations.isAnonymous(set.operations[0])) continue;
         if (set.isOverloaded()) {
             // Multiple overloads - generate ONE impl stub that accepts the Args union
             const first_op = set.operations[0];
@@ -1369,52 +1425,16 @@ fn generateImplFile(
             }
             try w.writeAll("}\n\n");
         } else {
-            // Single operation - generate normal function (same as before)
-            const op = set.operations[0];
-            const op_name = set.name;
-            const is_nullable_return = op.idlType.nullable;
-
-            // Check for [Default] toJSON - needs special return type
-            const is_default_to_json = std.mem.eql(u8, op_name, "toJSON") and types.hasDefaultExtAttr(op);
-
-            try w.print("/// Operation: {s}\n", .{op_name});
-            try w.print("pub fn call_{s}(instance: *runtime.Instance", .{op_name});
-            for (op.arguments) |arg| {
-                try w.writeAll(", ");
-                try writeEscapedImplParamName(w, arg.name);
-                try w.writeAll(": ");
-                try writeParamType(w, arg, type_reg);
-            }
-            try w.writeAll(") anyerror!");
-            // For [Default] toJSON, return the ToJSON struct type
-            if (is_default_to_json) {
-                try w.print("interfaces.{s}.{s}ToJSON", .{ interface.name, interface.name });
-            } else {
-                // For nullable return types, return ?T instead of T
-                if (is_nullable_return) {
-                    try w.writeAll("?");
-                }
-                try writeTypeSimple(w, op.idlType, type_reg);
-            }
-            try w.writeAll(" {\n");
-            try w.writeAll("    _ = instance;\n");
-            for (op.arguments) |arg| {
-                try w.writeAll("    _ = ");
-                try writeEscapedImplParamName(w, arg.name);
-                try w.writeAll(";\n");
-            }
-            // For [Default] toJSON, return a stub struct
-            if (is_default_to_json) {
-                try w.writeAll("    // TODO: Populate ToJSON struct from instance state\n");
-                try w.writeAll("    return error.NotImplemented;\n");
-            } else if (is_nullable_return) {
-                // For nullable types, return null instead of error.NotImplemented
-                try w.writeAll("    return null;\n");
-            } else {
-                try w.writeAll("    return error.NotImplemented;\n");
-            }
-            try w.writeAll("}\n\n");
+            try writeImplOperationStub(w, interface, set.operations[0], set.name, type_reg);
         }
+    }
+
+    // An anonymous getter, setter or deleter: one stub each, under its
+    // delegate's name (special_operations.anonymousFunctions).
+    const anonymous = try special_operations.anonymousFunctions(allocator, all_ops.items);
+    defer special_operations.freeAnonymous(allocator, anonymous);
+    for (anonymous) |an| {
+        try writeImplOperationStub(w, interface, an.op, an.function["call_".len..], type_reg);
     }
 
     // An iterable declaration's members (entries, keys, values, forEach,
@@ -1727,6 +1747,19 @@ fn generateInterfaceFile(
     // Partial interfaces can cause duplicate constructor definitions
     try deduplicateConstructors(allocator, &own_constructors);
 
+    // WebIDL 2.5.6: the special operations, own and inherited, and the
+    // functions that run them (special_operations.zig).
+    var special = try special_operations.build(
+        allocator,
+        ir,
+        interface.name,
+        own_ops.items,
+        interface.extAttrs,
+        if (base_info.is_interface) base_info.inheritance else null,
+        writer.isCSSDeclarationInterface(interface.name),
+    );
+    defer special.deinit(allocator);
+
     // Generate metadata with property/method hints for V8 bindings
     try writer.writeMetadata(
         w,
@@ -1747,6 +1780,7 @@ fn generateInterfaceFile(
         own_attrs.items, // Own attributes (for V8 property registration)
         async_iterable_member, // Async iterable declaration if present
         own_overload_ops.items, // Every overload, for each method's `length`
+        &special,
     );
     // HTML 3.2.3: an [HTMLConstructor] constructor's steps are HTML's.
     try writer.writeHTMLConstructor(w, own_constructors.items);
@@ -1818,7 +1852,7 @@ fn generateInterfaceFile(
         .model = ir,
     });
     if (base_info.is_interface) {
-        try writeInheritedIndexedMembers(w, base_info.inheritance.?, all_ops.items, own_ops.items, all_attrs.items, own_attrs.items);
+        try special_operations.writeInherited(w, &special, base_info.inheritance.?, own_ops.items, own_attrs.items, all_attrs.items);
     }
 
     // Generate iterable support if interface has iterable declaration
@@ -1826,9 +1860,10 @@ fn generateInterfaceFile(
         try writer.writeIterableSupport(w, impl_name, iterable);
     }
 
-    // Generate named property support if interface has named property getter
-    // This enables proper enumeration for legacy platform objects like NamedNodeMap
-    if (writer.hasNamedPropertyGetter(own_ops.items)) {
+    // WebIDL 2.5.6.2: an interface that declares a named property getter
+    // publishes its supported property names (an heir takes its parent's:
+    // special_operations.writeInherited).
+    if (special_operations.ownsSupportedPropertyNames(&special)) {
         try writer.writeNamedPropertySupport(w, impl_name);
     }
 
@@ -1843,28 +1878,6 @@ fn generateInterfaceFile(
 
     // Flush writer
     try w.flush();
-}
-
-/// WebIDL 2.5.6.1 / 3.9: the derived-most indexed getter applies to the
-/// platform object itself. Prototype inheritance alone does not publish the
-/// generated declarations an adapter needs to install its exotic operations.
-fn writeInheritedIndexedMembers(w: *std.Io.Writer, parent: []const u8, all_ops: []const types.Operation, own_ops: []const types.Operation, all_attrs: []const types.Attribute, own_attrs: []const types.Attribute) !void {
-    var indexed = false;
-    for (all_ops) |op| {
-        if (op.special != .getter or op.arguments.len != 1 or !std.mem.eql(u8, op.arguments[0].idlType.type, "unsigned long")) continue;
-        indexed = true;
-        const name = op.name orelse "getter";
-        const own = for (own_ops) |candidate| {
-            if (std.mem.eql(u8, candidate.name orelse "getter", name)) break true;
-        } else false;
-        if (!own) try w.print("    pub const call_{s} = {s}.call_{s};\n\n", .{ name, parent, name });
-    }
-    if (!indexed) return;
-    for (own_attrs) |attr| if (std.mem.eql(u8, attr.name, "length")) return;
-    for (all_attrs) |attr| if (std.mem.eql(u8, attr.name, "length")) {
-        try w.print("    pub const get_length = {s}.get_length;\n\n", .{parent});
-        return;
-    };
 }
 
 /// Generate Zig code for all interfaces in a WebIDL file (.idl or .json)

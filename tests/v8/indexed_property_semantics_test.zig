@@ -493,12 +493,10 @@ test "an attribute of a CSSStyleDeclaration is set through its setter, not its n
 }
 
 /// Whether `Interface`'s binding installs a named property handler: the
-/// predicate interface.zig's createTemplate uses.
+/// table interface.zig's createTemplate installs it from
+/// (Meta.special_operations, through specialBinding).
 fn hasNamedGetter(comptime Interface: type) bool {
-    if (@hasDecl(Interface, "call_getNamedItem") or @hasDecl(Interface, "call_namedItem")) return true;
-    if (!@hasDecl(Interface, "call_getter")) return false;
-    const params = @typeInfo(@TypeOf(Interface.call_getter)).@"fn".params;
-    return params.len >= 2 and params[1].type == runtime.DOMString;
+    return @import("v8").interface_mod.specialBinding(Interface).named_getter != null;
 }
 
 test "a legacy platform object is a proxy exactly when its binding has named properties" {
@@ -519,7 +517,19 @@ test "a legacy platform object is a proxy exactly when its binding has named pro
         try std.testing.expect(!template_registry.isLegacyPlatformObject(name));
     }
     const named = .{ "HTMLCollection", "HTMLFormControlsCollection", "HTMLOptionsCollection", "NamedNodeMap", "Storage", "Plugin", "PluginArray", "MimeTypeArray", "CSSStyleDeclaration" };
-    inline for (named) |name| try std.testing.expect(template_registry.isLegacyPlatformObject(name));
+    inline for (named) |name| {
+        try std.testing.expect(template_registry.isLegacyPlatformObject(name));
+        // Each proxied one has named properties by its table.
+        try std.testing.expect(comptime hasNamedGetter(@field(interfaces, name)));
+    }
+    // The proxy's set trap sends every string to a named setter: Storage's
+    // setItem, and only Storage's of these (WebIDL 3.9.2 step 1.2).
+    try std.testing.expect(template_registry.hasNamedPropertySetter("Storage"));
+    try std.testing.expect(!template_registry.hasNamedPropertySetter("NamedNodeMap"));
+    try std.testing.expect(!template_registry.hasNamedPropertySetter("HTMLCollection"));
+    // CSSStyleDeclaration's named setter stands in for attributes: the set
+    // trap reaches `cssText`'s accessor first.
+    try std.testing.expect(!template_registry.hasNamedPropertySetter("CSSStyleDeclaration"));
 }
 
 test "primitiveGetterResult: numbers and booleans only, and its default is the conversion path" {

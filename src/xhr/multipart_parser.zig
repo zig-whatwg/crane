@@ -128,8 +128,11 @@ fn parsePartHeaders(allocator: Allocator, headers: []const u8) !PartInfo {
     while (lines.next()) |line| {
         if (line.len == 0) continue;
 
-        // Parse Content-Disposition header
-        if (std.mem.startsWith(u8, line, "Content-Disposition:")) {
+        // RFC 7578 part-header names are ASCII case-insensitive; values keep
+        // their case. Chrome/Firefox/Safari pass body/formdata 3/3, including
+        // lowercase headers (wpt.fyi cc74d2669f).
+        // https://wpt.fyi/results/fetch/api/body/formdata.any.html?sha=cc74d2669f
+        if (std.ascii.startsWithIgnoreCase(line, "Content-Disposition:")) {
             const header_value = std.mem.trim(u8, line[20..], " ");
             const parsed = try parseContentDisposition(header_value);
             if (parsed.name) |n| {
@@ -144,7 +147,7 @@ fn parsePartHeaders(allocator: Allocator, headers: []const u8) !PartInfo {
             }
         }
         // Parse Content-Type header
-        else if (std.mem.startsWith(u8, line, "Content-Type:")) {
+        else if (std.ascii.startsWithIgnoreCase(line, "Content-Type:")) {
             const header_value = std.mem.trim(u8, line[13..], " ");
             const owned = try allocator.dupe(u8, header_value);
             if (content_type) |previous| allocator.free(previous);
@@ -213,11 +216,19 @@ pub fn parseMultipartFormData(
         return error.InvalidMultipartBody;
     }
 
-    // Skip first boundary (including CRLF after it)
+    // A zero-part body starts with the close-delimiter itself, before any
+    // CRLF (RFC 2046 section 5.1.1). Blink's FormData encoder appends it
+    // unconditionally; Chrome/Firefox/Safari pass body/formdata 3/3 at
+    // wpt.fyi cc74d2669f, including empty FormData round trips.
+    // https://wpt.fyi/results/fetch/api/body/formdata.any.html?sha=cc74d2669f
     var remaining = body[first_boundary.len..];
+    if (std.mem.startsWith(u8, remaining, "--")) return entries.toOwnedSlice(allocator);
+
+    // An opening delimiter must be followed by a part, not just EOF/CRLF.
     if (std.mem.startsWith(u8, remaining, "\r\n")) {
         remaining = remaining[2..];
     }
+    if (remaining.len == 0) return error.InvalidMultipartBody;
 
     // Process parts until we hit final boundary
     while (remaining.len > 0) {

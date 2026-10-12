@@ -70,9 +70,13 @@ pub const CSSTransformValue = struct {
 
         pub const has_constructor = true;
 
-        /// The anonymous indexed getter (`getter T (unsigned long index)`,
-        /// `call_getter`) is implemented: the binding installs indexed access.
-        pub const indexed_getter_implemented = @hasDecl(CSSTransformValueImpl, "call_getter");
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_getter", .implemented = @hasDecl(CSSTransformValueImpl, "call_getter") },
+            .indexed_setter = .{ .function = "call_setter", .implemented = @hasDecl(CSSTransformValueImpl, "call_setter") },
+        };
 
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
@@ -147,13 +151,17 @@ pub const CSSTransformValue = struct {
         return try CSSTransformValueImpl.get_is2D(instance);
     }
 
-    pub fn call_setter(instance: *runtime.Instance, index: u32, val: *runtime.Instance) anyerror!void {
-        return try CSSTransformValueImpl.call_setter(instance, index, val);
-    }
-
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         if (comptime @hasDecl(CSSTransformValueImpl, "call_getter")) {
             return try CSSTransformValueImpl.call_getter(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_setter(instance: *runtime.Instance, index: u32, val: *runtime.Instance) anyerror!void {
+        if (comptime @hasDecl(CSSTransformValueImpl, "call_setter")) {
+            return try CSSTransformValueImpl.call_setter(instance, index, val);
         } else {
             return error.NotImplemented;
         }

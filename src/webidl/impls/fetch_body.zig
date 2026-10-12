@@ -614,21 +614,31 @@ const Package = struct {
 };
 
 /// formData()'s parse of `bytes` by the object's Content-Type:
-/// multipart/form-data with its boundary, or
-/// application/x-www-form-urlencoded - also, as before, for no type at
-/// all, and an empty body is an empty FormData whatever the type.
-/// error.TypeError when the parse fails or another type says nothing about
-/// how. OWNED.
+/// multipart/form-data with its parsed boundary, or
+/// application/x-www-form-urlencoded. `mime_type` is borrowed from Fetch's
+/// "get the MIME type" result. OWNED result; unsupported/missing types and
+/// malformed multipart bodies throw TypeError, including an empty body.
 ///
-/// TODO: the spec parses by the MIME type's essence, and throws for no
-/// type and for an empty body the type cannot parse.
-pub fn parseFormData(allocator: std.mem.Allocator, content_type: ?[]const u8, bytes: []const u8) !*xhr.form_data.FormData {
+/// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
+/// wpt.fyi cc74d2669f: request-consume-empty.any.html and
+/// response-consume-empty.any.html each pass 13/14 in Chrome/Firefox/Safari;
+/// all three formData empty-body cases pass in all three browsers.
+/// https://wpt.fyi/results/fetch/api/response/response-consume-empty.any.html?sha=cc74d2669f
+pub fn parseFormData(allocator: std.mem.Allocator, mime_type: ?*const @import("mimesniff").MimeType, bytes: []const u8) !*xhr.form_data.FormData {
+    // Body formData steps 1-3: dispatch on the extracted MIME essence.
+    const mime = mime_type orelse return error.TypeError;
+    const essence = try fetch.internal.mime.essenceBytes(allocator, mime.*);
+    defer allocator.free(essence);
+    const multipart = std.mem.eql(u8, essence, "multipart/form-data");
+    if (!multipart and !std.mem.eql(u8, essence, "application/x-www-form-urlencoded")) return error.TypeError;
+
     const form_data = try xhr.form_data.FormData.init(allocator);
     errdefer form_data.deinit();
-    if (bytes.len == 0) return form_data;
-    const ct = content_type orelse "";
-    if (std.mem.indexOf(u8, ct, "multipart/form-data") != null) {
-        const boundary = xhr.multipart_parser.extractBoundary(allocator, ct) catch return error.TypeError;
+    if (multipart) {
+        // Step 2, multipart branch: MIME parsing keeps the first boundary,
+        // removes HTTP quoted-string escapes and preserves its case.
+        const index = fetch.internal.mime.parameterIndex(mime.*, "boundary") orelse return error.TypeError;
+        const boundary = try @import("infra").bytes.isomorphicEncode(allocator, mime.parameters.entries.items()[index].value);
         defer allocator.free(boundary);
         const entries = xhr.multipart_parser.parseMultipartFormData(allocator, bytes, boundary) catch return error.TypeError;
         defer {
@@ -642,7 +652,6 @@ pub fn parseFormData(allocator: std.mem.Allocator, content_type: ?[]const u8, by
         };
         return form_data;
     }
-    if (content_type != null and std.mem.indexOf(u8, ct, "application/x-www-form-urlencoded") == null) return error.TypeError;
     const tuples = form_parser.parse(allocator, bytes) catch return error.TypeError;
     defer {
         for (tuples) |tuple| tuple.deinit(allocator);
@@ -1013,10 +1022,6 @@ fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, bounda
     var out: std.ArrayListUnmanaged(u8) = .empty;
     errdefer out.deinit(allocator);
     const entries = interfaces.FormData.getEntriesForIterable(form) orelse &.{};
-    // No entries, no parts - and no closing delimiter either: an empty
-    // FormData is an empty body in every engine
-    // (fetch/api/response/response-consume-empty.any.js).
-    if (entries.len == 0) return out.toOwnedSlice(allocator);
     for (entries) |entry| {
         try out.appendSlice(allocator, "--");
         try out.appendSlice(allocator, boundary);
@@ -1056,6 +1061,15 @@ fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, bounda
         }
         try out.appendSlice(allocator, "\r\n");
     }
+    // HTML 4.10.22.8 step 2: finish the multipart encoding even with no
+    // entries, as Blink FormData::EncodeMultiPartFormData does.
+    // At wpt.fyi cc74d2669f, Chrome/Firefox/Safari pass body/formdata 3/3
+    // (including empty round trips), but request/response-consume-empty
+    // only 13/14: each fails "Consume empty FormData ... body as text",
+    // which wrongly expects zero bytes. Crane intentionally fails it too.
+    // https://wpt.fyi/results/fetch/api/body/formdata.any.html?sha=cc74d2669f
+    // https://wpt.fyi/results/fetch/api/response/response-consume-empty.any.html?sha=cc74d2669f
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/forms/form_data.cc
     try out.appendSlice(allocator, "--");
     try out.appendSlice(allocator, boundary);
     try out.appendSlice(allocator, "--\r\n");

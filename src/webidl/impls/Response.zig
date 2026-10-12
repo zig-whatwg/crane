@@ -17,8 +17,6 @@ const callbacks = @import("callbacks");
 const fetch = @import("fetch");
 const InternalResponse = fetch.internal.InternalResponse;
 
-// Import Blob WebIDL wrapper
-const BlobImpl = @import("Blob.zig");
 const webidl = @import("webidl");
 
 const Response = interfaces.Response;
@@ -314,7 +312,7 @@ fn initializeResponse(instance: *runtime.Instance, init_dict: dictionaries.Respo
     //      contain `Content-Type`, then append (`Content-Type`, body's type).
     if (b.content_type) |content_type| {
         if (!internal.response.header_list.contains("Content-Type")) {
-            try internal.response.header_list.append("Content-Type", content_type);
+            try internal.response.header_list.appendBodyContentType(content_type);
         }
     }
 }
@@ -609,21 +607,38 @@ fn bodyOwner(instance: *runtime.Instance) ?fetch_body.Owner {
 fn packageSteps(instance: *runtime.Instance, method: fetch_body.Method, bytes: []const u8) anyerror!*runtime.Instance {
     const internal = instance.getState(State).own._internal.?;
     const allocator = internal.allocator;
-    const content_type = internal.response.header_list.get(allocator, "content-type") catch null;
-    defer if (content_type) |ct| allocator.free(ct);
     switch (method) {
-        // blob(): a Blob whose contents are bytes and whose type is this's
-        // MIME type (BlobData lowercases it, and drops one it cannot hold).
+        // Script/network headers: Fetch Body extracts the header list's MIME type.
+        // wpt.fyi cc74d2669f, parsing.any.html, Request/Response: Chrome
+        // 358/942, Firefox 677/942, Safari 344/942. For
+        // text/html;charset=gbk;charset=windows-1255 they respectively keep
+        // both parameters, keep the first, or drop both. The three-way tie
+        // follows Fetch's extraction; Blob still lowercases/range-filters it.
+        // https://wpt.fyi/results/mimesniff/mime-types/parsing.any.html?sha=cc74d2669f
         .blob => {
-            const blob_data = try @import("file").BlobData.init(allocator, bytes, content_type orelse "");
-            errdefer blob_data.deinit();
-            return BlobImpl.createFromBlobData(allocator, instance.ctx, blob_data);
+            // Generated body types retain their formatting before Blob's
+            // normalization. At wpt.fyi cc74d2669f, response-consume.html is
+            // Chrome 40/40, Safari 40/40, Firefox 39/40: Firefox alone fails
+            // FormData-to-Blob by serializing away the parameter space.
+            // WebKit's blobFromData (FetchBodyConsumer.cpp) normalizes the type.
+            // https://wpt.fyi/results/fetch/api/response/response-consume.html?sha=cc74d2669f
+            // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/Modules/fetch/FetchBodyConsumer.cpp
+            if (internal.response.header_list.generatedBodyContentType()) |generated| {
+                return @import("dom").blob_bytes.create(instance.ctx, bytes, generated);
+            }
+            var mime_type = try fetch.internal.mime.extractMimeType(allocator, &internal.response.header_list);
+            defer if (mime_type) |*mime| mime.deinit();
+            const blob_type = if (mime_type) |mime| try @import("mimesniff").serializeMimeTypeToBytes(allocator, mime) else "";
+            defer if (mime_type != null) allocator.free(blob_type);
+            return @import("dom").blob_bytes.create(instance.ctx, bytes, blob_type);
         },
         // formData(): the entries this's Content-Type says how to parse
         // bytes into.
         .form_data => {
+            var mime_type = try fetch.internal.mime.extractMimeType(allocator, &internal.response.header_list);
+            defer if (mime_type) |*mime| mime.deinit();
             const FormDataImpl = @import("FormData.zig");
-            const form_data = try fetch_body.parseFormData(allocator, content_type, bytes);
+            const form_data = try fetch_body.parseFormData(allocator, if (mime_type) |*mime| mime else null, bytes);
             errdefer form_data.deinit();
             return FormDataImpl.createFromInternal(allocator, instance.ctx, form_data);
         },
