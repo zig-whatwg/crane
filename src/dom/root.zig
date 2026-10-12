@@ -106,6 +106,9 @@ pub const navigation_history_entries = @import("navigation_history_entries.zig")
 pub const history_traversal = @import("history_traversal.zig");
 pub const auxiliary_navigables = @import("auxiliary_navigables.zig");
 pub const global_settings = @import("global_settings.zig");
+/// Origin-Agent-Cluster and each browsing context group's historical agent
+/// cluster key map: whether a window's agent cluster is origin-keyed.
+pub const agent_cluster_keys = @import("agent_cluster_keys.zig");
 /// The Browser's web state a realm reaches through its scope.
 pub const browser_state = @import("browser_state.zig");
 /// The CookieStores that hear their Browser's cookie jar, on any thread.

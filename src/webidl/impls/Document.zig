@@ -2217,8 +2217,12 @@ pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) anyerro
     if (!try isRegistrableDomainSuffixOfOrEqualTo(allocator, value, effective)) return error.SecurityError;
 
     // 6. "If the surrounding agent's agent cluster's is origin-keyed is true,
-    // then return." Crane's agent clusters are site-keyed
-    // (Window.originAgentCluster is false).
+    // then return." This document's window's agent cluster: script that
+    // reaches this document is same origin-domain with it, so in its cluster
+    // (Window.originAgentCluster answers for it).
+    if (internal.default_view) |window| {
+        if (try interfaces.Window.get_originAgentCluster(window)) return;
+    }
 
     // 7. "Set this's origin's domain to the result of parsing the given
     // value."
