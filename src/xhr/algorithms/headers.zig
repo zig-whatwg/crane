@@ -307,14 +307,17 @@ pub fn overrideMimeType(
         state.override_mime_type = null;
     }
 
-    // Step 2: Set this's override MIME type to the result of parsing mime
+    // Step 2: Set this's override MIME type to the result of parsing mime.
+    // Step 3: If this's override MIME type is failure, then set this's
+    // override MIME type to application/octet-stream. (Parsing reports
+    // failure as null.)
     const mimesniff = @import("mimesniff");
-    if (mimesniff.parseMimeType(allocator, mime)) |parsed| {
-        state.override_mime_type = parsed;
-    } else |_| {
-        // Step 3: If parsing fails, set to application/octet-stream
-        state.override_mime_type = mimesniff.parseMimeType(allocator, "application/octet-stream") catch null;
-    }
+    const parsed = mimesniff.parseMimeType(allocator, mime) catch |err| switch (err) {
+        error.OutOfMemory => return HeaderError.OutOfMemory,
+        else => null,
+    };
+    state.override_mime_type = parsed orelse
+        ((mimesniff.parseMimeType(allocator, "application/octet-stream") catch return HeaderError.OutOfMemory).?);
 }
 
 // =============================================================================
@@ -494,4 +497,27 @@ test "legacyUppercasedByteLessThan" {
     // Length comparison when prefix matches
     try std.testing.expect(legacyUppercasedByteLessThan("a", "ab"));
     try std.testing.expect(!legacyUppercasedByteLessThan("ab", "a"));
+}
+
+test "overrideMimeType - a MIME type that fails to parse overrides as application/octet-stream" {
+    const allocator = std.testing.allocator;
+    const mimesniff = @import("mimesniff");
+
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+
+    // 2. "If this's override MIME type is failure, then set this's override
+    //    MIME type to application/octet-stream."
+    try overrideMimeType(&state, "bogus");
+    const override = state.override_mime_type orelse return error.TestExpectedOverrideMimeType;
+    const serialized = try mimesniff.serializeMimeTypeToBytes(allocator, override);
+    defer allocator.free(serialized);
+    try std.testing.expectEqualStrings("application/octet-stream", serialized);
+
+    // A MIME type that parses is the override as it is.
+    try overrideMimeType(&state, "text/plain;charset=Shift_JIS");
+    const parsed = state.override_mime_type orelse return error.TestExpectedOverrideMimeType;
+    const parsed_bytes = try mimesniff.serializeMimeTypeToBytes(allocator, parsed);
+    defer allocator.free(parsed_bytes);
+    try std.testing.expectEqualStrings("text/plain;charset=Shift_JIS", parsed_bytes);
 }
