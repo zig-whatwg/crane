@@ -116,3 +116,53 @@ test "a CookieStore made with or without its construction argument is torn down 
     const secure = try interfaces.CookieStore.init(allocator, &realm.ctx);
     interfaces.CookieStore.deinit(secure);
 }
+
+test "a CharacterData node's data is a construction argument of every CharacterData" {
+    // WebKit: `Text::create(document, String&& data)` -> CharacterData(document,
+    // data, ...). Text(data), Comment(data), document.createTextNode and
+    // createProcessingInstruction give the data at construction; none runs
+    // "replace data" on a node no one can observe yet.
+    try testing.expect(interfaces.CharacterData.takesConstructionArg("data"));
+    try testing.expect(interfaces.Text.takesConstructionArg("data"));
+    try testing.expect(interfaces.CDATASection.takesConstructionArg("data"));
+    try testing.expect(interfaces.Comment.takesConstructionArg("data"));
+    try testing.expect(interfaces.ProcessingInstruction.takesConstructionArg("data"));
+    try testing.expect(!interfaces.Node.takesConstructionArg("data"));
+    try testing.expect(!interfaces.HTMLDivElement.takesConstructionArg("data"));
+
+    var realm: Realm = undefined;
+    try realm.init();
+    defer realm.deinit();
+
+    inline for (.{ interfaces.Text, interfaces.CDATASection, interfaces.Comment, interfaces.ProcessingInstruction }) |Interface| {
+        // Long enough for CharacterData's heap storage, past its inline bytes.
+        const long = "data given at construction, " ** 4;
+        inline for (.{ "", "x", long }) |data| {
+            const node = try Interface.initWith(allocator, &realm.ctx, .{ .data = data });
+            defer Interface.deinit(node);
+            var read = try interfaces.CharacterData.get_data(node);
+            defer read.deinit(node.ctx.allocator);
+            try testing.expectEqualStrings(data, read.asSlice());
+            try testing.expectEqual(@as(u32, data.len), try interfaces.CharacterData.get_length(node));
+        }
+    }
+}
+
+test "dom.character_data reads a CharacterData node's data in place" {
+    var realm: Realm = undefined;
+    try realm.init();
+    defer realm.deinit();
+    const character_data = @import("dom").character_data;
+
+    const text = try interfaces.Text.initWith(allocator, &realm.ctx, .{ .data = "in place" });
+    defer interfaces.Text.deinit(text);
+    try testing.expectEqualStrings("in place", character_data.dataOf(text).?);
+    // Borrowed until the data next changes: a change is seen on the next read.
+    try interfaces.CharacterData.set_data(text, runtime.DOMString.initInterned("changed"));
+    try testing.expectEqualStrings("changed", character_data.dataOf(text).?);
+
+    // A node with no CharacterData part has no data.
+    const div = try interfaces.HTMLDivElement.init(allocator, &realm.ctx);
+    defer interfaces.HTMLDivElement.deinit(div);
+    try testing.expect(character_data.dataOf(div) == null);
+}
