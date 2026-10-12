@@ -17,7 +17,9 @@ context's logger also printed every binding TypeError to stderr once any page ha
 
 **Fix**: the operation gets `context_manager.get(context)` - the current realm's ContextData - and a
 context no realm was made for (a binding test's bare context) gets one made for the call and ended
-with it (namespace.zig `CallRealm`). The argument arena uses the same allocator.
+with it (namespace.zig `CallRealm`). The arguments' call-scoped arena stays over the C allocator:
+over the realm's (the runner's DebugAllocator) every console.log and CSS.escape was half again as
+slow in gc_bench.
 
 **Takeaway**: **A per-realm algorithm reaches its state through the realm the engine has entered,
 never through a value cached by whoever called first - "first caller wins" is a global in disguise.**

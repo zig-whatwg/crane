@@ -63,7 +63,7 @@ const CallRealm = struct {
     realm: ?runtime.Context = null,
     scoped: ?runtime.ContextData = null,
 
-    /// What the operation's allocations and its arguments' arena come from.
+    /// What the operation's allocations come from.
     fn allocatorOf(isolate: *v8.Isolate, context: *v8.Context) std.mem.Allocator {
         if (context_manager.get(context)) |realm| return realm.getAllocator();
         return isolate_allocator.getIsolateAllocator(isolate) orelse std.heap.c_allocator;
@@ -447,12 +447,15 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     // Extract and convert arguments at compile time based on parameter types
                     var args: std.meta.ArgsTuple(@TypeOf(namespace_fn)) = undefined;
 
-                    // The arguments convert into an arena over the realm's
-                    // allocator, released when the call returns - borrowed for
-                    // the call, as an interface operation's are - whatever
-                    // their size: a 4 KB stack buffer made any longer string
-                    // argument a TypeError ("Type error in argument").
-                    var arena = std.heap.ArenaAllocator.init(CallRealm.allocatorOf(isolate, context));
+                    // The arguments convert into an arena, released when the
+                    // call returns - borrowed for the call, as an interface
+                    // operation's are - whatever their size: a 4 KB stack
+                    // buffer made any longer string argument a TypeError
+                    // ("Type error in argument"). Over the C allocator: the
+                    // arena never outlives the call, and the realm's (the
+                    // runner's DebugAllocator) made every console.log or
+                    // CSS.escape half again as slow in gc_bench.
+                    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
                     defer arena.deinit();
                     const allocator = arena.allocator();
 
