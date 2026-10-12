@@ -51,16 +51,27 @@ pub fn parseCookie(allocator: std.mem.Allocator, input: []const u8, request_path
     const semicolon = std.mem.indexOfScalar(u8, input, ';');
     const name_value_input = if (semicolon) |i| input[0..i] else input;
     var attributes_input = if (semicolon) |i| input[i..] else "";
-    // 7-10. No `=`: a nameless cookie whose value is the whole pair.
+    // 7-10 / RFC 6265bis 5.6 step 3: no `=` means a nameless cookie whose
+    // value is the whole pair. Chrome is nameless, Firefox uses the token
+    // as a name with an empty value, Safari stores nothing: three-way
+    // split, spec wins (cookies lane Q5, 2026-10-12). This deliberately
+    // differs from the explicit-empty-name case below; each follows the
+    // browsers-decide rule independently.
     var name: []const u8 = "";
     var value: []const u8 = name_value_input;
-    if (std.mem.indexOfScalar(u8, name_value_input, '=')) |eq| {
+    const equals = std.mem.indexOfScalar(u8, name_value_input, '=');
+    if (equals) |eq| {
         name = name_value_input[0..eq];
         value = name_value_input[eq + 1 ..];
     }
     // 11. Remove leading and trailing WSP from both.
     name = trimWsp(name);
     value = trimWsp(value);
+    // Deliberate deviation from 5.6 step 3: Firefox and Safari reject an
+    // explicitly empty name (`=value`); Chrome accepts it. Their aligned
+    // cookies/name/name.html assertions decide this independent case
+    // (cookies lane Q5, 2026-10-12). Do not reject the no-`=` case above.
+    if (equals != null and name.len == 0) return null;
     // 12. Empty, or longer than 4096 bytes together: failure.
     if (name.len + value.len == 0 or name.len + value.len > max_name_value_size) return null;
 
@@ -110,8 +121,16 @@ pub fn parseCookie(allocator: std.mem.Allocator, input: []const u8, request_path
             cookie.expiry_time = if (capped <= 0) earliest_representable_ms else clock.wallMillis() +| (capped * 1000);
             max_age_seen = true;
         } else if (std.ascii.eqlIgnoreCase(attribute_name, "Domain")) {
-            // 15.15. The host the value host-parses to, or failure.
-            if (try parseDomainAttribute(allocator, attribute_value)) |host| {
+            // RFC 6265bis 5.6.3 / 5.7: the LAST Domain attribute wins,
+            // including an empty value, which selects a host-only cookie.
+            // This differs from layered-cookies 15.15's host-parse failure.
+            // Chromium ParsedCookie::SetupAttributes/GetCookieDomainWithString
+            // and Gecko CookieParser::ParseAttributes/FixDomain agree.
+            if (attribute_value.len == 0) {
+                if (cookie.domain) |d| allocator.free(d);
+                cookie.domain = null;
+                parsed.host_failure = false;
+            } else if (try parseDomainAttribute(allocator, attribute_value)) |host| {
                 defer allocator.free(host);
                 try cookie.setDomain(host);
                 parsed.host_failure = false;
@@ -121,10 +140,16 @@ pub fn parseCookie(allocator: std.mem.Allocator, input: []const u8, request_path
                 parsed.host_failure = true;
             }
         } else if (std.ascii.eqlIgnoreCase(attribute_name, "Path")) {
-            // 15.16. Only a value starting with `/`.
+            // RFC 6265bis 5.6.4: each Path attribute selects its value or
+            // the default path. Chromium CanonPathWithString and Gecko
+            // CookieParser::FixPath do this for the last attribute, unlike
+            // layered-cookies 15.16, which would retain the earlier path.
             if (attribute_value.len > 0 and attribute_value[0] == '/') {
                 try cookie.setPath(attribute_value);
                 cookie.has_path = true;
+            } else {
+                try cookie.setPath(domain_matching.getDefaultPath(request_path));
+                cookie.has_path = false;
             }
         } else if (std.ascii.eqlIgnoreCase(attribute_name, "Secure")) {
             // 15.17.
@@ -133,7 +158,11 @@ pub fn parseCookie(allocator: std.mem.Allocator, input: []const u8, request_path
             // 15.18.
             cookie.http_only = true;
         } else if (std.ascii.eqlIgnoreCase(attribute_name, "SameSite")) {
-            // 15.19. Anything else leaves it as it was.
+            // RFC 6265bis 5.6.7 steps 1-5: an unknown last value selects
+            // Default. Chromium ParsedCookie::SameSite and Gecko
+            // CookieParser::ParseAttributes agree; layered-cookies 15.19
+            // instead leaves the previous value, which browsers do not.
+            cookie.same_site = .unset;
             if (std.ascii.eqlIgnoreCase(attribute_value, "None")) cookie.same_site = .none;
             if (std.ascii.eqlIgnoreCase(attribute_value, "Strict")) cookie.same_site = .strict;
             if (std.ascii.eqlIgnoreCase(attribute_value, "Lax")) cookie.same_site = .lax;
@@ -199,7 +228,7 @@ pub const StoreOptions = struct {
     /// Cookie Store API.
     http_only_allowed: bool,
     allow_non_host_only_cookie_for_public_suffix: bool = false,
-    /// The same-site mode of the request was "strict-or-less".
+    /// Received same-site, or via an HTTP top-level navigation (5.7.18).
     same_site_strict_or_lax_allowed: bool = true,
 };
 
@@ -654,10 +683,7 @@ test "Parse a Cookie: CTLs, the name-value pair, and nameless cookies" {
     try std.testing.expectEqualStrings("", nameless.cookie.name);
     try std.testing.expectEqualStrings("just-a-value", nameless.cookie.value);
 
-    var equals = (try parseCookie(allocator, "=value", "/")).?;
-    defer equals.deinit();
-    try std.testing.expectEqualStrings("", equals.cookie.name);
-    try std.testing.expectEqualStrings("value", equals.cookie.value);
+    try std.testing.expect(try parseCookie(allocator, "=value", "/") == null);
 
     // 1 + 4095 bytes fit; 1 + 4096 do not.
     const long = "a=" ++ "x" ** 4095;

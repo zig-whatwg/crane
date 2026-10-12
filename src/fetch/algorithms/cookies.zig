@@ -25,7 +25,7 @@ pub fn requestCookieHeader(allocator: Allocator, request: *const InternalRequest
     const url = RequestUrl.of(request.currentUrl()) orelse return null;
     // 2. Let sameSite be the result of determining the same-site mode for
     //    request.
-    const same_site = sameSiteMode(request);
+    const same_site = try sameSiteMode(allocator, request);
     // 3. Let isSecure be true if request's current URL's scheme is "https".
     // 4. Let httpOnlyAllowed be true.
     // 5. Let cookies be the result of running retrieve cookies given
@@ -54,16 +54,20 @@ pub fn storeResponseCookies(allocator: Allocator, request: *const InternalReques
     //    then it should return.
     const jar = request.cookie_jar orelse return;
     const url = RequestUrl.of(request.currentUrl()) orelse return;
+    // No cookie to store: avoid a site/PSL comparison on ordinary responses.
+    if (!headers.contains("Set-Cookie")) return;
     // 2. allowNonHostOnlyCookieForPublicSuffix is false.
     // 3. isSecure: request's current URL's scheme is "https".
     // 4. httpOnlyAllowed is true.
-    // 5. sameSiteStrictOrLaxAllowed: the same-site mode is
-    //    "strict-or-less".
+    // RFC 6265bis 5.7 step 18.3: a top-level navigation's response may
+    // create every SameSite kind even when its request could not send it.
+    // Chromium ComputeSameSiteContextForResponse does the same (Q6).
+    const top_level = request.mode == .navigate and request.destination == .document;
     const options: cookiestore.StoreOptions = .{
         .is_secure = url.secure,
         .host = url.host,
         .http_only_allowed = true,
-        .same_site_strict_or_lax_allowed = sameSiteMode(request) == .strict_or_less,
+        .same_site_strict_or_lax_allowed = top_level or try sameSiteMode(allocator, request) == .strict_or_less,
     };
     // 6. For each header of response's header list whose name is
     //    `Set-Cookie` (each processed on its own - they never combine):
@@ -79,14 +83,47 @@ pub fn storeResponseCookies(allocator: Allocator, request: *const InternalReques
 
 /// Fetch "determine the same-site mode" for `request`.
 ///
-/// TODO: steps 2, 4 and 5 compare sites - a top-level navigation's
-/// initiator, the client's "has cross-site ancestor", a cross-site redirect
-/// taint - and there is no "same site" (the registrable-domain comparison)
-/// in fetch yet; until there is, every request is "strict-or-less".
-fn sameSiteMode(request: *const InternalRequest) cookiestore.SameSiteMode {
-    _ = request;
-    // 6. Return "strict-or-less".
-    return .strict_or_less;
+/// RFC 6265bis 5.2/5.8.3, with Chromium cookie_util.cc
+/// ComputeSameSiteContextForRequest's separation of site and navigation.
+fn sameSiteMode(allocator: Allocator, request: *const InternalRequest) !cookiestore.SameSiteMode {
+    const top_level = request.mode == .navigate and request.destination == .document;
+    // TODO (cookies lane Q3, 2026-10-12): navigation must populate this
+    // initiator, mode/destination and method. The settings/navigation lane
+    // owns those captured facts; do not infer them from a live Window here.
+    const origin = request.top_level_navigation_initiator_origin orelse switch (request.origin) {
+        .origin => |origin| origin,
+        // A user-agent request without a client starts at its own site.
+        .client => request.getUrl(),
+    };
+    var same_site = try cookiestore.sameSite(allocator, origin, request.currentUrl());
+    // RFC 6265bis 5.2: every redirect must remain same-site. Browser WPT
+    // failures stop at different assertions (no majority); Q6 follows the
+    // spec here rather than inferring unreported later assertion results.
+    if (same_site) {
+        for (request.url_list.items) |url| {
+            if (!try cookiestore.sameSite(allocator, origin, url)) {
+                same_site = false;
+                break;
+            }
+        }
+    }
+    // TODO (Q3): a client's cross-site ancestor makes its site for cookies
+    // opaque, even for a fetch to its own origin. That captured client fact
+    // does not yet exist on InternalRequest; settings/navigation owns it.
+    if (same_site) return .strict_or_less;
+    if (top_level) {
+        // RFC 6265bis 5.8.3 step 3: safe top-level navigation permits Lax
+        // and Default. 5.6.7.2 permits recent Default on unsafe navigation;
+        // all three browsers send it on form-post-blank (Q6).
+        const method = request.method;
+        if (std.mem.eql(u8, method, "GET") or std.mem.eql(u8, method, "HEAD") or
+            std.mem.eql(u8, method, "OPTIONS") or std.mem.eql(u8, method, "TRACE")) return .lax_or_less;
+        return .lax_allowing_unsafe;
+    }
+    // Q6 integrator ruling: SameSite conformance sends None cross-site.
+    // Firefox/Safari third-party blocking is a separate Browser privacy
+    // policy, not a different SameSite rule; add no policy state here.
+    return .none;
 }
 
 const RequestUrl = cookiestore.RequestUrl;

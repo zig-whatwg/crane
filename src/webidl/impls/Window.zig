@@ -3649,9 +3649,8 @@ pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSVal
 // Named Property Access Support (for WindowProperties object)
 // ============================================================================
 
-// Import Element and Node impls for internal state access
+// Import Element's impl for internal state access
 const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
 const clock = @import("clock");
 
 /// HTML "named objects" of a Window (§7.2.2.3) that a name attribute makes:
@@ -3692,10 +3691,10 @@ fn findNamedElement(document: *runtime.Instance, name: []const u8) ?runtime.JSVa
 }
 
 fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?runtime.JSValue {
-    var child = NodeImpl.getFirstChild(node);
+    var child = interfaces.Node.get_firstChild(node) catch null;
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = interfaces.Node.get_nodeType(c) catch 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (ElementImpl.getInternal(c)) |elem_internal| {
                 const local_name = elem_internal.local_name.asSlice();
 
@@ -3724,7 +3723,7 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
             return found;
         }
 
-        child = NodeImpl.getNextSibling(c);
+        child = interfaces.Node.get_nextSibling(c) catch null;
     }
     return null;
 }
@@ -3752,10 +3751,10 @@ fn elementMatchesName(elem_internal: *const ElementImpl.InternalState, target_na
 
 /// Recursively check if document contains an element matching the name
 fn hasNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) bool {
-    var child = NodeImpl.getFirstChild(node);
+    var child = interfaces.Node.get_firstChild(node) catch null;
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = interfaces.Node.get_nodeType(c) catch 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (ElementImpl.getInternal(c)) |elem_internal| {
                 if (elementMatchesName(elem_internal, target_name)) {
                     return true;
@@ -3768,17 +3767,17 @@ fn hasNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) bo
             return true;
         }
 
-        child = NodeImpl.getNextSibling(c);
+        child = interfaces.Node.get_nextSibling(c) catch null;
     }
     return false;
 }
 
 /// Collect all named property names from the document (for enumeration)
 fn collectNamedElementNames(node: *runtime.Instance, names: *std.ArrayList(runtime.DOMString), allocator: std.mem.Allocator) !void {
-    var child = NodeImpl.getFirstChild(node);
+    var child = interfaces.Node.get_firstChild(node) catch null;
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = interfaces.Node.get_nodeType(c) catch 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (ElementImpl.getInternal(c)) |elem_internal| {
                 // Add id if present
                 const elem_id = elem_internal.id.asSlice();
@@ -3801,7 +3800,7 @@ fn collectNamedElementNames(node: *runtime.Instance, names: *std.ArrayList(runti
         // Recursively collect from descendants
         try collectNamedElementNames(c, names, allocator);
 
-        child = NodeImpl.getNextSibling(c);
+        child = interfaces.Node.get_nextSibling(c) catch null;
     }
 }
 

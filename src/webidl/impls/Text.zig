@@ -20,7 +20,6 @@ const infra = @import("infra");
 const Text = interfaces.Text;
 
 // Import related impls
-const CharacterDataImpl = @import("CharacterData.zig");
 const NodeImpl = @import("Node.zig");
 
 // Import DOM algorithms
@@ -120,14 +119,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// DOM §4.12 - Text(data)
 /// Creates a new Text node with the given data
 pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-    const instance = try Text.init(ctx.allocator, ctx);
-    errdefer Text.deinit(instance);
-
-    // Set the text data via CharacterData
+    // The data is CharacterData's construction argument.
     const data_slice = if (data.was_passed) data.value.asSlice() else "";
-    try CharacterDataImpl.setData(instance, data_slice);
-
-    return instance;
+    return Text.initWith(ctx.allocator, ctx, .{ .data = data_slice });
 }
 
 // =============================================================================
@@ -152,17 +146,17 @@ pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
     // Step 1: Walk backwards to find the first contiguous Text node
     var first: *runtime.Instance = instance;
-    while (NodeImpl.getPreviousSibling(first)) |prev| {
-        const prev_type = NodeImpl.getNodeType(prev) orelse break;
-        if (prev_type != NodeImpl.NodeType.TEXT_NODE) break;
+    while (interfaces.Node.get_previousSibling(first) catch null) |prev| {
+        const prev_type = interfaces.Node.get_nodeType(prev) catch break;
+        if (prev_type != interfaces.Node.get_TEXT_NODE()) break;
         first = prev;
     }
 
     // Step 2: Walk forward from first, collecting all contiguous Text node data
     var current: ?*runtime.Instance = first;
     while (current) |node| {
-        const node_type = NodeImpl.getNodeType(node) orelse break;
-        if (node_type != NodeImpl.NodeType.TEXT_NODE) break;
+        const node_type = interfaces.Node.get_nodeType(node) catch break;
+        if (node_type != interfaces.Node.get_TEXT_NODE()) break;
 
         // Get this Text node's data. Concatenated as code units: a pair
         // split across two nodes is one pair in the result (infra.wtf8).
@@ -171,7 +165,7 @@ pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
         try infra.wtf8.appendJoined(allocator, &result, data.asSlice());
 
         // Move to next sibling
-        current = NodeImpl.getNextSibling(node);
+        current = interfaces.Node.get_nextSibling(node) catch null;
     }
 
     const owned = try result.toOwnedSlice(allocator);
@@ -240,7 +234,7 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
     );
     errdefer Text.deinit(new_node);
 
-    if (NodeImpl.getOwnerDocument(instance)) |doc| {
+    if (interfaces.Node.get_ownerDocument(instance) catch null) |doc| {
         try NodeImpl.setOwnerDocument(new_node, doc);
     }
 

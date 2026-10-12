@@ -105,141 +105,48 @@ pub fn getRegistrableDomain(allocator: std.mem.Allocator, host: Host) !?[]const 
     }
 }
 
-/// Static buffer for PSL lookup results
-/// Safe because lookupPublicSuffix() callers immediately copy the result
-threadlocal var psl_result_buf: [256]u8 = undefined;
-
-/// Lookup public suffix in PSL using the full algorithm
-///
-/// Implements the PSL matching algorithm:
-/// https://publicsuffix.org/list/
-///
-/// Rules:
-/// 1. Exception rules (!): Highest priority - domain is NOT a public suffix
-/// 2. Wildcard rules (*): Match any label at that position
-/// 3. Exact match: Domain is a public suffix
-/// 4. Default: Last label (TLD)
-///
-/// Returns a slice into the thread-local static buffer.
-/// Callers MUST copy the result before calling this function again.
+/// Look up a public suffix with the PSL formal algorithm. Walk labels from
+/// the right, retaining the longest exact/wildcard rule; an exception wins.
+/// The result borrows `domain` (without its final dot). No label count or
+/// serialized-host buffer bounds the lookup. Chromium's
+/// GetRegistryInTrimmedHost likewise returns a slice of the original host.
 fn lookupPublicSuffix(domain: []const u8) ?[]const u8 {
-    // Remove trailing dot for lookup
-    const domain_no_dot = if (std.mem.endsWith(u8, domain, "."))
-        domain[0 .. domain.len - 1]
-    else
-        domain;
+    const host = if (std.mem.endsWith(u8, domain, ".")) domain[0 .. domain.len - 1] else domain;
+    if (host.len == 0) return null;
 
-    if (domain_no_dot.len == 0) return null;
+    // No matching rule means the implicit `*`: the rightmost label.
+    var start = if (std.mem.lastIndexOfScalar(u8, host, '.')) |dot| dot + 1 else 0;
+    var best = host[start..];
+    // Prefixing a rule with ! or *. needs space only for a TABLE entry,
+    // not for the input host. Oversized candidates cannot be in the map.
+    var rule: [psl_data.PSL_RULES.max_len]u8 = undefined;
+    while (true) {
+        const suffix = host[start..];
+        // PSL exception: remove the exception's leftmost label.
+        if (suffix.len < rule.len) {
+            rule[0] = '!';
+            @memcpy(rule[1 .. suffix.len + 1], suffix);
+            if (psl_data.PSL_RULES.has(rule[0 .. suffix.len + 1])) {
+                const dot = std.mem.indexOfScalar(u8, suffix, '.') orelse return null;
+                return suffix[dot + 1 ..];
+            }
+        }
+        if (psl_data.PSL_RULES.has(suffix) and suffix.len > best.len) best = suffix;
+        if (start == 0) break;
 
-    // Split domain into labels (from right to left)
-    // e.g., "www.example.com" → ["www", "example", "com"]
-    var labels: [64][]const u8 = undefined;
-    var label_count: usize = 0;
-
-    var it = std.mem.splitScalar(u8, domain_no_dot, '.');
-    while (it.next()) |label| : (label_count += 1) {
-        if (label_count >= labels.len) break;
-        labels[label_count] = label;
+        const before_dot = start - 1;
+        const previous = if (std.mem.lastIndexOfScalar(u8, host[0..before_dot], '.')) |dot| dot + 1 else 0;
+        // `*.suffix` consumes exactly the preceding label, however long it
+        // is. The match is an input slice, never a reconstructed string.
+        if (suffix.len + 2 <= rule.len) {
+            rule[0] = '*';
+            rule[1] = '.';
+            @memcpy(rule[2 .. suffix.len + 2], suffix);
+            if (psl_data.PSL_RULES.has(rule[0 .. suffix.len + 2])) best = host[previous..];
+        }
+        start = previous;
     }
-
-    if (label_count == 0) return null;
-
-    // Try all possible suffixes from longest to shortest
-    // We need to find the longest matching rule in PSL
-    var best_match_len: usize = 0;
-    var found_match = false;
-
-    // Start with longest suffix (full domain) and work down to single label (TLD)
-    var suffix_len: usize = label_count;
-    while (suffix_len > 0) : (suffix_len -= 1) {
-        // Build suffix string: join labels[label_count - suffix_len..]
-        const start_idx = label_count - suffix_len;
-
-        var suffix_buf: [256]u8 = undefined;
-        var pos: usize = 0;
-        for (labels[start_idx..label_count], 0..) |label, i| {
-            if (i > 0) {
-                suffix_buf[pos] = '.';
-                pos += 1;
-            }
-            if (pos + label.len >= suffix_buf.len) break;
-            @memcpy(suffix_buf[pos..][0..label.len], label);
-            pos += label.len;
-        }
-        const suffix = suffix_buf[0..pos];
-
-        // 1. Check for exception rule (!suffix)
-        var exception_buf: [257]u8 = undefined;
-        exception_buf[0] = '!';
-        if (suffix.len + 1 < exception_buf.len) {
-            @memcpy(exception_buf[1..][0..suffix.len], suffix);
-            const exception_rule = exception_buf[0 .. suffix.len + 1];
-
-            if (psl_data.PSL_RULES.has(exception_rule)) {
-                // Exception rule: the domain WITHOUT the first label is the public suffix
-                // e.g., if "!www.ck" is in PSL and we're checking "www.ck",
-                // then "ck" is the public suffix
-                if (suffix_len > 1) {
-                    const ps_start = label_count - (suffix_len - 1);
-                    var ps_pos: usize = 0;
-                    for (labels[ps_start..label_count], 0..) |label, i| {
-                        if (i > 0) {
-                            psl_result_buf[ps_pos] = '.';
-                            ps_pos += 1;
-                        }
-                        @memcpy(psl_result_buf[ps_pos..][0..label.len], label);
-                        ps_pos += label.len;
-                    }
-                    return psl_result_buf[0..ps_pos];
-                }
-            }
-        }
-
-        // 2. Check for exact match
-        if (psl_data.PSL_RULES.has(suffix)) {
-            if (suffix.len > best_match_len) {
-                @memcpy(psl_result_buf[0..suffix.len], suffix);
-                best_match_len = suffix.len;
-                found_match = true;
-            }
-        }
-
-        // 3. Check for wildcard rule (*.suffix)
-        // For wildcard, we need to match one more label
-        if (suffix_len > 1) {
-            const wildcard_start = label_count - suffix_len + 1;
-            var wc_buf: [256]u8 = undefined;
-            var wc_pos: usize = 0;
-            wc_buf[0] = '*';
-            wc_pos = 1;
-
-            for (labels[wildcard_start..label_count]) |label| {
-                if (wc_pos + 1 + label.len >= wc_buf.len) break;
-                wc_buf[wc_pos] = '.';
-                wc_pos += 1;
-                @memcpy(wc_buf[wc_pos..][0..label.len], label);
-                wc_pos += label.len;
-            }
-            const wildcard_rule = wc_buf[0..wc_pos];
-
-            if (psl_data.PSL_RULES.has(wildcard_rule)) {
-                // Wildcard matches: the full suffix is the public suffix
-                if (suffix.len > best_match_len) {
-                    @memcpy(psl_result_buf[0..suffix.len], suffix);
-                    best_match_len = suffix.len;
-                    found_match = true;
-                }
-            }
-        }
-    }
-
-    // Return best match or default (last label)
-    if (found_match) {
-        return psl_result_buf[0..best_match_len];
-    }
-
-    // Default: last label (TLD)
-    return labels[label_count - 1];
+    return best;
 }
 
 /// Lookup registrable domain in PSL

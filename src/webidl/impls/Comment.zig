@@ -9,10 +9,6 @@ const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const Comment = interfaces.Comment;
 
-// Parent class implementation
-const CharacterDataImpl = @import("CharacterData.zig");
-const NodeImpl = @import("Node.zig");
-
 pub const State = Comment.State;
 
 pub const ImplError = error{
@@ -72,14 +68,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// DOM §4.11 - Comment(data)
 /// Creates a new Comment node with the given data
 pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-    const instance = try Comment.init(ctx.allocator, ctx);
-    errdefer Comment.deinit(instance);
-
-    // Set the comment data via CharacterData
+    // The data is CharacterData's construction argument.
     const data_slice = if (data.was_passed) data.value.asSlice() else "";
-    try CharacterDataImpl.setData(instance, data_slice);
-
-    return instance;
+    return Comment.initWith(ctx.allocator, ctx, .{ .data = data_slice });
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,

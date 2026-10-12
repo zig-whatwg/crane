@@ -27,6 +27,7 @@ src/dom/attribute_change_steps.zig test_calls 1 G X decl:3796f88280404836
 src/dom/auxiliary_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/auxiliary_navigables.zig top_level_chooser 1 G P-res decl:687f4918d611e3cc
 src/dom/blob_bytes.zig steps 1 G H decl:da3da99c8e42439e
+src/dom/character_data.zig steps 1 G P-res decl:da3da99c8e42439e
 src/dom/child_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/cloning_steps.zig installed 1 G H decl:7233c1f9921baf3d
 src/dom/cloning_steps.zig installed_count 1 G H decl:3796f88280404836
@@ -272,7 +273,6 @@ src/storage/storage_manager.zig StorageManager.permission_callback 1 G H decl:7f
 src/streams/internal/message_port.zig MessagePort.generatePortId.S.counter 1 G X decl:1dfcee87d8da8735
 src/streams/internal/read_into_request.zig sentinel_storage 1 G P-const decl:f33e1c60fc8c8315
 src/streams/internal/read_request.zig sentinel_storage 1 G P-const decl:f33e1c60fc8c8315
-src/url/public_suffix.zig psl_result_buf 1 TL C decl:6d938526b5bf4769
 src/urlpattern/pcre2_ffi.zig Regex.static_captures 1 TL C decl:0e6fd21dca79378c
 src/webdriver/main.zig main.handler.server_ptr 1 G P-res decl:f033b82c181714a1
 src/webidl/impls/Element.zig undefined_sentinel 1 G P-const decl:f33e1c60fc8c8315
