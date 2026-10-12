@@ -866,8 +866,11 @@ pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         // Attr: this's value - the Attr impl's, which reads its element's
         // list while it has one. Cloned for the caller, who frees it.
         NodeType.ATTRIBUTE_NODE => interfaces.Attr.get_value(instance) catch runtime.DOMString.initEmpty(),
-        // For Element, Document, DocumentType, DocumentFragment: null
-        else => runtime.DOMString.initEmpty(),
+        // DOM 4.4 nodeValue: "Otherwise: Null" - an Element, Document,
+        // DocumentType or DocumentFragment has none (it returned "", which
+        // every createElementNS and createDocument case asserting
+        // `element.nodeValue === null` failed on).
+        else => null,
     };
 }
 
