@@ -456,8 +456,7 @@ pub fn forgetAgent(agent: *Agent) void {
         const kv = agents.fetchRemove(isolate) orelse return;
         break :blk kv.value;
     };
-    // Not v8_Isolate_ClearPromiseRejectCallback: that one also drops the
-    // process-wide callback data every other isolate's tracker uses.
+    // This isolate's tracker alone: the dispatcher is every agent's.
     if (record.hooks.promiseRejectionTracker != null) ffi.v8_Isolate_ClearProtocolPromiseRejectCallback(isolate);
     if (record.hooks.afterMicrotaskCheckpoint != null) {
         ffi.v8_Isolate_RemoveMicrotasksCompletedCallback(isolate, onMicrotasksCompleted, record);

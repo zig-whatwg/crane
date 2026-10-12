@@ -1195,10 +1195,6 @@ pub extern fn v8_Object_GetPrototypeV2(object: *Object) ?*Value;
 
 pub const AccessorNameGetterCallback = *const fn (property: *Name, info: *const PropertyCallbackInfo) callconv(.c) void;
 
-/// import.meta.url, looked up by the module's identity hash and checked with
-/// v8_Module_Equals; returns the URL's bytes (borrowed for the call) or null.
-pub const ImportMetaUrlCallback = *const fn (identity_hash: c_int, module: *Module, len: *usize) callconv(.c) ?[*]const u8;
-pub extern fn v8_Isolate_SetImportMetaUrlCallback(isolate: *Isolate, callback: ImportMetaUrlCallback) void;
 /// %Error.prototype% of `context` - the realm's intrinsic. Caller owns it.
 pub extern fn v8_Context_ErrorPrototype(context: *Context) ?*Object;
 /// Whether two module handles name the same module.
@@ -1348,14 +1344,6 @@ pub const V8ModuleCompileResult = extern struct {
     /// Compiled module (null if compilation failed)
     module: ?*Module,
     /// Error information (null if compilation succeeded)
-    error_info: ?*V8ErrorInfo,
-};
-
-/// Result of safe module instantiation
-pub const V8ModuleInstantiateResult = extern struct {
-    /// Whether instantiation succeeded
-    success: bool,
-    /// Error information (null if instantiation succeeded)
     error_info: ?*V8ErrorInfo,
 };
 
@@ -1599,14 +1587,6 @@ pub extern fn v8_Module_Compile_Safe(
 /// Free a V8ModuleCompileResult (does not free the module if non-null)
 pub extern fn v8_FreeModuleCompileResult(result: ?*V8ModuleCompileResult) void;
 
-/// Instantiate a module with TryCatch error handling
-/// Returns whether instantiation succeeded and detailed error info (on failure).
-/// Caller must free the result with v8_FreeModuleInstantiateResult.
-pub extern fn v8_Module_Instantiate_Safe(context: *Context, module: *Module) *V8ModuleInstantiateResult;
-
-/// Free a V8ModuleInstantiateResult
-pub extern fn v8_FreeModuleInstantiateResult(result: ?*V8ModuleInstantiateResult) void;
-
 /// Evaluate a module with TryCatch error handling
 /// Returns both the result value (on success) and detailed error info (on failure).
 /// Caller must free the result with v8_FreeModuleEvaluateResult.
@@ -1629,35 +1609,6 @@ pub const ModuleStatus = enum(c_int) {
     Evaluated = 4,
     Errored = 5,
 };
-
-/// Module resolve callback function type
-/// Called by V8 during InstantiateModule, once per module request.
-/// Arguments:
-///   user_data: Context pointer passed to v8_Module_SetResolveCallback
-///   specifier: The import specifier (e.g., "./module.js")
-///   specifier_len: Length of specifier string
-///   type_attribute: The request's "type" import attribute, or null
-///   referrer_identity_hash: v8::Module::GetIdentityHash() of the importer
-/// Returns:
-///   Global<Module>* for the resolved module (the embedder keeps ownership),
-///   or null - in which case the wrapper throws the TypeError V8 requires.
-pub const ModuleResolveCallback = *const fn (
-    user_data: ?*anyopaque,
-    specifier: [*]const u8,
-    specifier_len: c_int,
-    type_attribute: ?[*:0]const u8,
-    referrer_identity_hash: c_int,
-) callconv(.c) ?*anyopaque;
-
-/// Set the module resolve callback for import resolution
-/// This callback is invoked when V8 needs to resolve module imports.
-///
-/// @param user_data - Context pointer passed to callback
-/// @param callback - Function called to resolve imports
-pub extern fn v8_Module_SetResolveCallback(
-    user_data: ?*anyopaque,
-    callback: ModuleResolveCallback,
-) void;
 
 /// Compile source code as an ES Module
 /// Returns null on compilation error (syntax error, etc.)
@@ -1719,15 +1670,6 @@ pub extern fn v8_Module_CreateDefaultExportSyntheticModule(context: *Context, va
 /// @return ModuleStatus value
 pub extern fn v8_Module_GetStatus(module: *Module) c_int;
 
-/// Instantiate the module (link all imports)
-/// This resolves all import statements using the registered resolve callback.
-/// Returns false if linking fails (missing imports, circular dependency errors).
-///
-/// @param context - V8 context
-/// @param module - The module to instantiate
-/// @return true on success, false on error
-pub extern fn v8_Module_Instantiate(context: *Context, module: *Module) bool;
-
 /// Evaluate the module (execute top-level code)
 /// The module must be instantiated first.
 /// Returns the module's completion value, or null on error.
@@ -1776,46 +1718,6 @@ pub extern fn v8_Module_IsGraphAsync(module: *Module) bool;
 // ============================================================================
 // Dynamic Import (import() expression) Support
 // ============================================================================
-
-/// Callback function type for dynamic import (import() expression)
-///
-/// This callback is invoked by V8 whenever JavaScript code uses import().
-/// The callback receives:
-///   - user_data: Context passed when registering the callback
-///   - context: V8 Context* where import() was called
-///   - referrer_specifier: Module specifier of the calling module (or null)
-///   - referrer_len: Length of referrer specifier
-///   - specifier: The specifier passed to import()
-///   - specifier_len: Length of specifier
-///   - promise_resolver: V8 PromiseResolver* to resolve/reject with result
-///
-/// The callback must eventually call v8_DynamicImport_Resolve or v8_DynamicImport_Reject
-/// to settle the promise.
-pub const DynamicImportCallback = *const fn (
-    user_data: ?*anyopaque,
-    context: ?*anyopaque,
-    referrer_specifier: ?[*]const u8,
-    referrer_len: c_int,
-    specifier: [*]const u8,
-    specifier_len: c_int,
-    promise_resolver: *anyopaque,
-    /// The import's "type" attribute, or null - valid during the call only.
-    type_attribute: ?[*:0]const u8,
-) callconv(.c) void;
-
-/// Set the dynamic import callback for an isolate
-///
-/// This callback is invoked whenever import() is used in JavaScript.
-/// Must be called on the isolate before any modules that use import() are executed.
-///
-/// @param isolate - V8 Isolate
-/// @param user_data - Context passed to callback
-/// @param callback - Function called to handle dynamic imports
-pub extern fn v8_Isolate_SetHostImportModuleDynamicallyCallback(
-    isolate: *Isolate,
-    user_data: ?*anyopaque,
-    callback: DynamicImportCallback,
-) void;
 
 /// Resolve a dynamic import promise with a module namespace
 ///
@@ -2431,36 +2333,6 @@ pub const PromiseRejectEvent = enum(c_int) {
     kPromiseResolveAfterResolved = 3,
 };
 
-/// Callback type for promise rejection events
-///
-/// Called when a promise is rejected without a handler, or when
-/// a handler is added to a previously-rejected promise.
-///
-/// Parameters:
-///   - user_data: Opaque pointer passed to SetPromiseRejectCallback
-///   - event_type: Type of promise rejection event (see PromiseRejectEvent)
-///   - promise: Global handle to the rejected promise
-///   - value: Global handle to the rejection reason (may be null)
-pub const PromiseRejectEventCallback = *const fn (
-    user_data: ?*anyopaque,
-    event_type: c_int,
-    promise: ?*anyopaque,
-    value: ?*anyopaque,
-) callconv(.c) void;
-
-/// Set the promise rejection callback for an isolate
-///
-/// This enables tracking of unhandled promise rejections for the
-/// "unhandledrejection" and "rejectionhandled" events (HTML § 8.1.4.7).
-///
-/// The callback will be invoked when:
-/// - A promise is rejected with no handler attached (kPromiseRejectWithNoHandler)
-/// - A handler is added to a previously-rejected promise (kPromiseHandlerAddedAfterReject)
-///
-/// Arguments:
-///   isolate: The V8 isolate to configure
-///   user_data: Opaque pointer passed to callback
-///   callback: Function to call on promise rejection events
 /// promise.[[PromiseIsHandled]]. False for a non-promise. Takes a Global.
 pub extern fn v8_Promise_HasHandler(promise: ?*Value) bool;
 
@@ -2477,15 +2349,6 @@ pub extern fn v8_Isolate_RemoveMicrotasksCompletedCallback(
     callback: *const fn (*Isolate, ?*anyopaque) callconv(.c) void,
     data: ?*anyopaque,
 ) void;
-
-pub extern fn v8_Isolate_SetPromiseRejectCallback(
-    isolate: *Isolate,
-    user_data: ?*anyopaque,
-    callback: PromiseRejectEventCallback,
-) void;
-
-/// Clear the promise rejection callback for an isolate
-pub extern fn v8_Isolate_ClearPromiseRejectCallback(isolate: *Isolate) void;
 
 // ============================================================================
 // External - Wrap C pointers for storage in V8
@@ -2657,105 +2520,6 @@ pub extern fn v8_Global_Get(isolate: *Isolate, global: ?*Value) ?*anyopaque;
 /// @param global - Global value handle
 /// @return The same pointer cast to Global<Function>* if it's a function, null otherwise
 pub extern fn v8_Global_ToFunction(global: ?*Value) ?*Function;
-
-// NOTE: v8_Function_ToGlobal was removed - it was unused and the pattern
-// of reconstructing Local handles from raw pointers was problematic.
-// For callback storage, use the CallbackManager API instead (crane_callback_register, etc.)
-
-// ============================================================================
-// Async Iterator Support
-// ============================================================================
-
-/// Zig async iterator next callback type
-///
-/// Called when JavaScript code calls iterator.next().
-/// Should return a V8 Promise that resolves to { value, done }.
-///
-/// Parameters:
-///   isolate: V8 isolate for creating promises
-///   context: V8 context for promise creation
-///   iterator_ptr: Opaque Zig iterator pointer
-///
-/// Returns:
-///   V8 Promise that resolves to { value: any, done: boolean }
-pub const ZigAsyncIteratorNextFn = *const fn (
-    isolate: *Isolate,
-    context: *Context,
-    iterator_ptr: ?*anyopaque,
-) callconv(.c) ?*Promise;
-
-/// Zig async iterator return callback type (cleanup)
-///
-/// Called when JavaScript code calls iterator.return().
-/// Should return a V8 Promise that resolves to { value: undefined, done: true }.
-///
-/// Parameters:
-///   isolate: V8 isolate for creating promises
-///   context: V8 context for promise creation
-///   iterator_ptr: Opaque Zig iterator pointer
-///
-/// Returns:
-///   V8 Promise that resolves to { value: undefined, done: true }
-pub const ZigAsyncIteratorReturnFn = *const fn (
-    isolate: *Isolate,
-    context: *Context,
-    iterator_ptr: ?*anyopaque,
-) callconv(.c) ?*Promise;
-
-/// Create a V8 async iterator object wrapping a Zig async iterator
-///
-/// Creates a JavaScript object with next() and return() methods that conform
-/// to the ES async iterator protocol. The methods return Promises.
-///
-/// JavaScript Usage:
-///   const result = await iterator.next(); // { value: ..., done: false }
-///   await iterator.return(); // { value: undefined, done: true }
-///
-/// Arguments:
-///   isolate: V8 isolate
-///   context: V8 context for creating the object
-///   iterator_ptr: Opaque Zig iterator pointer (stored in object)
-///   next_fn: Zig callback for next() -> Promise<{ value, done }>
-///   return_fn: Zig callback for return() -> Promise<{ value, done }>
-///
-/// Returns:
-///   V8 Object with next() and return() methods (Global handle)
-pub extern fn v8_AsyncIterator_New(
-    isolate: *Isolate,
-    context: *Context,
-    iterator_ptr: ?*anyopaque,
-    next_fn: ZigAsyncIteratorNextFn,
-    return_fn: ZigAsyncIteratorReturnFn,
-) ?*Object;
-
-/// Dispose an async iterator object and free its internal data
-///
-/// Cleans up the AsyncIteratorData stored in the object's internal field.
-///
-/// Arguments:
-///   iterator: The async iterator object to dispose (Global handle)
-pub extern fn v8_AsyncIterator_Dispose(iterator: *Object) void;
-
-/// Clear the async iterator template cache
-///
-/// MUST be called before disposing an isolate to prevent use-after-free crashes.
-/// V8 FunctionTemplates are bound to specific isolates and cannot be reused
-/// across isolate boundaries. Failure to clear this cache before disposing
-/// an isolate and creating a new one will cause crashes when the stale
-/// template pointer is dereferenced.
-pub extern fn v8_ClearAsyncIteratorTemplateCache() void;
-/// Clear the async iterator template cache only if it belongs to `isolate`.
-pub extern fn v8_ClearAsyncIteratorTemplateCacheFor(isolate: *Isolate) void;
-
-/// Clear the module resolve callback
-/// MUST be called before disposing an isolate to prevent use-after-free crashes.
-/// The user_data pointer becomes invalid when the Zig runtime is deinitialized.
-pub extern fn v8_ClearModuleResolveCallback() void;
-
-/// Clear the dynamic import callback
-/// MUST be called before disposing an isolate to prevent use-after-free crashes.
-/// The user_data pointer becomes invalid when the Zig runtime is deinitialized.
-pub extern fn v8_ClearDynamicImportCallback() void;
 
 // ============================================================================
 // V8 Snapshot API - Build-Time Heap Serialization
@@ -3238,194 +3002,6 @@ pub extern fn v8_Proxy_IsRevoked(proxy: *Object) bool;
 pub extern fn v8_Object_SetPrivateRef(holder: *Object, key: [*]const u8, key_len: c_int, value: *Value) void;
 
 pub extern fn v8_CreateLegacyPlatformObjectProxy(context: *Context, target: *Object, named_setter: bool) ?*Object;
-
-// ============================================================================
-// CallbackManager API
-// ============================================================================
-//
-// The CallbackManager provides safe callback registration and invocation.
-// Key principle: V8 handles NEVER cross the FFI boundary - only opaque uint64 IDs.
-//
-// This solves the fundamental problem where V8 Local<T> handles become invalid
-// after their HandleScope ends. By converting to Global handles IMMEDIATELY
-// upon registration (while still in the V8 callback handler), we ensure the
-// callback function is properly preserved.
-
-/// Result of callback invocation
-pub const CraneCallbackResult = extern struct {
-    /// Whether the invocation succeeded
-    success: bool,
-    /// Return value (caller must dispose with crane_callback_free_result)
-    return_value: ?*Value,
-    /// Error message (valid until next call on this thread)
-    error_msg: ?[*:0]const u8,
-
-    /// Get the error message as a Zig slice
-    pub fn getErrorMessage(self: *const CraneCallbackResult) ?[]const u8 {
-        if (self.error_msg) |msg| {
-            return std.mem.sliceTo(msg, 0);
-        }
-        return null;
-    }
-};
-
-/// Initialize the global callback manager (called once at startup)
-/// @param isolate - The V8 isolate to use for callback management
-pub extern fn crane_callback_manager_init(isolate: *Isolate) void;
-
-/// Destroy the global callback manager (called at shutdown)
-pub extern fn crane_callback_manager_destroy() void;
-
-/// Register a callback function
-///
-/// CRITICAL: This MUST be called while inside a V8 callback handler where
-/// func_local and ctx_local are valid Local handles. The function is
-/// immediately converted to a Global handle that persists.
-///
-/// @param func_local - Local<Function> internal pointer
-/// @param ctx_local - Local<Context> internal pointer
-/// @param receiver_local - Local<Value> internal pointer for 'this' binding (nullable)
-/// @return Callback ID (non-zero) on success, 0 on failure
-pub extern fn crane_callback_register(
-    func_local: *anyopaque,
-    ctx_local: *anyopaque,
-    receiver_local: ?*anyopaque,
-) u64;
-
-/// Invoke a callback with multiple arguments
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @param argc - Number of arguments
-/// @param argv - Array of Global<Value>* argument pointers
-/// @return Result struct with success/error info
-pub extern fn crane_callback_invoke(
-    callback_id: u64,
-    argc: c_int,
-    argv: ?[*]*Value,
-) CraneCallbackResult;
-
-/// Invoke a callback with a single argument (common case optimization)
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @param arg - Global<Value>* argument pointer
-/// @return Result struct with success/error info
-pub extern fn crane_callback_invoke1(
-    callback_id: u64,
-    arg: ?*Value,
-) CraneCallbackResult;
-
-/// Invoke a callback with no arguments
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return Result struct with success/error info
-pub extern fn crane_callback_invoke0(callback_id: u64) CraneCallbackResult;
-
-/// Remove a callback
-///
-/// @param callback_id - The callback ID to remove
-pub extern fn crane_callback_remove(callback_id: u64) void;
-
-/// Check if a callback exists
-///
-/// @param callback_id - The callback ID to check
-/// @return true if callback exists, false otherwise
-pub extern fn crane_callback_exists(callback_id: u64) bool;
-
-/// Get the number of registered callbacks (for debugging)
-///
-/// @return Number of registered callbacks
-pub extern fn crane_callback_count() u64;
-
-/// Free a CraneCallbackResult's return value
-///
-/// @param return_value - The return value to free
-pub extern fn crane_callback_free_result(return_value: ?*Value) void;
-
-// ============================================================================
-// Weak Callback FFI Functions
-// ============================================================================
-// These functions allow Zig code to coordinate callback lifecycle with V8's GC.
-
-/// Make a callback weak - V8 can GC the function when no JS refs remain
-/// When the function is collected, subsequent invoke calls will return an error.
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true on success, false if callback not found or already weak
-pub extern fn crane_callback_make_weak(callback_id: u64) bool;
-
-/// Clear weak status - make callback strong again (prevents GC collection)
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true on success, false if callback not found or not weak
-pub extern fn crane_callback_clear_weak(callback_id: u64) bool;
-
-/// Check if callback is currently weak
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true if callback is weak, false otherwise
-pub extern fn crane_callback_is_weak(callback_id: u64) bool;
-
-/// Check if callback has been collected by GC
-/// If true, the callback can no longer be invoked.
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true if callback was collected, false otherwise
-pub extern fn crane_callback_is_collected(callback_id: u64) bool;
-
-/// Clean up callbacks that have been collected by GC
-/// Frees memory associated with collected callbacks.
-/// Should be called periodically to reclaim memory.
-///
-/// @return Number of callbacks cleaned up
-pub extern fn crane_callback_cleanup_collected() u64;
-
-/// Get count of collected but not yet cleaned up callbacks
-///
-/// @return Number of callbacks pending cleanup
-pub extern fn crane_callback_collected_count() u64;
-
-/// Compare two callbacks by their underlying V8 function objects
-/// Returns true if they reference the same JavaScript function.
-/// This is used by removeEventListener to match callbacks - per DOM spec,
-/// two event listeners are the same if they have the same callback.
-///
-/// @param callback_id1 - First callback ID
-/// @param callback_id2 - Second callback ID
-/// @return true if both callbacks wrap the same JavaScript function
-pub extern fn crane_callback_compare(callback_id1: u64, callback_id2: u64) bool;
-
-// ============================================================================
-// Comparison-Only Function Handles (for removeEventListener)
-// ============================================================================
-//
-// These functions allow creating temporary Global<Function> handles for
-// comparison purposes without registering them with CallbackManager.
-// This is the production-quality approach: removeEventListener doesn't need
-// to create a persistent registration, it just needs to compare the provided
-// function against already-registered listeners.
-
-/// Create a Global<Function> handle without registering with CallbackManager.
-/// This is for comparison purposes only (e.g., removeEventListener).
-/// The caller MUST call crane_release_function_global() to avoid memory leaks.
-///
-/// @param func_global - Pointer to an existing Global<Value> containing a function
-/// @param ctx_global - Pointer to an existing Global<Context>
-/// @return Pointer to a new Global<Function>, or null on failure
-pub extern fn crane_create_function_global(func_global: *anyopaque, ctx_global: *anyopaque) ?*anyopaque;
-
-/// Release a Global<Function> handle created by crane_create_function_global.
-/// This MUST be called to avoid memory leaks.
-///
-/// @param global - Pointer to the Global<Function> to release
-pub extern fn crane_release_function_global(global: ?*anyopaque) void;
-
-/// Compare a registered callback with an unregistered function handle.
-/// This is the core of the comparison-only approach for removeEventListener.
-///
-/// @param callback_id - ID of a registered callback to compare against
-/// @param raw_func - Unregistered Global<Function>* to compare
-/// @return true if the functions are identical (same JS function object)
-pub extern fn crane_callback_matches_raw_function(callback_id: u64, raw_func: *anyopaque) bool;
 
 // Lane regions for additive FFI (AGENTS.md "The engine boundary"): each lane adds
 // its functions only inside its own region, so parallel lanes never edit the same lines.

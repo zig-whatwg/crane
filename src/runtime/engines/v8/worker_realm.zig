@@ -450,14 +450,6 @@ fn destroyWorkerRealmIn(
         // gone.
         context_manager.removeContext(context);
         if (retire) |steps| steps(data);
-
-        // v8_wrapper.cpp caches ONE isolate's async iterator template at a
-        // time, and resets the cached one whenever another isolate asks. Left
-        // holding this isolate's, the page's next `for await` over a stream
-        // reset a handle of the disposed isolate: V8_Fatal in
-        // GlobalHandles::NodeSpace::Release. Cleared now, while this isolate
-        // lives - and only if it is this isolate's.
-        ffi.v8_ClearAsyncIteratorTemplateCacheFor(isolate);
     }
     ffi.v8_Context_Dispose(context);
 
