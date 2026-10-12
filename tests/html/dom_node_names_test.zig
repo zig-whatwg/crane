@@ -101,3 +101,33 @@ test "rootElement is the document element when it is an svg element" {
     _ = try elementNS(other, null, svg_ns, "g");
     try std.testing.expect(try interfaces.Document.get_rootElement(other) == null);
 }
+
+test "createDocument makes an XMLDocument, whole, and its clone is one too" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    const html = try h.document(.html);
+    defer interfaces.Document.deinit(html);
+    const implementation = try interfaces.Document.get_implementation(html);
+    const doc = try interfaces.DOMImplementation.call_createDocument(
+        implementation,
+        runtime.DOMString.initInterned(svg_ns),
+        runtime.DOMString.initInterned("svg"),
+        .{ .was_passed = false, .value = undefined },
+    );
+    defer interfaces.Document.deinit(doc);
+    // DOM 4.5 createDocument step 1: "a new XMLDocument" - with the
+    // Document and Node parts its construction chain makes.
+    try std.testing.expect(doc.stateAs(interfaces.XMLDocument.State) != null);
+    try std.testing.expectEqual(@as(u16, 9), try interfaces.Node.get_nodeType(doc));
+    var content_type = try interfaces.Document.get_contentType(doc);
+    defer content_type.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("image/svg+xml", content_type.asSlice());
+    try std.testing.expect(try interfaces.Document.get_rootElement(doc) != null);
+
+    // Clone: "a node that implements the same interfaces as node".
+    const copy = try interfaces.Node.call_cloneNode(doc, .{ .was_passed = true, .value = true });
+    defer interfaces.Document.deinit(copy);
+    try std.testing.expect(copy.stateAs(interfaces.XMLDocument.State) != null);
+    try std.testing.expect(try interfaces.Document.get_documentElement(copy) != null);
+}

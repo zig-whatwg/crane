@@ -184,12 +184,13 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     const allocator = internal.allocator;
     const ctx = instance.ctx;
 
-    // Step 1: Create new XMLDocument (use interface per Golden Rule #13)
-    const document = try interfaces.Document.init(
+    // Step 1: "Let document be a new XMLDocument" - its generated
+    // construction chain makes its Document and Node parts.
+    const document = try interfaces.XMLDocument.init(
         allocator,
         ctx,
     );
-    errdefer interfaces.Document.deinit(document);
+    errdefer interfaces.XMLDocument.deinit(document);
 
     // HTML §3.1: DOMImplementation-created documents are ready immediately.
     dom.document_lifecycle.markReadyForPostLoadTasks(document);

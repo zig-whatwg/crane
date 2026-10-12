@@ -1521,7 +1521,12 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             // them, so they keep Document.init's defaults - a stated deviation.
             // TODO(dom-clone): a codegen-generated `cloneInternalsFrom` delegate
             // is the boundary-clean way to copy them.
-            const copy = try interfaces.Document.init(allocator, node.ctx);
+            // "Let copy be a node that implements the same interfaces as
+            // node": an XMLDocument's copy is an XMLDocument.
+            const copy = if (node.stateAs(interfaces.XMLDocument.State) != null)
+                try interfaces.XMLDocument.init(allocator, node.ctx)
+            else
+                try interfaces.Document.init(allocator, node.ctx);
             errdefer runtime.Instance.deinit(copy);
             if (try interfaces.Document.get_customElementRegistry(node)) |registry| {
                 if (dom_module.custom_elements.isScoped(registry)) try dom_module.custom_elements.setDocumentRegistry(copy, registry);
