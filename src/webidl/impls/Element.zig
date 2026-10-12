@@ -1844,6 +1844,8 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     // algorithm steps with context and compliantString."
     const fragment = @import("html").custom_elements.parseFragment(instance, html_string) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
+        // The XML fragment parsing algorithm's step 7.
+        error.SyntaxError => return error.SyntaxError,
         else => return error.NotSupportedError,
     };
 
@@ -1906,6 +1908,8 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
         context,
     ) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
+        // The XML fragment parsing algorithm's step 7.
+        error.SyntaxError => return error.SyntaxError,
         else => return error.NotSupportedError,
     };
     defer dom.node_creation.destroyUninserted(fragment);
