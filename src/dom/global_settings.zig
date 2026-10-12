@@ -122,6 +122,7 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // The blob URL store a blob: request's blob is obtained from: the
     // global's Browser's (its realm's scope).
     client.request.blob_url_store = @ptrCast(@import("browser_state.zig").blobURLStoreOf(global.ctx));
+    client.request.network = @import("browser_state.zig").networkOf(global.ctx);
     // The policy container "populate request from client" step 3 clones.
     if (settings.policy_container) |container_of| client.request.policy_container = container_of(global);
     // Mixed Content 4.3 is captured by value, like the policy snapshot.

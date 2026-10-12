@@ -1486,7 +1486,7 @@ pub const AsyncModuleLoader = struct {
         try script_request.populateRequestFromClient(request, self.env.context_instance.ctx);
         if (referrer.len > 0) try request.setReferrerUrl(referrer);
         request_owned = false;
-        single.transport = try fetch.algorithms.AsyncFetch.start(self.allocator, request, .{}, fetch.network.scheduler.threadScheduler(), .{
+        single.transport = try fetch.algorithms.AsyncFetch.start(self.allocator, request, .{}, @import("dom").agent_fetches.of(self.env.context_instance.ctx), .{
             .context = single,
             .done = SingleFetch.fetched,
             .alive = SingleFetch.fetchAlive,

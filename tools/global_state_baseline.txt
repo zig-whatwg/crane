@@ -150,20 +150,13 @@ src/encoding/reverse_index.zig jis0208 1 G P-const decl:4708c3fa631813af
 src/encoding/reverse_index.zig jis0208_initialized 1 G P-const decl:a548f909f018c397
 src/encoding/reverse_index.zig jis0212 1 G P-const decl:4708c3fa631813af
 src/encoding/reverse_index.zig jis0212_initialized 1 G P-const decl:a548f909f018c397
-src/fetch/algorithms/async_fetch.zig live 1 TL I/engine decl:7261d038e11c466b
 src/fetch/algorithms/scheme_fetch.zig blob_resolver 1 G H decl:57d1e8a20c33a0c7
 src/fetch/internal/fetch_controller.zig manual_redirect_called 1 G X decl:de58a3b1f5ff5e75
 src/fetch/internal/fetch_controller.zig report_timing_called 1 G X decl:de58a3b1f5ff5e75
 src/fetch/internal/fetch_params.zig chunk_length_received 1 G X decl:1dfcee87d8da8735
 src/fetch/internal/fetch_params.zig queue_task_executed 1 G X decl:de58a3b1f5ff5e75
-src/fetch/network/backend.zig default_cert_options 1 G I/profile decl:65591a13919d8c59
 src/fetch/network/curl_backend.zig global_init_count 1 G P-res decl:3796f88280404836
 src/fetch/network/curl_backend.zig global_init_mutex 1 G P-res decl:ee0617868871b920
-src/fetch/network/curl_backend.zig global_share 1 G I/profile decl:3bfc31e0824b1ad6
-src/fetch/network/curl_backend.zig lock_call_count 1 G D decl:3796f88280404836
-src/fetch/network/curl_backend.zig share_mutexes 1 G I/profile decl:3da8106419fccf84
-src/fetch/network/curl_backend.zig unlock_call_count 1 G D decl:3796f88280404836
-src/fetch/network/scheduler.zig thread_scheduler 1 TL I/profile decl:0f3c8da331a0bfbd
 src/html/editing/executor.zig document_states 1 G R decl:3e3e1a8064593da4
 src/html/editing/executor.zig getOrCreateEditorState.new_state.Static.editor_state 1 G R decl:8eaedec687f8b9fc
 src/html/embedder_scripts.zig registered 1 TL I/engine decl:985bda748b35fe88
@@ -326,4 +319,3 @@ src/webidl/impls/XMLHttpRequest.zig live_pending 1 TL R decl:a09702dad165b24c
 src/webidl/impls/fetch_body.zig boundary_counter 1 TL I/engine decl:1dfcee87d8da8735
 src/webidl/types/buffer_sources.zig engine_buffer 1 G P-const decl:9bc1d032c76bbf7d
 src/webidl/types/dictionaries.zig mock_data 1 G X decl:f33e1c60fc8c8315
-src/websocket/connection.zig handshake_gate 1 TL I/profile decl:f0ae7878d15d1ca1

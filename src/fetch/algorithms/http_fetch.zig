@@ -877,9 +877,11 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: [
         .follow_redirects = false, // WHATWG Fetch handles redirects
         .max_redirects = 20,
         .proxy = null, // TODO: Get from request/settings
-        // Whatever the embedder registered, which is `verify_peer` and
-        // `verify_host` against the system trust store unless it said otherwise.
-        .cert_options = network.defaultCertOptions(),
+        // Its Browser's TLS options - `verify_peer` and `verify_host`
+        // against the system trust store unless the Browser said otherwise -
+        // and its Browser's connections.
+        .cert_options = if (request.network) |context| context.certOptions() else .{},
+        .network = request.network,
         .verbose = false,
         .owned_values = owned_values,
     };
@@ -1030,7 +1032,8 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
         .body = null,
         .http_version = .http_2,
         .follow_redirects = false,
-        .cert_options = network.defaultCertOptions(),
+        .cert_options = if (request.network) |context| context.certOptions() else .{},
+        .network = request.network,
         .owned_values = owned_values,
     };
 }

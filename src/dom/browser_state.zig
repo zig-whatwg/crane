@@ -16,11 +16,13 @@ const runtime = @import("runtime");
 const storage = @import("storage");
 const file = @import("file");
 const html_core = @import("html_core");
+const fetch = @import("fetch");
 
 pub const UserAgentStorage = storage.UserAgentStorage;
 pub const BlobURLStore = file.BlobURLStore;
 pub const Navigables = html_core.Navigables;
 pub const BrowsingContext = html_core.BrowsingContext;
+pub const NetworkContext = fetch.network.NetworkContext;
 
 /// The browsing contexts of the Browser `realm` belongs to (a side table of
 /// its scope), made on first use; null for a realm of no Browser - no scope,
@@ -43,6 +45,16 @@ pub fn existingNavigablesIn(scope: *runtime.BrowserScope) ?*Navigables {
 pub fn browsingContextOf(window: *runtime.Instance) ?*BrowsingContext {
     const navigables = navigablesOf(window.ctx) orelse return null;
     return navigables.ofWindow(@ptrCast(window));
+}
+
+/// The network context (fetch.network.NetworkContext) of the Browser `realm`
+/// belongs to: its connections, TLS options and WebSocket gate, which every
+/// request of its realms - windows, frames, workers - carries. Null for a
+/// realm no Browser made (no scope, or out of memory): its requests use the
+/// defaults and share nothing.
+pub fn networkOf(realm: runtime.Context) ?*NetworkContext {
+    const scope = realm.browserScope() orelse return null;
+    return scope.of(NetworkContext) catch null;
 }
 
 /// The user agent's storage shed and bucket file systems (Storage 4.3) of

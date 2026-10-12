@@ -172,6 +172,10 @@ pub const NavigationFetchOptions = struct {
     /// "blob"); null: every blob URL is a network error.
     blob_url_store: ?*anyopaque = null,
 
+    /// The network context of the navigable's Browser (BORROWED): the
+    /// connections and TLS options its fetch uses. Null: the defaults.
+    network: ?*fetch.network.NetworkContext = null,
+
     /// "Create navigation params by fetching" step 3's referrer policy:
     /// navigate's referrerPolicy - a hyperlink's referrerpolicy attribute, or
     /// an iframe's for "navigate an iframe or frame". The empty string defers
@@ -382,6 +386,8 @@ pub fn navigationRequest(
     internal_request.cookie_jar = options.cookie_jar;
     // The blob URL store a blob: URL's blob is obtained from.
     internal_request.blob_url_store = options.blob_url_store;
+    // The Browser's network it goes out on.
+    internal_request.network = options.network;
 
     // Its referrer policy, and the initiator's policy container main fetch
     // step 8 falls back to.

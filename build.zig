@@ -989,6 +989,12 @@ const ModuleConfig = struct {
 const PlatformBinding = struct {
     facade: *std.Build.Module,
     options: *std.Build.Module,
+    /// kit/curl's connection share (src/platform/kit/curl/share.zig), which
+    /// `fetch` imports for a Browser's network context until transfers move
+    /// behind the platform's port. A module of its own that imports nothing:
+    /// a graph whose `fetch` is compiled beside the old platform root (tests/
+    /// platform/retained_old_platform.zig) must not reach the facade's files.
+    kit_curl_share: *std.Build.Module,
 };
 
 const PlatformBindingOptions = struct {
@@ -1052,7 +1058,14 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit[0].addImport("memory", options.memory);
     // kit/browser_state keeps a Browser's stores in kit/memory_store.
     kit[6].addImport("kit_memory_store", kit[2]);
-    return .{ .facade = facade, .options = options_mod };
+    // kit/curl's connection share, its own module (see PlatformBinding).
+    const kit_curl_share = b.createModule(.{
+        .root_source_file = b.path("src/platform/kit/curl/share.zig"),
+        .target = target,
+        .link_libc = true,
+    });
+    kit[3].addImport("kit_curl_share", kit_curl_share);
+    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share };
 }
 
 /// A module of a graph: registered by name when the graph is public, private
@@ -5536,6 +5549,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     const platform_mod = platform_binding.facade;
     dom_mod.addImport("platform", platform_mod);
+    // A Browser's network context keeps its connection share in kit/curl.
+    fetch_mod.addImport("kit_curl_share", platform_binding.kit_curl_share);
     const platform_options_mod = platform_binding.options;
 
     // HTML Core module (WHATWG HTML Standard) - Interface-free subset

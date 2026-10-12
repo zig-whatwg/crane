@@ -72,7 +72,7 @@ fn droppedSlotThenGone() !void {
     runtime.BrowserScope.ofInstance(element).slab.free(element);
     // The fetch layer finds its client gone: terminates the fetch, and
     // `gone` destroys it.
-    try testing.expect(fetch.algorithms.async_fetch.sweep());
+    try testing.expect(browser.agent_host.fetches.sweep());
     // Script must not reach the freed element again.
     const forget = try browser.evaluateScript("delete globalThis.image; 0");
     forget.release();

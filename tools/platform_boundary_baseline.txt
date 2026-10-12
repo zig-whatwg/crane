@@ -112,7 +112,7 @@ src/fetch/network/curl_backend.zig clock.@import 1
 src/fetch/network/curl_backend.zig clock.sleep 1
 src/fetch/network/curl_backend.zig curl-wrapper.curl_error.mapCurlError 2
 src/fetch/network/curl_backend.zig curl-wrapper.curl_options.mbedtls 1
-src/fetch/network/curl_backend.zig curl.CURL 6
+src/fetch/network/curl_backend.zig curl.CURL 4
 src/fetch/network/curl_backend.zig curl.CURLE_COULDNT_CONNECT 1
 src/fetch/network/curl_backend.zig curl.CURLE_OK 4
 src/fetch/network/curl_backend.zig curl.CURLE_RECV_ERROR 2
@@ -161,10 +161,6 @@ src/fetch/network/curl_backend.zig curl.CURLOPT_WRITEDATA 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_WRITEFUNCTION 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_XFERINFODATA 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_XFERINFOFUNCTION 1
-src/fetch/network/curl_backend.zig curl.CURLSH 2
-src/fetch/network/curl_backend.zig curl.CURLSHOPT_LOCKFUNC 1
-src/fetch/network/curl_backend.zig curl.CURLSHOPT_SHARE 2
-src/fetch/network/curl_backend.zig curl.CURLSHOPT_UNLOCKFUNC 1
 src/fetch/network/curl_backend.zig curl.CURLSSLBACKEND_MBEDTLS 1
 src/fetch/network/curl_backend.zig curl.CURL_ERROR_SIZE 1
 src/fetch/network/curl_backend.zig curl.CURL_GLOBAL_DEFAULT 1
@@ -173,8 +169,6 @@ src/fetch/network/curl_backend.zig curl.CURL_HTTP_VERSION_1_1 2
 src/fetch/network/curl_backend.zig curl.CURL_HTTP_VERSION_2TLS 1
 src/fetch/network/curl_backend.zig curl.CURL_HTTP_VERSION_2_0 2
 src/fetch/network/curl_backend.zig curl.CURL_HTTP_VERSION_3 3
-src/fetch/network/curl_backend.zig curl.CURL_LOCK_DATA_CONNECT 1
-src/fetch/network/curl_backend.zig curl.CURL_LOCK_DATA_DNS 1
 src/fetch/network/curl_backend.zig curl.CURL_PREREQFUNC_ABORT 2
 src/fetch/network/curl_backend.zig curl.CURL_PREREQFUNC_OK 1
 src/fetch/network/curl_backend.zig curl.CURLcode 6
@@ -391,8 +385,6 @@ src/fetch/network/root.zig curl-wrapper.curl_backend.globalInit 1
 src/fetch/network/scheduler.zig clock.@import 1
 src/fetch/network/scheduler.zig clock.monotonicNanos 2
 src/fetch/network/scheduler.zig curl-wrapper.curl_backend.Transfer 1
-src/fetch/network/scheduler.zig curl-wrapper.curl_backend.getGlobalShare 1
-src/fetch/network/scheduler.zig curl-wrapper.curl_backend.globalInit 1
 src/fetch/network/scheduler.zig curl.CURL 1
 src/fetch/network/scheduler.zig curl.CURLE_OK 1
 src/fetch/network/scheduler.zig curl.CURLINFO_REQUEST_SIZE 1

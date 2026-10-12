@@ -713,7 +713,7 @@ fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64
     };
     // The fetch owns the request from here, even when it fails to start.
     request_owned = false;
-    image_fetch.fetch = try fetch.algorithms.AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), image_fetch.client());
+    image_fetch.fetch = try fetch.algorithms.AsyncFetch.start(allocator, request, .{}, @import("dom").agent_fetches.of(instance.ctx), image_fetch.client());
     internal.active_fetch = image_fetch;
 }
 

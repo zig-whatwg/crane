@@ -31,70 +31,18 @@ const clock = @import("clock");
 // =============================================================================
 // Global State Management
 // =============================================================================
+//
+// curl's global initialization is the process's (crane.Process holds a
+// reference from its start to its end). Connections are not: each Browser's
+// network context keeps its own connection share (network_context.zig), so a
+// Browser reuses its own connections and never another's.
 
-/// Global initialization state (reference counted, thread-safe)
+/// How many holders curl's global state has (reference counted, thread-safe).
 var global_init_count: usize = 0;
 // 0.16 removed std.Thread.Mutex. std.Io.Mutex is the replacement; the free
 // functions std.Io.Threaded.mutexLock/mutexUnlock drive it where no Io value is
-// in scope, which is the case in these libcurl C callbacks.
+// in scope.
 var global_init_mutex: std.Io.Mutex = .init;
-
-/// Global curl share handle for connection pooling across easy handles.
-/// This enables connection reuse when creating new easy handles for each request.
-/// Without this, each new easy handle creates its own connection pool (default 5 connections),
-/// leading to socket exhaustion after ~25 requests.
-var global_share: ?*curl.CURLSH = null;
-
-/// Mutexes for curl share locking (one per data type)
-/// CURL_LOCK_DATA_CONNECT = 5, CURL_LOCK_DATA_DNS = 2
-/// We allocate enough slots for all lock data types (up to 8)
-var share_mutexes: [8]std.Io.Mutex = @splat(.init);
-
-/// Track lock/unlock calls for debugging
-var lock_call_count: usize = 0;
-var unlock_call_count: usize = 0;
-
-/// Lock callback for curl share - called when curl needs to access shared data
-fn shareLockCallback(
-    _: *curl.CURL,
-    data: c_int,
-    access: c_int, // access type (shared/single) - we use exclusive lock regardless
-    _: ?*anyopaque,
-) callconv(.c) void {
-    lock_call_count += 1;
-    if (lock_call_count <= 5 or lock_call_count % 100 == 0) {
-        // Only log first few calls and then every 100th to avoid spam
-        const data_type_name = switch (data) {
-            2 => "DNS",
-            5 => "CONNECT",
-            else => "OTHER",
-        };
-        log.debug("[CURL SHARE] Lock #{}: data={} ({s}), access={}\n", .{ lock_call_count, data, data_type_name, access });
-    }
-    if (data >= 0 and data < share_mutexes.len) {
-        std.Io.Threaded.mutexLock(&share_mutexes[@intCast(data)]);
-    }
-}
-
-/// Unlock callback for curl share - called when curl is done with shared data
-fn shareUnlockCallback(
-    _: *curl.CURL,
-    data: c_int,
-    _: ?*anyopaque,
-) callconv(.c) void {
-    unlock_call_count += 1;
-    if (unlock_call_count <= 5 or unlock_call_count % 100 == 0) {
-        const data_type_name = switch (data) {
-            2 => "DNS",
-            5 => "CONNECT",
-            else => "OTHER",
-        };
-        log.debug("[CURL SHARE] Unlock #{}: data={} ({s})\n", .{ unlock_call_count, data, data_type_name });
-    }
-    if (data >= 0 and data < share_mutexes.len) {
-        std.Io.Threaded.mutexUnlock(&share_mutexes[@intCast(data)]);
-    }
-}
 
 /// Initialize libcurl globally.
 /// Thread-safe and reference counted - can be called multiple times.
@@ -102,39 +50,27 @@ fn shareUnlockCallback(
 pub fn globalInit() !void {
     std.Io.Threaded.mutexLock(&global_init_mutex);
     defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
+    try initLocked();
+}
 
-    log.debug("[CURL] globalInit called, current count: {}\n", .{global_init_count});
-
+fn initLocked() !void {
     if (global_init_count == 0) {
-        log.debug("[CURL] First init - initializing libcurl globally\n", .{});
         const result = curl.global_init(curl.CURL_GLOBAL_DEFAULT);
         if (result != curl.CURLE_OK) {
             log.warn("curl_global_init failed with code {d}: {s}", .{ result, curl.getErrorMessage(result) });
             return error.CurlGlobalInitFailed;
         }
-
-        // Create global share for connection pooling
-        global_share = curl.share_init();
-        if (global_share) |share| {
-            log.debug("[CURL] Created global share: {*}\n", .{share});
-            // Set lock/unlock callbacks for thread safety (REQUIRED for multi-threaded use)
-            _ = curl.share_setopt(share, curl.CURLSHOPT_LOCKFUNC, @as(*const anyopaque, @ptrCast(&shareLockCallback)));
-            _ = curl.share_setopt(share, curl.CURLSHOPT_UNLOCKFUNC, @as(*const anyopaque, @ptrCast(&shareUnlockCallback)));
-
-            // Enable connection sharing - this is the key to avoiding socket exhaustion
-            _ = curl.share_setopt(share, curl.CURLSHOPT_SHARE, curl.CURL_LOCK_DATA_CONNECT);
-            // Also share DNS cache for efficiency
-            _ = curl.share_setopt(share, curl.CURLSHOPT_SHARE, curl.CURL_LOCK_DATA_DNS);
-            log.debug("[CURL] Global share configured with connection and DNS sharing\n", .{});
-        } else {
-            // No share means no connection reuse, which exhausts sockets after
-            // roughly 25 requests. Not fatal here, but it will look like one
-            // later, so say it now.
-            log.warn("curl_share_init failed; connections will not be pooled", .{});
-        }
     }
     global_init_count += 1;
-    log.debug("[CURL] globalInit complete, new count: {}\n", .{global_init_count});
+}
+
+/// Initialize libcurl globally unless something already holds it: for a
+/// transfer made with no process started (a unit test). The reference this
+/// takes is held until the process exits.
+pub fn ensureGlobalInit() !void {
+    std.Io.Threaded.mutexLock(&global_init_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
+    if (global_init_count == 0) try initLocked();
 }
 
 /// Decrement global init reference count.
@@ -143,41 +79,20 @@ pub fn globalCleanup() void {
     std.Io.Threaded.mutexLock(&global_init_mutex);
     defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
 
-    log.debug("[CURL] globalCleanup called, current count: {}\n", .{global_init_count});
-
     if (global_init_count > 0) {
         global_init_count -= 1;
-        log.debug("[CURL] Decremented count to: {}\n", .{global_init_count});
-        if (global_init_count == 0) {
-            log.debug("[CURL] Count is zero - performing full cleanup\n", .{});
-            // Clean up global share before global cleanup
-            if (global_share) |share| {
-                log.debug("[CURL] Cleaning up global share: {*}\n", .{share});
-                _ = curl.share_cleanup(share);
-                global_share = null;
-            }
-            curl.global_cleanup();
-            log.debug("[CURL] Full cleanup complete\n", .{});
-        }
+        if (global_init_count == 0) curl.global_cleanup();
     } else {
         log.warn("globalCleanup called with the reference count already 0", .{});
     }
 }
 
 /// How many holders the global state has - `globalInit` calls not yet
-/// matched by `globalCleanup`. A Browser is one for its life.
+/// matched by `globalCleanup`.
 pub fn globalReferences() usize {
     std.Io.Threaded.mutexLock(&global_init_mutex);
     defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
     return global_init_count;
-}
-
-/// Get the global share handle for connection pooling.
-/// Returns null if globalInit() hasn't been called.
-pub fn getGlobalShare() ?*curl.CURLSH {
-    std.Io.Threaded.mutexLock(&global_init_mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
-    return global_share;
 }
 
 // =============================================================================
@@ -219,15 +134,9 @@ pub const LibcurlBackend = struct {
     /// the user agent's jar (fetch/algorithms/cookies.zig), and curl's own
     /// cookie engine is never turned on.
     pub fn init(allocator: Allocator) !*Self {
-        // Ensure global curl is initialized (idempotent, thread-safe)
-        // We only call globalInit if not already initialized, to avoid
-        // incrementing the reference count on every request.
-        if (getGlobalShare() == null) {
-            log.debug("[CURL] First backend init - calling globalInit\n", .{});
-            try globalInit();
-        } else {
-            log.debug("[CURL] Backend init - global share already exists, skipping globalInit\n", .{});
-        }
+        // curl's global state: the process's, or - with no process started -
+        // taken here once.
+        try ensureGlobalInit();
 
         const self = try allocator.create(Self);
         self.* = .{
@@ -237,21 +146,11 @@ pub const LibcurlBackend = struct {
         return self;
     }
 
-    /// Clean up backend resources.
-    ///
-    /// NOTE: We intentionally do NOT call globalCleanup() here.
-    /// The global curl state (including the shared connection pool) should persist
-    /// for the lifetime of the application to enable connection reuse across requests.
-    /// Each request creates a new LibcurlBackend, but they all share the same global
-    /// connection pool via CURLOPT_SHARE.
+    /// Clean up backend resources. curl's global state is not touched:
+    /// each request makes a backend, and its transfer joins its Browser's
+    /// connection share (its request's network context), which outlives it.
     pub fn deinit(self: *Self) void {
-        log.debug("[CURL] Backend deinit (NOT calling globalCleanup - share persists)\n", .{});
         self.allocator.destroy(self);
-
-        // NOTE: We used to call globalCleanup() here, but this caused the global share
-        // to be destroyed after each request, preventing connection reuse.
-        // The global state now persists for the application lifetime.
-        // If you need explicit cleanup, call globalCleanup() directly at app shutdown.
     }
 
     /// Get as NetworkBackend interface.
@@ -434,9 +333,8 @@ pub const LibcurlBackend = struct {
             _ = curl.easy_setopt(handle, curl.c.CURLOPT_PREREQDATA, @as(?*anyopaque, @ptrCast(handle)));
         }
 
-        // Connection reuse is handled via global curl share (CURLOPT_SHARE)
-        // set in sendImpl(). This allows connections to be pooled and reused
-        // across requests, preventing socket exhaustion.
+        // Connection reuse is the request's network context's share
+        // (CURLOPT_SHARE), set by Transfer.create.
 
         // Timeouts
         if (request.connect_timeout_ms > 0) {
@@ -587,6 +485,9 @@ pub const Transfer = struct {
     /// is performed. `request` is not needed afterwards: everything curl reads
     /// during the transfer is copied into it.
     pub fn create(allocator: Allocator, request: *const NetworkRequest, options: Options) NetworkError!*Transfer {
+        // curl's global state: the process's, or - with no process started
+        // (a unit test) - taken once, before any handle is made.
+        ensureGlobalInit() catch return NetworkError.Unknown;
         const self = allocator.create(Transfer) catch return NetworkError.OutOfMemory;
         errdefer allocator.destroy(self);
 
@@ -613,10 +514,12 @@ pub const Transfer = struct {
         self.ctx = LibcurlBackend.CallbackContext.init(allocator, options.aborted orelse &self.own_aborted);
         errdefer self.ctx.deinit();
 
-        // Attach to global share for connection pooling
-        // This enables connection reuse across easy handles, preventing socket exhaustion
-        if (getGlobalShare()) |share| {
-            _ = curl.easy_setopt(handle, curl.CURLOPT_SHARE, share);
+        // The Browser's connection share: its transfers reuse its own
+        // connections - which keeps sockets from running out - and never
+        // another Browser's. A request with no network context (a unit
+        // test's) opens its own.
+        if (request.network) |network| {
+            if (network.connectionShare()) |share| _ = curl.easy_setopt(handle, curl.CURLOPT_SHARE, share.curlShare());
         }
 
         // Give curl somewhere to explain itself.

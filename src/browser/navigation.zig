@@ -100,6 +100,9 @@ pub const NavigationOptions = struct {
     /// The user agent's cookie jar (BORROWED): an http(s) navigation's
     /// request sends its cookies and stores the response's. Null: none.
     cookie_jar: ?*@import("fetch").internal.CookieJar = null,
+    /// The Browser's network context (BORROWED): its connections and TLS
+    /// options. Null: the defaults.
+    network: ?*@import("fetch").network.NetworkContext = null,
 
     pub const Header = struct {
         name: []const u8,
@@ -330,6 +333,7 @@ fn fetchHttpUrl(
     // is stored.
     request.credentials_mode = .include;
     request.cookie_jar = options.cookie_jar;
+    request.network = options.network;
 
     // Perform fetch using the fetch algorithms
     var result = fetch_mod.algorithms.fetch(allocator, request, .{}) catch |err| {

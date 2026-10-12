@@ -141,7 +141,7 @@ pub const Resource = struct {
         self.gone = false;
         self.sent_buffer = false;
         // startStreaming owns request even when it returns an error.
-        self.active = try fetch.algorithms.AsyncFetch.startStreaming(self.allocator, request, .{}, fetch.network.scheduler.threadScheduler(), .{ .context = self, .done = fetched, .alive = alive, .gone = realmGone, .finished = finished });
+        self.active = try fetch.algorithms.AsyncFetch.startStreaming(self.allocator, request, .{}, dom.agent_fetches.of(self.ctx), .{ .context = self, .done = fetched, .alive = alive, .gone = realmGone, .finished = finished });
     }
     fn alive(context: *anyopaque) bool {
         const self: *Resource = @ptrCast(@alignCast(context));

@@ -754,7 +754,7 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, options: Link
 
     // The fetch owns the request from here, even when it fails to start.
     request_owned = false;
-    const started = try AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), sheet.client());
+    const started = try AsyncFetch.start(allocator, request, .{}, dom.agent_fetches.of(load.realm), sheet.client());
     load.sheets.append(allocator, sheet) catch |err| {
         started.terminate();
         return err;

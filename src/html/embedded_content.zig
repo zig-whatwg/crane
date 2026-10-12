@@ -736,7 +736,7 @@ fn startFetch(content: *Content, id: u64, url: []const u8) !void {
     content.fetch = record;
     // The fetch owns the request from here, even when it fails to start.
     request_owned = false;
-    record.async_fetch = AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), record.client()) catch |err| {
+    record.async_fetch = AsyncFetch.start(allocator, request, .{}, dom.agent_fetches.of(element.ctx), record.client()) catch |err| {
         content.fetch = null;
         allocator.destroy(record);
         endPending(content);

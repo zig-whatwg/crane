@@ -499,6 +499,7 @@ const DeliveryTask = struct {
             defer self.allocator.free(bytes);
             const request = try modernRequest(self.allocator, endpoint.url, origin, bytes);
             request.cookie_jar = global_settings.cookieJarOf(global);
+            request.network = @import("browser_state.zig").networkOf(global.ctx);
             // start takes the request on every path, and snapshots the
             // endpoint before any asynchronous completion can mutate it.
             Upload.start(global, request, endpoint.name, endpoint.url) catch {

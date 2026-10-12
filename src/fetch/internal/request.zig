@@ -22,6 +22,7 @@ pub const CspViolation = csp.violation_events.Violation;
 /// The user agent's cookie jar (src/cookiestore). Reached through fetch by
 /// modules that take a request's client but not cookiestore itself.
 pub const CookieJar = cookiestore.CookieJar;
+pub const NetworkContext = @import("../network/network_context.zig").NetworkContext;
 
 const fetch_timing = @import("fetch_timing.zig");
 
@@ -368,6 +369,13 @@ pub const InternalRequest = struct {
     /// (`scheme_fetch.BlobResolver`). Null: a request no Browser's realm
     /// made, for which every blob URL is a network error.
     blob_url_store: ?*anyopaque = null,
+
+    /// The network context of the request's client's Browser
+    /// (fetch.network.NetworkContext; "populate request from client" -
+    /// BORROWED, the Browser outlives every fetch): the connections its
+    /// transfer joins, the TLS options it is verified with. Null: a request
+    /// no Browser's realm made, which uses the defaults and shares nothing.
+    network: ?*NetworkContext = null,
 
     /// Where CSP violations this request causes are reported (CSP §2.4.2:
     /// a request's violation's global object is its client's global), as
@@ -746,6 +754,7 @@ pub const InternalRequest = struct {
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
             .cookie_jar = self.cookie_jar,
             .blob_url_store = self.blob_url_store,
+            .network = self.network,
             .csp_violation_reporter = self.csp_violation_reporter,
             .timing_reporter = self.timing_reporter,
             // Cloned below: each request owns its own.

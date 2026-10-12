@@ -68,9 +68,6 @@ const code_generation = @import("code_generation.zig");
 // The agent cluster a dedicated worker's agent is in: its owner's.
 const agent_clusters = @import("agent_clusters.zig");
 
-// A realm's fetches in flight, released when the realm goes.
-const async_fetch = @import("fetch").algorithms.async_fetch;
-
 // Worker types from html_core
 const html_core = @import("html_core");
 const workers = html_core.workers;
@@ -814,6 +811,8 @@ pub const WorkerHost = struct {
         self.agent = agent;
         thread.loop.agent = agent;
         thread.loop.deferred_teardown = &self.agent_host.deferred_teardown;
+        // The worker agent's fetches, which its loop pumps.
+        thread.loop.fetches = &self.agent_host.fetches;
         const runs = thread.link.publishAgent(agent);
         self.script_url = try allocator.dupe(u8, start.script_url);
         self.name = try allocator.dupe(u8, start.name);
@@ -963,15 +962,16 @@ pub const WorkerHost = struct {
         // goes with it; the realm is retired, so anything holding it across
         // turns (a fetch) reads it as gone.
         self.global_scope = null;
-        engine.destroyWorkerRealm(realm, sweepFetches, null);
+        engine.destroyWorkerRealm(realm, sweepFetches, &self.agent_host.fetches);
         // Nothing can call import() in the realm any more.
         self.freeClassicScripts();
     }
 
     /// Fetches still in flight for the realm release their promises, while the
-    /// agent those belong to is alive.
-    fn sweepFetches(_: ?*anyopaque) void {
-        _ = async_fetch.sweep();
+    /// agent those belong to is alive: the worker agent's, on its host.
+    fn sweepFetches(data: ?*anyopaque) void {
+        const fetches: *fetch_mod.algorithms.AgentFetches = @ptrCast(@alignCast(data orelse return));
+        _ = fetches.sweep();
     }
 
     /// This host's memory, from its thread's last step (`ThreadHost.free`),
@@ -2019,6 +2019,8 @@ const SharedConnect = struct {
             // A blob: script's blob is in the outside settings' Browser's
             // blob URL store.
             .blob_url_store = @ptrCast(@import("dom").browser_state.blobURLStoreOf(self.owner_realm)),
+            // The outside settings' Browser's network.
+            .network = @import("dom").browser_state.networkOf(self.owner_realm),
             .shared = true,
             // The outside settings' policy container: its CSP decides
             // whether the script may be fetched at all.

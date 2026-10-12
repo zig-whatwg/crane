@@ -1,15 +1,14 @@
 //! dom.keepalive_fetch: the shared fire-and-forget dispatch that sendBeacon,
 //! Reporting's uploads and hyperlink auditing's pings start their requests
-//! through. Each runs a Browser on a thread of its own (per-thread fetch and
-//! scheduler state), against a port nothing listens on: the transfer is
-//! started at once and refused only when the network next pumps, so a test
-//! can look at a dispatch while it is in flight.
+//! through. Each runs a Browser on a thread of its own - its window agent's
+//! fetches and scheduler on the agent's host - against a port nothing
+//! listens on: the transfer is started at once and refused only when the
+//! network next pumps, so a test can look at a dispatch while it is in
+//! flight.
 const std = @import("std");
 const browser_mod = @import("browser");
 const dom = @import("dom");
 const fetch = @import("fetch");
-const async_fetch = fetch.algorithms.async_fetch;
-const network = fetch.network;
 const keepalive_fetch = dom.keepalive_fetch;
 
 const refused_url = "http://127.0.0.1:65533/keepalive";
@@ -80,6 +79,11 @@ const Page = struct {
         return r;
     }
 
+    /// The window agent's fetches: its scheduler and every fetch in flight.
+    fn fetches(self: *Page) *fetch.algorithms.AgentFetches {
+        return &self.browser.agent_host.fetches;
+    }
+
     /// Turn the event loop until `heard` hears its dispatch end.
     fn turnUntilEnded(self: *Page, heard: *const Heard) !void {
         var turns: usize = 0;
@@ -109,11 +113,11 @@ test "a dispatch is in flight at once, hears its response, then ends and frees i
         fn body() !void {
             var page = try Page.open(std.testing.allocator);
             defer page.close();
-            const before = async_fetch.inFlight();
+            const before = page.fetches().inFlight();
             var heard: Heard = .{};
             const dispatch = try keepalive_fetch.start(try page.window(), try page.request(16), .{ .observer = heard.observer() });
             try std.testing.expect(dispatch != null);
-            try std.testing.expectEqual(before + 1, async_fetch.inFlight());
+            try std.testing.expectEqual(before + 1, page.fetches().inFlight());
             try std.testing.expectEqual(@as(usize, 0), heard.responses);
             try page.turnUntilEnded(&heard);
             // A refused connection is a network error: status 0.
@@ -121,7 +125,7 @@ test "a dispatch is in flight at once, hears its response, then ends and frees i
             try std.testing.expectEqual(@as(u16, 0), heard.status);
             try std.testing.expectEqual(@as(usize, 1), heard.ends);
             try std.testing.expect(heard.ended_after_response);
-            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(before, page.fetches().inFlight());
         }
     }.body);
 }
@@ -131,14 +135,14 @@ test "send is fire-and-forget: accepted, and nothing is left once the fetch ends
         fn body() !void {
             var page = try Page.open(std.testing.allocator);
             defer page.close();
-            const before = async_fetch.inFlight();
+            const before = page.fetches().inFlight();
             try std.testing.expect(try keepalive_fetch.send(try page.window(), try page.request(8), .{}));
-            try std.testing.expectEqual(before + 1, async_fetch.inFlight());
+            try std.testing.expectEqual(before + 1, page.fetches().inFlight());
             var turns: usize = 0;
-            while (async_fetch.inFlight() != before and turns < 100) : (turns += 1) {
+            while (page.fetches().inFlight() != before and turns < 100) : (turns += 1) {
                 _ = try page.browser.runEventLoopBlocking(20);
             }
-            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(before, page.fetches().inFlight());
         }
     }.body);
 }
@@ -148,15 +152,15 @@ test "cancel ends the transport synchronously and the observer hears nothing" {
         fn body() !void {
             var page = try Page.open(std.testing.allocator);
             defer page.close();
-            const before = async_fetch.inFlight();
-            const scheduler = network.scheduler.threadScheduler();
+            const before = page.fetches().inFlight();
+            const scheduler = &page.fetches().scheduler;
             const transfers_before = scheduler.inFlight();
             var heard: Heard = .{};
             const dispatch = (try keepalive_fetch.start(try page.window(), try page.request(4), .{ .observer = heard.observer() })) orelse
                 return error.TestUnexpectedResult;
             try std.testing.expectEqual(transfers_before + 1, scheduler.inFlight());
             dispatch.cancel();
-            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(before, page.fetches().inFlight());
             try std.testing.expectEqual(transfers_before, scheduler.inFlight());
             _ = try page.browser.runEventLoopBlocking(20);
             try std.testing.expectEqual(@as(usize, 0), heard.responses);
@@ -170,7 +174,7 @@ test "a dispatch whose realm retires is terminated, and ends without a response"
         fn body() !void {
             var page = try Page.open(std.testing.allocator);
             defer page.close();
-            const before = async_fetch.inFlight();
+            const before = page.fetches().inFlight();
             var heard: Heard = .{};
             _ = try keepalive_fetch.start(try page.window(), try page.request(4), .{ .observer = heard.observer() });
             // The page ends: its realm retires, and Fetch terminates the
@@ -178,7 +182,7 @@ test "a dispatch whose realm retires is terminated, and ends without a response"
             try page.browser.navigate("about:blank", .window);
             try std.testing.expectEqual(@as(usize, 0), heard.responses);
             try std.testing.expectEqual(@as(usize, 1), heard.ends);
-            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(before, page.fetches().inFlight());
         }
     }.body);
 }
@@ -188,13 +192,13 @@ fn groupOf(page: *Page) !*dom.document_fetches.FetchGroup {
     return dom.global_settings.fetchGroupOf(try page.window()) orelse error.TestUnexpectedResult;
 }
 
-/// Turn the event loop until no fetch is left in flight on this thread.
+/// Turn the event loop until no fetch is left in flight on the agent.
 fn turnUntilIdle(page: *Page, before: usize) !void {
     var turns: usize = 0;
-    while (async_fetch.inFlight() != before and turns < 100) : (turns += 1) {
+    while (page.fetches().inFlight() != before and turns < 100) : (turns += 1) {
         _ = try page.browser.runEventLoopBlocking(20);
     }
-    try std.testing.expectEqual(before, async_fetch.inFlight());
+    try std.testing.expectEqual(before, page.fetches().inFlight());
 }
 
 test "a counted dispatch reserves its body in its fetch group, and is rejected past 64 KiB" {
@@ -206,11 +210,11 @@ test "a counted dispatch reserves its body in its fetch group, and is rejected p
             const group = try groupOf(&page);
             const quota = dom.document_fetches.FetchGroup.keepalive_quota;
             try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
-            const before = async_fetch.inFlight();
+            const before = page.fetches().inFlight();
             // Over the quota alone: rejected, nothing sent, and the request
             // freed (std.testing.allocator).
             try std.testing.expect(!try keepalive_fetch.send(window, try page.request(quota + 1), .{}));
-            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(before, page.fetches().inFlight());
             try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
             // Exactly the quota: accepted, and in flight.
             try std.testing.expect(try keepalive_fetch.send(window, try page.request(quota), .{}));
@@ -224,7 +228,7 @@ test "a counted dispatch reserves its body in its fetch group, and is rejected p
             plain.keepalive = false;
             try std.testing.expect(try keepalive_fetch.send(window, plain, .{}));
             try std.testing.expectEqual(quota, group.inflight_keepalive_bytes);
-            try std.testing.expectEqual(before + 3, async_fetch.inFlight());
+            try std.testing.expectEqual(before + 3, page.fetches().inFlight());
             // Every fetch ends (refused): the bytes come back, once.
             try turnUntilIdle(&page, before);
             try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
@@ -256,7 +260,7 @@ test "fetch() with keepalive reserves its body, and one over the budget never st
             var page = try Page.open(std.testing.allocator);
             defer page.close();
             const group = try groupOf(&page);
-            const before = async_fetch.inFlight();
+            const before = page.fetches().inFlight();
             try page.page.runScript(
                 \\window.log = [];
                 \\const url = 'http://127.0.0.1:65533/keepalive';
@@ -269,7 +273,7 @@ test "fetch() with keepalive reserves its body, and one over the budget never st
                 \\fetch(url, {keepalive: true}).catch(e => log.push('third:' + e.name));
             );
             // The second never reached the network.
-            try std.testing.expectEqual(before + 2, async_fetch.inFlight());
+            try std.testing.expectEqual(before + 2, page.fetches().inFlight());
             try std.testing.expectEqual(@as(u64, 65536), group.inflight_keepalive_bytes);
             try turnUntilIdle(&page, before);
             try std.testing.expectEqual(@as(u64, 0), group.inflight_keepalive_bytes);
@@ -288,7 +292,7 @@ test "aborting a keepalive fetch() returns its bytes at once" {
             var page = try Page.open(std.testing.allocator);
             defer page.close();
             const group = try groupOf(&page);
-            const before = async_fetch.inFlight();
+            const before = page.fetches().inFlight();
             try page.page.runScript(
                 \\window.controller = new AbortController();
                 \\fetch('http://127.0.0.1:65533/keepalive', {keepalive: true, method: 'POST',

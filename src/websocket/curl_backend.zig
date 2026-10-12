@@ -157,8 +157,13 @@ pub const CurlWebSocket = struct {
         /// The user agent's cookie jar, borrowed for the connection's life.
         cookie_jar: ?*cookiestore.CookieJar = null,
 
-        /// TLS trust; null means fetch's defaults.
+        /// TLS trust; null means the network context's (below), or the
+        /// system's with none.
         cert_options: ?fetch.network.CertVerifyOptions = null,
+
+        /// The network context of the client's Browser (borrowed for the
+        /// connection's life): what its handshake trusts.
+        network: ?*fetch.network.NetworkContext = null,
 
         /// The serialized origin of the client, sent as `Origin`. Fetch
         /// appends it to every request whose mode is "websocket" (Fetch,
@@ -209,7 +214,7 @@ pub const CurlWebSocket = struct {
             .url = url_copy,
             .protocols = protocols_copy,
             .cookie_jar = options.cookie_jar,
-            .cert_options = options.cert_options orelse fetch.network.defaultCertOptions(),
+            .cert_options = options.cert_options orelse if (options.network) |network| network.certOptions() else .{},
             .origin = origin_copy,
         };
 
@@ -669,19 +674,20 @@ test "selectSubprotocol - the server's choice is the subprotocol in use" {
     try std.testing.expectEqualStrings("chat", (try selectSubprotocol("echo,chat", " chat ")).?);
 }
 
-test "CurlWebSocket - a wss handshake trusts what fetch trusts" {
-    // The embedder registers the certificate authorities it trusts through
-    // fetch's default cert options - the WPT runner adds the WPT CA that way -
-    // and a WebSocket handshake is a fetch (WebSockets § 2.2 step 11). A
-    // backend that set no TLS options at all verified wss:// against the
-    // system store only, so every `?wss` variant failed to open.
+test "CurlWebSocket - a wss handshake trusts what its Browser trusts" {
+    // The embedder gives a Browser the certificate authorities it trusts -
+    // the WPT runner adds the WPT CA that way - and a WebSocket handshake is
+    // a fetch (WebSockets § 2.2 step 11), made with its client's Browser's
+    // network context. A backend that set no TLS options at all verified
+    // wss:// against the system store only, so every `?wss` variant failed
+    // to open.
     const allocator = std.testing.allocator;
 
-    const saved = fetch.network.defaultCertOptions();
-    defer fetch.network.setDefaultCertOptions(saved);
-    fetch.network.setDefaultCertOptions(.{ .ca_bundle_path = "/wpt/tools/certs/cacert.pem" });
+    var network = fetch.network.NetworkContext.init(allocator);
+    defer network.deinit();
+    try network.configure(.{ .ca_bundle_path = "/wpt/tools/certs/cacert.pem" });
 
-    var ws = try CurlWebSocket.init(allocator, "wss://web-platform.test:8666/echo", null);
+    var ws = try CurlWebSocket.initWithOptions(allocator, "wss://web-platform.test:8666/echo", .{ .network = &network });
     defer ws.deinit();
 
     try std.testing.expectEqualStrings("/wpt/tools/certs/cacert.pem", ws.cert_options.ca_bundle_path.?);

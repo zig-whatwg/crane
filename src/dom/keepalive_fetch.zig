@@ -257,7 +257,7 @@ pub fn start(global: *runtime.Instance, request: *fetch.internal.InternalRequest
     self.* = .{ .allocator = allocator, .ctx = global.ctx, .observer = options.observer };
     // The fetch owns the request from here, and frees it if it fails.
     owns_request = false;
-    self.active = try AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), self.client());
+    self.active = try AsyncFetch.start(allocator, request, .{}, @import("agent_fetches.zig").of(global.ctx), self.client());
     // Held from here: the dispatch's end releases it.
     self.reservation = reservation;
     return self;

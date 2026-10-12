@@ -1256,6 +1256,26 @@ fn navigableContext(integration: *IFrameIntegration) ?runtime.Context {
     return @ptrCast(@alignCast(integration.runtime_context orelse return null));
 }
 
+/// The realm whose agent and Browser a navigation of `integration`'s
+/// navigable belongs to: its container's (a frame's realm shares its
+/// parent's Browser scope and agent), or the navigable's own.
+fn navigationRealmOf(integration: *IFrameIntegration) ?runtime.Context {
+    if (integration.parent_realm) |parent| return @ptrCast(@alignCast(parent));
+    return navigableContext(integration);
+}
+
+/// The fetches a navigation of `integration`'s navigable runs on: its
+/// container's realm's agent's - the window agent, whose loop pumps them.
+fn agentFetchesOf(integration: *IFrameIntegration) ?*dom_module.agent_fetches.AgentFetches {
+    return dom_module.agent_fetches.of(navigationRealmOf(integration) orelse return null);
+}
+
+/// The network context a navigation of `integration`'s navigable goes out
+/// on: its Browser's.
+fn networkOf(integration: *IFrameIntegration) ?*fetch_mod.network.NetworkContext {
+    return dom_module.browser_state.networkOf(navigationRealmOf(integration) orelse return null);
+}
+
 /// The user agent's blob URL store a navigation of `integration`'s navigable
 /// obtains a blob: URL's blob from: its Browser's - the container's realm's
 /// (a frame's realm shares its parent's Browser scope).
@@ -1368,6 +1388,8 @@ fn startFetch(record: *Navigation) void {
             // The navigable's cookie jar: a frame's top's, a popup's own
             // (its opener's).
             .cookie_jar = if (record.integration.browsing_context) |bc| bc.cookieJar() else null,
+            // The Browser's network: its connections and TLS options.
+            .network = networkOf(record.integration),
             // The request's referrer, referrer policy and policy container
             // (the source snapshot params'): main fetch step 8 gives a
             // request whose own policy is empty its container's.
@@ -1428,7 +1450,7 @@ fn startFetch(record: *Navigation) void {
         };
         // The request's final referrer comes back with the result, for the
         // new document's referrer (fetchDone frees it with the result).
-        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{ .report_referrer = true }, fetch_mod.network.scheduler.threadScheduler(), client) catch {
+        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{ .report_referrer = true }, agentFetchesOf(record.integration), client) catch {
             // The fetch owned the request, and freed it.
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);

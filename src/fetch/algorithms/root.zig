@@ -62,6 +62,7 @@ pub const corsCheck = http_fetch.corsCheck;
 
 pub const FetchJob = fetch_job.FetchJob;
 pub const AsyncFetch = async_fetch.AsyncFetch;
+pub const AgentFetches = async_fetch.AgentFetches;
 
 pub const FetchError = fetch_algorithm.FetchError;
 pub const FetchResult = fetch_algorithm.FetchResult;

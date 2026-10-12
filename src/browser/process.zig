@@ -18,12 +18,13 @@
 //! not yet - a compatibility path that keeps the process started until it
 //! exits (removed when the host API lands, design batch B6).
 //!
-//! Not here yet, and why (both listed for later batches): curl's global init
-//! is made together with the connection-pool share, which must close with
-//! the last Browser - a connection only closed by the process exiting ends
-//! with a bare FIN, and WPT's h2 server spins on it - so it stays in Browser
-//! until B3 splits them; and the engine adapter's wrapper type registry is
-//! still built lazily inside the adapter (B2).
+//! It also starts curl's global state (curl_global_init, which must run once
+//! before any thread makes a transfer). Connections are not the process's:
+//! each Browser's network context keeps its own and closes them at its end
+//! (fetch.network.NetworkContext; instances B3).
+//!
+//! Not here yet, and why (listed for a later batch): the engine adapter's
+//! wrapper type registry is still built lazily inside the adapter (B2).
 
 const std = @import("std");
 const engine = @import("engine");
@@ -45,6 +46,8 @@ pub const Error = error{
     ProcessEnded,
     /// The engine would not start.
     EngineStartFailed,
+    /// curl's global initialization failed.
+    NetworkStartFailed,
 };
 
 /// Where a snapshot is looked for, first to last. The build's own output
@@ -81,6 +84,11 @@ pub const Process = struct {
             process_start.end();
             return error.EngineStartFailed;
         };
+        // curl's global state, held until `deinit`.
+        @import("fetch").network.globalInit() catch {
+            process_start.end();
+            return error.NetworkStartFailed;
+        };
         installHooks();
         process_start.finish(start.snapshot != null);
         return .{ .snapshot = start.snapshot };
@@ -89,6 +97,7 @@ pub const Process = struct {
     /// End the process, after its last Browser: the engine forgets the
     /// snapshot, which is freed. V8 keeps its platform until exit.
     pub fn deinit(self: *Process) void {
+        @import("fetch").network.globalCleanup();
         engine.deinitializeEngine();
         if (self.snapshot) |bytes| allocator.free(bytes);
         self.snapshot = null;
