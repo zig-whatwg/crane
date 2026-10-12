@@ -321,61 +321,10 @@ test "BrowsingContext - findByTargetName searches children" {
     try testing.expect(found == child);
 }
 
-// ============================================================================
-// Cross-Origin Security Tests
-// ============================================================================
-
-test "WindowProxy - cross-origin access to location is allowed" {
-    const allocator = testing.allocator;
-    var navigables = Navigables.init(allocator);
-    defer navigables.deinit();
-
-    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
-    defer ctx.deinit();
-
-    var proxy = WindowProxy.init(allocator, ctx);
-    proxy.setDocumentOrigin(Origin.init("https", "example.com", 443));
-
-    const cross_origin = Origin.init("https", "other.com", 443);
-
-    // location (getter) is allowed cross-origin
-    try proxy.accessProperty(cross_origin, "location");
-
-    // Verify location is in the cross-origin allowed list
-    try testing.expect(WindowProxy.isCrossOriginAllowedProperty("location") != null);
-}
-
-test "WindowProxy - history is NOT cross-origin accessible" {
-    // history is NOT in the cross-origin allowed list
-    // (history.length reveals browsing history which is sensitive)
-    try testing.expect(WindowProxy.isCrossOriginAllowedProperty("history") == null);
-}
-
-test "WindowProxy - postMessage is cross-origin accessible" {
-    // postMessage is the primary way to communicate cross-origin
-    try testing.expect(WindowProxy.isCrossOriginAllowedProperty("postMessage") != null);
-}
-
-test "WindowProxy - close is cross-origin accessible" {
-    // window.close() is allowed cross-origin (for popups)
-    try testing.expect(WindowProxy.isCrossOriginAllowedProperty("close") != null);
-}
-
-test "WindowProxy - focus and blur are cross-origin accessible" {
-    // focus/blur are allowed cross-origin
-    try testing.expect(WindowProxy.isCrossOriginAllowedProperty("focus") != null);
-    try testing.expect(WindowProxy.isCrossOriginAllowedProperty("blur") != null);
-}
-
-test "WindowProxy - document is NOT cross-origin accessible" {
-    // document would allow reading DOM content
-    try testing.expect(WindowProxy.isCrossOriginAllowedProperty("document") == null);
-}
-
-test "WindowProxy - localStorage is NOT cross-origin accessible" {
-    // localStorage is origin-bound storage
-    try testing.expect(WindowProxy.isCrossOriginAllowedProperty("localStorage") == null);
-}
+// Cross-origin access - which of a WindowProxy's properties another origin
+// reaches - is the engine's [cross_origin_objects]; its table is
+// CrossOriginProperties in the V8 adapter's cross_origin.zig, pinned by
+// tests/v8/xo2_cross_origin_objects_test.zig.
 
 // ============================================================================
 // BrowsingContext Group Tests

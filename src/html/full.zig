@@ -119,7 +119,6 @@ pub const Navigables = core.Navigables;
 pub const BrowsingContextGroup = core.BrowsingContextGroup;
 pub const WindowProxy = core.WindowProxy;
 pub const Origin = core.Origin;
-pub const CrossOriginProperty = core.CrossOriginProperty;
 pub const WindowProxyError = core.WindowProxyError;
 pub const IFrameIntegration = core.IFrameIntegration;
 pub const IFrameState = core.IFrameState;

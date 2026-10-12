@@ -1,92 +1,53 @@
-//! HTML 7.1.1: tuple origins, document.domain, and same origin-domain.
+//! HTML 7.1.1: tuple origins and same origin-domain. The origin with its
+//! domain is dom.origin_record's record (shared by documents, set by
+//! document.domain); the plain tuple origins - html_core.Origin, the
+//! navigation's record of a document's origin, and runtime.Origin, an
+//! environment's - carry no domain, and no WindowProxy record runs an access
+//! check: the engine does [cross_origin_objects].
 const std = @import("std");
 const html_core = @import("html_core");
 const runtime = @import("runtime");
 
-fn defaults(comptime Origin: type) !void {
-    const origin = Origin.init("https", "example.test", null);
-    if (comptime @hasField(Origin, "domain")) {
-        try std.testing.expectEqual(@as(?[]const u8, null), origin.domain);
-    } else return error.MissingOriginDomain;
-    try std.testing.expect(origin.isSameOriginDomain(origin));
+test "the tuple origins carry no domain and no same origin-domain of their own" {
+    // Batch 2 of the cross-origin objects work retired them: a copy of a
+    // domain could not see a later document.domain set, and nothing set one.
+    try std.testing.expect(!@hasField(html_core.Origin, "domain"));
+    try std.testing.expect(!@hasDecl(html_core.Origin, "isSameOriginDomain"));
+    try std.testing.expect(!@hasField(runtime.Origin, "domain"));
+    try std.testing.expect(!@hasDecl(runtime.Origin, "isSameOriginDomain"));
+    try std.testing.expect(!@hasDecl(runtime.Origin, "setDomain"));
 }
 
-fn comparisons(comptime Origin: type) !void {
-    if (comptime !@hasField(Origin, "domain")) return error.MissingOriginDomain;
-    const Case = struct {
-        host: []const u8 = "a.example.test",
-        scheme: []const u8 = "https",
-        port: ?u16 = null,
-        a_domain: ?[]const u8 = null,
-        b_domain: ?[]const u8 = null,
-        same_origin: bool = true,
-        same_origin_domain: bool = true,
-    };
+test "the navigation's WindowProxy record runs no access check" {
+    try std.testing.expect(!@hasDecl(html_core.WindowProxy, "canAccess"));
+    try std.testing.expect(!@hasDecl(html_core.WindowProxy, "isSameOriginAccess"));
+    try std.testing.expect(!@hasDecl(html_core.WindowProxy, "accessProperty"));
+    try std.testing.expect(!@hasDecl(html_core.WindowProxy, "isCrossOriginAllowedProperty"));
+}
+
+fn sameOriginCases(comptime Origin: type) !void {
+    const Case = struct { scheme: []const u8 = "https", host: []const u8 = "a.example.test", port: ?u16 = null, same: bool };
     const cases = [_]Case{
-        .{},
-        .{ .port = 8000, .same_origin = false, .same_origin_domain = false },
-        .{ .a_domain = "a.example.test", .same_origin_domain = false },
-        .{ .b_domain = "a.example.test", .same_origin_domain = false },
-        .{ .a_domain = "a.example.test", .b_domain = "a.example.test" },
-        .{ .a_domain = "example.test", .b_domain = "a.example.test", .same_origin_domain = false },
-        .{ .host = "b.example.test", .a_domain = "example.test", .b_domain = "example.test", .same_origin = false },
-        .{ .host = "b.example.test", .port = 8000, .a_domain = "example.test", .b_domain = "example.test", .same_origin = false },
-        .{ .scheme = "http", .a_domain = "example.test", .b_domain = "example.test", .same_origin = false, .same_origin_domain = false },
-        .{ .host = "b.example.test", .same_origin = false, .same_origin_domain = false },
+        .{ .same = true },
+        .{ .port = 8000, .same = false },
+        .{ .scheme = "http", .same = false },
+        .{ .host = "b.example.test", .same = false },
     };
+    const a = Origin.init("https", "a.example.test", null);
     for (cases) |case| {
-        var a = Origin.init("https", "a.example.test", null);
-        a.domain = case.a_domain;
-        var b = Origin.init(case.scheme, case.host, case.port);
-        b.domain = case.b_domain;
-        try std.testing.expectEqual(case.same_origin, a.isSameOrigin(b));
-        try std.testing.expectEqual(case.same_origin_domain, a.isSameOriginDomain(b));
-        try std.testing.expectEqual(case.same_origin_domain, b.isSameOriginDomain(a));
+        const b = Origin.init(case.scheme, case.host, case.port);
+        try std.testing.expectEqual(case.same, a.isSameOrigin(b));
+        try std.testing.expectEqual(case.same, b.isSameOrigin(a));
     }
-    var opaque_origin = Origin.createOpaque();
-    opaque_origin.domain = "example.test";
-    var tuple = Origin.init("https", "a.example.test", null);
-    tuple.domain = "example.test";
-    try std.testing.expect(!opaque_origin.isSameOriginDomain(tuple));
-    try std.testing.expect(!tuple.isSameOriginDomain(opaque_origin));
+    try std.testing.expect(!Origin.createOpaque().isSameOrigin(a));
 }
 
-test "window Origin defaults to an unset domain" {
-    try defaults(html_core.Origin);
+test "window Origin compares scheme, host and port" {
+    try sameOriginCases(html_core.Origin);
 }
 
-test "environment Origin defaults to an unset domain" {
-    try defaults(runtime.Origin);
-}
-
-test "window Origin distinguishes same origin from same origin-domain" {
-    try comparisons(html_core.Origin);
-}
-
-test "environment Origin distinguishes same origin from same origin-domain" {
-    try comparisons(runtime.Origin);
-}
-
-test "WindowProxy requires both documents to opt in and then ignores ports" {
-    const Origin = html_core.Origin;
-    if (comptime !@hasField(Origin, "domain")) return error.MissingOriginDomain;
-    var scope = runtime.BrowserScope.init(std.testing.allocator);
-    defer scope.deinit();
-    const navigables = try scope.table(.navigables, html_core.Navigables);
-    const context = try html_core.BrowsingContext.initTopLevel(std.testing.allocator, navigables);
-    defer context.deinit();
-    var proxy = html_core.WindowProxy.init(std.testing.allocator, context);
-    var target = Origin.init("https", "example.test", null);
-    const accessor = target;
-    target.domain = "example.test";
-    proxy.setDocumentOrigin(target);
-    try std.testing.expect(!proxy.isSameOriginAccess(accessor));
-    try std.testing.expectError(error.SecurityError, proxy.accessProperty(accessor, "document"));
-    try proxy.accessProperty(accessor, "postMessage");
-    var relaxed = Origin.init("https", "sub.example.test", 8000);
-    relaxed.domain = "example.test";
-    try std.testing.expect(proxy.isSameOriginAccess(relaxed));
-    try proxy.accessProperty(relaxed, "document");
+test "environment Origin compares scheme, host and port" {
+    try sameOriginCases(runtime.Origin);
 }
 
 test "serialized origin-domain comparison keeps ports only before opting in" {
@@ -103,27 +64,4 @@ test "serialized origin-domain comparison keeps ports only before opting in" {
     // A serialization cannot identify two opaque origins as the same one.
     try std.testing.expect(!compare("null", null, "null", null));
     try std.testing.expect(!compare("null", "example.test", "null", "example.test"));
-}
-
-test "an owned environment origin owns its domain and serialization ignores it" {
-    const Origin = runtime.Origin;
-    if (comptime !@hasField(Origin, "domain")) return error.MissingOriginDomain;
-    const allocator = std.testing.allocator;
-    var origin = try Origin.initOwned(allocator, "https", "sub.example.test", 8000);
-    defer origin.deinit();
-    {
-        // The caller's slice goes at once: an owned origin keeps a copy
-        // (review S2: initOwned used to borrow the domain - a dangling
-        // slice once its owner freed it).
-        const domain = try allocator.dupe(u8, "example.test");
-        defer allocator.free(domain);
-        try origin.setDomain(domain);
-    }
-    try std.testing.expectEqualStrings("example.test", origin.domain.?);
-    // Replacing it frees the old copy (std.testing.allocator checks).
-    try origin.setDomain("sub.example.test");
-    try std.testing.expectEqualStrings("sub.example.test", origin.domain.?);
-    const serialized = try origin.serialize(allocator);
-    defer allocator.free(serialized);
-    try std.testing.expectEqualStrings("https://sub.example.test:8000", serialized);
 }

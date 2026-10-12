@@ -1539,13 +1539,16 @@ pub const IFrameIntegration = struct {
         return null;
     }
 
-    /// Check if contentDocument should be accessible (same-origin check)
+    /// Whether the navigable's active document, as the navigation recorded
+    /// its origin, is same origin with `accessor_origin`. Same origin, not
+    /// same origin-domain: the caller (dom.navigables.contentDocument) asks
+    /// only when neither document has a domain, where the two agree.
     pub fn isContentDocumentAccessible(self: *const IFrameIntegration, accessor_origin: Origin) bool {
         if (self.state == .uninitialized or self.state == .discarded) {
             return false;
         }
         if (self.window_proxy) |proxy| {
-            return proxy.isSameOriginAccess(accessor_origin);
+            return proxy.document_origin.isSameOrigin(accessor_origin);
         }
         return false;
     }
@@ -1955,7 +1958,7 @@ test "IFrameIntegration - about:blank inherits origin" {
 
     // about:blank should inherit container origin
     if (integration.window_proxy) |proxy| {
-        try std.testing.expect(proxy.isSameOriginAccess(container_origin));
+        try std.testing.expect(proxy.document_origin.isSameOrigin(container_origin));
     }
 }
 
