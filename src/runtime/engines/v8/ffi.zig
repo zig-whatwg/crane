@@ -728,6 +728,12 @@ pub extern fn v8_SetFlagsFromString(flags: [*:0]const u8) void;
 // Isolate management
 pub extern fn v8_Isolate_New() ?*Isolate;
 pub extern fn v8_Isolate_Dispose(isolate: *Isolate) void;
+/// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
+pub extern fn v8_Isolate_IsFromSnapshot(isolate: *Isolate) bool;
+/// How many of `isolate`'s JSON (and default-export) modules wait for
+/// evaluation - the adapter's per-isolate record holds their parsed values
+/// until then. For tests.
+pub extern fn v8_Isolate_PendingSyntheticModuleCount(isolate: *Isolate) usize;
 pub extern fn v8_Isolate_Enter(isolate: *Isolate) void;
 pub extern fn v8_Isolate_Exit(isolate: *Isolate) void;
 pub extern fn v8_Isolate_GetCurrentContext(isolate: *Isolate) ?*Context;

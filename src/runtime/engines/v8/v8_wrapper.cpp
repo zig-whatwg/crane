@@ -1237,7 +1237,8 @@ bool v8_RunCatching(Isolate* isolate, void (*body)(void*), void* data, Global<Va
 // The innermost scope is kept in the isolate's data slot 3 (a scope saves the
 // outer one and restores it on exit). Slot 3 held a snapshot isolate's copy
 // of its blob only "for cleanup", and nothing ever read it back: the copy is
-// the StartupData's `data` in slot 2.
+// the StartupData's `data`, kept by the isolate's record in slot 2
+// (kIsolateDataSlot).
 static constexpr uint32_t kBindingCatchScopeSlot = 3;
 
 /// Run `body(data)` in a binding catch scope. A caught exception is rethrown
@@ -1969,15 +1970,68 @@ void v8_Platform_Dispose() {
 // Isolate Management
 // ============================================================================
 
-// Map to track ArrayBuffer::Allocators per isolate for cleanup. Isolates are
-// made and disposed on every Browser and worker thread (docs/instances.md):
-// `lock` guards `map`, for one insert or one find-and-erase.
-struct IsolateAllocators {
-    std::mutex lock;
-    std::unordered_map<Isolate*, ArrayBuffer::Allocator*> map;
-};
-static IsolateAllocators g_isolate_allocators;
+// ----------------------------------------------------------------------------
+// The adapter's per-isolate state
+// ----------------------------------------------------------------------------
+//
+// One record per isolate in its embedder data slot 2 (`kIsolateDataSlot`), as
+// Blink keeps V8PerIsolateData in `isolate->GetData(gin::kEmbedderBlink)`:
+// made with the isolate (v8_Isolate_New, v8_Isolate_NewFromSnapshot), deleted
+// by v8_Isolate_Dispose, read and written on the isolate's thread only - no
+// lock, and nothing of another isolate reaches it (instances B2). What it
+// holds used to be process-wide, under mutexes every Browser and worker
+// thread took. Slots 0 and 1 are the Zig side's (isolate_allocator.zig,
+// isolate_templates.zig); slot 3 is the binding catch scope.
+//
+// The isolates' ArrayBuffer::Allocators are no longer kept here or anywhere:
+// each is handed to V8 as CreateParams::array_buffer_allocator_shared, so the
+// isolate and every BackingStore it allocated hold it (v8-isolate.h) and the
+// last of them frees it. It was a process-wide map, deleted at the isolate's
+// dispose even while a BackingStore made with it (an ArrayBuffer transferred
+// to another isolate) still lived; a snapshot isolate's was never deleted.
+static constexpr uint32_t kIsolateDataSlot = 2;
 
+/// A JSON module's parsed value, held from creation until V8 runs its
+/// evaluation steps (see v8_Module_CreateJsonModule).
+struct SyntheticJsonExport {
+    Global<Module> module;
+    Global<Value> value;
+};
+
+struct IsolateData {
+    /// A snapshot isolate's StartupData (v8_Isolate_NewFromSnapshot): V8 keeps
+    /// a pointer to it for the isolate's life. Null for an isolate made
+    /// afresh. Not freed with the record - as before - for the reason
+    /// v8_Isolate_NewFromSnapshot gives.
+    StartupData* startup_data = nullptr;
+    /// The isolate's JSON (and default-export) modules waiting for
+    /// evaluation, until V8 runs their evaluation steps or the module is
+    /// disposed - or the isolate is: v8_Isolate_Dispose resets what is left.
+    std::vector<SyntheticJsonExport*> synthetic_json_exports;
+
+    /// Take out the entry whose module is `module`, if any.
+    SyntheticJsonExport* takeSyntheticExport(Local<Module> module) {
+        for (size_t i = 0; i < synthetic_json_exports.size(); i++) {
+            if (!(synthetic_json_exports[i]->module == module)) continue;
+            SyntheticJsonExport* found = synthetic_json_exports[i];
+            synthetic_json_exports.erase(synthetic_json_exports.begin() + i);
+            return found;
+        }
+        return nullptr;
+    }
+};
+
+/// `isolate`'s record, or null for an isolate this file did not make (the
+/// snapshot creator's).
+static IsolateData* isolateData(Isolate* isolate) {
+    return isolate ? static_cast<IsolateData*>(isolate->GetData(kIsolateDataSlot)) : nullptr;
+}
+
+static void deleteSyntheticExport(SyntheticJsonExport* entry) {
+    entry->module.Reset();
+    entry->value.Reset();
+    delete entry;
+}
 
 Isolate* v8_Isolate_New() {
     if (!v8_initialized) {
@@ -1985,35 +2039,36 @@ Isolate* v8_Isolate_New() {
     }
     
     Isolate::CreateParams create_params;
-    ArrayBuffer::Allocator* allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
-    create_params.array_buffer_allocator = allocator;
+    create_params.array_buffer_allocator_shared =
+        std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     Isolate* isolate = Isolate::New(create_params);
-    
-    // Track the allocator for cleanup when isolate is disposed
-    if (isolate) {
-        std::lock_guard<std::mutex> guard(g_isolate_allocators.lock);
-        g_isolate_allocators.map[isolate] = allocator;
-    } else {
-        // Isolate creation failed, clean up the allocator
-        delete allocator;
-    }
-    
+    if (isolate) isolate->SetData(kIsolateDataSlot, new IsolateData());
     return isolate;
+}
+
+/// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
+bool v8_Isolate_IsFromSnapshot(Isolate* isolate) {
+    IsolateData* data = isolateData(isolate);
+    return data && data->startup_data;
+}
+
+/// How many of `isolate`'s JSON (and default-export) modules wait for
+/// evaluation (IsolateData::synthetic_json_exports), for tests.
+size_t v8_Isolate_PendingSyntheticModuleCount(Isolate* isolate) {
+    IsolateData* data = isolateData(isolate);
+    return data ? data->synthetic_json_exports.size() : 0;
 }
 
 void v8_Isolate_Dispose(Isolate* isolate) {
     if (isolate) {
-        // Get the allocator before disposing the isolate
-        ArrayBuffer::Allocator* allocator = nullptr;
-        {
-            std::lock_guard<std::mutex> guard(g_isolate_allocators.lock);
-            auto it = g_isolate_allocators.map.find(isolate);
-            if (it != g_isolate_allocators.map.end()) {
-                allocator = it->second;
-                g_isolate_allocators.map.erase(it);
-            }
+        // The adapter's per-isolate record: its handles reset while their
+        // isolate lives, on its thread.
+        if (IsolateData* data = isolateData(isolate)) {
+            isolate->SetData(kIsolateDataSlot, nullptr);
+            for (SyntheticJsonExport* entry : data->synthetic_json_exports) deleteSyntheticExport(entry);
+            delete data;
         }
-        
+
         // Records that a dispose detached from their Global while V8 still had
         // their callback queued. Disposing THIS isolate is the point at which
         // its callbacks provably will not run, so it is where they are freed.
@@ -2060,10 +2115,6 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             }
         }
 
-        // Then delete the allocator
-        if (allocator) {
-            delete allocator;
-        }
     }
 }
 
@@ -4027,43 +4078,6 @@ static char* importTypeAttribute(Isolate* isolate, Local<Context> context, Local
     return type;
 }
 
-/// A JSON module's parsed value, held from creation until V8 runs its
-/// evaluation steps (see v8_Module_CreateJsonModule).
-struct SyntheticJsonExport {
-    /// The isolate the handles are of: an entry is read and reset only on
-    /// its isolate's thread, and only that isolate's entries are compared.
-    Isolate* isolate;
-    Global<Module> module;
-    Global<Value> value;
-};
-
-/// Every isolate's JSON (and default-export) modules waiting for evaluation.
-/// Isolates live on every Browser and worker thread (docs/instances.md):
-/// `lock` guards `entries`, for one push or one find-and-erase; the handles
-/// are touched after the lock, on the entry's own thread.
-struct SyntheticJsonExports {
-    std::mutex lock;
-    std::vector<SyntheticJsonExport*> entries;
-
-    /// Take out `isolate`'s entry whose module is `module`, if any.
-    SyntheticJsonExport* take(Isolate* isolate, Local<Module> module) {
-        std::lock_guard<std::mutex> guard(lock);
-        for (size_t i = 0; i < entries.size(); i++) {
-            if (entries[i]->isolate != isolate) continue;
-            if (!(entries[i]->module == module)) continue;
-            SyntheticJsonExport* found = entries[i];
-            entries.erase(entries.begin() + i);
-            return found;
-        }
-        return nullptr;
-    }
-
-    void add(SyntheticJsonExport* entry) {
-        std::lock_guard<std::mutex> guard(lock);
-        entries.push_back(entry);
-    }
-};
-static SyntheticJsonExports g_synthetic_json_exports;
 
 /// Report an unresolvable module specifier as a JavaScript exception.
 ///
@@ -4302,14 +4316,10 @@ void v8_Module_Dispose(Global<Module>* module) {
         // parsed value in the synthetic-export table; drop it with the module.
         if (!module->IsEmpty()) {
             Isolate* isolate = Isolate::GetCurrent();
-            if (isolate) {
+            if (IsolateData* data = isolateData(isolate)) {
                 HandleScope handle_scope(isolate);
                 Local<Module> local = module->Get(isolate);
-                if (SyntheticJsonExport* entry = g_synthetic_json_exports.take(isolate, local)) {
-                    entry->module.Reset();
-                    entry->value.Reset();
-                    delete entry;
-                }
+                if (SyntheticJsonExport* entry = data->takeSyntheticExport(local)) deleteSyntheticExport(entry);
             }
         }
         releaseWeakArm(module);
@@ -4408,11 +4418,10 @@ static MaybeLocal<Value> JsonModuleEvaluationSteps(Local<Context> context, Local
 
     Local<Value> value;
     bool found = false;
-    if (SyntheticJsonExport* entry = g_synthetic_json_exports.take(isolate, module)) {
+    IsolateData* data = isolateData(isolate);
+    if (SyntheticJsonExport* entry = data ? data->takeSyntheticExport(module) : nullptr) {
         value = entry->value.Get(isolate);
-        entry->module.Reset();
-        entry->value.Reset();
-        delete entry;
+        deleteSyntheticExport(entry);
         found = true;
     }
 
@@ -4489,11 +4498,19 @@ Global<Module>* v8_Module_CreateJsonModule(
         JsonModuleEvaluationSteps
     );
 
+    IsolateData* data = isolateData(isolate);
+    if (!data) {
+        *out_error = new V8ErrorInfo();
+        (*out_error)->has_error = true;
+        (*out_error)->message = strdup("JSON modules need an isolate made by v8_Isolate_New or v8_Isolate_NewFromSnapshot");
+        (*out_error)->line_number = -1;
+        (*out_error)->column_number = -1;
+        return nullptr;
+    }
     SyntheticJsonExport* entry = new SyntheticJsonExport();
-    entry->isolate = isolate;
     entry->module.Reset(isolate, module);
     entry->value.Reset(isolate, parsed);
-    g_synthetic_json_exports.add(entry);
+    data->synthetic_json_exports.push_back(entry);
 
     return trackHandle(new Global<Module>(isolate, module));
 }
@@ -4533,11 +4550,12 @@ Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
         JsonModuleEvaluationSteps
     );
 
+    IsolateData* data = isolateData(isolate);
+    if (!data) return nullptr;
     SyntheticJsonExport* entry = new SyntheticJsonExport();
-    entry->isolate = isolate;
     entry->module.Reset(isolate, module);
     entry->value.Reset(isolate, default_export);
-    g_synthetic_json_exports.add(entry);
+    data->synthetic_json_exports.push_back(entry);
 
     return trackHandle(new Global<Module>(isolate, module));
 }
@@ -8582,9 +8600,12 @@ Isolate* v8_Isolate_NewFromSnapshot(
         return nullptr;
     }
     
-    // Create isolate params with snapshot and external references
+    // Create isolate params with snapshot and external references. The
+    // ArrayBuffer allocator is V8's to free once the isolate and every
+    // BackingStore it allocated are gone (v8_Isolate_New says why).
     Isolate::CreateParams create_params;
-    create_params.array_buffer_allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
+    create_params.array_buffer_allocator_shared =
+        std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     create_params.snapshot_blob = startup_data;  // Heap-allocated, lives forever
     create_params.external_references = external_references;
     
@@ -8596,14 +8617,13 @@ Isolate* v8_Isolate_NewFromSnapshot(
         return nullptr;
     }
     
-    // Store pointers in isolate's embedder data slots for cleanup later
-    // NOTE: Slots 0-1 are reserved for Zig-side usage:
-    //   Slot 0: IsolateAllocator (see isolate_allocator.zig)
-    //   Slot 1: IsolateTemplates (see isolate_templates.zig)
-    // We use higher slots for C++ data:
-    //   Slot 2: StartupData struct pointer (its `data` is the blob's copy)
-    //   Slot 3: the innermost binding catch scope (kBindingCatchScopeSlot)
-    isolate->SetData(2, startup_data);
+    // The adapter's per-isolate record (kIsolateDataSlot), with the
+    // StartupData (its `data` is the blob's copy). Slots 0-1 are the Zig
+    // side's (isolate_allocator.zig, isolate_templates.zig); slot 3 is the
+    // innermost binding catch scope (kBindingCatchScopeSlot).
+    IsolateData* isolate_data = new IsolateData();
+    isolate_data->startup_data = startup_data;
+    isolate->SetData(kIsolateDataSlot, isolate_data);
     
     return isolate;
 }
