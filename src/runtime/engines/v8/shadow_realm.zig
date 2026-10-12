@@ -82,37 +82,30 @@ fn currentData() ?*ShadowRealmCallbackData {
 /// Unlike Window/Worker contexts, ShadowRealm doesn't need full DOM bindings -
 /// V8 provides all the JavaScript built-ins automatically.
 ///
-/// @param user_data - Opaque pointer to ShadowRealmCallbackData
+/// The process's dispatcher (v8_wrapper.cpp's
+/// V8HostCreateShadowRealmContextCallback calls it for every agent): this
+/// agent's ShadowRealm is made with its data, found from its isolate. An
+/// agent without ShadowRealm data - an isolate createAgent did not make, or
+/// one whose agent has ended - makes none (null: the C++ side throws).
+///
 /// @param initiator_context_ptr - Global<Context>* to the context that created the ShadowRealm
 /// @return Global<Context>* to the new ShadowRealm context, or null on failure
-fn shadowRealmContextCallback(
-    user_data: ?*anyopaque,
-    initiator_context_ptr: ?*anyopaque,
-) callconv(.c) ?*anyopaque {
-    // The C++ side keeps one user_data for every isolate; this agent's data
-    // is found from the isolate instead.
-    _ = user_data;
-
+fn shadowRealmContextCallback(initiator_context_ptr: ?*anyopaque) callconv(.c) ?*anyopaque {
     // Get the current isolate
     const isolate = ffi.v8_Isolate_GetCurrent() orelse {
         std.log.err("[ShadowRealm] No current isolate", .{});
         return null;
     };
-    const callback_data = dataOf(isolate);
+    const data = dataOf(isolate) orelse return null;
 
-    // Recursion guard: V8's Context::New() initializes harmony_shadow_realm,
-    // which can trigger our callback. Return null to break the recursion.
-    // V8 handles null returns gracefully during its internal initialization.
-    if (callback_data) |data| {
-        if (data.in_callback) {
-            std.log.debug("[ShadowRealm] Recursive callback detected, returning null to break recursion", .{});
-            return null;
-        }
-        data.in_callback = true;
+    // Recursion guard, per agent: a ShadowRealm's context is made inside
+    // this callback, and none may be made inside that.
+    if (data.in_callback) {
+        std.log.debug("[ShadowRealm] Recursive callback detected, returning null to break recursion", .{});
+        return null;
     }
-    defer if (callback_data) |data| {
-        data.in_callback = false;
-    };
+    data.in_callback = true;
+    defer data.in_callback = false;
 
     // Extract the raw address from the initiator context Global handle BEFORE
     // we return. This is critical because C++ will delete the Global handle after
@@ -183,40 +176,41 @@ fn shadowRealmContextCallback(
     // synthetic realm settings object's principal realm (host data,
     // runtime.ContextData.principal_realm), which its import()s resolve and
     // fetch against.
-    if (callback_data) |data| {
-        if (context_manager.getOrCreate(context, data.allocator)) |shadow| {
-            shadow.principal_realm = if (initiator_context) |ctx| context_manager.get(ctx) else null;
-        } else |err| {
-            std.log.warn("[ShadowRealm] Failed to register context in manager: {}", .{err});
-        }
+    if (context_manager.getOrCreate(context, data.allocator)) |shadow| {
+        shadow.principal_realm = if (initiator_context) |ctx| context_manager.get(ctx) else null;
+    } else |err| {
+        std.log.warn("[ShadowRealm] Failed to register context in manager: {}", .{err});
     }
 
     // Track the ShadowRealm for lifetime management
-    if (callback_data) |data| {
-        const entry = ShadowRealmEntry{
-            .context_handle = global_context,
-            .initiator_context_raw_addr = initiator_raw_addr,
-            .created_at = clock.wallSeconds(),
-        };
-        data.tracked_realms.put(@intFromPtr(global_context), entry) catch {
-            std.log.warn("[ShadowRealm] Failed to track ShadowRealm context", .{});
-        };
-        data.total_created += 1;
-        std.log.info("[ShadowRealm] Created ShadowRealm #{d} (initiator raw addr: {?})", .{ data.total_created, initiator_raw_addr });
-    } else {
-        std.log.info("[ShadowRealm] Created new ShadowRealm context", .{});
-    }
+    const entry = ShadowRealmEntry{
+        .context_handle = global_context,
+        .initiator_context_raw_addr = initiator_raw_addr,
+        .created_at = clock.wallSeconds(),
+    };
+    data.tracked_realms.put(@intFromPtr(global_context), entry) catch {
+        std.log.warn("[ShadowRealm] Failed to track ShadowRealm context", .{});
+    };
+    data.total_created += 1;
+    std.log.info("[ShadowRealm] Created ShadowRealm #{d} (initiator raw addr: {?})", .{ data.total_created, initiator_raw_addr });
 
     return global_context;
 }
 
+/// The process's ShadowRealm dispatcher, set once while the process starts
+/// (protocol_agents.initializeEngine), before any agent's thread exists.
+pub fn installDispatcher() void {
+    ffi.v8_SetShadowRealmContextDispatcher(shadowRealmContextCallback);
+}
+
 /// Initialize ShadowRealm support for an isolate
 ///
-/// This registers the HostCreateShadowRealmContextCallback with V8, and
-/// returns the agent's ShadowRealm data, which its record keeps
-/// (protocol_agents) and its end frees (`deinitializeShadowRealmSupport`).
-/// Must be called after the isolate is created and before any JavaScript
-/// that uses ShadowRealm is executed.
+/// This enables HostCreateShadowRealmContextCallback on the isolate (through
+/// the process's dispatcher, `installDispatcher`), and returns the agent's
+/// ShadowRealm data, which its record keeps (protocol_agents) and its end
+/// frees (`deinitializeShadowRealmSupport`). Must be called after the
+/// isolate is created and before any JavaScript that uses ShadowRealm is
+/// executed.
 ///
 /// @param isolate - V8 isolate to configure
 /// @param allocator - Allocator for internal tracking
@@ -228,15 +222,11 @@ pub fn initializeShadowRealmSupport(isolate: *ffi.Isolate, allocator: std.mem.Al
         .total_created = 0,
     };
 
-    // Register the callback with V8. No user_data: the callback finds the
-    // agent's data from its isolate.
-    ffi.v8_Isolate_SetHostCreateShadowRealmContextCallback(
-        isolate,
-        null,
-        shadowRealmContextCallback,
-    );
+    // The dispatcher is the process's; it finds this agent's data from its
+    // isolate.
+    ffi.v8_Isolate_EnableShadowRealms(isolate);
 
-    std.log.info("[ShadowRealm] Registered HostCreateShadowRealmContextCallback", .{});
+    std.log.info("[ShadowRealm] Enabled HostCreateShadowRealmContextCallback", .{});
     return data;
 }
 

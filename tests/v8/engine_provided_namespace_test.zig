@@ -35,8 +35,11 @@ test "every other namespace is ours by default" {
 // forwardToOverload, the interface binding's resolver and argument view).
 // Codegen used to mangle each overload's types into its name, which would
 // have put CSS.supports_CSSOMString_CSSOMString on the namespace object.
-// A namespace operation's arguments convert with the context's allocator,
+// A namespace operation's arguments convert with the realm's allocator,
 // whatever their size, and a string it returns is the binding's to free.
+// The context here has no realm, so the binding makes one for each call
+// (namespace.zig, CallRealm) over the isolate's allocator - which each test
+// sets to std.testing.allocator for its evaluation.
 
 const runtime = @import("runtime");
 const ffi = v8.ffi;
@@ -61,17 +64,15 @@ fn cssContext() !*ffi.Isolate {
     return i;
 }
 
-/// Run `source` with the namespace context on std.testing.allocator, and
-/// return its completion value as a string (owned by std.testing.allocator;
-/// an empty one is static).
-/// The runtime context goes at the end, so a test that leaks fails.
+/// Run `source` with the isolate's allocator - what a realm-less namespace
+/// call's runtime context is made over - std.testing.allocator, and return
+/// its completion value as a string (owned by std.testing.allocator; an empty
+/// one is static). Each call's runtime context ends with the call, so a test
+/// that leaks fails.
 fn evalToString(source: []const u8) ![]const u8 {
     const i = try cssContext();
-    namespace_binding.context_allocator = std.testing.allocator;
-    defer {
-        namespace_binding.clearGlobalContext();
-        namespace_binding.context_allocator = std.heap.page_allocator;
-    }
+    try v8.isolate_allocator.initIsolateAllocator(i, std.testing.allocator, false);
+    defer v8.isolate_allocator.deinitIsolateAllocator(i);
     const context = context_once.?;
     const code = ffi.v8_String_NewFromUtf8(i, source.ptr, @intCast(source.len)) orelse return error.StringFailed;
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;

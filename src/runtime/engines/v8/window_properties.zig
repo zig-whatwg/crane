@@ -36,7 +36,6 @@ const runtime = @import("runtime");
 const WindowImpl = @import("impls").Window;
 const context_manager = @import("context_manager.zig");
 const conv = @import("conversions.zig");
-const template_registry = @import("template_registry.zig");
 
 const protocol_agents = @import("protocol_agents.zig");
 
@@ -57,17 +56,11 @@ const Template = struct {
 fn templateFor(isolate: *v8.Isolate) Template {
     const record = protocol_agents.recordOf(isolate);
     if (record) |r| {
-        if (r.window_properties_template) |cached| {
-            if (r.window_properties_generation == template_registry.cache_generation) return .{ .template = cached, .owned = false };
-            // The template registry was rebuilt since: so is this.
-            v8.v8_FunctionTemplate_Dispose(cached);
-            r.window_properties_template = null;
-        }
+        if (r.window_properties_template) |cached| return .{ .template = cached, .owned = false };
     }
     const made = makeTemplate(isolate);
     const r = record orelse return .{ .template = made, .owned = true };
     r.window_properties_template = made;
-    r.window_properties_generation = template_registry.cache_generation;
     return .{ .template = made, .owned = false };
 }
 
