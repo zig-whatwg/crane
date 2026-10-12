@@ -79,13 +79,13 @@ test "a union member of a union adds its interfaces to the outer union's" {
     // nested union; an img given to drawImage() was a TypeError while the
     // conversion looked only at the outer union's own interface arms.
     const typedefs = conv.generated_typedefs;
-    try std.testing.expect(conv.isInterfaceUnion(typedefs.HTMLOrSVGImageElement));
-    try std.testing.expect(conv.isInterfaceUnion(typedefs.CanvasImageSource));
+    try std.testing.expect(comptime conv.isInterfaceUnion(typedefs.HTMLOrSVGImageElement));
+    try std.testing.expect(comptime conv.isInterfaceUnion(typedefs.CanvasImageSource));
     try std.testing.expectEqualStrings("HTMLImageElement", nameOf("htmlimage_element").?);
     try std.testing.expectEqualStrings("SVGImageElement", nameOf("svgimage_element").?);
     // A union with any other kind of member is not one.
-    try std.testing.expect(!conv.isInterfaceUnion(typedefs.BodyInit));
-    try std.testing.expect(!conv.isInterfaceUnion(*runtime.Instance));
+    try std.testing.expect(comptime !conv.isInterfaceUnion(typedefs.BodyInit));
+    try std.testing.expect(comptime !conv.isInterfaceUnion(*runtime.Instance));
 }
 
 test "every interface arm of every nested interface union maps to an interface" {

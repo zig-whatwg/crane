@@ -1317,13 +1317,11 @@ fn platformObjectArm(comptime T: type, allocator: std.mem.Allocator, isolate: *v
 /// CanvasImageSource's HTMLOrSVGImageElement holds HTMLImageElement and
 /// SVGImageElement. Codegen keeps such a member as a nested union.
 pub fn isInterfaceUnion(comptime T: type) bool {
-    comptime {
-        if (@typeInfo(T) != .@"union") return false;
-        for (@typeInfo(T).@"union".fields) |field| {
-            if (field.type != *runtime.Instance and !isInterfaceUnion(field.type)) return false;
-        }
-        return true;
+    if (@typeInfo(T) != .@"union") return false;
+    inline for (@typeInfo(T).@"union".fields) |field| {
+        if (field.type != *runtime.Instance and !isInterfaceUnion(field.type)) return false;
     }
+    return true;
 }
 
 /// The arm of `T` - a nested interface union's included - whose named
