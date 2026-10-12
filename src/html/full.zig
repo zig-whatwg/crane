@@ -32,6 +32,8 @@
 
 const std = @import("std");
 pub const dom_parser = @import("dom_parser.zig");
+/// HTML §14.2: the XML parser's tree builder.
+pub const xml_document_parser = @import("xml_document_parser.zig");
 pub const serialization = @import("serialization.zig");
 
 // Re-export all of html_core via module import (not file import)
