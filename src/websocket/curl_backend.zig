@@ -422,14 +422,15 @@ pub const CurlWebSocket = struct {
     fn requestCookieHeader(self: *Self) !?[]u8 {
         const jar = self.cookie_jar orelse return null;
         const url = cookiestore.RequestUrl.of(self.url) orelse return null;
+        if (!cookiestore.http_integration.hasCookiesForHost(jar, url.host)) return null;
+        const same_site = try cookiestore.websocketSameSite(self.allocator, self.origin, self.url);
         const value = try cookiestore.http_integration.generateCookieHeader(self.allocator, jar, .{
             .host = url.host,
             .path = url.path,
             .is_http = true,
             .is_secure = url.secure,
-            // TODO: Fetch "determine the same-site mode", as fetch's
-            //       cookies.zig does - "strict-or-less" until then.
-            .same_site = .strict_or_less,
+            // A handshake is a subresource, never a top-level navigation.
+            .same_site = if (same_site) .strict_or_less else .unset_or_less,
         });
         if (value.len == 0) {
             self.allocator.free(value);
@@ -448,6 +449,7 @@ pub const CurlWebSocket = struct {
         var header: ?*curl.c.struct_curl_header = null;
         if (curl.c.curl_easy_header(handle, "Set-Cookie", 0, origin, -1, &header) != curl.c.CURLHE_OK) return;
         const amount = (header orelse return).amount;
+        const same_site = cookiestore.websocketSameSite(self.allocator, self.origin, self.url) catch return;
         var index: usize = 0;
         while (index < amount) : (index += 1) {
             if (index > 0 and curl.c.curl_easy_header(handle, "Set-Cookie", index, origin, -1, &header) != curl.c.CURLHE_OK) return;
@@ -456,6 +458,7 @@ pub const CurlWebSocket = struct {
                 .is_secure = url.secure,
                 .host = url.host,
                 .http_only_allowed = true,
+                .same_site_strict_or_lax_allowed = same_site,
             }) catch |err| {
                 log.warn("handshake Set-Cookie not stored: {s}", .{@errorName(err)});
             };
