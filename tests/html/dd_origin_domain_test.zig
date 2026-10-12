@@ -105,15 +105,24 @@ test "serialized origin-domain comparison keeps ports only before opting in" {
     try std.testing.expect(!compare("null", "example.test", "null", "example.test"));
 }
 
-test "an environment origin borrows its domain and serialization ignores it" {
+test "an owned environment origin owns its domain and serialization ignores it" {
     const Origin = runtime.Origin;
     if (comptime !@hasField(Origin, "domain")) return error.MissingOriginDomain;
     const allocator = std.testing.allocator;
-    const domain = try allocator.dupe(u8, "example.test");
-    defer allocator.free(domain);
     var origin = try Origin.initOwned(allocator, "https", "sub.example.test", 8000);
     defer origin.deinit();
-    origin.domain = domain;
+    {
+        // The caller's slice goes at once: an owned origin keeps a copy
+        // (review S2: initOwned used to borrow the domain - a dangling
+        // slice once its owner freed it).
+        const domain = try allocator.dupe(u8, "example.test");
+        defer allocator.free(domain);
+        try origin.setDomain(domain);
+    }
+    try std.testing.expectEqualStrings("example.test", origin.domain.?);
+    // Replacing it frees the old copy (std.testing.allocator checks).
+    try origin.setDomain("sub.example.test");
+    try std.testing.expectEqualStrings("sub.example.test", origin.domain.?);
     const serialized = try origin.serialize(allocator);
     defer allocator.free(serialized);
     try std.testing.expectEqualStrings("https://sub.example.test:8000", serialized);
