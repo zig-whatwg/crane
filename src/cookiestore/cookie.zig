@@ -14,12 +14,12 @@ const clock = @import("clock");
 pub const SameSite = enum {
     /// Cookie is only sent in first-party context
     strict,
-    /// Cookie is sent with top-level navigations and GET requests from third-party sites
+    /// Cookie is sent same-site, or on a safe cross-site top-level navigation.
     lax,
     /// Cookie is sent in all contexts (requires Secure attribute)
     none,
-    /// No SameSite attribute ("unset", layered cookies): sent in every
-    /// same-site mode but "none".
+    /// No SameSite attribute (RFC 6265bis "Default", layered cookies
+    /// "unset"). The jar also permits a bounded unsafe-navigation grace.
     unset,
 
     /// Convert to string representation

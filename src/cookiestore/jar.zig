@@ -12,6 +12,7 @@ const SameSite = @import("cookie.zig").SameSite;
 const PartitionKey = @import("cookie.zig").PartitionKey;
 const domain_matching = @import("domain_matching.zig");
 const clock = @import("clock");
+const platform = @import("platform");
 const ChangeType = @import("change_observer.zig").ChangeType;
 
 /// Who hears about the store's cookie changes (Cookie Store "process cookie
@@ -39,6 +40,9 @@ pub const SameSiteMode = enum {
     lax_or_less,
     /// Neither Strict nor Lax: unset and None.
     unset_or_less,
+    /// Cross-site unsafe top-level navigation: only Default cookies no
+    /// older than two minutes, plus None (RFC 6265bis 5.6.7.2).
+    lax_allowing_unsafe,
     /// SameSite=None only.
     none,
 };
@@ -348,12 +352,17 @@ pub const CookieJar = struct {
             return false;
         }
 
-        // SameSite: strict for "strict-or-less", lax for that or
-        // "lax-or-less", unset for those or "unset-or-less", none always.
+        // RFC 6265bis 5.8.3: the mode selects the allowed SameSite flags.
+        // 5.6.7.2's unsafe-navigation grace applies only to recent Default
+        // cookies; an explicit Lax cookie never gets that exception.
         const allowed = switch (cookie.same_site) {
             .strict => options.same_site == .strict_or_less,
             .lax => options.same_site == .strict_or_less or options.same_site == .lax_or_less,
-            .unset => options.same_site != .none,
+            .unset => switch (options.same_site) {
+                .none => false,
+                .lax_allowing_unsafe => platform.wallMillis() -| cookie.creation_time <= 120_000,
+                else => true,
+            },
             .none => true,
         };
         if (!allowed) return false;

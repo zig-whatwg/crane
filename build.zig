@@ -5561,6 +5561,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .memory = memory_mod,
     });
     const platform_mod = platform_binding.facade;
+    cookiestore_mod.addImport("platform", platform_mod);
     dom_mod.addImport("platform", platform_mod);
     // A Browser's network context keeps its connection share in kit/curl,
     // and fetch's transfers and WebSocket's handshakes take the Browser's

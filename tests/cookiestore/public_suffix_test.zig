@@ -49,3 +49,10 @@ test "Domain strips exactly one leading dot" {
         .http_only_allowed = true,
     }));
 }
+
+test "schemeful cookie sites use the suffix beyond sixty-four labels" {
+    // Both valid serialized hosts are shorter than 253 bytes. Their common
+    // registrable domain is example.com, however many labels precede it.
+    const prefix = "x." ** 70;
+    try std.testing.expect(try cookiestore.sameSite(std.testing.allocator, "https://" ++ prefix ++ "a.example.com/", "https://" ++ prefix ++ "b.example.com/"));
+}
