@@ -2316,7 +2316,6 @@ pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
 /// element, so we throw HierarchyRequestError for null values.
 pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ElementImpl = @import("Element.zig");
 
     // Step 1: Validate new value is body or frameset
     // Per WebIDL, undefined is converted to null for nullable types.
@@ -2327,8 +2326,8 @@ pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror
         return error.HierarchyRequestError;
     }
 
-    const value_internal = ElementImpl.getInternal(actual_value) orelse return error.HierarchyRequestError;
-    const tag_name = value_internal.local_name.asSlice();
+    const value_data = @import("dom").element_data.of(actual_value) orelse return error.HierarchyRequestError;
+    const tag_name = value_data.local_name.asSlice();
 
     const is_body = if (internal.doc_type == .html)
         std.ascii.eqlIgnoreCase(tag_name, "body")

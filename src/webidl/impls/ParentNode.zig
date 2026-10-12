@@ -34,10 +34,18 @@ const analyzeSelector = selector_mod.analyzeSelector;
 
 // Import impl modules for accessing internal state
 const NodeImpl = @import("Node.zig");
-const ElementImpl = @import("Element.zig");
 const live_collections = @import("dom").live_collections;
 const dom = @import("dom");
 const NodeBase = dom.NodeBase;
+
+/// An element's attribute list, ID, classes and qualified name, read in
+/// place (dom.element_data, which Element installs): the matcher's type,
+/// class, ID and attribute selectors and its of-type pseudo-classes read
+/// them on every element they visit, so a copying IDL getter would put an
+/// allocation on each. Null for a node with no Element part.
+fn elementData(node: *runtime.Instance) ?*const dom.element_data.ElementData {
+    return dom.element_data.of(node);
+}
 
 // Node-tree reads go through Node's generated interface (AGENTS.md "The impls
 // boundary"). Each getter forwards verbatim to Node's own (no brand check, no
@@ -301,8 +309,8 @@ fn findElementById(root: *runtime.Instance, id: []const u8) ?*runtime.Instance {
         const node_type = nodeType(c) orelse 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             // Check ID
-            if (ElementImpl.getInternal(c)) |internal| {
-                if (std.mem.eql(u8, internal.id.asSlice(), id)) {
+            if (elementData(c)) |data| {
+                if (std.mem.eql(u8, data.id.asSlice(), id)) {
                     return c;
                 }
             }
@@ -590,16 +598,16 @@ fn elementMatchesSimpleSelector(
 
 /// Match type selector (tag name)
 fn matchesTypeSelector(element: *runtime.Instance, tag_name: []const u8) bool {
-    const internal = ElementImpl.getInternal(element) orelse return false;
-    const local_name = internal.local_name.asSlice();
+    const data = elementData(element) orelse return false;
+    const local_name = data.local_name.asSlice();
     // Case-insensitive for HTML elements
     return std.ascii.eqlIgnoreCase(local_name, tag_name);
 }
 
 /// Match class selector
 fn matchesClassSelector(element: *runtime.Instance, class_name: []const u8) bool {
-    const internal = ElementImpl.getInternal(element) orelse return false;
-    const class_attr = internal.class_name.asSlice();
+    const data = elementData(element) orelse return false;
+    const class_attr = data.class_name.asSlice();
     if (class_attr.len == 0) return false;
 
     // Check if class_name is in the space-separated class list
@@ -615,8 +623,8 @@ fn matchesClassSelector(element: *runtime.Instance, class_name: []const u8) bool
 
 /// Match ID selector
 fn matchesIdSelector(element: *runtime.Instance, id: []const u8) bool {
-    const internal = ElementImpl.getInternal(element) orelse return false;
-    const elem_id = internal.id.asSlice();
+    const data = elementData(element) orelse return false;
+    const elem_id = data.id.asSlice();
     return std.mem.eql(u8, elem_id, id);
 }
 
@@ -625,10 +633,10 @@ fn matchesAttributeSelector(
     element: *runtime.Instance,
     attr_sel: *const selector_mod.AttributeSelector,
 ) bool {
-    const internal = ElementImpl.getInternal(element) orelse return false;
+    const data = elementData(element) orelse return false;
 
     // Find attribute by name using inline storage API
-    const attr = internal.findAttribute(null, attr_sel.name) orelse return false;
+    const attr = dom.element_data.getAttributeByNamespaceAndLocalName(data, null, attr_sel.name) orelse return false;
     const value = attr.value;
 
     return switch (attr_sel.matcher) {
@@ -869,16 +877,16 @@ fn isOnlyChild(element: *runtime.Instance) bool {
 }
 
 fn isFirstOfType(element: *runtime.Instance) bool {
-    const internal = ElementImpl.getInternal(element) orelse return false;
-    const tag_name = internal.local_name.asSlice();
+    const data = elementData(element) orelse return false;
+    const tag_name = data.local_name.asSlice();
 
     const parent = parentNode(element) orelse return false;
     var child = firstChild(parent);
     while (child) |c| {
         const node_type = nodeType(c) orelse 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (ElementImpl.getInternal(c)) |c_internal| {
-                if (std.ascii.eqlIgnoreCase(c_internal.local_name.asSlice(), tag_name)) {
+            if (elementData(c)) |c_data| {
+                if (std.ascii.eqlIgnoreCase(c_data.local_name.asSlice(), tag_name)) {
                     return c == element;
                 }
             }
@@ -889,8 +897,8 @@ fn isFirstOfType(element: *runtime.Instance) bool {
 }
 
 fn isLastOfType(element: *runtime.Instance) bool {
-    const internal = ElementImpl.getInternal(element) orelse return false;
-    const tag_name = internal.local_name.asSlice();
+    const data = elementData(element) orelse return false;
+    const tag_name = data.local_name.asSlice();
 
     const parent = parentNode(element) orelse return false;
     var last_of_type: ?*runtime.Instance = null;
@@ -898,8 +906,8 @@ fn isLastOfType(element: *runtime.Instance) bool {
     while (child) |c| {
         const node_type = nodeType(c) orelse 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (ElementImpl.getInternal(c)) |c_internal| {
-                if (std.ascii.eqlIgnoreCase(c_internal.local_name.asSlice(), tag_name)) {
+            if (elementData(c)) |c_data| {
+                if (std.ascii.eqlIgnoreCase(c_data.local_name.asSlice(), tag_name)) {
                     last_of_type = c;
                 }
             }
@@ -966,8 +974,8 @@ fn getElementIndexFromEnd(element: *runtime.Instance) u32 {
 }
 
 fn getElementOfTypeIndex(element: *runtime.Instance) u32 {
-    const internal = ElementImpl.getInternal(element) orelse return 0;
-    const tag_name = internal.local_name.asSlice();
+    const data = elementData(element) orelse return 0;
+    const tag_name = data.local_name.asSlice();
 
     const parent = parentNode(element) orelse return 0;
     var index: u32 = 0;
@@ -975,8 +983,8 @@ fn getElementOfTypeIndex(element: *runtime.Instance) u32 {
     while (child) |c| {
         const node_type = nodeType(c) orelse 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (ElementImpl.getInternal(c)) |c_internal| {
-                if (std.ascii.eqlIgnoreCase(c_internal.local_name.asSlice(), tag_name)) {
+            if (elementData(c)) |c_data| {
+                if (std.ascii.eqlIgnoreCase(c_data.local_name.asSlice(), tag_name)) {
                     index += 1;
                     if (c == element) return index;
                 }
@@ -988,8 +996,8 @@ fn getElementOfTypeIndex(element: *runtime.Instance) u32 {
 }
 
 fn getElementOfTypeIndexFromEnd(element: *runtime.Instance) u32 {
-    const internal = ElementImpl.getInternal(element) orelse return 0;
-    const tag_name = internal.local_name.asSlice();
+    const data = elementData(element) orelse return 0;
+    const tag_name = data.local_name.asSlice();
 
     const parent = parentNode(element) orelse return 0;
     var total: u32 = 0;
@@ -998,8 +1006,8 @@ fn getElementOfTypeIndexFromEnd(element: *runtime.Instance) u32 {
     while (child) |c| {
         const node_type = nodeType(c) orelse 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (ElementImpl.getInternal(c)) |c_internal| {
-                if (std.ascii.eqlIgnoreCase(c_internal.local_name.asSlice(), tag_name)) {
+            if (elementData(c)) |c_data| {
+                if (std.ascii.eqlIgnoreCase(c_data.local_name.asSlice(), tag_name)) {
                     total += 1;
                     if (c == element) elem_index = total;
                 }

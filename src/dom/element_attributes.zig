@@ -1,8 +1,19 @@
 //! DOM § 4.9 an element's attribute list, as the hook the rest of the engine
 //! reaches it through where no IDL member fits.
 //!
-//! The list lives in the Element impl's state. "Clone a single node" - in the
-//! Node impl, an ancestor of Element - must copy it exactly: namespace,
+//! The list is Element's state (its type is `dom.element_data.ElementData`,
+//! which the tree reads in place). Every WRITE goes through here, into
+//! Element, so that "handle attribute changes" runs for it: the mutation
+//! record, the custom element reaction and the attribute change steps.
+//! `set` and `remove` are DOM's "set an attribute value" and "remove an
+//! attribute by namespace and local name" - the steps HTML's reflection
+//! ("set / delete the content attribute", HTML 2.6.1) and other algorithms
+//! name - so an algorithm calls them, not the [CEReactions] IDL members,
+//! whose generated functions would open a reaction scope of their own inside
+//! the outer algorithm (tmp/plans/impls-boundary-design.md 3.1).
+//!
+//! "Clone a single node" - in the Node impl, an ancestor of Element - must
+//! copy the list exactly: namespace,
 //! prefix, local name and value, with none of the validation or lowercasing
 //! that `setAttribute` and `setAttributeNS` apply to script's input, which
 //! would reject or alter names the list legitimately holds (`setAttribute`
@@ -33,6 +44,8 @@ pub const Implementation = struct {
     count: *const fn (element: *runtime.Instance) usize,
     append: *const fn (element: *runtime.Instance, attribute: Attribute) Error!void,
     change: *const fn (element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8, value: []const u8) Error!void,
+    set: *const fn (element: *runtime.Instance, local_name: []const u8, value: []const u8, prefix: ?[]const u8, namespace: ?[]const u8) Error!void,
+    remove: *const fn (element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) void,
     node_at: *const fn (element: *runtime.Instance, index: usize) Error!?*runtime.Instance,
     existing_node_at: *const fn (element: *runtime.Instance, index: usize) ?*runtime.Instance,
 };
@@ -73,6 +86,36 @@ pub fn change(element: *runtime.Instance, namespace: ?[]const u8, local_name: []
     return impl.change(element, namespace, local_name, value);
 }
 
+/// "Set an attribute value"'s optional arguments.
+pub const SetOptions = struct {
+    /// The prefix an attribute made for the value gets; null by default.
+    prefix: ?[]const u8 = null,
+    /// The attribute's namespace; null by default.
+    namespace: ?[]const u8 = null,
+};
+
+/// DOM "set an attribute value": change the attribute with this namespace
+/// and local name to `value`, or append a new one (with `options.prefix`)
+/// when there is none - "handle attribute changes" and all. The setter steps
+/// of a reflected content attribute (HTML 2.6.1 "set the content
+/// attribute").
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-set-value
+pub fn set(element: *runtime.Instance, local_name: []const u8, value: []const u8, options: SetOptions) Error!void {
+    const impl = implementation orelse return error.InvalidStateError;
+    return impl.set(element, local_name, value, options.prefix, options.namespace);
+}
+
+/// DOM "remove an attribute by namespace and local name" (a namespace of ""
+/// is null): nothing when there is no such attribute. HTML's "delete the
+/// content attribute" of a reflected attribute, with a null namespace.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove-by-namespace
+pub fn remove(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) void {
+    const impl = implementation orelse return;
+    impl.remove(element, namespace, local_name);
+}
+
 /// The Attr node for the attribute at `index` - the same node every time -
 /// or null past the end.
 pub fn nodeAt(element: *runtime.Instance, index: usize) Error!?*runtime.Instance {
@@ -103,4 +146,6 @@ test "without an installed implementation there is nothing to read or append to"
         .local_name = "a",
         .value = "",
     }));
+    try std.testing.expectError(error.InvalidStateError, set(&element, "a", "", .{}));
+    remove(&element, null, "a");
 }
