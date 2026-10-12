@@ -957,14 +957,7 @@ fn initiatorSameOriginDomain(source: ?*runtime.Instance, active: *runtime.Instan
     // Step 2: both tuple origins.
     const a_domain = dom_module.document_origin.domain(src);
     const b_domain = dom_module.document_origin.domain(active);
-    // 2.1.
-    if (a_domain != null and b_domain != null) {
-        return std.mem.eql(u8, schemeOfOrigin(a), schemeOfOrigin(b)) and std.mem.eql(u8, a_domain.?, b_domain.?);
-    }
-    // 2.2.
-    if (a_domain == null and b_domain == null) return std.mem.eql(u8, a, b);
-    // Step 3.
-    return false;
+    return html_module.origin_domain.sameOriginDomainValues(a, a_domain, b, b_domain);
 }
 
 /// `document`'s origin, serialized ("null" for an opaque one) and owned by
@@ -973,12 +966,6 @@ fn initiatorSameOriginDomain(source: ?*runtime.Instance, active: *runtime.Instan
 fn documentOriginOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?[]u8 {
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
     return originOfWindow(window, allocator) catch null;
-}
-
-/// The scheme of a serialized tuple origin ("scheme://host[:port]").
-fn schemeOfOrigin(origin: []const u8) []const u8 {
-    const end = std.mem.indexOf(u8, origin, "://") orelse return origin;
-    return origin[0..end];
 }
 
 /// HTML "navigate" `integration`'s navigable to `url` (serialized, absolute).
@@ -3953,8 +3940,7 @@ pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
 
     // Per HTML spec: If the iframe is not connected (not in the document),
     // there is no content navigable, so contentDocument must return null.
-    const NodeImpl = @import("Node.zig");
-    const is_connected = NodeImpl.get_isConnected(instance) catch false;
+    const is_connected = interfaces.Node.get_isConnected(instance) catch false;
     if (!is_connected) {
         return null;
     }
@@ -3966,30 +3952,10 @@ pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
     //    through navigation.
     _ = try get_contentWindow(instance);
 
-    // 2. If no content navigable (browsing context), return null
-    const browsing_ctx = internal.integration.browsing_context orelse return null;
-
-    // 3. Get the active document from the browsing context
-    // BrowsingContext stores it as *anyopaque to avoid module conflicts,
-    // so we cast it back to *runtime.Instance here.
-    const document_ptr = browsing_ctx.getActiveDocument() orelse return null;
-    const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
-
-    // 4. Get accessor origin - for WPT tests and same-origin scenarios,
-    //    we use the container document's origin as the accessor origin.
-    //    In a full implementation, this would come from the incumbent settings object.
-    //    Since we're in the same execution context (WPT tests are same-origin),
-    //    we use the container origin which is already stored in the integration.
-    const accessor_origin = internal.integration.container_origin;
-
-    // 5. Check same origin-domain access
-    const is_accessible = internal.integration.isContentDocumentAccessible(accessor_origin);
-    if (!is_accessible) {
-        return null;
-    }
-
-    // 6. Return the document
-    return document;
+    // 2-3. Compare the active document's current origin-domain with the
+    // container's node document's, which need not be the script caller's.
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return null;
+    return dom_module.navigables.contentDocument(internal.integration, document);
 }
 
 // ============================================================================

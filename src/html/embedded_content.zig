@@ -259,7 +259,8 @@ pub fn contentWindow(content: *Content) ?*runtime.Instance {
 pub fn contentDocument(content: *Content) ?*runtime.Instance {
     const integration = content.integration orelse return null;
     if (integration.browsing_context == null) return null;
-    return dom.navigables.contentDocument(integration, integration.container_origin);
+    const document = (interfaces.Node.get_ownerDocument(content.element) catch null) orelse return null;
+    return dom.navigables.contentDocument(integration, document);
 }
 
 /// getSVGDocument(): "1. Let document be this's content document. 2. If

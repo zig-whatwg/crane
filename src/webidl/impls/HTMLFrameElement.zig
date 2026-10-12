@@ -208,7 +208,8 @@ pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
     const internal = getInternal(instance) orelse return null;
     const integration = internal.integration orelse return null;
     if (integration.browsing_context == null) return null;
-    return dom.navigables.contentDocument(integration, integration.container_origin);
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return null;
+    return dom.navigables.contentDocument(integration, document);
 }
 
 /// Getter for contentWindow: this's content window - its content
