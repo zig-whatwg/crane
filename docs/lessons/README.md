@@ -368,6 +368,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A test that passes because nothing ever ends tests nothing](spec-compliance-a-test-that-passes-because-nothing-ends-tests-nothing.md) - When a new lifetime rule turns tests red, ask whether they ever passed for the right reason: a "survives" test that went green on a leak is an unimplemented feature, not a regression - implement the extension, never restore the leak.
 - [A WebAssembly.Module is bound to its agent cluster, not its origin](spec-compliance-a-wasm-module-is-bound-to-its-agent-cluster-not-its-origin.md) - A test that passed only because a feature was missing proves nothing; when the feature breaks it, read the spec's own note and the three engines' wpt.fyi runs before adding a deviation - if two engines and the spec agree, the failing test was written for the third.
 - [A union member of a union is flattened into it](spec-compliance-a-union-member-of-a-union-is-flattened-into-it.md) - When a binding conversion handles a union, handle nested unions as their flattened members - and when a newly implemented method throws TypeError before its first line, suspect the argument conversion, not the method.
+- [Safari's image decoder runs on this Mac - probe it](spec-compliance-safari-s-image-decoder-runs-on-this-mac-probe-it.md) - For Safari's image (and other CoreGraphics/ImageIO-backed) behaviour, measure ImageIO on this machine instead of reading WebKit's non-Apple decoders - and check the result against Safari's wpt.fyi runs where a test exists.
 
 ### Codegen
 
