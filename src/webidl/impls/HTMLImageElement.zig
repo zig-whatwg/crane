@@ -499,6 +499,16 @@ pub fn installHooks() void {
     @import("dom").document_fetches.install(.{ .discard = discardRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
     // HTML 4.12.5.1.9: an img is an image source for a 2D context.
     dom.image_sources.installImageElement(imageUsability, replacedFacts);
+    dom.teardown_sweeps.install(.element_types, &sweepRemaining);
+}
+
+/// `dom.teardown_sweeps`: free what the state of every img no exit reached
+/// still owns - its requests' URLs and image data, its fetch, its decode()
+/// promises - at its Browser's end. A teardown that freed an img's slot
+/// without its deinit leaves such a state behind
+/// (tests/html/image_fetch_detach_test.zig drops one by hand).
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }
 
 /// The img's facts for the platform's layout STOPGAP (decision 19b): null
