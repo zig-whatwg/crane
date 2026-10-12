@@ -425,10 +425,8 @@ pub fn get_autocorrect(instance: *runtime.Instance) anyerror!bool {
 pub fn get_innerText(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // Get text content - in a full implementation this would use the layout backend
     // For now, fall back to textContent-like behavior
-    const NodeImpl = @import("Node.zig");
-
     // Use Node's textContent as fallback
-    if (try NodeImpl.get_textContent(instance)) |text| {
+    if (try interfaces.Node.get_textContent(instance)) |text| {
         return text;
     }
     return runtime.DOMString.initEmpty();

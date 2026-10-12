@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [An IDL string getter copies; a tree read borrows](architecture-an-idl-string-getter-copies-a-tree-read-borrows.md) - Before moving a call onto the generated interface, read the generated member and the impl member side by side: a link getter forwards, a string getter copies, a setter runs the IDL algorithm.
 - [A union result is owned as its active member is](architecture-a-union-result-is-owned-as-its-active-member.md) - An ownership rule keyed on a type is wrong for a union: ask the value which member it holds, and keep the safe default for every member you cannot prove fresh.
 - [A curl multi handle is its agent's; the connections are its Browser's](architecture-a-multi-handle-is-the-agent-s-the-connections-are-the-browser-s.md) - Choose a network object's owner by its thread rule: single-threaded handles go to the agent that pumps them; shared, locked state goes to the Browser - never to a thread, and never to the process.
 - [Free a parser buffer on one cleanup path](architecture-free-a-parser-buffer-on-one-cleanup-path.md) - Use one deferred cleanup for temporary storage, and test failure at the final allocation as well as success.
@@ -277,6 +278,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A named property enumerator returns names only](architecture-a-named-property-enumerator-returns-names-only.md) - An interceptor returns the key type its kind names, and a proxy in front of an object can hide what the object's own callbacks do wrong: test an unproxied object of every interceptor shape.
 
 ### Spec Compliance
+- [A label limit must not discard the public suffix](spec-compliance-domain-limits-must-not-drop-the-public-suffix.md) - Match the rightmost labels without truncating the hostname's security boundary.
 - [document.domain is a two-sided opt-in](spec-compliance-document-domain-is-a-two-sided-opt-in.md) - An unchanged document.domain getter does not mean unchanged access: setting it is an explicit opt-in, and both origins must opt in.
 - [A union's sequence member is decided by @@iterator, not IsArray](spec-compliance-a-union-s-sequence-member-is-decided-by-iterator-not-isarray.md) - Never route a union by the JavaScript type you expect callers to pass - follow 3.2.25's steps, and test with a non-Array iterable and a Proxy that logs its traps.
 - [Node intersection excludes boundary contact](spec-compliance-node-intersection-excludes-boundary-contact.md) - Test both equal-boundary edges and collapsed interior points.
@@ -369,6 +371,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A WebAssembly.Module is bound to its agent cluster, not its origin](spec-compliance-a-wasm-module-is-bound-to-its-agent-cluster-not-its-origin.md) - A test that passed only because a feature was missing proves nothing; when the feature breaks it, read the spec's own note and the three engines' wpt.fyi runs before adding a deviation - if two engines and the spec agree, the failing test was written for the third.
 - [A union member of a union is flattened into it](spec-compliance-a-union-member-of-a-union-is-flattened-into-it.md) - When a binding conversion handles a union, handle nested unions as their flattened members - and when a newly implemented method throws TypeError before its first line, suspect the argument conversion, not the method.
 - [An XML error document is the browsers', not the spec's](spec-compliance-an-xml-error-document-is-the-browsers-not-the-spec-s.md) - A WPT subtest that the browsers fail together tests the spec, not the web. Follow the browsers, and record what that costs.
+- [Safari's image decoder runs on this Mac - probe it](spec-compliance-safari-s-image-decoder-runs-on-this-mac-probe-it.md) - For Safari's image (and other CoreGraphics/ImageIO-backed) behaviour, measure ImageIO on this machine instead of reading WebKit's non-Apple decoders - and check the result against Safari's wpt.fyi runs where a test exists.
 
 ### Codegen
 
@@ -402,6 +405,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+- [A passing parent test may omit the popup assertion](testing-a-passing-parent-test-may-omit-the-popup-assertion.md) - A browser result proves only the assertions it actually reports.
 - [A use-after-free that reads stale bytes passes - allocate from pages unmapped on free](testing-a-use-after-free-that-reads-stale-bytes-passes-unmap-on-free.md) - A green result over freed memory proves nothing: when the bug is a read after a free, run the red test on an allocator that unmaps on free, and count its allocations so leaks still fail.
 - [Reading a torn-down node's state in an engine-less realm reads freed memory](testing-reading-a-torn-down-nodes-state-in-an-engine-less-realm-reads-freed-memory.md) - A green test that reads an object after its teardown is reading freed memory unless the teardown is documented to keep it - check which branch of the storage release the test's realm takes.
 - [A retention bound relative to a control holds only when the control retains nothing](testing-a-retention-bound-relative-to-a-control-needs-a-control-that-retains-nothing.md) - Read the control's numbers before you read the comparison: a control that leaks makes "no worse than without" mean nothing.

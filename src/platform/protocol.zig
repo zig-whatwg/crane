@@ -1589,6 +1589,26 @@ pub const ImageLimits = extern struct {
     max_pixels: u64,
 };
 
+/// How a decode ended. HTML breaks an image only when "the image dimensions
+/// cannot be obtained"; once a decoder knows them, data that ends early or
+/// goes bad leaves an image - the pixels decoded before that point, the rest
+/// transparent black - and not an error, as every browser treats it (Blink
+/// keeps a partially decoded frame, Gecko's Decoder::CompleteDecode finishes
+/// the frame the data left, ImageIO returns the rows it reached; lane
+/// imgpart, 2026-10-12). Where a format's dimensions become known is the
+/// decoder's to say, as the browsers place it.
+pub const ImageDecodeStatus = enum(u8) {
+    /// Every pixel decoded, without error: the media data decodes "without
+    /// errors" (HTML's fully decodable).
+    complete = 0,
+    /// The data ended before the image did.
+    truncated = 1,
+    /// The data was invalid after the dimensions were known: a decoding
+    /// error stopped the decode, or the image data the datastream holds is
+    /// short or ill-formed.
+    corrupt = 2,
+};
+
 /// One decoded image: `width` x `height` pixels, rows top to bottom, each
 /// pixel R, G, B, A as 8-bit samples with straight (not premultiplied)
 /// alpha, in the image's own colour space - no colour management (decision
@@ -1599,6 +1619,13 @@ pub const DecodedImage = extern struct {
     width: u32,
     height: u32,
     pixels: Bytes,
+    /// Complete, or how a partial decode ended (ImageDecodeStatus): then
+    /// the pixels it did not reach are transparent black.
+    status: ImageDecodeStatus,
+    /// A partial decode that reached no pixel data at all: every pixel is
+    /// transparent black. False for a complete decode, and whenever a
+    /// platform cannot tell.
+    empty: bool,
 };
 
 /// Why a decode failed. Every one leaves HTML's image "broken".
@@ -1608,7 +1635,9 @@ pub const ImageError = error{
     NotSupported,
     /// The platform decodes images, but not of this MIME type.
     UnsupportedFormat,
-    /// Not a valid image of the type: HTML's "corrupted in some fatal way".
+    /// Not a valid image of the type, as far as its dimensions: HTML's
+    /// "corrupted in some fatal way such that the image dimensions cannot be
+    /// obtained". Damage after them is a partial DecodedImage instead.
     Corrupt,
     /// The image's declared size exceeds the limits.
     TooLarge,
@@ -1617,9 +1646,11 @@ pub const ImageError = error{
 /// Decode one complete image resource. `mime` is the image's type as Crane
 /// determined it (MIME Sniffing's rules for images, above the protocol): the
 /// platform decodes by it and does not sniff; a type it does not decode is
-/// `UnsupportedFormat`. `bytes` is BORROWED. Stateless, synchronous, any
-/// thread - HTML decodes "in parallel", so Crane may call it off the agent's
-/// thread.
+/// `UnsupportedFormat`. `bytes` is BORROWED - all of the resource the fetch
+/// delivered, which may end early: an image whose dimensions it holds is
+/// returned, its `status` saying whether the rest decoded. Stateless,
+/// synchronous, any thread - HTML decodes "in parallel", so Crane may call it
+/// off the agent's thread.
 pub inline fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes, limits: ImageLimits) ImageError!DecodedImage {
     comptime gate(.image_decoding, "decodeImage");
     return impl.decodeImage(allocator, mime, bytes, limits);

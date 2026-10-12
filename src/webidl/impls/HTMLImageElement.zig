@@ -26,6 +26,14 @@
 //! naturalWidth, naturalHeight, complete, decode() and the 2D context's
 //! drawImage read (the last through dom.image_sources).
 //!
+//! An image whose dimensions the platform obtained is an image, even when
+//! the rest of its data ended early or was corrupt: the platform returns it
+//! partial (platform.ImageDecodeStatus), and - as in every browser - the
+//! request becomes completely available, load fires, and its decoded part
+//! is drawn. Only an image whose dimensions cannot be obtained is broken
+//! (HTML "update the image data": "corrupted in some fatal way such that the
+//! image dimensions cannot be obtained").
+//!
 //! Spec: https://html.spec.whatwg.org/multipage/images.html#update-the-image-data
 
 const std = @import("std");
@@ -75,6 +83,27 @@ const DecodedImage = struct {
     /// The response was CORS-same-origin (a basic or CORS response); an
     /// opaque one is CORS-cross-origin, and taints a canvas it is drawn on.
     cors_same_origin: bool,
+    /// How the platform's decode ended: complete, or a partial image whose
+    /// data ended early or was corrupt after its dimensions.
+    status: platform.ImageDecodeStatus = .complete,
+    /// A partial decode that reached no pixel data.
+    empty: bool = false,
+
+    /// Whether decode()'s "decoding process" fails for this image (HTML
+    /// 4.8.4.1: "If decoding fails (for example due to invalid image
+    /// data)"). Following the majority of the browsers, case by case (lane
+    /// imgpart, 2026-10-12): data that ENDED early is decoded as far as it
+    /// went - Gecko's Decoder::CompleteDecode finishes the frame, ImageIO
+    /// returns an image - and so is invalid data after some pixels (Blink:
+    /// a kFramePartial frame is a decoded frame, ImageDecoderWrapper::Decode;
+    /// ImageIO). Only invalid data with nothing decoded fails: Blink has an
+    /// empty frame (the decode fails, and createImageBitmap rejects WPT's
+    /// undecodable.png), and Gecko's decoder error discards the image
+    /// (RasterImage::NotifyDecodeComplete's DoError); ImageIO alone
+    /// resolves.
+    fn decodingFails(self: DecodedImage) bool {
+        return self.status == .corrupt and self.empty;
+    }
 };
 
 /// HTML 4.8.4.3 "image request": its state, current URL and image data.
@@ -563,6 +592,16 @@ fn imageUsability(instance: *runtime.Instance) dom.image_sources.Usability {
     if (internal.current.state == .broken) return .invalid_state;
     // Not fully decodable - its current request not completely available -
     // or a zero natural size: bad.
+    //
+    // Deviation from the spec text, as the browsers do (golden rule 2): a
+    // partial image - completely available, but whose data ended early or
+    // was corrupt after its dimensions, so not "fully decodable" (it does
+    // not decode "without errors") - is drawn as far as it decoded, not
+    // refused. Blink's ImageElementBase::GetSourceImageForCanvas refuses only
+    // an image whose resource ErrorOccurred(), which a decode failure after
+    // the size never sets, and draws the partially decoded frame; Gecko
+    // finishes a frame the data left mid-way (Decoder::CompleteDecode);
+    // ImageIO returns the rows it reached (lane imgpart, 2026-10-12).
     if (internal.current.state != .completely_available) return .bad;
     const image = internal.current.image orelse return .bad;
     if (image.width == 0 or image.height == 0) return .bad;
@@ -658,7 +697,9 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
 /// happens rather than after the microtask (steps 12-13 run on the URL as
 /// the base URL was then); step 14's "same URL as the pending request"
 /// shortcut (the update restarts); the partially available state (the image
-/// is decoded once its whole body has arrived).
+/// is decoded once its whole body has arrived - and then, when its data
+/// ended early or was corrupt after its dimensions, it is a partial image,
+/// completely available).
 fn updateTheImageData(instance: *runtime.Instance) void {
     // Step 5: the src attribute, when it is not the empty string.
     const src = attributeValue(instance, "src");
@@ -804,7 +845,7 @@ fn applyOutcome(instance: *runtime.Instance, internal: *InternalState, generatio
             internal.current.image = image;
             internal.current.state = .completely_available;
             outcome.* = .broken; // the image is the request's now
-            settleDecodes(instance, internal, .resolve_current);
+            settleDecodes(instance, internal, Settlement.ofAvailable(image));
             return true;
         },
         .broken => {
@@ -990,10 +1031,14 @@ fn decodeBody(allocator: std.mem.Allocator, headers: *const fetch.internal.Heade
     defer computed.deinit();
     const mime = mimesniff.serializeMimeTypeToBytes(allocator, computed) catch return .broken;
     defer allocator.free(mime);
+    // A decode that obtained the dimensions is an image, partial or not
+    // ("corrupted in some fatal way such that the image dimensions cannot be
+    // obtained" is the only broken one): see the file comment.
     const decoded = platform.decodeImage(allocator, platform.Str.from(mime), platform.Bytes.from(body), image_limits) catch |err| {
         log.debug("img: not decoded ({s}, {s})", .{ mime, @errorName(err) });
         return .broken;
     };
+    if (decoded.status != .complete) log.debug("img: a partial image ({s}, {s}{s})", .{ mime, @tagName(decoded.status), if (decoded.empty) ", nothing decoded" else "" });
     return .{
         .loaded = .{
             .width = decoded.width,
@@ -1001,6 +1046,8 @@ fn decodeBody(allocator: std.mem.Allocator, headers: *const fetch.internal.Heade
             // Allocated with `allocator`, the element's.
             .pixels = @constCast(decoded.pixels.slice()),
             .cors_same_origin = cors_same_origin,
+            .status = decoded.status,
+            .empty = decoded.empty,
         },
     };
 }
@@ -1312,12 +1359,13 @@ const DecodeMicrotask = struct {
         }
         // 2.3. Otherwise, in parallel, wait for the current request to
         //      change, break or become completely available. Already
-        //      completely available: decoded - resolve, in a task.
+        //      completely available: decoded - resolved, or rejected when
+        //      its decoding fails - in a task.
         state.decodes.append(state.allocator, .{ .capability = self.capability, .generation = state.current.generation }) catch {
             engine.releasePromiseCapability(&self.capability);
             return;
         };
-        if (state.current.state == .completely_available) settleDecodes(instance, state, .resolve_current);
+        if (state.current.state == .completely_available) settleDecodes(instance, state, Settlement.ofAvailable(state.current.image));
     }
 
     fn drop(data: ?*anyopaque) void {
@@ -1339,9 +1387,20 @@ fn rejectEncodingError(realm: runtime.Context, capability: *engine.PromiseCapabi
 const Settlement = enum {
     /// The current request changed or broke: every waiting promise rejects.
     reject_all,
-    /// The current request became completely available: the promises
-    /// waiting on it resolve.
+    /// The current request became completely available and its image
+    /// decodes: the promises waiting on it resolve.
     resolve_current,
+    /// The current request became completely available but its decoding
+    /// fails (DecodedImage.decodingFails): the promises waiting on it
+    /// reject.
+    reject_current,
+
+    /// The settlement of the promises waiting on a completely available
+    /// current request with `image`.
+    fn ofAvailable(image: ?DecodedImage) Settlement {
+        const decoded = image orelse return .reject_current;
+        return if (decoded.decodingFails()) .reject_current else .resolve_current;
+    }
 };
 
 /// End the decode() promises `settlement` ends: "queue a global task on the
@@ -1354,7 +1413,7 @@ fn settleDecodes(instance: *runtime.Instance, internal: *InternalState, settleme
         const waiting = internal.decodes.items[i];
         const ends = switch (settlement) {
             .reject_all => true,
-            .resolve_current => waiting.generation == internal.current.generation,
+            .resolve_current, .reject_current => waiting.generation == internal.current.generation,
         };
         if (!ends) {
             i += 1;

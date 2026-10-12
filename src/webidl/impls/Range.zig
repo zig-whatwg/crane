@@ -27,8 +27,6 @@ const dom = @import("dom");
 const Link = @import("same_object.zig").Link;
 const document_internals = @import("dom").document_internals;
 
-// Import related impls
-const NodeImpl = @import("Node.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = Range.State;
@@ -341,7 +339,7 @@ pub fn get_commonAncestorContainer(instance: *runtime.Instance) anyerror!*runtim
     // While container is not an inclusive ancestor of end node,
     // let container be container's parent
     while (!isInclusiveAncestor(container, end)) {
-        container = NodeImpl.getParent(container) orelse {
+        container = (interfaces.Node.get_parentNode(container) catch null) orelse {
             // If we reach root without finding common ancestor, return start container
             return start;
         };
@@ -395,13 +393,13 @@ const DomTree = struct {
 
 /// Helper: Get the index of a child node within its parent
 fn getChildIndex(parent: *runtime.Instance, child: *runtime.Instance) ?u32 {
-    var current = NodeImpl.getFirstChild(parent);
+    var current = interfaces.Node.get_firstChild(parent) catch null;
     var index: u32 = 0;
 
     while (current) |node| {
         if (node == child) return index;
         index += 1;
-        current = NodeImpl.getNextSibling(node);
+        current = interfaces.Node.get_nextSibling(node) catch null;
     }
 
     return null;
@@ -450,8 +448,8 @@ pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offse
     defer keepContainers(instance, internal);
 
     // Step 1: If node is a doctype, throw InvalidNodeTypeError
-    if (NodeImpl.getNodeType(node)) |nt| {
-        if (nt == NodeImpl.NodeType.DOCUMENT_TYPE_NODE) {
+    if (interfaces.Node.get_nodeType(node) catch null) |nt| {
+        if (nt == interfaces.Node.get_DOCUMENT_TYPE_NODE()) {
             return error.InvalidNodeTypeError;
         }
     }
@@ -501,8 +499,8 @@ pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset:
     defer keepContainers(instance, internal);
 
     // Step 1: If node is a doctype, throw InvalidNodeTypeError
-    if (NodeImpl.getNodeType(node)) |nt| {
-        if (nt == NodeImpl.NodeType.DOCUMENT_TYPE_NODE) {
+    if (interfaces.Node.get_nodeType(node) catch null) |nt| {
+        if (nt == interfaces.Node.get_DOCUMENT_TYPE_NODE()) {
             return error.InvalidNodeTypeError;
         }
     }
@@ -540,7 +538,7 @@ pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset:
 /// Sets the start to immediately before the given node
 pub fn call_setStartBefore(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     // Step 1: Let parent be node's parent
-    const parent = NodeImpl.getParent(node) orelse return error.InvalidNodeTypeError;
+    const parent = (interfaces.Node.get_parentNode(node) catch null) orelse return error.InvalidNodeTypeError;
 
     // Step 2: If parent is null, throw InvalidNodeTypeError (already checked)
 
@@ -553,7 +551,7 @@ pub fn call_setStartBefore(instance: *runtime.Instance, node: *runtime.Instance)
 /// Sets the start to immediately after the given node
 pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     // Step 1: Let parent be node's parent
-    const parent = NodeImpl.getParent(node) orelse return error.InvalidNodeTypeError;
+    const parent = (interfaces.Node.get_parentNode(node) catch null) orelse return error.InvalidNodeTypeError;
 
     // Step 2: If parent is null, throw InvalidNodeTypeError (already checked)
 
@@ -566,7 +564,7 @@ pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) 
 /// Sets the end to immediately before the given node
 pub fn call_setEndBefore(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     // Step 1: Let parent be node's parent
-    const parent = NodeImpl.getParent(node) orelse return error.InvalidNodeTypeError;
+    const parent = (interfaces.Node.get_parentNode(node) catch null) orelse return error.InvalidNodeTypeError;
 
     // Step 2: If parent is null, throw InvalidNodeTypeError (already checked)
 
@@ -579,7 +577,7 @@ pub fn call_setEndBefore(instance: *runtime.Instance, node: *runtime.Instance) a
 /// Sets the end to immediately after the given node
 pub fn call_setEndAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     // Step 1: Let parent be node's parent
-    const parent = NodeImpl.getParent(node) orelse return error.InvalidNodeTypeError;
+    const parent = (interfaces.Node.get_parentNode(node) catch null) orelse return error.InvalidNodeTypeError;
 
     // Step 2: If parent is null, throw InvalidNodeTypeError (already checked)
 
@@ -609,7 +607,7 @@ pub fn call_collapse(instance: *runtime.Instance, toStart: webidl.Opt(bool)) any
 /// Selects the entire node and its contents
 pub fn call_selectNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     // Step 1: Let parent be node's parent
-    const parent = NodeImpl.getParent(node) orelse return error.InvalidNodeTypeError;
+    const parent = (interfaces.Node.get_parentNode(node) catch null) orelse return error.InvalidNodeTypeError;
 
     // Step 2: If parent is null, throw InvalidNodeTypeError (already checked)
 
@@ -632,8 +630,8 @@ pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Insta
     defer keepContainers(instance, internal);
 
     // If node is a doctype, throw InvalidNodeTypeError
-    if (NodeImpl.getNodeType(node)) |nt| {
-        if (nt == NodeImpl.NodeType.DOCUMENT_TYPE_NODE) {
+    if (interfaces.Node.get_nodeType(node) catch null) |nt| {
+        if (nt == interfaces.Node.get_DOCUMENT_TYPE_NODE()) {
             return error.InvalidNodeTypeError;
         }
     }
@@ -1362,8 +1360,8 @@ pub fn call_isPointInRange(instance: *runtime.Instance, node: *runtime.Instance,
     }
 
     // Step 2: If node is a doctype, throw error
-    if (NodeImpl.getNodeType(node)) |nt| {
-        if (nt == NodeImpl.NodeType.DOCUMENT_TYPE_NODE) {
+    if (interfaces.Node.get_nodeType(node) catch null) |nt| {
+        if (nt == interfaces.Node.get_DOCUMENT_TYPE_NODE()) {
             return error.InvalidNodeTypeError;
         }
     }
@@ -1399,8 +1397,8 @@ pub fn call_comparePoint(instance: *runtime.Instance, node: *runtime.Instance, o
     }
 
     // Step 2: If node is a doctype, throw error
-    if (NodeImpl.getNodeType(node)) |nt| {
-        if (nt == NodeImpl.NodeType.DOCUMENT_TYPE_NODE) {
+    if (interfaces.Node.get_nodeType(node) catch null) |nt| {
+        if (nt == interfaces.Node.get_DOCUMENT_TYPE_NODE()) {
             return error.InvalidNodeTypeError;
         }
     }
@@ -1441,7 +1439,7 @@ pub fn call_intersectsNode(instance: *runtime.Instance, node: *runtime.Instance)
     }
 
     // Step 2: Let parent be node's parent
-    const parent = NodeImpl.getParent(node) orelse {
+    const parent = (interfaces.Node.get_parentNode(node) catch null) orelse {
         // Step 3: If parent is null, return true
         return true;
     };
@@ -1532,12 +1530,12 @@ pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]co
         }
     };
 
-    const start_type = NodeImpl.getNodeType(start) orelse return error.InvalidStateError;
+    const start_type = interfaces.Node.get_nodeType(start) catch return error.InvalidStateError;
 
     // Step 2: "If this's start node is this's end node and it is a Text
     // node, then return the substring of that Text node's data beginning at
     // this's start offset and ending at this's end offset."
-    if (start == end and start_type == NodeImpl.NodeType.TEXT_NODE) {
+    if (start == end and start_type == interfaces.Node.get_TEXT_NODE()) {
         try Pieces.appendSubstring(allocator, &result, start, internal.start_offset, internal.end_offset -| internal.start_offset);
         return result.toOwnedSlice(allocator);
     }
@@ -1545,7 +1543,7 @@ pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]co
     // Step 3: "If this's start node is a Text node, then append the
     // substring of that node's data from this's start offset until the end
     // to s."
-    if (start_type == NodeImpl.NodeType.TEXT_NODE) {
+    if (start_type == interfaces.Node.get_TEXT_NODE()) {
         const length = try interfaces.CharacterData.get_length(start);
         try Pieces.appendSubstring(allocator, &result, start, internal.start_offset, length -| internal.start_offset);
     }
@@ -1556,8 +1554,8 @@ pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]co
 
     // Step 5: "If this's end node is a Text node, then append the substring
     // of that node's data from its start until this's end offset to s."
-    const end_type = NodeImpl.getNodeType(end) orelse return error.InvalidStateError;
-    if (end_type == NodeImpl.NodeType.TEXT_NODE and end != start) {
+    const end_type = interfaces.Node.get_nodeType(end) catch return error.InvalidStateError;
+    if (end_type == interfaces.Node.get_TEXT_NODE() and end != start) {
         try Pieces.appendSubstring(allocator, &result, end, 0, internal.end_offset);
     }
 
@@ -1568,8 +1566,8 @@ pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]co
 /// Helper for toString: Recursively append contained Text node data
 fn appendContainedTextNodes(allocator: std.mem.Allocator, internal: *InternalState, node: *runtime.Instance, result: *std.ArrayListUnmanaged(u8)) !void {
     // If this node is contained and is a Text node, append its data
-    const node_type = NodeImpl.getNodeType(node) orelse return;
-    if (isNodeContained(internal, node) and node_type == NodeImpl.NodeType.TEXT_NODE) {
+    const node_type = interfaces.Node.get_nodeType(node) catch return;
+    if (isNodeContained(internal, node) and node_type == interfaces.Node.get_TEXT_NODE()) {
         var data = try interfaces.CharacterData.get_data(node);
         defer data.deinit(node.ctx.allocator);
         try @import("infra").wtf8.appendJoined(allocator, result, data.asSlice());
@@ -1577,10 +1575,10 @@ fn appendContainedTextNodes(allocator: std.mem.Allocator, internal: *InternalSta
     }
 
     // Recursively process children in tree order
-    var child = NodeImpl.getFirstChild(node);
+    var child = interfaces.Node.get_firstChild(node) catch null;
     while (child) |c| {
         try appendContainedTextNodes(allocator, internal, c, result);
-        child = NodeImpl.getNextSibling(c);
+        child = interfaces.Node.get_nextSibling(c) catch null;
     }
 }
 
@@ -1684,7 +1682,7 @@ pub fn containsNode(instance: *runtime.Instance, node: *runtime.Instance) !bool 
     // 2. Its end boundary must be at or before range end
 
     // Simplified: check if node is between start and end
-    const parent = NodeImpl.getParent(node) orelse return false;
+    const parent = (interfaces.Node.get_parentNode(node) catch null) orelse return false;
     _ = parent;
     _ = end;
 

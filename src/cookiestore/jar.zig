@@ -14,6 +14,12 @@ const domain_matching = @import("domain_matching.zig");
 const clock = @import("clock");
 const ChangeType = @import("change_observer.zig").ChangeType;
 
+fn nowMillis() i64 {
+    // TODO(platform R1): platform.wallMillis() once the retained old platform
+    // root is retired (step 15); codex-cookies Q17.
+    return clock.wallMillis();
+}
+
 /// Who hears about the store's cookie changes (Cookie Store "process cookie
 /// changes"): a cookie inserted or replaced is `changed`, one removed -
 /// expired, evicted, or replaced by an expired one - is `deleted`. The
@@ -39,6 +45,9 @@ pub const SameSiteMode = enum {
     lax_or_less,
     /// Neither Strict nor Lax: unset and None.
     unset_or_less,
+    /// Cross-site unsafe top-level navigation: only Default cookies no
+    /// older than two minutes, plus None (RFC 6265bis 5.6.7.2).
+    lax_allowing_unsafe,
     /// SameSite=None only.
     none,
 };
@@ -172,11 +181,17 @@ pub const CookieJar = struct {
             var owned_cookie = try cookie.clone(self.allocator);
             errdefer owned_cookie.deinit();
             if (old) |index| {
+                // RFC 6265bis 5.7 step 23: preserve creation-time. Keep
+                // its position too, so a millisecond tie preserves the
+                // original insertion order under the stable sort below.
                 owned_cookie.creation_time = self.cookies.items[index].creation_time;
-                self.removeAt(index);
+                self.cookies.items[index].deinit();
+                self.cookies.items[index] = owned_cookie;
+                self.notify(.changed, &self.cookies.items[index]);
+            } else {
+                try self.cookies.append(self.allocator, owned_cookie);
+                self.notify(.changed, &self.cookies.items[self.cookies.items.len - 1]);
             }
-            try self.cookies.append(self.allocator, owned_cookie);
-            self.notify(.changed, &self.cookies.items[self.cookies.items.len - 1]);
         }
         self.garbageCollect(cookie.domain orelse "");
     }
@@ -222,7 +237,8 @@ pub const CookieJar = struct {
             if (cookieMatches(cookie, options)) {
                 // 4. Set the last-access-time of each cookie to now.
                 cookie.touch();
-                const cloned = try cookie.clone(self.allocator);
+                var cloned = try cookie.clone(self.allocator);
+                errdefer cloned.deinit();
                 try result.append(self.allocator, cloned);
             }
         }
@@ -275,7 +291,7 @@ pub const CookieJar = struct {
     /// remove them (WebDriver "delete cookies": the change hook hears each as
     /// `deleted`). Returns how many went.
     pub fn expireMatching(self: *Self, options: RetrieveOptions) usize {
-        const past = clock.wallMillis() - 1000;
+        const past = nowMillis() - 1000;
         var expired: usize = 0;
         for (self.cookies.items) |*cookie| {
             if (!cookieMatches(cookie, options)) continue;
@@ -341,12 +357,17 @@ pub const CookieJar = struct {
             return false;
         }
 
-        // SameSite: strict for "strict-or-less", lax for that or
-        // "lax-or-less", unset for those or "unset-or-less", none always.
+        // RFC 6265bis 5.8.3: the mode selects the allowed SameSite flags.
+        // 5.6.7.2's unsafe-navigation grace applies only to recent Default
+        // cookies; an explicit Lax cookie never gets that exception.
         const allowed = switch (cookie.same_site) {
             .strict => options.same_site == .strict_or_less,
             .lax => options.same_site == .strict_or_less or options.same_site == .lax_or_less,
-            .unset => options.same_site != .none,
+            .unset => switch (options.same_site) {
+                .none => false,
+                .lax_allowing_unsafe => nowMillis() -| cookie.creation_time <= 120_000,
+                else => true,
+            },
             .none => true,
         };
         if (!allowed) return false;
@@ -366,14 +387,15 @@ pub const CookieJar = struct {
         return true;
     }
 
-    /// "Retrieve Cookies" step 3: cookies whose path's size is greater
-    /// first, then earlier creation-time first. A path's size is its
-    /// number of segments - its "/"s, serialized.
+    /// RFC 6265bis 5.8.3 step 4: longer paths first, then earlier creation
+    /// time. This is serialized byte length, not the layered draft's URL
+    /// path-list size: Chromium CookieMonster::CookieSorter and all three
+    /// browsers' cookies/ordering tests use the former.
     fn sortCookies(cookies: []Cookie) void {
         std.mem.sort(Cookie, cookies, {}, struct {
             fn lessThan(_: void, a: Cookie, b: Cookie) bool {
-                const a_size = std.mem.count(u8, a.path, "/");
-                const b_size = std.mem.count(u8, b.path, "/");
+                const a_size = a.path.len;
+                const b_size = b.path.len;
                 if (a_size != b_size) return a_size > b_size;
                 return a.creation_time < b.creation_time;
             }

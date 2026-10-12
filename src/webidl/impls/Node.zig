@@ -25,9 +25,6 @@ const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.NodeBase;
 
-// CharacterData's state (debt: B3 reaches it through the interface)
-const CharacterDataImpl = @import("CharacterData.zig");
-
 pub const State = Node.State;
 
 const log = std.log.scoped(.node);
@@ -869,7 +866,7 @@ pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
         NodeType.COMMENT_NODE,
         => blk: {
             // For CharacterData nodes, the data is stored in CharacterData's internal state
-            const data_slice = CharacterDataImpl.getData(instance) orelse {
+            const data_slice = dom_module.character_data.dataOf(instance) orelse {
                 break :blk runtime.DOMString.initEmpty();
             };
             break :blk runtime.DOMString.initInterned(data_slice);
@@ -893,7 +890,7 @@ fn collectTextContent(node: *runtime.Instance, allocator: std.mem.Allocator, res
     if (node_internal.node_type == NodeType.TEXT_NODE or
         node_internal.node_type == NodeType.CDATA_SECTION_NODE)
     {
-        if (CharacterDataImpl.getData(node)) |data_slice| {
+        if (dom_module.character_data.dataOf(node)) |data_slice| {
             try result.appendSlice(allocator, data_slice);
         }
         return;
@@ -930,7 +927,7 @@ pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
         NodeType.COMMENT_NODE,
         => blk: {
             // DOM 4.4: returns this's data, which CharacterData owns.
-            const data_slice = CharacterDataImpl.getData(instance) orelse {
+            const data_slice = dom_module.character_data.dataOf(instance) orelse {
                 break :blk runtime.DOMString.initEmpty();
             };
             break :blk runtime.DOMString.initInterned(data_slice);
@@ -982,7 +979,7 @@ pub fn set_nodeValue(instance: *runtime.Instance, value: ?runtime.DOMString) any
         NodeType.COMMENT_NODE,
         => {
             // Step 1: If the given value is null, act as if it was the empty string.
-            try CharacterDataImpl.set_data(instance, value orelse runtime.DOMString.initEmpty());
+            try interfaces.CharacterData.set_data(instance, value orelse runtime.DOMString.initEmpty());
         },
         // For Attr, set an existing attribute value; Attr keeps its value in node_value.
         // Attr: "set an existing attribute value" with this and the given
@@ -1012,7 +1009,7 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
         => {
             // DOM 4.4: "Replace data with node this, offset 0, count this's
             // length, and data the given value" (null acts as "").
-            try CharacterDataImpl.set_data(instance, value orelse runtime.DOMString.initEmpty());
+            try interfaces.CharacterData.set_data(instance, value orelse runtime.DOMString.initEmpty());
         },
         // Attr: "set an existing attribute value", as for nodeValue.
         NodeType.ATTRIBUTE_NODE => {
@@ -1246,14 +1243,14 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
             }
 
             // DOM 4.4 "equals": data lives in CharacterData, not node_value.
-            const self_data = CharacterDataImpl.getData(instance) orelse "";
-            const other_data = CharacterDataImpl.getData(other_node) orelse "";
+            const self_data = dom_module.character_data.dataOf(instance) orelse "";
+            const other_data = dom_module.character_data.dataOf(other_node) orelse "";
             if (!std.mem.eql(u8, self_data, other_data)) return false;
         },
         NodeType.TEXT_NODE, NodeType.CDATA_SECTION_NODE, NodeType.COMMENT_NODE => {
             // DOM 4.4 "equals": their data is equal.
-            const self_data = CharacterDataImpl.getData(instance) orelse "";
-            const other_data = CharacterDataImpl.getData(other_node) orelse "";
+            const self_data = dom_module.character_data.dataOf(instance) orelse "";
+            const other_data = dom_module.character_data.dataOf(other_node) orelse "";
             if (!std.mem.eql(u8, self_data, other_data)) return false;
         },
         else => {},

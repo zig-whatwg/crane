@@ -20,12 +20,13 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const TreeWalker = interfaces.TreeWalker;
 
-// Re-use NodeFilter constants from NodeIterator
-const NodeIteratorImpl = @import("NodeIterator.zig");
-const NodeFilter = NodeIteratorImpl.NodeFilter;
-
-// Import NodeImpl for tree navigation helpers
-const NodeImpl = @import("Node.zig");
+/// DOM §6.3 NodeFilter's constants, from its generated interface.
+const NodeFilter = struct {
+    const FILTER_ACCEPT = interfaces.NodeFilter.get_FILTER_ACCEPT();
+    const FILTER_REJECT = interfaces.NodeFilter.get_FILTER_REJECT();
+    const FILTER_SKIP = interfaces.NodeFilter.get_FILTER_SKIP();
+    const SHOW_ALL = interfaces.NodeFilter.get_SHOW_ALL();
+};
 const node_filter = @import("node_filter.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
@@ -566,8 +567,9 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
     const node_type = getNodeType(node);
     const n: u8 = @intCast(node_type - 1);
 
-    // Step 3: If the nth bit of whatToShow is not set, return FILTER_SKIP
-    if (!NodeFilter.isNodeTypeShown(internal.what_to_show, n)) {
+    // Step 3: If the nth bit (where 0 is the least significant bit) of
+    // whatToShow is not set, return FILTER_SKIP
+    if ((internal.what_to_show & (@as(u32, 1) << @intCast(n))) == 0) {
         return NodeFilter.FILTER_SKIP;
     }
 
@@ -594,34 +596,34 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
 }
 
 // ============================================================================
-// Tree traversal helpers (using NodeImpl)
+// Tree traversal helpers (through Node's generated interface)
 // ============================================================================
 
 fn getParentNode(node: *runtime.Instance) ?*runtime.Instance {
-    return NodeImpl.getParent(node);
+    return interfaces.Node.get_parentNode(node) catch null;
 }
 
 fn getFirstChild(node: *runtime.Instance) ?*runtime.Instance {
-    return NodeImpl.getFirstChild(node);
+    return interfaces.Node.get_firstChild(node) catch null;
 }
 
 fn getLastChild(node: *runtime.Instance) ?*runtime.Instance {
-    return NodeImpl.getLastChild(node);
+    return interfaces.Node.get_lastChild(node) catch null;
 }
 
 fn getNextSibling(node: *runtime.Instance) ?*runtime.Instance {
-    return NodeImpl.getNextSibling(node);
+    return interfaces.Node.get_nextSibling(node) catch null;
 }
 
 fn getPreviousSibling(node: *runtime.Instance) ?*runtime.Instance {
-    return NodeImpl.getPreviousSibling(node);
+    return interfaces.Node.get_previousSibling(node) catch null;
 }
 
 fn hasChildren(node: *runtime.Instance) bool {
-    return NodeImpl.hasChildren(node);
+    return interfaces.Node.call_hasChildNodes(node) catch false;
 }
 
 /// Get the node type from a node instance
 fn getNodeType(node: *runtime.Instance) u16 {
-    return NodeImpl.getNodeType(node) orelse 1; // Default to ELEMENT_NODE
+    return interfaces.Node.get_nodeType(node) catch 1; // Default to ELEMENT_NODE
 }

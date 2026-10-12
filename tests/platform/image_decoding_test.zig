@@ -234,6 +234,8 @@ test "image decoding: every valid PngSuite file decodes to the reference pixels"
             std.debug.print("{s}: pixels differ from the reference\n", .{case[0]});
             return err;
         };
+        try testing.expectEqual(platform.ImageDecodeStatus.complete, image.status);
+        try testing.expect(!image.empty);
     }
 }
 
@@ -243,7 +245,8 @@ test "image decoding: the corrupt PngSuite files (x*) are corrupt" {
         "xc1n0g08.png", // colour type 1
         "xc9n2c08.png", // colour type 9
         "xcrn0g04.png", // CR bytes added: the signature is wrong
-        "xcsn0g01.png", // an IDAT CRC mismatch
+        // (xcsn0g01.png, an IDAT CRC mismatch, is past its dimensions: a
+        // partial image - image_decoding_partial_test.zig.)
         "xd0n2c08.png", // bit depth 0
         "xd3n2c08.png", // bit depth 3
         "xd9n2c08.png", // bit depth 99
@@ -288,22 +291,32 @@ test "image decoding: a type the platform does not decode is unsupported, whatev
     try testing.expectError(error.UnsupportedFormat, decode("", bytes));
 }
 
-test "image decoding: every truncation of a PNG fails cleanly or decodes the whole image" {
+test "image decoding: every truncation of a PNG is corrupt before its image data, and a partial image after" {
     if (platform.capabilities.image_decoding == .unsupported) return;
     inline for (.{ "basn3p08.png", "basi6a16.png", "tbbn0g04.png", "oi9n2c16.png" }) |name| {
         const bytes = try readSuite(name);
         defer testing.allocator.free(bytes);
         const whole = try decode("image/png", bytes);
         defer free(whole);
+        const idat = std.mem.indexOf(u8, bytes, "IDAT").? + 4;
         for (0..bytes.len) |len| {
             const image = decode("image/png", bytes[0..len]) catch |err| {
+                // The dimensions are known once the first IDAT chunk begins.
                 try testing.expectEqual(error.Corrupt, err);
+                try testing.expect(len < idat);
                 continue;
             };
             defer free(image);
-            // Only a cut after the last image data may succeed (a missing
-            // IEND is tolerated), and then with every pixel.
-            try testing.expectEqualSlices(u8, whole.pixels.slice(), image.pixels.slice());
+            try testing.expect(len >= idat);
+            // Every pixel is the whole image's, or not reached: transparent
+            // black; a complete decode has them all.
+            var i: usize = 0;
+            while (i < image.pixels.len) : (i += 4) {
+                const pixel = image.pixels.slice()[i..][0..4];
+                if (std.mem.eql(u8, pixel, whole.pixels.slice()[i..][0..4])) continue;
+                try testing.expectEqualSlices(u8, &.{ 0, 0, 0, 0 }, pixel);
+                try testing.expect(image.status != .complete);
+            }
         }
     }
 }
