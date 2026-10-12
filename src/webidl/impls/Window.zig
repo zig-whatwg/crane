@@ -740,9 +740,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         // 2. If Document isn't cleaned up explicitly, its children leak
         // 3. Document.deinit() -> Node.deinit() recursively cleans all child nodes
         if (internal.document) |doc| {
-            const DocumentImpl = @import("Document.zig");
             log.debug("[Window.deinit] Cleaning up Document {*}", .{doc});
-            DocumentImpl.deinit(doc);
+            interfaces.Document.deinit(doc);
             internal.document = null;
             log.debug("[Window.deinit] Document cleanup DONE", .{});
         } else {

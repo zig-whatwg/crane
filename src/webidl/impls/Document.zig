@@ -12,8 +12,8 @@
 //! ## Architecture Note (Golden Rule #13)
 //!
 //! Per Golden Rule #13, impls should call interfaces, not other impls.
-//! This file uses interfaces for factory method calls (call_constructor, etc.)
-//! but may use impls for internal initialization (setNodeType, etc.).
+//! This file uses interfaces for factory method calls (call_constructor, etc.);
+//! a node's type is its interface's, set by the generated construction chain.
 
 const std = @import("std");
 const log = std.log.scoped(.document_impl);
@@ -751,7 +751,7 @@ fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
     // Steps 1.1.1–1.1.3: create in the same realm, with no browsing context.
     // WebKit Document::ensureTemplateDocument keeps this state per document.
     const owner = try call_constructor(document.ctx);
-    errdefer deinit(owner);
+    errdefer Document.deinit(owner);
     const owner_internal = getInternal(owner) orelse return error.InvalidStateError;
     owner_internal.is_template_owner_document = true;
     owner_internal.doc_type = internal.doc_type;
@@ -840,23 +840,13 @@ fn isActiveDocumentFullyActive(document: *runtime.Instance) bool {
     return !internal.destroyed;
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class initialization: Node -> EventTarget
+/// Document's own construction steps: the generated chain runs Node's first.
 ///
 /// IMPORTANT: Due to state hierarchy complexity, internal state is stored
 /// in a global registry rather than in the State struct.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (Node) which chains to EventTarget
-    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
-    errdefer NodeImpl.deinit(instance);
-
-    // Set node type to DOCUMENT_NODE
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_NODE);
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
 
     // Initialize Document's own internal state in registry
     // The registry owns this block, so `Registry.remove` returns it to the
@@ -864,8 +854,6 @@ pub fn init(
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    return instance;
 }
 
 /// dom.target_element: `document`'s target element, or null once the
@@ -955,8 +943,8 @@ pub fn getBoundV8Wrapper(instance: *runtime.Instance) ?*anyopaque {
     return internal.bound_v8_wrapper;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// Document's own teardown: the generated chain runs Node's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     if (getInternal(instance)) |internal| internal.script_delivery_continuation_suppressed = true;
     @import("html").script_execution.discardDocumentScripts(instance);
     // Clean up internal state from registry
@@ -981,15 +969,13 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
     }
     Registry.remove(instance);
-    // Node cleanup happens via inheritance chain
-    NodeImpl.deinit(instance);
 }
 
 /// Constructor implementation
 /// DOM §4.6 - new Document()
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &Document.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try Document.init(ctx.allocator, ctx);
+    errdefer Document.deinit(instance);
 
     // Set default values
     const internal = getInternal(instance) orelse return error.InvalidStateError;
@@ -3529,9 +3515,6 @@ pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMStr
     const cdata = try interfaces.CDATASection.init(internal.allocator, instance.ctx);
     errdefer interfaces.CDATASection.deinit(cdata);
 
-    // Set node type
-    try NodeImpl.setNodeType(cdata, NodeImpl.NodeType.CDATA_SECTION_NODE);
-
     // DOM 4.5: the new CDATASection node's data is `data`.
     try interfaces.CharacterData.set_data(cdata, data);
 
@@ -3798,9 +3781,6 @@ pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!*runtim
     // Use interface instead of impl (per Golden Rule #13)
     const fragment = try interfaces.DocumentFragment.init(internal.allocator, instance.ctx);
     errdefer interfaces.DocumentFragment.deinit(fragment);
-
-    // Set node type
-    try NodeImpl.setNodeType(fragment, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
 
     // Set owner document
     try NodeImpl.setOwnerDocument(fragment, instance);

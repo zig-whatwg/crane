@@ -85,13 +85,6 @@ pub const InternalState = struct {
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*infra.List(EventListenerRecord) = null,
 
-    /// Runtime type discriminator for duck typing
-    /// This field helps distinguish EventTarget types at runtime.
-    /// - 0: Plain EventTarget or AbortSignal
-    /// - 1-12: Node types (ELEMENT_NODE, TEXT_NODE, etc.)
-    /// This is filled in by Node's init - EventTarget itself uses 0.
-    node_type: u16 = 0,
-
     /// HTML "event handler map" (§8.1.8.1): the event handlers whose target
     /// this is, by event type ("click" for onclick). Created with the first
     /// one - most targets never have any. A value is the handler as the
@@ -114,7 +107,6 @@ pub const InternalState = struct {
         return .{
             .allocator = allocator,
             .event_listener_list = null,
-            .node_type = 0,
         };
     }
 
@@ -1781,19 +1773,11 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return getInternalFromRegistry(instance);
 }
 
-/// Set the node type for this EventTarget (used by Node)
-pub fn setNodeType(instance: *runtime.Instance, node_type: u16) void {
-    if (getInternalFromRegistry(instance)) |internal| {
-        internal.node_type = node_type;
-    }
-}
-
-/// Get the node type for this EventTarget
+/// The node type of an EventTarget that is a node, 0 for one that is not:
+/// its NodeBase's, which Node's construction sets (no copy is kept here).
 pub fn getNodeType(instance: *runtime.Instance) u16 {
-    if (getInternalFromRegistry(instance)) |internal| {
-        return internal.node_type;
-    }
-    return 0; // Plain EventTarget
+    const node_base = dom_module.instance_bridge.getNodeBase(instance) orelse return 0;
+    return node_base.node_type;
 }
 
 /// Get all event listeners for a specific type
