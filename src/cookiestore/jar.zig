@@ -172,11 +172,17 @@ pub const CookieJar = struct {
             var owned_cookie = try cookie.clone(self.allocator);
             errdefer owned_cookie.deinit();
             if (old) |index| {
+                // RFC 6265bis 5.7 step 23: preserve creation-time. Keep
+                // its position too, so a millisecond tie preserves the
+                // original insertion order under the stable sort below.
                 owned_cookie.creation_time = self.cookies.items[index].creation_time;
-                self.removeAt(index);
+                self.cookies.items[index].deinit();
+                self.cookies.items[index] = owned_cookie;
+                self.notify(.changed, &self.cookies.items[index]);
+            } else {
+                try self.cookies.append(self.allocator, owned_cookie);
+                self.notify(.changed, &self.cookies.items[self.cookies.items.len - 1]);
             }
-            try self.cookies.append(self.allocator, owned_cookie);
-            self.notify(.changed, &self.cookies.items[self.cookies.items.len - 1]);
         }
         self.garbageCollect(cookie.domain orelse "");
     }
@@ -367,14 +373,15 @@ pub const CookieJar = struct {
         return true;
     }
 
-    /// "Retrieve Cookies" step 3: cookies whose path's size is greater
-    /// first, then earlier creation-time first. A path's size is its
-    /// number of segments - its "/"s, serialized.
+    /// RFC 6265bis 5.8.3 step 4: longer paths first, then earlier creation
+    /// time. This is serialized byte length, not the layered draft's URL
+    /// path-list size: Chromium CookieMonster::CookieSorter and all three
+    /// browsers' cookies/ordering tests use the former.
     fn sortCookies(cookies: []Cookie) void {
         std.mem.sort(Cookie, cookies, {}, struct {
             fn lessThan(_: void, a: Cookie, b: Cookie) bool {
-                const a_size = std.mem.count(u8, a.path, "/");
-                const b_size = std.mem.count(u8, b.path, "/");
+                const a_size = a.path.len;
+                const b_size = b.path.len;
                 if (a_size != b_size) return a_size > b_size;
                 return a.creation_time < b.creation_time;
             }
