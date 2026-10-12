@@ -1817,11 +1817,18 @@ fn generateInterfaceFile(
     try deduplicateOperations(allocator, &all_ops);
     try deduplicateConstants(allocator, &all_constants);
 
-    // Generate VTable (with ONLY own attributes/operations, not inherited)
-    try writer.writeVTable(w, all_constants.items, own_constants.items, own_attrs.items, own_ops.items, interface.name);
+    // Generate VTable (with ONLY own attributes/operations, not inherited).
+    // A mixin is never instantiated: no vtable, no lifecycle.
+    if (!interface.mixin) {
+        try writer.writeVTable(w, all_constants.items, own_constants.items, own_attrs.items, own_ops.items, interface.name);
+    }
 
-    // Generate lifecycle functions
-    try writer.writeLifecycleFunctions(w, impl_name);
+    // The construction and destruction chain (a mixin's: its hooks alone).
+    try writer.writeLifecycleFunctions(w, impl_name, .{
+        .interface_name = interface.name,
+        .has_parent = base_info.is_interface,
+        .is_mixin = interface.mixin,
+    });
 
     // HTML 2.7.1: a [Serializable] interface publishes its impl's steps.
     if (hasSerializable(interface.extAttrs)) {
