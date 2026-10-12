@@ -207,11 +207,12 @@ progress = [
   "a5a5e38ead (merged 369506887a) - CSP enforcement 2: javascript: URL navigations under 4.2.4 with Trusted Types, string timers checked at the call (as all three engines), violations carry the running script's location, requestIdleCallback in reused Windows (csp2 lane)",
   "79a43f2163 (merged 5669503a7b) - Mixed Content: upgrade, request and response blocking per the Editor's Draft, inherited prohibition, per-hop redirect checks, WebSocket handshakes with UIR (Codex)",
   "f2784456a0..2fdc14d98b - Origin-Agent-Cluster: the header parsed as a structured item, each browsing context group's historical agent cluster key map (dom.agent_cluster_keys), window.originAgentCluster, document.domain's origin-keyed bail-out, origin-keyed window agent clusters for WebAssembly.Module (oac lane)",
+  "95610b9d24 - HTML 7.2.1 cross-origin objects on V8 [cross_origin_objects]: a security token per realm, access checks asking the host's IsPlatformObjectSameOrigin on every access, cross-origin interceptors for the WindowProxy and Location, WebIDL's security check, Location's members as [LegacyUnforgeable] own properties (xorigin2 lane)",
 ]
 
   [[infra.items]]
   name = "Cross-origin WindowProxy and Location access checks"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "document.domain"
