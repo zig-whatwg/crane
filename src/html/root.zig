@@ -286,6 +286,8 @@ pub const queryCommandValue = editing.queryCommandValue;
 
 pub const agent_host = @import("agent_host.zig");
 pub const media = @import("media/root.zig");
+/// A Browser's platform state: its BrowserPlatform (docs/platform-protocol.md section 3).
+pub const platform_state = @import("platform_state.zig");
 
 test {
     std.testing.refAllDecls(@This());
