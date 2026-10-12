@@ -74,9 +74,11 @@ comptime {
     std.debug.assert(!@hasDecl(interfaces.TouchEvent.Meta, "special_operations"));
     std.debug.assert(!@hasDecl(interfaces.XMLDocument.Meta, "special_operations"));
     std.debug.assert(eqlOpt(specialBinding(interfaces.Document).named_getter, "call_getter"));
-    // HTMLFormElement: both getters declared, neither implemented yet.
-    std.debug.assert(specialBinding(interfaces.HTMLFormElement).indexed_getter == null);
-    std.debug.assert(specialBinding(interfaces.HTMLFormElement).named_getter == null);
+    // HTMLFormElement: both getters declared, each bound exactly when its
+    // impl implements it (Codex row 23 does) - gated, never guessed.
+    const form_ops = interfaces.HTMLFormElement.Meta.special_operations;
+    std.debug.assert((specialBinding(interfaces.HTMLFormElement).indexed_getter != null) == form_ops.indexed_getter.?.implemented);
+    std.debug.assert((specialBinding(interfaces.HTMLFormElement).named_getter != null) == form_ops.named_getter.?.implemented);
     // The default: no special operation, nothing installed.
     std.debug.assert(!@hasDecl(interfaces.Node.Meta, "special_operations"));
     const none = specialBinding(interfaces.Node);
@@ -407,6 +409,8 @@ test "HTMLFormElement: no names in [[OwnPropertyKeys]], as in every browser - an
         \\  check('getOwnPropertyNames', Object.getOwnPropertyNames(form).join(), '0,1,expando');
         \\  check('Reflect.ownKeys', Reflect.ownKeys(form).filter(k => typeof k === 'string').join(), '0,1,expando');
         \\  check('Object.keys', Object.keys(form).join(), '0,1,expando');
+        \\  check('spread', Object.keys({ ...form }).join(), '0,1,expando');
+        \\  check('JSON', JSON.stringify(Object.entries(form).map(([k]) => k)), '["0","1","expando"]');
         \\  const seen = [];
         \\  for (const k in form) if (k === 'alpha' || k === 'beta') seen.push(k);
         \\  check('for-in', seen.join(), '');

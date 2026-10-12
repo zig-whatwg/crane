@@ -2863,7 +2863,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (has_named_setter) namedPropertySetter else namedPropertySetterReadOnly,
                     namedPropertyQuery,
                     namedPropertyDeleter,
-                    namedPropertyEnumerator,
+                    // [[OwnPropertyKeys]] lists the names unless every
+                    // browser leaves them out (Blink: no enumerator for a
+                    // [NotEnumerable] named getter).
+                    if (special.named_properties_in_own_keys) namedPropertyEnumerator else null,
                     namedPropertyDefiner,
                     namedPropertyDescriptor,
                     if (named_properties_mask) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
@@ -6951,15 +6954,20 @@ pub fn V8Interface(comptime Interface: type) type {
             return namedDelete(info, key.of(index));
         }
 
-        /// [[OwnPropertyKeys]] (3.9.6) for the named interceptor: step 2's
-        /// supported property indices in ascending order (V8 lists the
-        /// indexed interceptor's after; the legacy platform object proxy puts
-        /// them first), then step 3's supported property names that are
-        /// visible, in their order - unless the interface is one whose names
-        /// every browser leaves out (special.named_properties_in_own_keys
-        /// false: HTMLFormElement), when the list stops at step 2 and named
-        /// lookup, which asks the supported property names itself, is
-        /// unchanged. Own properties (steps 4-5) are V8's.
+        /// [[OwnPropertyKeys]] (3.9.6) step 3 for the named interceptor: the
+        /// supported property names that are visible, in their order - and
+        /// only names. Step 2's indices are the indexed interceptor's
+        /// enumerator's, which V8 lists first (KeyAccumulator::CollectOwnKeys
+        /// collects element indices, the indexed interceptor's included,
+        /// before property names; the legacy platform object proxy sorts them
+        /// first too). A number from a NAMED enumerator stops V8 at
+        /// FilterForEnumerableProperties' CHECK(IsName(*element)) whenever
+        /// Object.keys, for-in or JSON.stringify filters for enumerable keys
+        /// on an unproxied object (2026-10-12: a form, once Codex row 23
+        /// bound both of its getters); the proxy's ownKeys, which never
+        /// filters, had hidden it. Own properties (steps 4-5) are V8's.
+        /// Not installed where every browser leaves the names out
+        /// (special.named_properties_in_own_keys false: HTMLFormElement).
         fn namedPropertyEnumerator(info: *const v8.PropertyCallbackInfo) callconv(.c) void {
             if (comptime !has_named_getter) return;
 
@@ -6976,9 +6984,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             };
 
-            // Step 3's names, unless the interface leaves them out: then none
-            // is even made.
-            const names: []runtime.DOMString = if (comptime !special.named_properties_in_own_keys) &.{} else Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
+            const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 defer v8.v8_Array_Dispose(empty_arr);
                 info.setReturnValue(@ptrCast(empty_arr));
@@ -6995,17 +7001,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 keys.deinit(std.heap.c_allocator);
             }
 
-            // Step 2: the supported property indices, ascending.
-            if (comptime has_indexed_getter and @hasDecl(Interface, "get_length")) {
-                const length = Interface.get_length(instance) catch 0;
-                var i: u32 = 0;
-                while (i < length) : (i += 1) {
-                    const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
-                    keys.append(std.heap.c_allocator, @ptrCast(v8_idx)) catch {};
-                }
-            }
-
-            // Step 3: the visible supported property names, in order.
+            // The visible supported property names, in order.
             for (names) |prop_name| {
                 const text = prop_name.asSlice();
                 const state = NameState.of(info, text);
