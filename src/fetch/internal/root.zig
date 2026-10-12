@@ -77,6 +77,9 @@ pub const TimingReport = request.TimingReport;
 pub const policy_container = @import("policy_container.zig");
 pub const PolicyContainer = policy_container.PolicyContainer;
 
+/// RFC 9651 structured field parsing (Fetch "get a structured field value").
+pub const structured_fields = @import("structured_fields.zig");
+
 pub const request_client = @import("request_client.zig");
 pub const RequestClient = request_client.RequestClient;
 pub const populateRequestFromClient = request_client.populateRequestFromClient;
