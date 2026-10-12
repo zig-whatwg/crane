@@ -1029,3 +1029,58 @@ test "get a final MIME type: the override, else the response's, else text/xml" {
     defer allocator.free(overridden);
     try std.testing.expectEqualStrings("application/x-test", overridden);
 }
+
+/// The document "set a document response" steps 1-4 call for.
+pub const DocumentResponseKind = enum { html, xml };
+
+/// XHR "set a document response" steps 1-4: whether xhr's response becomes
+/// an HTML document, an XML document, or (null) none.
+///
+/// Spec: https://xhr.spec.whatwg.org/#document-response
+pub fn documentResponseKind(allocator: std.mem.Allocator, state: *const XMLHttpRequestState) !?DocumentResponseKind {
+    // 1. If xhr's response's body is null, then return. (A network error's
+    //    body is null.)
+    if (state.isNetworkError()) return null;
+    // 2. Let finalMIME be the result of get a final MIME type for xhr.
+    const final_mime = try finalMimeTypeBytes(allocator, state);
+    defer allocator.free(final_mime);
+    const essence = final_mime[0 .. std.mem.indexOfScalar(u8, final_mime, ';') orelse final_mime.len];
+    const html = std.mem.eql(u8, essence, "text/html");
+    // 3. If finalMIME is not an HTML MIME type or an XML MIME type, then return.
+    if (!html and !isXmlMimeType(final_mime)) return null;
+    // 4. If xhr's response type is the empty string and finalMIME is an
+    //    HTML MIME type, then return.
+    if (state.response_type == .empty and html) return null;
+    return if (html) .html else .xml;
+}
+
+fn kindFor(content_type: ?[]const u8, override: ?[]const u8, response_type: ResponseType) !?DocumentResponseKind {
+    const allocator = std.testing.allocator;
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+    const response = try fetch_mod.internal.InternalResponse.init(allocator);
+    if (content_type) |t| try response.header_list.append("Content-Type", t);
+    state.setResponse(response);
+    if (override) |o| state.override_mime_type = (try mimesniff.parseMimeType(allocator, o)).?;
+    state.response_type = response_type;
+    return documentResponseKind(allocator, &state);
+}
+
+test "a document response is XML for an XML MIME type, HTML only for responseType document" {
+    try std.testing.expectEqual(@as(?DocumentResponseKind, .xml), try kindFor("application/xml", null, .empty));
+    try std.testing.expectEqual(@as(?DocumentResponseKind, .xml), try kindFor("text/xml;charset=utf-8", null, .document));
+    try std.testing.expectEqual(@as(?DocumentResponseKind, .xml), try kindFor("image/svg+xml", null, .empty));
+    // No Content-Type: get a response MIME type is text/xml.
+    try std.testing.expectEqual(@as(?DocumentResponseKind, .xml), try kindFor(null, null, .empty));
+    try std.testing.expectEqual(@as(?DocumentResponseKind, null), try kindFor("text/html", null, .empty));
+    try std.testing.expectEqual(@as(?DocumentResponseKind, .html), try kindFor("text/html", null, .document));
+    try std.testing.expectEqual(@as(?DocumentResponseKind, null), try kindFor("text/plain", null, .document));
+    // The override MIME type decides.
+    try std.testing.expectEqual(@as(?DocumentResponseKind, .xml), try kindFor("text/html", "text/xml", .empty));
+    try std.testing.expectEqual(@as(?DocumentResponseKind, null), try kindFor("application/xml", "text/plain", .empty));
+    // A network error has no body.
+    const allocator = std.testing.allocator;
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+    try std.testing.expectEqual(@as(?DocumentResponseKind, null), try documentResponseKind(allocator, &state));
+}

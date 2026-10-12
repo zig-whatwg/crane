@@ -41,6 +41,7 @@ const global_settings = @import("dom").global_settings;
 const document_fetches = @import("dom").document_fetches;
 const infra = @import("infra");
 const encoding = @import("encoding");
+const dom_mod = @import("dom");
 
 /// An XMLHttpRequest is an XMLHttpRequestEventTarget, which is an EventTarget:
 /// its event handlers, `onreadystatechange` among them, live in EventTarget's
@@ -396,8 +397,13 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 return err;
             };
         },
-        // Step 7: the document response, which needs the HTML/XML parser.
-        .document => return .{ .null = {} },
+        // Step 7: "set a document response for this" - which leaves this's
+        // response object null when the response is no document.
+        .document => {
+            try setDocumentResponse(instance);
+            const value = (if (internal.has_response_value) engine.tracedValue(instance, response_slot) else null) orelse return .{ .null = {} };
+            return value.take();
+        },
         .empty, .text => unreachable, // handled by step 1
     }
 
@@ -461,10 +467,96 @@ pub fn get_responseText(instance: *runtime.Instance) anyerror!runtime.USVString 
 }
 
 /// Getter for responseXML
-/// Returns null (Document response not implemented)
+///
+/// Spec: https://xhr.spec.whatwg.org/#the-responsexml-attribute
 pub fn get_responseXML(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const xhr_state = getXHRState(instance);
+    // 1. If this's response type is not the empty string or "document",
+    //    then throw an "InvalidStateError" DOMException.
+    if (xhr_state.response_type != .empty and xhr_state.response_type != .document) return error.InvalidStateError;
+    // 2. If this's state is not done, then return null.
+    if (xhr_state.ready_state != .DONE) return null;
+    // 3. Assert: this's response object is not failure. (Only an
+    //    ArrayBuffer response fails, and its response type is not one of
+    //    step 1's.)
+    // 4. If this's response object is non-null, then return it.
+    // 5. Set a document response for this.
+    const internal = getInternal(instance);
+    if (!internal.has_response_value) try setDocumentResponse(instance);
+    // 6. Return this's response object.
+    if (!internal.has_response_value) return null;
+    const value = engine.tracedValue(instance, response_slot) orelse return null;
+    // The traced edge keeps the document; the binding finds its wrapper.
+    defer value.release();
+    return engine.convertToPlatformObject(instance.ctx, value.value);
+}
+
+/// XHR "set a document response" for `instance`: its response object
+/// becomes the document its received bytes are - or stays null.
+///
+/// Spec: https://xhr.spec.whatwg.org/#document-response
+fn setDocumentResponse(instance: *runtime.Instance) !void {
+    const xhr_state = getXHRState(instance);
+    const internal = getInternal(instance);
+    const allocator = instance.ctx.allocator;
+    // Steps 1-4: an HTML document, an XML document, or none.
+    const kind = (try response_algo.documentResponseKind(allocator, xhr_state)) orelse return;
+    // Step 2's finalMIME.
+    const final_mime = try response_algo.finalMimeTypeBytes(allocator, xhr_state);
+    defer allocator.free(final_mime);
+    const bytes = xhr_state.received_bytes.items;
+    const sniffing = @import("html_core").parser.encoding_sniffing;
+    // "Get a final encoding": the label's encoding, null for none or failure.
+    const label = try response_algo.finalEncodingLabel(allocator, xhr_state);
+    defer if (label) |l| allocator.free(l);
+    const final_encoding = if (label) |l| sniffing.lookup(l) else null;
+    var charset: sniffing.Encoding = undefined;
+    const document = switch (kind) {
+        .html => html: {
+            // 5.1-5.3: the final encoding, else the prescan's, else UTF-8.
+            charset = final_encoding orelse sniffing.prescan(bytes) orelse sniffing.utf_8;
+            // A byte order mark decides the decoder, and so the encoding.
+            const bom = if (std.mem.startsWith(u8, bytes, "\xEF\xBB\xBF")) sniffing.utf_8 else if (std.mem.startsWith(u8, bytes, "\xFE\xFF")) sniffing.lookup("utf-16be") else if (std.mem.startsWith(u8, bytes, "\xFF\xFE")) sniffing.lookup("utf-16le") else null;
+            if (bom) |found| charset = found;
+            const text = try sniffing.decode(allocator, bytes, charset);
+            defer allocator.free(text);
+            // 5.4-5.5: the HTML parser with scripting disabled, its document
+            // an HTML document.
+            break :html try @import("html").dom_parser.parseHTML(allocator, instance.ctx, text, .{});
+        },
+        .xml => xml: {
+            // 6. "If that fails (unsupported character encoding, namespace
+            //    well-formedness error, etc.), then return null."
+            const decoded = (try @import("html").xml_document_parser.decodeBytes(allocator, bytes, final_encoding)) orelse return;
+            defer allocator.free(decoded.text);
+            charset = decoded.encoding;
+            const doc = try interfaces.Document.init(allocator, instance.ctx);
+            errdefer dom_mod.node_creation.destroyUninserted(doc);
+            try dom_mod.document_internals.setDocumentType(doc, .xml);
+            if (try @import("html").xml_document_parser.parseInto(doc, decoded.text, .{ .scripting = false }) != null) {
+                dom_mod.node_creation.destroyUninserted(doc);
+                return;
+            }
+            break :xml doc;
+        },
+    };
+    errdefer dom_mod.node_creation.destroyUninserted(document);
+    // 7-8. The document's encoding: charset.
+    try dom_mod.document_internals.setEncoding(document, sniffing.canonicalName(charset));
+    // 9. Its content type: finalMIME.
+    try dom_mod.document_internals.setContentType(document, final_mime);
+    // 10. Its URL: xhr's response's URL.
+    if (xhr_state.response) |response| if (response.url()) |url| try dom_mod.document_internals.setURL(document, url);
+    // 11. Its origin: xhr's relevant settings object's origin.
+    if (relevantDocument(instance)) |relevant| try dom_mod.document_internals.copyOrigin(document, relevant);
+    // A document no navigation loads is ready at once.
+    dom_mod.document_lifecycle.markReadyForPostLoadTasks(document);
+    // 12. Set xhr's response object to document - kept by an edge from the
+    //     XHR's wrapper, as `response`'s other objects are.
+    const made = try engine.retainValue(instance.ctx, .{ .instance = document });
+    defer made.release();
+    engine.traceValue(instance, made.value, response_slot);
+    internal.has_response_value = true;
 }
 
 /// Setter for onreadystatechange
