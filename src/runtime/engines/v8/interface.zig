@@ -6562,16 +6562,23 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// LegacyPlatformObjectGetOwnProperty step 2, for [[Get]]: the value
-        /// of a supported property name. The interceptor is consulted after
-        /// the prototype chain unless named properties mask it (V8's
-        /// non-masking interceptor: steps 4-6 of the visibility algorithm
-        /// for a read), so only step 1 is asked here.
-        fn namedGet(info: *const v8.PropertyCallbackInfo, key: []const u8) v8.Intercepted {
+        /// of a visible named property. A named interceptor is consulted
+        /// after the prototype chain unless named properties mask it (V8's
+        /// non-masking interceptor answers steps 2 and 4-6 of the visibility
+        /// algorithm for a read), so only step 1 is asked of it
+        /// (`whole_visibility` false); an indexed one always masks, so a
+        /// forwarded array index asks the whole algorithm
+        /// (`Storage.prototype[9] = p` hides storage's key "9").
+        fn namedGet(info: *const v8.PropertyCallbackInfo, key: []const u8, comptime whole_visibility: bool) v8.Intercepted {
             if (comptime !has_named_getter) return .kNo;
             const instance = holderInstance(info) orelse return .kNo;
-            // CSSStyleDeclaration answers every CSS property name - computed
-            // style's are all set - not only the declared ones.
-            if (!is_css_style_declaration and !isSupportedPropertyName(instance, key)) return .kNo;
+            if (whole_visibility) {
+                if (!isVisible(instance, info, key)) return .kNo;
+            } else if (!is_css_style_declaration and !isSupportedPropertyName(instance, key)) {
+                // CSSStyleDeclaration answers every CSS property name -
+                // computed style's are all set - not only the declared ones.
+                return .kNo;
+            }
             const isolate = info.getIsolate();
             // Taken past the early returns: this runs for every property miss
             // on a named-property interface. Owned: a Global per call.
@@ -6803,7 +6810,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn namedPropertyGetter(property: *v8.Name, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
             var key: PropertyName = .{};
             defer key.deinit();
-            return namedGet(info, key.read(property) orelse return .kNo);
+            return namedGet(info, key.read(property) orelse return .kNo, false);
         }
 
         fn namedPropertyQuery(property: *v8.Name, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
@@ -6848,7 +6855,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
         fn forwardedIndexGetter(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
             var key: IndexName = .{};
-            return namedGet(info, key.of(index));
+            return namedGet(info, key.of(index), true);
         }
 
         fn forwardedIndexQuery(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {

@@ -165,6 +165,20 @@ fn indexKeys() !void {
         \\    check(at('delete'), delete storage[42], true);
         \\    check(at('deleted'), storage.getItem('42'), null);
         \\    check(at('no own element'), Object.getOwnPropertyNames(storage).sort().join(), '0,9');
+        \\    // A prototype's index hides the key, as a prototype's name does
+        \\    // (no [LegacyOverrideBuiltIns]); assignment still sets it.
+        \\    Storage.prototype[7] = 'proto';
+        \\    try {
+        \\      storage.setItem('7', 'item');
+        \\      check(at('hidden read'), storage[7], 'proto');
+        \\      check(at('hidden descriptor'), Object.getOwnPropertyDescriptor(storage, 7), undefined);
+        \\      storage[7] = 'set';
+        \\      check(at('hidden set'), storage.getItem('7'), 'set');
+        \\      check(at('still hidden'), storage[7], 'proto');
+        \\    } finally {
+        \\      delete Storage.prototype[7];
+        \\    }
+        \\    check(at('visible again'), storage[7], 'set');
     );
 }
 
