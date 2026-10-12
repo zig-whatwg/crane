@@ -1,6 +1,7 @@
 //! The testing platform's PNG decoder (decision 19): PNG datastreams to
-//! RGBA8, in Zig over std.compress.flate, so the WPT runner's results do not
-//! depend on the machine's image libraries. W3C PNG (Third Edition),
+//! RGBA8, in Zig - its zlib data through inflate.zig, which stops exactly
+//! where truncated data does - so the WPT runner's results do not depend on
+//! the machine's image libraries. W3C PNG (Third Edition),
 //! specs/w3c/png-3.md, as a decoder that extracts the image:
 //!
 //! - every colour type and bit depth of Table 11.1, Adam7 interlacing (8.2),
@@ -38,6 +39,7 @@
 
 const std = @import("std");
 const platform = @import("platform");
+const inflate = @import("inflate.zig");
 
 const ImageError = platform.ImageError;
 
@@ -320,9 +322,12 @@ fn decodeImageData(
     const pixel_len = @as(u64, header.width) * header.height * 4;
     if (raw_len > std.math.maxInt(usize) or pixel_len > std.math.maxInt(usize)) return error.TooLarge;
 
-    const inflated = try inflate(allocator, compressed, @intCast(raw_len));
-    defer allocator.free(inflated.buffer);
-    const raw = inflated.buffer[0..inflated.len];
+    // zlib (10.1): as many bytes as the scanlines take, as far as the data
+    // goes - exactly, so that a truncated image's last rows are the ones its
+    // data holds whole.
+    const buffer = allocator.alloc(u8, @intCast(raw_len)) catch return error.OutOfMemory;
+    defer allocator.free(buffer);
+    const raw = buffer[0..inflate.zlib(buffer, compressed).len];
 
     const pixels = allocator.alloc(u8, @intCast(pixel_len)) catch return error.OutOfMemory;
     errdefer allocator.free(pixels);
@@ -371,80 +376,6 @@ fn decodeImageData(
         .status = status,
         .empty = status != .complete and rows == 0,
     };
-}
-
-/// What `inflate` produced: `len` bytes of inflated data at the start of
-/// `buffer` (OWNED; the tail past `len` is scratch) - fewer than were asked
-/// for when the zlib stream ran out, was invalid or ended first.
-const Inflated = struct { buffer: []u8, len: usize };
-
-/// zlib (10.1): inflate up to `len` bytes, keeping exactly the output that
-/// real input produced. Data after `len` is not read.
-///
-/// std.compress.flate in Zig 0.16 cannot be handed input that simply stops:
-/// its short-input check in `tossBitsShort` adds `consumed_bits` where it
-/// should subtract them, and tosses past the end of the reader's buffer (an
-/// assertion) - see docs/lessons/debugging-a-pull-inflater-needs-short-input-
-/// and-block-transition-tests.md, where src/compression met it - and
-/// `peekBitsEnding` computes `left.len * 8 - consumed_bits`, which overflows
-/// (a panic) once nothing is left. So the input is followed by zero padding
-/// longer than one step can consume - each output byte costs at most 15
-/// bits (a literal's longest code; a match costs at most 48 for 3 bytes or
-/// more), and zero bits read as a block header are a stored block whose
-/// LEN and NLEN disagree, an error at once - every step is checked to have
-/// consumed only real input (the inflater's position - `seek` bytes, and
-/// `consumed_bits` into the next - counts what it consumed, not what it
-/// peeked), and the
-/// inflater writes straight into one fixed buffer (its direct mode: no
-/// read-ahead, the buffer is the history) in steps whose overshoot - a
-/// stored block after compressed output in one step may write up to the
-/// step's limit again - the buffer's slack absorbs.
-///
-/// A step that fails - an invalid stream, one that ended, or output that
-/// needed the padding - is thrown away whole. So where one fails, the stream
-/// is inflated again: in large steps to that step's start, then a byte at a
-/// time, which keeps the output real input produced to within a byte's step.
-fn inflate(allocator: std.mem.Allocator, compressed: []const u8, len: usize) ImageError!Inflated {
-    // 4 KiB steps: a failed one costs at most 4,096 one-byte steps again.
-    const step = 4096;
-    // More than one step's worst case: 15 bits a byte, and a margin.
-    const padding = 2 * step + 64;
-    const padded = allocator.alloc(u8, compressed.len + padding) catch return error.OutOfMemory;
-    defer allocator.free(padded);
-    @memcpy(padded[0..compressed.len], compressed);
-    @memset(padded[compressed.len..], 0);
-
-    const out = allocator.alloc(u8, len + 2 * step) catch return error.OutOfMemory;
-    const real_bits = @as(u64, compressed.len) * 8;
-    const coarse = inflateSteps(out, padded, real_bits, len, step, null);
-    if (coarse == len) return .{ .buffer = out, .len = len };
-    return .{ .buffer = out, .len = inflateSteps(out, padded, real_bits, len, step, coarse) };
-}
-
-/// One inflation of `padded` from its start into `out`, in steps of `step`
-/// bytes - up to `fine_from` bytes when it is given, and from there steps of
-/// one byte - until `len` bytes or the first failed step. The bytes before
-/// that step: all real input's.
-fn inflateSteps(out: []u8, padded: []const u8, real_bits: u64, len: usize, step: usize, fine_from: ?usize) usize {
-    var writer: std.Io.Writer = .fixed(out);
-    var input: std.Io.Reader = .fixed(padded);
-    var decompress: std.compress.flate.Decompress = .init(&input, .zlib, &.{});
-    while (writer.end < len) {
-        const before = writer.end;
-        const consumed_before = @as(u64, input.seek) * 8 + decompress.consumed_bits;
-        const limit = if (fine_from) |fine|
-            (if (before < fine) @min(len - before, step, fine - before) else 1)
-        else
-            @min(len - before, step);
-        // The vtable, not Reader.stream: the overshoot above trips its
-        // "no more than the limit" assertion.
-        _ = decompress.reader.vtable.stream(&decompress.reader, &writer, .limited(limit)) catch return before;
-        const consumed = @as(u64, input.seek) * 8 + decompress.consumed_bits;
-        // Output that needed the padding: the real data ended first.
-        if (consumed > real_bits) return before;
-        if (writer.end == before and consumed == consumed_before) return before;
-    }
-    return @min(writer.end, len);
 }
 
 /// Undo filter type `filter` on `line` in place (9.2-9.4); `previous` is the

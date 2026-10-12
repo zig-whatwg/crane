@@ -171,6 +171,29 @@ test "partial: an interlaced PNG keeps the passes its data reached" {
     }
 }
 
+test "partial: a truncated PNG has exactly the rows zlib inflates whole from its data" {
+    if (platform.capabilities.image_decoding == .unsupported) return;
+    // libpng hands over a row once zlib's inflate has produced all of it;
+    // zlib produces every byte whose bits have arrived. smiley.png's rows are
+    // 901 bytes (a filter byte and 300 RGB pixels); Python's zlib inflates
+    // 72,084 bytes from its first 600 bytes (80 rows) and 82,949 from its
+    // first 1,000 (92 rows).
+    const smiley = try readWpt("images/smiley.png");
+    defer testing.allocator.free(smiley);
+    inline for (.{ .{ 600, 80 }, .{ 1000, 92 } }) |case| {
+        const image = try decode("image/png", smiley[0..case[0]]);
+        defer free(image);
+        try testing.expectEqual(platform.ImageDecodeStatus.truncated, image.status);
+        for (0..150) |y| {
+            const alpha = image.pixels.slice()[(y * 300 + 150) * 4 + 3];
+            testing.expectEqual(@as(u8, if (y < case[1]) 255 else 0), alpha) catch |err| {
+                std.debug.print("cut at {d}: row {d}\n", .{ case[0], y });
+                return err;
+            };
+        }
+    }
+}
+
 test "partial: a PNG cut right at its first IDAT chunk is a partial image with nothing decoded" {
     if (platform.capabilities.image_decoding == .unsupported) return;
     const smiley = try readWpt("images/smiley.png");
