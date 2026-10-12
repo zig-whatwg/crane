@@ -46,7 +46,7 @@ pub fn installHooks() void {
     @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &dispatchFlag });
     // The state dispatch works on, and what it does to an event that no IDL
     // member does (dom.event_dispatch).
-    event_dispatch.install(.{ .state = &getInternal, .swap_type = &swapTypeHook });
+    event_dispatch.install(.{ .state = &stateOf, .swap_type = &swapTypeHook });
 }
 
 /// Initialize instance (creates the instance)
@@ -59,6 +59,13 @@ pub fn init(
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     // Initialize state will be done in call_constructor
     return instance;
+}
+
+/// dom.event_dispatch.of: `event`'s state, brand-checked - null for an
+/// instance that is not an Event (no unchecked cast) or one that has no state.
+fn stateOf(event: *runtime.Instance) ?*InternalState {
+    const state = event.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// dom.event_dispatch: set `event`'s type attribute value to `event_type`
