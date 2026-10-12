@@ -525,12 +525,6 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Get the Node internal state from an Element instance
-/// Uses the registry pattern for proper inheritance chain
-pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
-    return NodeImpl.getInternalState(instance);
-}
-
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {

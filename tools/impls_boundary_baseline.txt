@@ -45,10 +45,6 @@ src/html/full.zig impls.@import 1
 src/lib_exports.zig impls.@import 1
 src/platform/layout_backend.zig Node.getInternalState 1
 src/platform/layout_backend.zig Node.getTextContentInternal 1
-src/runtime/engines/v8/context_manager.zig Document.getInternal 1
-src/runtime/engines/v8/context_manager.zig Document.setContentType 1
-src/runtime/engines/v8/context_manager.zig Document.setDocumentType 1
-src/runtime/engines/v8/context_manager.zig Element.setLocalName 3
 src/runtime/engines/v8/context_manager.zig HTMLIFrameElement.get_contentWindow 1
 src/runtime/engines/v8/context_manager.zig Node.getInternalState 1
 src/runtime/engines/v8/context_manager.zig Window.call_item 2
@@ -72,10 +68,10 @@ src/webidl/impls/AbortSignal.zig EventTarget.dispatchTrusted 1
 src/webidl/impls/AbortSignal.zig EventTarget.eventHandler 1
 src/webidl/impls/AbortSignal.zig EventTarget.init 1
 src/webidl/impls/AbortSignal.zig EventTarget.setEventHandler 1
-src/webidl/impls/Attr.zig Node.NodeType 2
+src/webidl/impls/Attr.zig Node.NodeType 1
 src/webidl/impls/Attr.zig Node.deinit 1
 src/webidl/impls/Attr.zig Node.init 1
-src/webidl/impls/Attr.zig Node.setNodeType 2
+src/webidl/impls/Attr.zig Node.setNodeType 1
 src/webidl/impls/CDATASection.zig CharacterData.deinit 1
 src/webidl/impls/CDATASection.zig CharacterData.init 1
 src/webidl/impls/CSSStyleDeclaration.zig Element.getInternal 1
@@ -127,12 +123,10 @@ src/webidl/impls/Document.zig Event.setInitializedFlag 1
 src/webidl/impls/Document.zig EventTarget.dispatchTrusted 3
 src/webidl/impls/Document.zig EventTarget.eventHandler 1
 src/webidl/impls/Document.zig EventTarget.setEventHandler 1
-src/webidl/impls/Document.zig Node.InternalState 1
 src/webidl/impls/Document.zig Node.NodeType 8
 src/webidl/impls/Document.zig Node.deinit 2
 src/webidl/impls/Document.zig Node.deinitNodeByType 2
 src/webidl/impls/Document.zig Node.getFirstChild 4
-src/webidl/impls/Document.zig Node.getInternalState 1
 src/webidl/impls/Document.zig Node.getNextSibling 3
 src/webidl/impls/Document.zig Node.getNodeType 4
 src/webidl/impls/Document.zig Node.init 1
@@ -145,9 +139,7 @@ src/webidl/impls/Document.zig Range.call_surroundContents 2
 src/webidl/impls/Document.zig Selection.call_collapseToEnd 1
 src/webidl/impls/Document.zig Selection.call_getRangeAt 3
 src/webidl/impls/Document.zig Selection.get_isCollapsed 3
-src/webidl/impls/DocumentFragment.zig Node.InternalState 1
 src/webidl/impls/DocumentFragment.zig Node.NodeType 1
-src/webidl/impls/DocumentFragment.zig Node.getInternalState 1
 src/webidl/impls/DocumentFragment.zig Node.setNodeType 1
 src/webidl/impls/DocumentType.zig Node.NodeType 1
 src/webidl/impls/DocumentType.zig Node.deinit 2
@@ -156,11 +148,9 @@ src/webidl/impls/DocumentType.zig Node.setNodeType 1
 src/webidl/impls/Element.zig DOMTokenList.setElement 2
 src/webidl/impls/Element.zig HTMLElement.getInternalState 1
 src/webidl/impls/Element.zig NamedNodeMap.setOwnerElement 1
-src/webidl/impls/Element.zig Node.InternalState 1
 src/webidl/impls/Element.zig Node.NodeType 1
 src/webidl/impls/Element.zig Node.deinit 2
 src/webidl/impls/Element.zig Node.getFirstChild 1
-src/webidl/impls/Element.zig Node.getInternalState 1
 src/webidl/impls/Element.zig Node.getNextSibling 1
 src/webidl/impls/Element.zig Node.getOwnerDocument 1
 src/webidl/impls/Element.zig Node.getParent 2
@@ -265,7 +255,6 @@ src/webidl/impls/HTMLHeadingElement.zig HTMLElement.init 1
 src/webidl/impls/HTMLHtmlElement.zig HTMLElement.deinit 1
 src/webidl/impls/HTMLHtmlElement.zig HTMLElement.init 1
 src/webidl/impls/HTMLHyperlinkElementUtils.zig Element.getInternal 1
-src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.get_value 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setSupportedTokens 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.set_value 1
@@ -451,9 +440,8 @@ src/webidl/impls/SVGScriptElement.zig SVGElement.init 1
 src/webidl/impls/ServiceWorkerGlobalScope.zig CookieStore.createForOrigin 1
 src/webidl/impls/ServiceWorkerRegistration.zig CookieStoreManager.createForRegistration 1
 src/webidl/impls/ShadowRoot.zig DocumentFragment.init 1
-src/webidl/impls/ShadowRoot.zig Node.InternalState 1
 src/webidl/impls/ShadowRoot.zig Node.NodeType 1
-src/webidl/impls/ShadowRoot.zig Node.getInternalState 2
+src/webidl/impls/ShadowRoot.zig Node.getInternalState 1
 src/webidl/impls/SharedWorkerGlobalScope.zig EventTarget.eventHandler 1
 src/webidl/impls/SharedWorkerGlobalScope.zig EventTarget.setEventHandler 1
 src/webidl/impls/SharedWorkerGlobalScope.zig WorkerGlobalScope.deinit 2

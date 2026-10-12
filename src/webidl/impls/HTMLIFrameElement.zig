@@ -4188,26 +4188,6 @@ pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return token_list;
 }
 
-/// Internal: Update sandbox flags when DOMTokenList changes
-/// Called when the sandbox attribute value changes.
-pub fn updateSandboxFlags(instance: *runtime.Instance) anyerror!void {
-    const internal = getInternal(instance) orelse return;
-
-    if (internal.sandbox_token_list) |token_list| {
-        // Get the serialized value from DOMTokenList
-        const value = try DOMTokenListImpl.get_value(token_list);
-        const value_slice = value.asSlice();
-
-        if (value_slice.len > 0) {
-            // Apply sandbox with the token values
-            try internal.integration.setSandbox(value_slice);
-        } else {
-            // Empty sandbox attribute = all restrictions
-            try internal.integration.setSandbox("");
-        }
-    }
-}
-
 // ============================================================================
 // Permissions Policy Attributes (§4.8.5)
 // ============================================================================
