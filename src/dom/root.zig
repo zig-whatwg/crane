@@ -240,3 +240,4 @@ pub const indexeddb_keys = @import("indexeddb_keys.zig");
 
 /// HTML media owner algorithms without an IDL member.
 pub const media_elements = @import("media_elements.zig");
+pub const image_sources = @import("image_sources.zig");
