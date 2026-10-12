@@ -14,7 +14,6 @@ const webidl = @import("webidl");
 const engine = @import("engine");
 const KeptInstance = @import("dom").custom_elements.KeptInstance;
 const MouseEvent = interfaces.MouseEvent;
-const EventImpl = @import("Event.zig");
 const event_construction = @import("dom").event_construction;
 const clock = @import("clock");
 
@@ -112,21 +111,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const instance = try init(ctx.allocator, State, &MouseEvent.vtable, ctx);
     errdefer deinit(instance);
 
-    // Get state to initialize inherited Event fields
+    // Its state: the UIEvent, MouseEvent and own attributes are set below
     const state = instance.getState(State);
-
-    // Create internal state for Event (required for flags like dispatch_flag, initialized_flag)
-    // This is stored in the Event's part of the state hierarchy (state.base.base.own._internal)
-    const internal = try runtime.arenaOf(instance).create(EventImpl.InternalState);
-    internal.* = EventImpl.InternalState.init(ctx.allocator);
-    // Access the Event's _internal field through the inheritance chain
-    // MouseEvent.State.base = UIEvent.State
-    // UIEvent.State.base = Event.State
-    // Event.State.own._internal = Event's internal state
-    state.base.base.own._internal = internal;
-
-    // Set the initialized flag
-    internal.initialized_flag = true;
 
     // Build default dictionary chain
     // MouseEventInit extends EventModifierInit extends UIEventInit extends EventInit
@@ -142,27 +128,11 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const ui_init = modifier_init.base;
     const base_init = ui_init.base;
 
-    const bubbles = base_init.bubbles orelse false;
-    const cancelable = base_init.cancelable orelse false;
-    const composed = base_init.composed orelse false;
-
-    // Store event type - clone the string to ensure we own it
-    // The type field is in Event.State (state.base.base.own.type)
-    state.base.base.own.type = try @"type".clone(ctx.allocator);
-
-    // Initialize Event attributes (in state.base.base.own)
-    state.base.base.own.bubbles = bubbles;
-    state.base.base.own.cancelable = cancelable;
-    state.base.base.own.composed = composed;
-    state.base.base.own.target = null;
-    state.base.base.own.srcElement = null;
-    state.base.base.own.currentTarget = null;
-    state.base.base.own.eventPhase = interfaces.Event.get_NONE();
-    state.base.base.own.cancelBubble = false;
-    state.base.base.own.returnValue = true;
-    state.base.base.own.defaultPrevented = false;
-    state.base.base.own.isTrusted = false;
-    state.base.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
+    // DOM "inner event creation steps" and the constructor's step 2 - Event's
+    // part: its internal state, the initialized flag, the timeStamp,
+    // EventInit's members and the type - through Event's own steps
+    // (dom.event_construction), never its state's type.
+    try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(base_init));
 
     // Initialize UIEvent attributes (in state.base.own): view, detail and the
     // legacy which.
