@@ -196,12 +196,16 @@ pub const MediaQueryList = struct {
         return try MediaQueryListImpl.get_matches(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaQueryListImpl.get_onchange(instance);
+        if (comptime @hasDecl(MediaQueryListImpl, "get_onchange")) return try MediaQueryListImpl.get_onchange(instance);
+        return event_handlers.value(EventHandler, instance, "onchange");
     }
 
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaQueryListImpl.set_onchange(instance, value);
+        if (comptime @hasDecl(MediaQueryListImpl, "set_onchange")) return try MediaQueryListImpl.set_onchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 
     pub fn call_addListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {

@@ -1268,7 +1268,7 @@ fn fireEventOnElement(instance: *runtime.Instance, event_type: []const u8) !void
 
     // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
     // ancestor, so its impl (existing debt, unchanged).
-    _ = try @import("EventTarget.zig").dispatchTrusted(instance, event);
+    _ = try @import("dom").fire_event.dispatchTrusted(instance, event);
 }
 
 /// Setter for referrerPolicy

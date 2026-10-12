@@ -197,12 +197,16 @@ pub const MIDIAccess = struct {
         return try MIDIAccessImpl.get_outputs(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MIDIAccessImpl.get_onstatechange(instance);
+        if (comptime @hasDecl(MIDIAccessImpl, "get_onstatechange")) return try MIDIAccessImpl.get_onstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onstatechange");
     }
 
     pub fn set_onstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MIDIAccessImpl.set_onstatechange(instance, value);
+        if (comptime @hasDecl(MIDIAccessImpl, "set_onstatechange")) return try MIDIAccessImpl.set_onstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
 
     pub fn get_sysexEnabled(instance: *runtime.Instance) anyerror!bool {

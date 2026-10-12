@@ -184,12 +184,16 @@ pub const RTCDTMFSender = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_ontonechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCDTMFSenderImpl.get_ontonechange(instance);
+        if (comptime @hasDecl(RTCDTMFSenderImpl, "get_ontonechange")) return try RTCDTMFSenderImpl.get_ontonechange(instance);
+        return event_handlers.value(EventHandler, instance, "ontonechange");
     }
 
     pub fn set_ontonechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCDTMFSenderImpl.set_ontonechange(instance, value);
+        if (comptime @hasDecl(RTCDTMFSenderImpl, "set_ontonechange")) return try RTCDTMFSenderImpl.set_ontonechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ontonechange", value);
     }
 
     pub fn get_canInsertDTMF(instance: *runtime.Instance) anyerror!bool {

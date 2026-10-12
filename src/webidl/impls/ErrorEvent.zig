@@ -146,14 +146,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.own.bubbles = bubbles;
     state.base.own.cancelable = cancelable;
     state.base.own.composed = composed;
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = interfaces.Event.get_NONE();
     state.base.own.cancelBubble = false;
     state.base.own.returnValue = true;
     state.base.own.defaultPrevented = false;
-    state.base.own.isTrusted = false;
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     // Initialize ErrorEvent-specific attributes from eventInitDict
@@ -296,12 +291,4 @@ pub fn createErrorEvent(
         runtime.DOMString.initInterned("error"),
         .{ .was_passed = true, .value = error_init },
     );
-}
-
-/// Set the isTrusted flag on an ErrorEvent
-/// Called when creating events via the "fire an event" algorithm
-pub fn setIsTrusted(instance: *runtime.Instance, value: bool) void {
-    const state = instance.getState(State);
-    // isTrusted is in the base Event state, not ErrorEvent's own state
-    state.base.own.isTrusted = value;
 }

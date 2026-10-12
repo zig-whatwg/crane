@@ -23,26 +23,34 @@ pub fn installHooks() void {
     }
 }
 
+const event_handlers = @import("dom").event_handlers;
+
 pub fn get_onserviceadded(instance: *runtime.Instance) anyerror!EventHandler {
-    return try ServiceEventHandlersImpl.get_onserviceadded(instance);
+    if (comptime @hasDecl(ServiceEventHandlersImpl, "get_onserviceadded")) return try ServiceEventHandlersImpl.get_onserviceadded(instance);
+    return event_handlers.value(EventHandler, instance, "onserviceadded");
 }
 
 pub fn set_onserviceadded(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try ServiceEventHandlersImpl.set_onserviceadded(instance, value);
+    if (comptime @hasDecl(ServiceEventHandlersImpl, "set_onserviceadded")) return try ServiceEventHandlersImpl.set_onserviceadded(instance, value);
+    try event_handlers.setValue(EventHandler, instance, "onserviceadded", value);
 }
 
 pub fn get_onservicechanged(instance: *runtime.Instance) anyerror!EventHandler {
-    return try ServiceEventHandlersImpl.get_onservicechanged(instance);
+    if (comptime @hasDecl(ServiceEventHandlersImpl, "get_onservicechanged")) return try ServiceEventHandlersImpl.get_onservicechanged(instance);
+    return event_handlers.value(EventHandler, instance, "onservicechanged");
 }
 
 pub fn set_onservicechanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try ServiceEventHandlersImpl.set_onservicechanged(instance, value);
+    if (comptime @hasDecl(ServiceEventHandlersImpl, "set_onservicechanged")) return try ServiceEventHandlersImpl.set_onservicechanged(instance, value);
+    try event_handlers.setValue(EventHandler, instance, "onservicechanged", value);
 }
 
 pub fn get_onserviceremoved(instance: *runtime.Instance) anyerror!EventHandler {
-    return try ServiceEventHandlersImpl.get_onserviceremoved(instance);
+    if (comptime @hasDecl(ServiceEventHandlersImpl, "get_onserviceremoved")) return try ServiceEventHandlersImpl.get_onserviceremoved(instance);
+    return event_handlers.value(EventHandler, instance, "onserviceremoved");
 }
 
 pub fn set_onserviceremoved(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try ServiceEventHandlersImpl.set_onserviceremoved(instance, value);
+    if (comptime @hasDecl(ServiceEventHandlersImpl, "set_onserviceremoved")) return try ServiceEventHandlersImpl.set_onserviceremoved(instance, value);
+    try event_handlers.setValue(EventHandler, instance, "onserviceremoved", value);
 }

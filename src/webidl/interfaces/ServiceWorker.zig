@@ -207,20 +207,26 @@ pub const ServiceWorker = struct {
         return try ServiceWorkerImpl.get_state(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerImpl.get_onstatechange(instance);
+        if (comptime @hasDecl(ServiceWorkerImpl, "get_onstatechange")) return try ServiceWorkerImpl.get_onstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onstatechange");
     }
 
     pub fn set_onstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerImpl.set_onstatechange(instance, value);
+        if (comptime @hasDecl(ServiceWorkerImpl, "set_onstatechange")) return try ServiceWorkerImpl.set_onstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerImpl.get_onerror(instance);
+        if (comptime @hasDecl(ServiceWorkerImpl, "get_onerror")) return try ServiceWorkerImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(ServiceWorkerImpl, "set_onerror")) return try ServiceWorkerImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {

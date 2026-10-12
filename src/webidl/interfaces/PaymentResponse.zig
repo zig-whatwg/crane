@@ -271,12 +271,16 @@ pub const PaymentResponse = struct {
         return try PaymentResponseImpl.get_payerPhone(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onpayerdetailchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PaymentResponseImpl.get_onpayerdetailchange(instance);
+        if (comptime @hasDecl(PaymentResponseImpl, "get_onpayerdetailchange")) return try PaymentResponseImpl.get_onpayerdetailchange(instance);
+        return event_handlers.value(EventHandler, instance, "onpayerdetailchange");
     }
 
     pub fn set_onpayerdetailchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PaymentResponseImpl.set_onpayerdetailchange(instance, value);
+        if (comptime @hasDecl(PaymentResponseImpl, "set_onpayerdetailchange")) return try PaymentResponseImpl.set_onpayerdetailchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onpayerdetailchange", value);
     }
 
     /// Extended attributes: [Default]

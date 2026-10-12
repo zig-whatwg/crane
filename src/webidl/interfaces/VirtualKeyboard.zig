@@ -202,12 +202,16 @@ pub const VirtualKeyboard = struct {
         try VirtualKeyboardImpl.set_overlaysContent(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_ongeometrychange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try VirtualKeyboardImpl.get_ongeometrychange(instance);
+        if (comptime @hasDecl(VirtualKeyboardImpl, "get_ongeometrychange")) return try VirtualKeyboardImpl.get_ongeometrychange(instance);
+        return event_handlers.value(EventHandler, instance, "ongeometrychange");
     }
 
     pub fn set_ongeometrychange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try VirtualKeyboardImpl.set_ongeometrychange(instance, value);
+        if (comptime @hasDecl(VirtualKeyboardImpl, "set_ongeometrychange")) return try VirtualKeyboardImpl.set_ongeometrychange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ongeometrychange", value);
     }
 
     pub fn call_show(instance: *runtime.Instance) anyerror!void {

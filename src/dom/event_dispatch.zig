@@ -1,22 +1,190 @@
-//! What DOM's dispatch algorithm does to an Event that no IDL member does.
+//! An event's dispatch state: what DOM's dispatch algorithm reads and writes
+//! on an Event, most of which no IDL member sets.
 //!
-//! Dispatch runs in EventTarget's impl, and the event's state is Event's. Most
-//! of what dispatch sets has an attribute that reads it back but no setter;
-//! the one step here so far is "invoke" step 9, which renames a trusted
-//! animation or transition event to its legacy WebKit type while the legacy
-//! listeners run, and back again. Event installs the implementation once, at
-//! process start (its installHooks).
+//! `EventState` is Event's internal state - its flags, path, target, related
+//! target, current target, phase, isTrusted and touch target list (DOM 2.2)
+//! - defined here so that the dispatcher (EventTarget) works on it directly:
+//! Event's impl keeps it (`InternalState = EventState`), creates it with the
+//! event and frees it with the event, and installs `of()` once, at process
+//! start (its installHooks). The dispatcher takes `of(event)` once per
+//! dispatch and works on the fields; Event's IDL getters read the same
+//! fields. WebKit's split: dom/EventDispatcher.cpp's `dispatchEventInDOM`
+//! calls Event's non-IDL members (`setEventPhase`, `setTarget`,
+//! `setEventPath`) from outside Event.
 //!
-//! Spec: https://dom.spec.whatwg.org/#concept-event-listener-invoke
+//! Also here: "invoke" step 9, which renames a trusted animation or
+//! transition event to its legacy WebKit type while the legacy listeners run,
+//! and back again.
+//!
+//! Spec: https://dom.spec.whatwg.org/#interface-event,
+//! https://dom.spec.whatwg.org/#concept-event-dispatch
 //!
 //! lint-impls: hook for Event
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
+const engine = @import("engine");
+const infra = @import("infra");
+
+/// One struct of an event's path (DOM 2.9 "append to an event path").
+pub const PathItem = struct {
+    invocation_target: *runtime.Instance,
+    invocation_target_in_shadow_tree: bool,
+    shadow_adjusted_target: ?*runtime.Instance,
+    related_target: ?*runtime.Instance,
+    touch_target_list: infra.List(*runtime.Instance),
+    root_of_closed_tree: bool,
+    slot_in_closed_tree: bool,
+};
+
+/// Event's eventPhase values (DOM 2.2).
+pub const Phase = struct {
+    pub const none: u16 = 0;
+    pub const capturing: u16 = 1;
+    pub const at_target: u16 = 2;
+    pub const bubbling: u16 = 3;
+};
+
+/// The member an event keeps its target in (engine.traceChild): the target
+/// dispatch left it with, which script reads after dispatch (`event.target`,
+/// `srcElement`). Blink: Event::Trace visits target_ (core/dom/events/
+/// event.cc); it was a bare pointer here, and a held event read a freed node
+/// once the target's tree was collected (lane ownerdoc,
+/// crane/od-event-keeps-its-targets.html).
+pub const target_slot: engine.TracedSlot = .{ .name = "target" };
+
+/// An Event's internal state (DOM 2.2): every flag, the path, the targets,
+/// the phase and isTrusted. Owned by the event (Event's impl creates and
+/// frees it); the dispatcher writes it through `of()`.
+pub const EventState = struct {
+    allocator: std.mem.Allocator,
+
+    // DOM 2.2 - the event's flags, initially unset.
+    stop_propagation_flag: bool = false,
+    stop_immediate_propagation_flag: bool = false,
+    canceled_flag: bool = false,
+    in_passive_listener_flag: bool = false,
+    initialized_flag: bool = false,
+    dispatch_flag: bool = false,
+
+    /// DOM 2.2 "path", initially the empty list.
+    path: infra.List(PathItem),
+
+    /// The target attribute's value, initially null (srcElement returns it
+    /// too). Set with `setTarget`, which keeps it for script.
+    target: ?*runtime.Instance = null,
+    /// DOM 2.2 "relatedTarget", initially null.
+    related_target: ?*runtime.Instance = null,
+    /// The currentTarget attribute's value, initially null.
+    current_target: ?*runtime.Instance = null,
+    /// The eventPhase attribute's value, initially NONE.
+    phase: u16 = Phase.none,
+    /// The isTrusted attribute's value, initially false.
+    is_trusted: bool = false,
+
+    /// DOM 2.2 "touch target list", initially the empty list.
+    touch_target_list: infra.List(*runtime.Instance),
+
+    /// The target `target_slot`'s edge holds, or null for none (`keepTarget`).
+    traced_target: ?*runtime.Instance = null,
+
+    pub fn init(allocator: std.mem.Allocator) EventState {
+        return .{
+            .allocator = allocator,
+            .path = infra.List(PathItem).init(allocator),
+            .touch_target_list = infra.List(*runtime.Instance).init(allocator),
+        };
+    }
+
+    /// Release what the state owns: each path struct's touch target list,
+    /// the path and the touch target list. `event`'s edge to its target is
+    /// the event's teardown to end (`forgetTarget`).
+    pub fn deinit(self: *EventState) void {
+        for (self.path.toSliceMut()) |*item| item.touch_target_list.deinit();
+        self.path.deinit();
+        self.touch_target_list.deinit();
+    }
+
+    /// Set `event`'s target (and so its srcElement) to `target`, and keep it
+    /// while script can reach the event (`keepTarget`).
+    pub fn setTarget(self: *EventState, event: *runtime.Instance, target: ?*runtime.Instance) void {
+        self.target = target;
+        self.keepTarget(event);
+    }
+
+    /// Keep the event's current target (`target_slot`) while script can
+    /// reach the event, and let a target it no longer has go.
+    ///
+    /// Only an event script can reach keeps it: one with a wrapper. An event
+    /// script has not seen - the engine fires most of them, and nobody hears
+    /// most of those - keeps nothing: tracing would wrap every target the
+    /// engine fires at (docs/lessons/architecture-tracing-a-holders-nodes-
+    /// makes-a-wrapper-per-node.md) and hold it strongly until the event is
+    /// freed. The dispatcher holds the target while it runs; a listener that
+    /// sees the event wraps it, and the end of dispatch (`endDispatch`) draws
+    /// the edge then.
+    pub fn keepTarget(self: *EventState, event: *runtime.Instance) void {
+        const target = self.target;
+        if (target == self.traced_target) return;
+        if (target) |t| {
+            if (!engine.hasWrapper(event)) return;
+            self.traced_target = t;
+            engine.traceChild(event, t, target_slot);
+        } else {
+            self.traced_target = null;
+            engine.forgetTracedChild(event, target_slot);
+        }
+    }
+
+    /// End `event`'s edge to its target, at the event's teardown. An event
+    /// its wrapper's collection frees has no edge left to end.
+    pub fn forgetTarget(self: *EventState, event: *runtime.Instance) void {
+        if (self.traced_target != null) engine.forgetTracedChild(event, target_slot);
+        self.traced_target = null;
+    }
+
+    /// DOM 2.2 "set the canceled flag" given the event, whose cancelable
+    /// attribute value is `cancelable`: set the canceled flag if cancelable
+    /// is true and the in passive listener flag is unset, and do nothing
+    /// otherwise.
+    pub fn setCanceledFlag(self: *EventState, cancelable: bool) void {
+        if (cancelable and !self.in_passive_listener_flag) self.canceled_flag = true;
+    }
+
+    /// Dispatch step 9: "Set event's path to the empty list." Each struct
+    /// owns a touch target list, so clearing without releasing them leaks one
+    /// list per path entry per dispatch.
+    pub fn clearPath(self: *EventState) void {
+        for (self.path.toSliceMut()) |*item| item.touch_target_list.deinit();
+        self.path.clear();
+    }
+
+    /// Dispatch steps 7-10: leave `event` in a state in which it can be
+    /// dispatched again. Step 7: eventPhase NONE. Step 8: currentTarget
+    /// null. Step 9: the path empty. Step 10: the dispatch, stop propagation
+    /// and stop immediate propagation flags unset - leaving them set made the
+    /// next dispatch of the same event object a no-op, which is how a
+    /// `stopPropagation()` in one dispatch silently swallowed every later
+    /// one. Dispatch is over: a listener may have wrapped the event since its
+    /// target was set, so the target is kept now.
+    pub fn endDispatch(self: *EventState, event: *runtime.Instance) void {
+        self.phase = Phase.none;
+        self.current_target = null;
+        self.clearPath();
+        self.dispatch_flag = false;
+        self.stop_propagation_flag = false;
+        self.stop_immediate_propagation_flag = false;
+        self.keepTarget(event);
+    }
+};
 
 /// What the Event impl supplies.
 pub const Implementation = struct {
+    /// `event`'s state, or null when `event` is not an Event or has none
+    /// (one never constructed through Event's steps: its initialized flag is
+    /// unset). BORROWED: it lives as long as the event.
+    state: *const fn (event: *runtime.Instance) ?*EventState,
     /// Set `event`'s type attribute value to `event_type`, which the event
     /// then holds, and hand back the value it held (its owner is the caller).
     /// No copy, no free: the swap is undone with the value it returned.
@@ -30,6 +198,14 @@ var implementation: ?Implementation = null;
 pub fn install(impl: Implementation) void {
     process_start.assertInstalling();
     implementation = impl;
+}
+
+/// `event`'s dispatch state, or null when it has none (see
+/// `Implementation.state`). Taken once per dispatch: the pointer is good for
+/// as long as the event is.
+pub fn of(event: *runtime.Instance) ?*EventState {
+    const impl = implementation orelse return null;
+    return impl.state(event);
 }
 
 /// `event`'s type attribute value becomes `event_type`; the previous value is
@@ -63,4 +239,36 @@ test "invoke step 9.2 maps the four unprefixed types, exactly, and nothing else"
     try std.testing.expect(legacyEventType("AnimationEnd") == null);
     try std.testing.expect(legacyEventType("webkitAnimationEnd") == null);
     try std.testing.expect(legacyEventType("transitionrun") == null);
+}
+
+test "an event's state starts with every flag unset, no targets and phase NONE" {
+    var state = EventState.init(std.testing.allocator);
+    defer state.deinit();
+    try std.testing.expect(!state.initialized_flag and !state.dispatch_flag and !state.canceled_flag);
+    try std.testing.expect(state.target == null and state.current_target == null and state.related_target == null);
+    try std.testing.expectEqual(Phase.none, state.phase);
+    try std.testing.expect(!state.is_trusted);
+    try std.testing.expectEqual(@as(usize, 0), state.path.len);
+}
+
+test "set the canceled flag honours cancelable and the in passive listener flag" {
+    var state = EventState.init(std.testing.allocator);
+    defer state.deinit();
+    state.setCanceledFlag(false);
+    try std.testing.expect(!state.canceled_flag);
+    state.in_passive_listener_flag = true;
+    state.setCanceledFlag(true);
+    try std.testing.expect(!state.canceled_flag);
+    state.in_passive_listener_flag = false;
+    state.setCanceledFlag(true);
+    try std.testing.expect(state.canceled_flag);
+}
+
+test "without an installed implementation an event has no state" {
+    const saved = implementation;
+    defer implementation = saved;
+    implementation = null;
+    // Never dereferenced: with nothing installed nothing reads it.
+    var event: runtime.Instance = undefined;
+    try std.testing.expect(of(&event) == null);
 }

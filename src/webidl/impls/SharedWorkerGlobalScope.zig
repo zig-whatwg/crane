@@ -20,7 +20,6 @@ const SharedWorkerGlobalScope = interfaces.SharedWorkerGlobalScope;
 
 // Ancestors: a SharedWorkerGlobalScope IS a WorkerGlobalScope and an
 // EventTarget, and reaches their state through their impls.
-const EventTargetImpl = @import("EventTarget.zig");
 
 /// The worker host: the side of "run a worker" that owns this scope's agent.
 const worker_host = @import("html").worker_host;
@@ -84,16 +83,6 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 // Event handler IDL attribute (HTML §8.1.8.1): its value lives in
 // EventTarget's event handler map, where the host's `connect` event finds it.
-
-/// Getter for onconnect
-pub fn get_onconnect(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "connect");
-}
-
-/// Setter for onconnect
-pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "connect", value);
-}
 
 /// Operation: close
 ///

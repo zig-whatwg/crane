@@ -316,12 +316,16 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.get_host(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onslotchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ShadowRootImpl.get_onslotchange(instance);
+        if (comptime @hasDecl(ShadowRootImpl, "get_onslotchange")) return try ShadowRootImpl.get_onslotchange(instance);
+        return event_handlers.value(EventHandler, instance, "onslotchange");
     }
 
     pub fn set_onslotchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ShadowRootImpl.set_onslotchange(instance, value);
+        if (comptime @hasDecl(ShadowRootImpl, "set_onslotchange")) return try ShadowRootImpl.set_onslotchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onslotchange", value);
     }
 
     /// Extended attributes: [CEReactions]

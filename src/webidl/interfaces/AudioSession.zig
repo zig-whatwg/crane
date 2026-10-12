@@ -193,11 +193,15 @@ pub const AudioSession = struct {
         return try AudioSessionImpl.get_state(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AudioSessionImpl.get_onstatechange(instance);
+        if (comptime @hasDecl(AudioSessionImpl, "get_onstatechange")) return try AudioSessionImpl.get_onstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onstatechange");
     }
 
     pub fn set_onstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AudioSessionImpl.set_onstatechange(instance, value);
+        if (comptime @hasDecl(AudioSessionImpl, "set_onstatechange")) return try AudioSessionImpl.set_onstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
 };

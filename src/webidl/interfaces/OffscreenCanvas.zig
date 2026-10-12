@@ -237,20 +237,26 @@ pub const OffscreenCanvas = struct {
         try OffscreenCanvasImpl.set_height(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_oncontextlost(instance: *runtime.Instance) anyerror!EventHandler {
-        return try OffscreenCanvasImpl.get_oncontextlost(instance);
+        if (comptime @hasDecl(OffscreenCanvasImpl, "get_oncontextlost")) return try OffscreenCanvasImpl.get_oncontextlost(instance);
+        return event_handlers.value(EventHandler, instance, "oncontextlost");
     }
 
     pub fn set_oncontextlost(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try OffscreenCanvasImpl.set_oncontextlost(instance, value);
+        if (comptime @hasDecl(OffscreenCanvasImpl, "set_oncontextlost")) return try OffscreenCanvasImpl.set_oncontextlost(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncontextlost", value);
     }
 
     pub fn get_oncontextrestored(instance: *runtime.Instance) anyerror!EventHandler {
-        return try OffscreenCanvasImpl.get_oncontextrestored(instance);
+        if (comptime @hasDecl(OffscreenCanvasImpl, "get_oncontextrestored")) return try OffscreenCanvasImpl.get_oncontextrestored(instance);
+        return event_handlers.value(EventHandler, instance, "oncontextrestored");
     }
 
     pub fn set_oncontextrestored(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try OffscreenCanvasImpl.set_oncontextrestored(instance, value);
+        if (comptime @hasDecl(OffscreenCanvasImpl, "set_oncontextrestored")) return try OffscreenCanvasImpl.set_oncontextrestored(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncontextrestored", value);
     }
 
     pub fn call_transferToImageBitmap(instance: *runtime.Instance) anyerror!*runtime.Instance {

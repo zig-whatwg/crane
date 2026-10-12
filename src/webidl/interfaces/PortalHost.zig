@@ -182,20 +182,26 @@ pub const PortalHost = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PortalHostImpl.get_onmessage(instance);
+        if (comptime @hasDecl(PortalHostImpl, "get_onmessage")) return try PortalHostImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PortalHostImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(PortalHostImpl, "set_onmessage")) return try PortalHostImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PortalHostImpl.get_onmessageerror(instance);
+        if (comptime @hasDecl(PortalHostImpl, "get_onmessageerror")) return try PortalHostImpl.get_onmessageerror(instance);
+        return event_handlers.value(EventHandler, instance, "onmessageerror");
     }
 
     pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PortalHostImpl.set_onmessageerror(instance, value);
+        if (comptime @hasDecl(PortalHostImpl, "set_onmessageerror")) return try PortalHostImpl.set_onmessageerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(PostMessageOptions)) anyerror!void {

@@ -263,12 +263,16 @@ pub const OfflineAudioContext = struct {
         return try OfflineAudioContextImpl.get_length(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_oncomplete(instance: *runtime.Instance) anyerror!EventHandler {
-        return try OfflineAudioContextImpl.get_oncomplete(instance);
+        if (comptime @hasDecl(OfflineAudioContextImpl, "get_oncomplete")) return try OfflineAudioContextImpl.get_oncomplete(instance);
+        return event_handlers.value(EventHandler, instance, "oncomplete");
     }
 
     pub fn set_oncomplete(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try OfflineAudioContextImpl.set_oncomplete(instance, value);
+        if (comptime @hasDecl(OfflineAudioContextImpl, "set_oncomplete")) return try OfflineAudioContextImpl.set_oncomplete(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncomplete", value);
     }
 
     pub fn call_resume(instance: *runtime.Instance) anyerror!runtime.JSValue {

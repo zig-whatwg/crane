@@ -345,92 +345,116 @@ pub const SpeechRecognition = struct {
         try SpeechRecognitionImpl.set_phrases(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onaudiostart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onaudiostart(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onaudiostart")) return try SpeechRecognitionImpl.get_onaudiostart(instance);
+        return event_handlers.value(EventHandler, instance, "onaudiostart");
     }
 
     pub fn set_onaudiostart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onaudiostart(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onaudiostart")) return try SpeechRecognitionImpl.set_onaudiostart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onaudiostart", value);
     }
 
     pub fn get_onsoundstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onsoundstart(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onsoundstart")) return try SpeechRecognitionImpl.get_onsoundstart(instance);
+        return event_handlers.value(EventHandler, instance, "onsoundstart");
     }
 
     pub fn set_onsoundstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onsoundstart(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onsoundstart")) return try SpeechRecognitionImpl.set_onsoundstart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsoundstart", value);
     }
 
     pub fn get_onspeechstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onspeechstart(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onspeechstart")) return try SpeechRecognitionImpl.get_onspeechstart(instance);
+        return event_handlers.value(EventHandler, instance, "onspeechstart");
     }
 
     pub fn set_onspeechstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onspeechstart(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onspeechstart")) return try SpeechRecognitionImpl.set_onspeechstart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onspeechstart", value);
     }
 
     pub fn get_onspeechend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onspeechend(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onspeechend")) return try SpeechRecognitionImpl.get_onspeechend(instance);
+        return event_handlers.value(EventHandler, instance, "onspeechend");
     }
 
     pub fn set_onspeechend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onspeechend(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onspeechend")) return try SpeechRecognitionImpl.set_onspeechend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onspeechend", value);
     }
 
     pub fn get_onsoundend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onsoundend(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onsoundend")) return try SpeechRecognitionImpl.get_onsoundend(instance);
+        return event_handlers.value(EventHandler, instance, "onsoundend");
     }
 
     pub fn set_onsoundend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onsoundend(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onsoundend")) return try SpeechRecognitionImpl.set_onsoundend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsoundend", value);
     }
 
     pub fn get_onaudioend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onaudioend(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onaudioend")) return try SpeechRecognitionImpl.get_onaudioend(instance);
+        return event_handlers.value(EventHandler, instance, "onaudioend");
     }
 
     pub fn set_onaudioend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onaudioend(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onaudioend")) return try SpeechRecognitionImpl.set_onaudioend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onaudioend", value);
     }
 
     pub fn get_onresult(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onresult(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onresult")) return try SpeechRecognitionImpl.get_onresult(instance);
+        return event_handlers.value(EventHandler, instance, "onresult");
     }
 
     pub fn set_onresult(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onresult(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onresult")) return try SpeechRecognitionImpl.set_onresult(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onresult", value);
     }
 
     pub fn get_onnomatch(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onnomatch(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onnomatch")) return try SpeechRecognitionImpl.get_onnomatch(instance);
+        return event_handlers.value(EventHandler, instance, "onnomatch");
     }
 
     pub fn set_onnomatch(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onnomatch(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onnomatch")) return try SpeechRecognitionImpl.set_onnomatch(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onnomatch", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onerror(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onerror")) return try SpeechRecognitionImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onerror")) return try SpeechRecognitionImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn get_onstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onstart(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onstart")) return try SpeechRecognitionImpl.get_onstart(instance);
+        return event_handlers.value(EventHandler, instance, "onstart");
     }
 
     pub fn set_onstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onstart(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onstart")) return try SpeechRecognitionImpl.set_onstart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstart", value);
     }
 
     pub fn get_onend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechRecognitionImpl.get_onend(instance);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "get_onend")) return try SpeechRecognitionImpl.get_onend(instance);
+        return event_handlers.value(EventHandler, instance, "onend");
     }
 
     pub fn set_onend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechRecognitionImpl.set_onend(instance, value);
+        if (comptime @hasDecl(SpeechRecognitionImpl, "set_onend")) return try SpeechRecognitionImpl.set_onend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onend", value);
     }
 
     pub fn call_abort(instance: *runtime.Instance) anyerror!void {

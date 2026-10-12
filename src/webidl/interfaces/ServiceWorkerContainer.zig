@@ -220,28 +220,36 @@ pub const ServiceWorkerContainer = struct {
         return try ServiceWorkerContainerImpl.get_ready(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_oncontrollerchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerContainerImpl.get_oncontrollerchange(instance);
+        if (comptime @hasDecl(ServiceWorkerContainerImpl, "get_oncontrollerchange")) return try ServiceWorkerContainerImpl.get_oncontrollerchange(instance);
+        return event_handlers.value(EventHandler, instance, "oncontrollerchange");
     }
 
     pub fn set_oncontrollerchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerContainerImpl.set_oncontrollerchange(instance, value);
+        if (comptime @hasDecl(ServiceWorkerContainerImpl, "set_oncontrollerchange")) return try ServiceWorkerContainerImpl.set_oncontrollerchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncontrollerchange", value);
     }
 
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerContainerImpl.get_onmessage(instance);
+        if (comptime @hasDecl(ServiceWorkerContainerImpl, "get_onmessage")) return try ServiceWorkerContainerImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerContainerImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(ServiceWorkerContainerImpl, "set_onmessage")) return try ServiceWorkerContainerImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerContainerImpl.get_onmessageerror(instance);
+        if (comptime @hasDecl(ServiceWorkerContainerImpl, "get_onmessageerror")) return try ServiceWorkerContainerImpl.get_onmessageerror(instance);
+        return event_handlers.value(EventHandler, instance, "onmessageerror");
     }
 
     pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerContainerImpl.set_onmessageerror(instance, value);
+        if (comptime @hasDecl(ServiceWorkerContainerImpl, "set_onmessageerror")) return try ServiceWorkerContainerImpl.set_onmessageerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
     }
 
     /// Extended attributes: [NewObject]

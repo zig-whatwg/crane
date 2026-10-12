@@ -202,28 +202,36 @@ pub const AudioTrackList = struct {
         return try AudioTrackListImpl.get_length(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AudioTrackListImpl.get_onchange(instance);
+        if (comptime @hasDecl(AudioTrackListImpl, "get_onchange")) return try AudioTrackListImpl.get_onchange(instance);
+        return event_handlers.value(EventHandler, instance, "onchange");
     }
 
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AudioTrackListImpl.set_onchange(instance, value);
+        if (comptime @hasDecl(AudioTrackListImpl, "set_onchange")) return try AudioTrackListImpl.set_onchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 
     pub fn get_onaddtrack(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AudioTrackListImpl.get_onaddtrack(instance);
+        if (comptime @hasDecl(AudioTrackListImpl, "get_onaddtrack")) return try AudioTrackListImpl.get_onaddtrack(instance);
+        return event_handlers.value(EventHandler, instance, "onaddtrack");
     }
 
     pub fn set_onaddtrack(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AudioTrackListImpl.set_onaddtrack(instance, value);
+        if (comptime @hasDecl(AudioTrackListImpl, "set_onaddtrack")) return try AudioTrackListImpl.set_onaddtrack(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onaddtrack", value);
     }
 
     pub fn get_onremovetrack(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AudioTrackListImpl.get_onremovetrack(instance);
+        if (comptime @hasDecl(AudioTrackListImpl, "get_onremovetrack")) return try AudioTrackListImpl.get_onremovetrack(instance);
+        return event_handlers.value(EventHandler, instance, "onremovetrack");
     }
 
     pub fn set_onremovetrack(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AudioTrackListImpl.set_onremovetrack(instance, value);
+        if (comptime @hasDecl(AudioTrackListImpl, "set_onremovetrack")) return try AudioTrackListImpl.set_onremovetrack(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onremovetrack", value);
     }
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {

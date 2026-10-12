@@ -24,7 +24,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const NavigationHistoryEntry = interfaces.NavigationHistoryEntry;
-const EventTargetImpl = @import("EventTarget.zig");
 const navigation_entries = @import("navigation_entries.zig");
 const engine = @import("engine");
 const joint_history = @import("html_core").navigation.joint_history;
@@ -195,16 +194,6 @@ pub fn get_sameDocument(instance: *runtime.Instance) anyerror!bool {
     const scope = scopeOf(internal) orelse return false;
     const document = internal.document orelse return false;
     return document == @as(*anyopaque, @ptrCast(scope.document));
-}
-
-/// Getter for ondispose
-pub fn get_ondispose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "dispose");
-}
-
-/// Setter for ondispose
-pub fn set_ondispose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "dispose", value);
 }
 
 // ============================================================================

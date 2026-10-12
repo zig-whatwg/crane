@@ -15,6 +15,7 @@ const webidl = @import("webidl");
 const infra = @import("infra");
 const clock = @import("clock");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
+const event_dispatch = @import("dom").event_dispatch;
 const Event = interfaces.Event;
 
 pub const State = Event.State;
@@ -24,101 +25,14 @@ pub const ImplError = error{
     InvalidState,
 };
 
-/// EventPath item - used by event dispatch algorithm
-/// DOM §2.9.1: Each path struct consists of:
-pub const EventPathItem = struct {
-    invocation_target: *runtime.Instance,
-    invocation_target_in_shadow_tree: bool,
-    shadow_adjusted_target: ?*runtime.Instance,
-    related_target: ?*runtime.Instance,
-    touch_target_list: infra.List(*runtime.Instance),
-    root_of_closed_tree: bool,
-    slot_in_closed_tree: bool,
-};
-
-/// Internal state for Event implementation
-/// Contains private data not exposed via WebIDL attributes:
-/// - Event flags (DOM §2.3)
-/// - Event path
-/// - Related target and touch target list
-pub const InternalState = struct {
-    allocator: std.mem.Allocator,
-
-    // DOM §2.3 - Event flags (initially unset)
-    stop_propagation_flag: bool = false,
-    stop_immediate_propagation_flag: bool = false,
-    canceled_flag: bool = false,
-    in_passive_listener_flag: bool = false,
-    initialized_flag: bool = false,
-    dispatch_flag: bool = false,
-
-    // DOM §2.3 - Event path (initially empty)
-    path: infra.List(EventPathItem),
-
-    // DOM §2.3 - Related target (initially null)
-    related_target: ?*runtime.Instance = null,
-
-    // DOM §2.3 - Touch target list (initially empty)
-    touch_target_list: infra.List(*runtime.Instance),
-
-    /// The target `target_slot`'s edge holds, or null for none (see
-    /// `keepTarget`).
-    traced_target: ?*runtime.Instance = null,
-
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-            .path = infra.List(EventPathItem).init(allocator),
-            .touch_target_list = infra.List(*runtime.Instance).init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        // Deinit touch target lists in path items
-        const slice = self.path.toSliceMut();
-        for (slice) |*item| {
-            item.touch_target_list.deinit();
-        }
-        self.path.deinit();
-        self.touch_target_list.deinit();
-    }
-};
+/// Event's internal state - its flags, path, targets, phase and isTrusted -
+/// is `dom.event_dispatch.EventState`: its type lives there so that the
+/// dispatcher (EventTarget) works on its fields directly; the state itself is
+/// this impl's, created with the event and freed with it.
+pub const InternalState = event_dispatch.EventState;
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
-/// The member an event keeps its target in (engine.traceChild): the target
-/// dispatch left it with, which script reads after dispatch (`event.target`,
-/// `srcElement`). Blink: Event::Trace visits target_ (core/dom/events/
-/// event.cc); it was a bare pointer here, and a held event read a freed node
-/// once the target's tree was collected (lane ownerdoc,
-/// crane/od-event-keeps-its-targets.html).
-///
-/// Only an event script can reach keeps it: one with a wrapper. An event
-/// script has not seen - the engine fires most of them, and nobody hears
-/// most of those - keeps nothing: tracing would wrap every target the engine
-/// fires at (docs/lessons/architecture-tracing-a-holders-nodes-makes-a-
-/// wrapper-per-node.md) and hold it strongly until the event is freed. The
-/// dispatcher holds the target while it runs; a listener that sees the event
-/// wraps it, and the end of dispatch (`setDispatchFlag(false)`) draws the edge
-/// then.
-const target_slot: engine.TracedSlot = .{ .name = "target" };
-
-/// Keep the event's current target (`target_slot`) while script can reach
-/// the event, and let a target it no longer has go.
-fn keepTarget(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    const target = instance.getState(State).own.target;
-    if (target == internal.traced_target) return;
-    if (target) |t| {
-        if (!engine.hasWrapper(instance)) return;
-        internal.traced_target = t;
-        engine.traceChild(instance, t, target_slot);
-    } else {
-        internal.traced_target = null;
-        engine.forgetTracedChild(instance, target_slot);
-    }
-}
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
@@ -129,10 +43,10 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     // The constructing steps every subclass runs (dom.event_construction);
     // each subclass's init chains through this one.
-    @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &getDispatchFlag });
-    // What dispatch does to an event that no IDL member does
-    // (dom.event_dispatch).
-    @import("dom").event_dispatch.install(.{ .swap_type = &swapTypeHook });
+    @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &dispatchFlag });
+    // The state dispatch works on, and what it does to an event that no IDL
+    // member does (dom.event_dispatch).
+    event_dispatch.install(.{ .state = &stateOf, .swap_type = &swapTypeHook });
 }
 
 /// Initialize instance (creates the instance)
@@ -145,6 +59,13 @@ pub fn init(
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     // Initialize state will be done in call_constructor
     return instance;
+}
+
+/// dom.event_dispatch.of: `event`'s state, brand-checked - null for an
+/// instance that is not an Event (no unchecked cast) or one that has no state.
+fn stateOf(event: *runtime.Instance) ?*InternalState {
+    const state = event.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// dom.event_dispatch: set `event`'s type attribute value to `event_type`
@@ -172,7 +93,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
     if (state.own._internal) |internal| {
         // An event its wrapper's collection frees has no edge left to end.
-        if (internal.traced_target != null) engine.forgetTracedChild(instance, target_slot);
+        internal.forgetTarget(instance);
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator
         // Return the block itself, not just what it points to. `internal.deinit()`
@@ -220,15 +141,12 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.cancelable = cancelable;
     state.own.composed = composed;
 
-    // Initialize other attributes to defaults
-    state.own.target = null;
-    state.own.srcElement = null;
-    state.own.currentTarget = null;
-    state.own.eventPhase = Event.get_NONE(); // NONE = 0
+    // Initialize other attributes to defaults: the target, currentTarget,
+    // eventPhase and isTrusted are the internal state's, initially null,
+    // null, NONE and false.
     state.own.cancelBubble = false;
     state.own.returnValue = true; // !canceled_flag
     state.own.defaultPrevented = false;
-    state.own.isTrusted = false;
     state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     return instance;
@@ -248,8 +166,8 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Returns the target of this event, or null if the event is not dispatched.
 /// Spec: https://dom.spec.whatwg.org/#dom-event-target
 pub fn get_target(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    return state.own.target;
+    const internal = getInternal(instance) orelse return null;
+    return internal.target;
 }
 
 /// Getter for srcElement (legacy)
@@ -257,23 +175,23 @@ pub fn get_target(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Spec: https://dom.spec.whatwg.org/#dom-event-srcelement
 /// The srcElement getter steps are to return this's target.
 pub fn get_srcElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    return state.own.target;
+    const internal = getInternal(instance) orelse return null;
+    return internal.target;
 }
 
 /// Getter for currentTarget
 /// Returns the current target of this event, or null.
 /// Spec: https://dom.spec.whatwg.org/#dom-event-currenttarget
 pub fn get_currentTarget(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    return state.own.currentTarget;
+    const internal = getInternal(instance) orelse return null;
+    return internal.current_target;
 }
 
 /// Getter for eventPhase
 /// Spec: https://dom.spec.whatwg.org/#dom-event-eventphase
 pub fn get_eventPhase(instance: *runtime.Instance) anyerror!u16 {
-    const state = instance.getState(State);
-    return state.own.eventPhase;
+    const internal = getInternal(instance) orelse return Event.get_NONE();
+    return internal.phase;
 }
 
 /// Getter for cancelBubble (legacy)
@@ -325,8 +243,8 @@ pub fn get_composed(instance: *runtime.Instance) anyerror!bool {
 /// Getter for isTrusted
 /// Spec: https://dom.spec.whatwg.org/#dom-event-istrusted
 pub fn get_isTrusted(instance: *runtime.Instance) anyerror!bool {
-    const state = instance.getState(State);
-    return state.own.isTrusted;
+    const internal = getInternal(instance) orelse return false;
+    return internal.is_trusted;
 }
 
 /// Getter for timeStamp
@@ -364,10 +282,7 @@ pub fn set_returnValue(instance: *runtime.Instance, value: bool) anyerror!void {
 fn setCanceledFlag(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = getInternal(instance) orelse return;
-
-    if (state.own.cancelable and !internal.in_passive_listener_flag) {
-        internal.canceled_flag = true;
-    }
+    internal.setCanceledFlag(state.own.cancelable);
 }
 
 /// Operation: stopPropagation
@@ -421,11 +336,10 @@ fn initializeEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubb
     internal.canceled_flag = false;
 
     // Step 3: Set event's isTrusted attribute to false
-    state.own.isTrusted = false;
+    internal.is_trusted = false;
 
     // Step 4: Set event's target to null
-    state.own.target = null;
-    keepTarget(instance);
+    internal.setTarget(instance, null);
 
     // Step 5: Set event's type attribute to type
     // The previous value was ours, so release it rather than leaking one
@@ -449,7 +363,7 @@ fn initializeEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubb
 /// (BORROWED); `type` is copied.
 ///
 /// Spec: https://dom.spec.whatwg.org/#inner-event-creation-steps
-pub fn innerEventCreationSteps(instance: *runtime.Instance, @"type": runtime.DOMString, dictionary: dictionaries.EventInit) !void {
+fn innerEventCreationSteps(instance: *runtime.Instance, @"type": runtime.DOMString, dictionary: dictionaries.EventInit) !void {
     // An inheriting interface's state contains Event's; find it by offset.
     const state = instance.stateAs(State) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
@@ -481,14 +395,13 @@ pub fn innerEventCreationSteps(instance: *runtime.Instance, @"type": runtime.DOM
     state.own.composed = dictionary.composed orelse false;
 
     // The attributes no member names keep their initial values.
-    state.own.target = null;
-    state.own.srcElement = null;
-    state.own.currentTarget = null;
-    state.own.eventPhase = Event.get_NONE();
+    internal.setTarget(instance, null);
+    internal.current_target = null;
+    internal.phase = Event.get_NONE();
+    internal.is_trusted = false;
     state.own.cancelBubble = false;
     state.own.returnValue = true;
     state.own.defaultPrevented = false;
-    state.own.isTrusted = false;
 
     // 5. Run the event constructing steps: Event has none; an inheriting
     //    interface runs its own when this returns.
@@ -524,7 +437,6 @@ pub fn call_initEvent(instance: *runtime.Instance, @"type": runtime.DOMString, b
 /// currentTarget.
 pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.NotImplemented;
-    const state = instance.getState(State);
 
     // Step 1: Let composedPath be an empty list
     var composed_path = infra.List(*runtime.Instance).init(internal.allocator);
@@ -538,7 +450,7 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     }
 
     // Step 4: Let currentTarget be this's currentTarget attribute value
-    const current_target = state.own.currentTarget;
+    const current_target = internal.current_target;
 
     // Step 5: Assert: currentTarget is an EventTarget object
     if (current_target == null) {
@@ -671,139 +583,9 @@ fn sequenceOfEventTargets(instance: *runtime.Instance, targets: []const *runtime
     return sequence.take();
 }
 
-// ============================================================================
-// Helper functions for event dispatch (used by event_dispatch.zig)
-// ============================================================================
-
-/// Set the dispatch flag (called by dispatch algorithm)
-pub fn setDispatchFlag(instance: *runtime.Instance, value: bool) void {
-    const internal = getInternal(instance) orelse return;
-    internal.dispatch_flag = value;
-    // Dispatch is over (step 10): a listener may have wrapped the event since
-    // its target was set.
-    if (!value) keepTarget(instance);
-}
-
-/// Get the dispatch flag
-pub fn getDispatchFlag(instance: *runtime.Instance) bool {
+/// dom.event_construction: whether `instance`'s dispatch flag is set (the
+/// legacy init*Event() methods' step 1).
+fn dispatchFlag(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     return internal.dispatch_flag;
-}
-
-/// Set the initialized flag.
-///
-/// `createEvent` needs this: https://dom.spec.whatwg.org/#dom-document-createevent
-/// step 8 is "Unset event's initialized flag", which is the whole reason
-/// `document.createEvent("Event")` must make `dispatchEvent` throw until
-/// `initEvent` runs.
-pub fn setInitializedFlag(instance: *runtime.Instance, value: bool) void {
-    const internal = getInternal(instance) orelse return;
-    internal.initialized_flag = value;
-}
-
-/// Get the initialized flag.
-///
-/// Dispatch step 1 throws "InvalidStateError" when this is unset.
-pub fn getInitializedFlag(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.initialized_flag;
-}
-
-/// Set the stop propagation flag
-pub fn getStopPropagationFlag(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.stop_propagation_flag;
-}
-
-/// Get the stop immediate propagation flag
-pub fn getStopImmediatePropagationFlag(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.stop_immediate_propagation_flag;
-}
-
-/// Set the in passive listener flag
-pub fn setInPassiveListenerFlag(instance: *runtime.Instance, value: bool) void {
-    const internal = getInternal(instance) orelse return;
-    internal.in_passive_listener_flag = value;
-}
-
-/// Unset the stop propagation flag and the stop immediate propagation flag.
-///
-/// Dispatch step 10: "Unset event's dispatch flag, stop propagation flag, and
-/// stop immediate propagation flag." Leaving them set makes the NEXT dispatch
-/// of the same event object a no-op, which is how a `stopPropagation()` in one
-/// dispatch silently swallowed every later one.
-pub fn clearPropagationFlags(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    internal.stop_propagation_flag = false;
-    internal.stop_immediate_propagation_flag = false;
-}
-
-/// Release every struct in the event path and empty it.
-///
-/// Dispatch step 9: "Set event's path to the empty list." Each struct owns a
-/// touch target list, so clearing without releasing them leaks one list per
-/// path entry per dispatch.
-pub fn clearPath(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    for (internal.path.toSliceMut()) |*item| {
-        item.touch_target_list.deinit();
-    }
-    internal.path.clear();
-}
-
-/// Get the event path
-pub fn getPath(instance: *runtime.Instance) ?*infra.List(EventPathItem) {
-    const internal = getInternal(instance) orelse return null;
-    return &internal.path;
-}
-
-/// Set the target
-pub fn setTarget(instance: *runtime.Instance, target: ?*runtime.Instance) void {
-    const state = instance.getState(State);
-    state.own.target = target;
-    state.own.srcElement = target;
-    keepTarget(instance);
-}
-
-/// Set the current target
-pub fn setCurrentTarget(instance: *runtime.Instance, current_target: ?*runtime.Instance) void {
-    const state = instance.getState(State);
-    state.own.currentTarget = current_target;
-}
-
-/// Set the event phase
-pub fn setEventPhase(instance: *runtime.Instance, phase: u16) void {
-    const state = instance.getState(State);
-    state.own.eventPhase = phase;
-}
-
-/// Set the isTrusted flag
-pub fn setIsTrusted(instance: *runtime.Instance, value: bool) void {
-    const state = instance.getState(State);
-    state.own.isTrusted = value;
-}
-
-/// Get the canceled flag
-pub fn getCanceledFlag(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.canceled_flag;
-}
-
-/// Set the related target
-pub fn setRelatedTarget(instance: *runtime.Instance, target: ?*runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    internal.related_target = target;
-}
-
-/// Get the related target
-pub fn getRelatedTarget(instance: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    return internal.related_target;
-}
-
-/// Get the touch target list
-pub fn getTouchTargetList(instance: *runtime.Instance) ?*infra.List(*runtime.Instance) {
-    const internal = getInternal(instance) orelse return null;
-    return &internal.touch_target_list;
 }

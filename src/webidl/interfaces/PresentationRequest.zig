@@ -210,12 +210,16 @@ pub const PresentationRequest = struct {
         return try PresentationRequestImpl.call_constructor(ctx, args);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onconnectionavailable(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PresentationRequestImpl.get_onconnectionavailable(instance);
+        if (comptime @hasDecl(PresentationRequestImpl, "get_onconnectionavailable")) return try PresentationRequestImpl.get_onconnectionavailable(instance);
+        return event_handlers.value(EventHandler, instance, "onconnectionavailable");
     }
 
     pub fn set_onconnectionavailable(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PresentationRequestImpl.set_onconnectionavailable(instance, value);
+        if (comptime @hasDecl(PresentationRequestImpl, "set_onconnectionavailable")) return try PresentationRequestImpl.set_onconnectionavailable(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onconnectionavailable", value);
     }
 
     pub fn call_start(instance: *runtime.Instance) anyerror!runtime.JSValue {

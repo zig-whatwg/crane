@@ -28,7 +28,6 @@ const webidl = @import("webidl");
 const clock = @import("clock");
 const dom = @import("dom");
 const NavigateEvent = interfaces.NavigateEvent;
-const EventImpl = @import("Event.zig");
 const engine = @import("engine");
 const same_object = @import("same_object.zig");
 const navigation_entries = @import("navigation_entries.zig");
@@ -123,11 +122,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     state.base.own.type = try @"type".clone(ctx.allocator);
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-    state.base.own.isTrusted = false;
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = 0; // NONE
     state.base.own.bubbles = init_dict.base.bubbles orelse false;
     state.base.own.cancelable = init_dict.base.cancelable orelse false;
     state.base.own.composed = init_dict.base.composed orelse false;
@@ -240,7 +234,7 @@ pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(dictionar
     if (!own.canIntercept) return error.SecurityError;
     // Step 3: "If this's dispatch flag is unset, then throw an
     // "InvalidStateError" DOMException."
-    if (!EventImpl.getDispatchFlag(instance)) return error.InvalidStateError;
+    if (!dom.event_construction.dispatchFlag(instance)) return error.InvalidStateError;
     const opts: dictionaries.NavigationInterceptOptions = if (options.was_passed) options.value else .{};
     // Step 4.1: "If options["precommitHandler"] exists ... if this's
     // cancelable attribute is initialized to false, then throw an

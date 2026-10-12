@@ -252,28 +252,36 @@ pub const EventSource = struct {
         return try EventSourceImpl.get_readyState(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onopen(instance: *runtime.Instance) anyerror!EventHandler {
-        return try EventSourceImpl.get_onopen(instance);
+        if (comptime @hasDecl(EventSourceImpl, "get_onopen")) return try EventSourceImpl.get_onopen(instance);
+        return event_handlers.value(EventHandler, instance, "onopen");
     }
 
     pub fn set_onopen(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try EventSourceImpl.set_onopen(instance, value);
+        if (comptime @hasDecl(EventSourceImpl, "set_onopen")) return try EventSourceImpl.set_onopen(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onopen", value);
     }
 
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try EventSourceImpl.get_onmessage(instance);
+        if (comptime @hasDecl(EventSourceImpl, "get_onmessage")) return try EventSourceImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try EventSourceImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(EventSourceImpl, "set_onmessage")) return try EventSourceImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try EventSourceImpl.get_onerror(instance);
+        if (comptime @hasDecl(EventSourceImpl, "get_onerror")) return try EventSourceImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try EventSourceImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(EventSourceImpl, "set_onerror")) return try EventSourceImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
