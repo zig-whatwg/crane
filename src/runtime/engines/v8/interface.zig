@@ -2947,6 +2947,15 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Check if a type is an optional callback type (like EventHandler = ?*const fn(...))
         /// A value of one holds the function's Global<Value>* (conversions.zig), so a
         /// getter returning one needs special handling for return value conversion.
+        /// A union the getter converts through conv.toV8Value - a tagged
+        /// one, other than the string and `any` types, which are unions in
+        /// Zig but values of their own here.
+        fn isUnionResult(comptime T: type) bool {
+            const info = @typeInfo(T);
+            if (info != .@"union" or info.@"union".tag_type == null) return false;
+            return T != runtime.DOMString and T != runtime.JSValue;
+        }
+
         fn isOptionalCallbackType(comptime T: type) bool {
             const type_info = @typeInfo(T);
             if (type_info != .optional) return false;
@@ -3678,6 +3687,19 @@ pub fn V8Interface(comptime Interface: type) type {
                         } else if (comptime PayloadType == ?runtime.JSValue) {
                             if (result == null or result.? != .instance) v8.v8_Global_Dispose(v8_value);
                             if (result) |value| freeOwnedString(cleanup_allocator, value);
+                        } else if (comptime isUnionResult(PayloadType)) {
+                            // A union (CSSNumberish, LineAndPositionSetting):
+                            // its active member's conversion, and so that
+                            // member's ownership - a number or string made
+                            // here is released, a wrapper or an `any`
+                            // member's handle (ImageData.data's, the
+                            // ImageData's own) is kept (conv.unionValueIsOwned).
+                            if (conv.unionValueIsOwned(PayloadType, result)) v8.v8_Global_Dispose(v8_value);
+                        } else if (comptime @typeInfo(PayloadType) == .optional and isUnionResult(@typeInfo(PayloadType).optional.child)) {
+                            // A nullable union: null as below, a member as above.
+                            if (result) |member| {
+                                if (conv.unionValueIsOwned(@typeInfo(PayloadType).optional.child, member)) v8.v8_Global_Dispose(v8_value);
+                            } else v8.v8_Global_Dispose(v8_value);
                         } else if (comptime @typeInfo(PayloadType) == .optional) {
                             // Any other optional: a null result's value is made
                             // here, fresh - `v8.v8_Null(isolate_inner)` in the
