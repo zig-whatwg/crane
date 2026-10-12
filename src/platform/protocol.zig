@@ -1162,6 +1162,34 @@ pub inline fn layoutBox(browser: *BrowserPlatform, document: LayoutNode, node: L
     return impl.layoutBox(browser, document, node);
 }
 
+/// What Crane knows of a replaced element (an img) that a layout needs to
+/// size its box, given with the query: the platform cannot read the DOM
+/// (OQ4). STOPGAP (decision 19b): this record and `replacedElementBox` are
+/// debt, replaced by OQ4's DOM-to-renderer design when that is settled.
+pub const ReplacedElementFacts = extern struct {
+    /// In a document: a disconnected element has no box.
+    connected: bool,
+    /// The element's natural size, when its image is available (HTML
+    /// 4.8.4.3's density-corrected natural width and height).
+    has_natural_size: bool,
+    natural_width: u32,
+    natural_height: u32,
+    /// The width and height content attributes' values, when present and
+    /// valid non-negative integers - presentational hints for the width and
+    /// height properties (HTML 15.4.3).
+    has_width_attribute: bool,
+    width_attribute: u32,
+    has_height_attribute: bool,
+    height_attribute: u32,
+};
+
+/// The box of replaced element `node`, sized from `element`'s facts; null:
+/// no layout box. STOPGAP (decision 19b), see `ReplacedElementFacts`.
+pub inline fn replacedElementBox(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNode, element: *const ReplacedElementFacts) ?BoxMetrics {
+    comptime gate(.layout, "replacedElementBox");
+    return impl.replacedElementBox(browser, document, node, element);
+}
+
 /// getClientRects, OWNED; empty with no box.
 pub inline fn clientRects(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNode, allocator: std.mem.Allocator) Error![]Rect {
     comptime gate(.layout, "clientRects");

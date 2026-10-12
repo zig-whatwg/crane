@@ -119,6 +119,7 @@ pub const protocol = struct {
     pub const rsaEncrypt = crypto.rsaEncrypt;
     pub const rsaDecrypt = crypto.rsaDecrypt;
     pub const layoutBox = headless.layoutBox;
+    pub const replacedElementBox = headless.replacedElementBox;
     pub const clientRects = headless.clientRects;
     pub const scrollPosition = headless.scrollPosition;
     pub const setScrollPosition = headless.setScrollPosition;

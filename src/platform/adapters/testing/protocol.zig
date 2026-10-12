@@ -22,6 +22,7 @@ const crypto = @import("kit_crypto");
 const browser_state = @import("kit_browser_state");
 const memory_clipboard = @import("kit_memory_clipboard");
 const image_decoding = @import("image_decoding.zig");
+const layout = @import("layout.zig");
 
 /// Per-Browser test state: fresh for every Browser, so nothing one test does
 /// reaches the next (WebKitTestRunner's process-global mocks need a reset).
@@ -76,6 +77,12 @@ pub const protocol = struct {
         c.clipboard = .emulated;
         // Zig decoders compiled in (image_decoding.zig): PNG and BMP.
         c.image_decoding = .native;
+        // STOPGAP (decision 19b): layout.zig. Deviation: only a connected
+        // replaced element (an img) has a box, sized from the facts Crane
+        // gives (CSS 2.1 10.3.2/10.6.2 with no style); every other node has
+        // none, as headless; every other layout operation answers as
+        // headless.
+        c.layout = .emulated;
         break :blk c;
     };
 
@@ -154,6 +161,7 @@ pub const protocol = struct {
     pub const rsaEncrypt = crypto.rsaEncrypt;
     pub const rsaDecrypt = crypto.rsaDecrypt;
     pub const layoutBox = headless.layoutBox;
+    pub const replacedElementBox = layout.replacedElementBox;
     pub const clientRects = headless.clientRects;
     pub const scrollPosition = headless.scrollPosition;
     pub const setScrollPosition = headless.setScrollPosition;

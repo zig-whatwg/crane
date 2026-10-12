@@ -105,6 +105,12 @@ pub fn layoutBox(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNo
     return null;
 }
 
+/// No layout box: CSSOM View's zero sizes.
+pub fn replacedElementBox(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNode, element: *const platform.ReplacedElementFacts) ?platform.BoxMetrics {
+    _ = .{ browser, document, node, element };
+    return null;
+}
+
 pub fn clientRects(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNode, allocator: std.mem.Allocator) Error![]platform.Rect {
     _ = .{ browser, document, node };
     return allocator.alloc(platform.Rect, 0);

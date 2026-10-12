@@ -187,7 +187,9 @@ per-Browser fake state, and the platform's observers (screen, network reachabili
 that report through the EventSink.
 
 Crane holds the Browser's BrowserPlatform as part of the Browser (BrowserScope, docs/instances.md
-rule 2); a realm reaches it through `realm.browser_scope`. A worker realm carries its creator's scope,
+rule 2); a realm reaches it through `realm.browser_scope`. Built so far (decision 19b): Browser.init
+creates it and Browser.deinit destroys it, as a supplement of the scope that
+`html.platform_state.of(realm)` reads (src/html/platform_state.zig); its EventSink posts nothing yet. A worker realm carries its creator's scope,
 so a worker's requests use its Browser's BrowserPlatform.
 
 ## 4. Threads and asynchronous results
@@ -266,7 +268,7 @@ system state (defaults allowed), console output.
 | `http2` / `http3` | native when built with nghttp2 / unsupported | same | same | HTTP-network fetch step 8.3: an HTTP/2-only request is a network error / HTTP/1.1 and 2 only |
 | `thread_qos` | native | unsupported | as its host OS | default priority |
 | `resident_memory` | native | native | native | diagnostics report nothing |
-| `layout` | unsupported (headless) | unsupported | unsupported | CSSOM View with no layout box: zero boxes, no hit (6.9) |
+| `layout` | unsupported (headless) | unsupported | emulated - a STOPGAP (decision 19b): only a connected img has a box, sized from the facts Crane gives (`replacedElementBox`, 6.9); every other node has none | CSSOM View with no layout box: zero boxes, no hit (6.9) |
 | `os_permissions` | native: the OS permission system, per app (section 8) | unsupported (no OS permission system: Crane's store and the platform's policy) | emulated (Crane's store; scripted policy, section 9) | a request in the prompt state is denied |
 | `simple_dialogs` | native: system alerts over the key window (NSAlert; UIAlertController), the unsupported path with no window | unsupported | native (dismiss) | HTML 8.9.1 "cannot show simple dialogs" |
 | `printing` | unsupported | unsupported | native (no output) | printing steps end without output |
@@ -460,6 +462,7 @@ plugs in (section 13).
 | Operation | Signature | Thread | Notes |
 |---|---|---|---|
 | `layoutBox` | `(browser, document: LayoutNode, node: LayoutNode) ?BoxMetrics` | agent, sync | offset{Top,Left,Width,Height}, offsetParent, client{Top,Left,Width,Height}, scroll{Width,Height}; null: no layout box (CSSOM View: offsetWidth 0, offsetParent null, ...). |
+| `replacedElementBox` | `(browser, document: LayoutNode, node: LayoutNode, element: *const ReplacedElementFacts) ?BoxMetrics` | agent, sync | **STOPGAP, debt (decision 19b)**: a replaced element's (an img's) box, sized from the facts Crane gives with the query - `ReplacedElementFacts{ connected, natural size, width and height attributes }` - because the platform cannot read the DOM yet. Element's clientWidth/clientHeight and an img's rendered width/height ask it; the testing platform sizes the box as CSS 2.1 10.3.2/10.6.2 size a replaced element with no style. Its LayoutNode ids are the queried nodes' addresses, opaque, with no id table. Replaced by OQ4's DOM-to-renderer design (section 13) when that is settled. |
 | `clientRects` | `(browser, document, node, allocator) Error![]Rect` | agent | getClientRects / getBoundingClientRect (union); empty with no box. |
 | `scrollPosition`, `setScrollPosition` | `(browser, document, node) Point`, `(browser, document, node, point, behavior) void` | agent | scrollTop/Left, scrollTo; the viewport when node is the document. |
 | `hitTest` | `(browser, document, point, allocator) Error![]LayoutNode` | agent | elementFromPoint / elementsFromPoint (CSSOM View); empty with no layout. |
@@ -713,7 +716,7 @@ time), kit/memory_clipboard otherwise.
 | clipboard | kit/memory_clipboard per Browser |
 | notifications, geolocation | recorded; positions scripted per Browser |
 | console | the per-Browser sink in its options (the runner's per-test log) |
-| layout | headless |
+| layout | emulated, a STOPGAP (decision 19b): `replacedElementBox` sizes a connected img from Crane's facts (src/platform/adapters/testing/layout.zig); every other layout operation answers as headless |
 
 Its per-Browser options (`platform.PlatformBrowserOptions` in a testing build) carry the fake devices,
 the prompt policy and the console sink; its control surface for testdriver (queue a picked file,
