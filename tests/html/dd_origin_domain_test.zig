@@ -70,7 +70,10 @@ test "environment Origin distinguishes same origin from same origin-domain" {
 test "WindowProxy requires both documents to opt in and then ignores ports" {
     const Origin = html_core.Origin;
     if (comptime !@hasField(Origin, "domain")) return error.MissingOriginDomain;
-    const context = try html_core.BrowsingContext.initTopLevel(std.testing.allocator);
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const navigables = try scope.table(.navigables, html_core.Navigables);
+    const context = try html_core.BrowsingContext.initTopLevel(std.testing.allocator, navigables);
     defer context.deinit();
     var proxy = html_core.WindowProxy.init(std.testing.allocator, context);
     var target = Origin.init("https", "example.test", null);

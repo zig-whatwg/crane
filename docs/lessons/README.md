@@ -273,6 +273,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Every native callback owns what `info` hands it - a dispatcher written beside interface.zig repeats its leaks](architecture-every-native-callback-owns-what-info-hands-it.md) - Run each callback's statement 10,000 times under `gc_bench --c-alloc` and read `global_handle_bytes`; a dispatcher that bypasses interface.zig's release predicates must be measured on its own.
 
 ### Spec Compliance
+- [document.domain is a two-sided opt-in](spec-compliance-document-domain-is-a-two-sided-opt-in.md) - An unchanged document.domain getter does not mean unchanged access: setting it is an explicit opt-in, and both origins must opt in.
 - [A union's sequence member is decided by @@iterator, not IsArray](spec-compliance-a-union-s-sequence-member-is-decided-by-iterator-not-isarray.md) - Never route a union by the JavaScript type you expect callers to pass - follow 3.2.25's steps, and test with a non-Array iterable and a Proxy that logs its traps.
 - [Node intersection excludes boundary contact](spec-compliance-node-intersection-excludes-boundary-contact.md) - Test both equal-boundary edges and collapsed interior points.
 - [A frame navigation sees only the response headers its fetch copied](spec-compliance-a-frame-navigation-sees-only-the-headers-its-fetch-copied.md) - A header a frame or popup navigation reads must be on fetch_integration's copy list - a missing one reads as "not sent", silently.
