@@ -262,6 +262,100 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     return interfaces.HTMLCollection.get_length(collection);
 }
 
+/// HTML "the form element", determining the value of an indexed property:
+/// the corresponding item of form.elements. The binding checks support first.
+pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    return (try interfaces.HTMLCollection.call_item(try get_elements(instance), index)) orelse error.IndexSizeError;
+}
+
+/// HTML "the form element", determining the value of a named property.
+/// Like WebKit HTMLFormElement::namedItem, current controls precede images.
+pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+    if (name.asSlice().len == 0) return runtime.JSValue.jsUndefined;
+    // Step 1, and step 4 for multiple controls: the existing form collection
+    // excludes image inputs and produces a live RadioNodeList for duplicates.
+    if (try interfaces.HTMLFormControlsCollection.call_namedItem(try get_elements(instance), name)) |value| {
+        // Step 5, for a single control.
+        // TODO(past names map): routed to a Claude lane, codex-lpo Q2
+        return value;
+    }
+
+    // Step 2: only if no listed control matched, try images with this owner.
+    const root = form_associated.rootOf(instance);
+    var node: ?*runtime.Instance = root;
+    var first: ?*runtime.Instance = null;
+    while (node) |element| : (node = nextInTree(element, root, false)) {
+        if (element.stateAs(interfaces.HTMLImageElement.State) == null) continue;
+        if (form_associated.formOwner(element) != instance or !form_associated.hasControlName(element, name.asSlice())) continue;
+        if (first == null) {
+            first = element;
+            continue;
+        }
+        // Step 4: the live image list holds the form, not an unowned
+        // intermediate collection (codex-lpo Q6).
+        const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
+        errdefer runtime.Instance.deinit(list);
+        try @import("dom").node_lists.namedFormImages(list, instance, name.asSlice());
+        return .{ .instance = list };
+    }
+    if (first) |element| {
+        // Steps 5–6: record the single candidate, then return it.
+        // TODO(past names map): routed to a Claude lane, codex-lpo Q2
+        return .{ .instance = element };
+    }
+    // Step 3: consult historical names only when no current candidate exists.
+    // TODO(past names map): routed to a Claude lane, codex-lpo Q2
+    return runtime.JSValue.jsUndefined;
+}
+
+/// HTML "the form element", supported property names, steps 1–8.
+/// Browser deviation, routed to the adapter owner (codex-lpo Q7): WebKit's
+/// HTMLFormElement::supportedPropertyNames and Gecko's GetSupportedNames are
+/// empty; Blink has NamedPropertyQuery but no enumerator. See
+/// https://github.com/whatwg/html/issues/1731. Crane currently needs this full
+/// list for lookup as well as ownKeys; [LegacyUnenumerableNamedProperties]
+/// already excludes these names from Object.keys and for-in.
+pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+    var names = @import("infra").List(runtime.DOMString).init(allocator);
+    errdefer {
+        for (names.toSliceMut()) |*name| name.deinit(allocator);
+        names.deinit();
+    }
+    const root = form_associated.rootOf(instance);
+    var node: ?*runtime.Instance = root;
+    // Steps 2–3, 5: walk both kinds together in tree order, id before name.
+    while (node) |element| : (node = nextInTree(element, root, false)) {
+        const image = element.stateAs(interfaces.HTMLImageElement.State) != null;
+        if (!image and !form_associated.isListed(element)) continue;
+        if (form_associated.formOwner(element) != instance) continue;
+        if (form_associated.isInput(element)) {
+            var buffer: [16]u8 = undefined;
+            if (std.mem.eql(u8, form_associated.inputType(element, &buffer), "image")) continue;
+        }
+        for ([_][]const u8{ "id", "name" }) |attribute| {
+            var value = (try interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned(attribute))) orelse continue;
+            defer value.deinit(element.ctx.allocator);
+            // Steps 6–7: omit empty strings and later duplicates.
+            if (value.asSlice().len == 0) continue;
+            var seen = false;
+            for (names.toSlice()) |previous| {
+                if (std.mem.eql(u8, previous.asSlice(), value.asSlice())) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (seen) continue;
+            var copy = try runtime.DOMString.initDupe(allocator, value.asSlice());
+            errdefer copy.deinit(allocator);
+            try names.append(copy);
+        }
+    }
+    // Step 4: merge past names at their element's tree position and age.
+    // TODO(past names map): routed to a Claude lane, codex-lpo Q2
+    // Step 8: transfer the names to the caller.
+    return names.toOwnedSlice();
+}
+
 /// Setter for autocomplete
 pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("autocomplete"), .{ .domstring = value });
