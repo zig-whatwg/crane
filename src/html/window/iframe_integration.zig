@@ -117,6 +117,14 @@ pub const ByteStream = struct {
     parent_same_origin: bool,
 };
 
+/// What "load an XML document" is given besides the response's bytes: its
+/// Content-Type (whose charset decides the encoding, HTML §7.5.3) and its
+/// computed type, the new document's content type.
+pub const XmlResponse = struct {
+    content_type: ?[]const u8,
+    type: []const u8,
+};
+
 /// Result of fetching content from a URL
 pub const FetchedContent = struct {
     /// The raw bytes fetched
@@ -301,6 +309,13 @@ pub const IFrameIntegration = struct {
     /// Parameters: (runtime_context, browsing_context, html_content) -> document_instance
     /// Set by modules with interface access (e.g., impls/HTMLIFrameElement.zig)
     parse_html_callback: ?*const fn (?*anyopaque, *BrowsingContext, []const u8, ?ByteStream) ?*anyopaque,
+
+    /// HTML §7.5.3 "load an XML document": make the navigable's new document
+    /// from the response's bytes with an XML parser.
+    /// Parameters: (runtime_context, browsing_context, bytes, response) ->
+    /// document_instance. Set by modules with interface access
+    /// (impls/HTMLIFrameElement.zig).
+    parse_xml_callback: ?*const fn (?*anyopaque, *BrowsingContext, []const u8, XmlResponse) ?*anyopaque = null,
 
     /// Callback to fire the load event on the iframe element after navigation.
     /// Parameters: (iframe_instance) -> void
@@ -535,6 +550,7 @@ pub const IFrameIntegration = struct {
         self.create_document_callback = null;
         self.cleanup_callback = null;
         self.parse_html_callback = null;
+        self.parse_xml_callback = null;
         // Note: cleanup_in_progress stays true to prevent any further cleanup attempts
     }
 
@@ -576,6 +592,7 @@ pub const IFrameIntegration = struct {
         self.create_document_callback = null;
         self.cleanup_callback = null;
         self.parse_html_callback = null;
+        self.parse_xml_callback = null;
         self.execute_script_callback = null;
         self.update_location_callback = null;
         self.navigate_callback = null;
@@ -1067,7 +1084,7 @@ pub const IFrameIntegration = struct {
             }),
             .text => try self.commitTextDocument(body, response.content_type),
             .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed)),
-            .xml => try self.commitXmlDocument(),
+            .xml => try self.commitXmlDocument(body, .{ .content_type = response.content_type, .type = computed }),
             .multipart, .external => unreachable,
         }
 
@@ -1237,14 +1254,16 @@ pub const IFrameIntegration = struct {
         if (document) |doc| setNoQuirks(doc);
     }
 
-    /// "Loading an XML document" - HTML Standard §7.5.3.
-    ///
-    /// TODO: Crane has no XML parser (nothing in `src/` implements one), so the
-    /// document is created empty. Its content type and URL are still correct,
-    /// which is what `document.contentType` and `location` report; the tree is
-    /// not. Replace the body of this function with a real XML parse once an XML
-    /// parser exists.
-    fn commitXmlDocument(self: *IFrameIntegration) IFrameError!void {
+    /// "Loading an XML document" - HTML Standard §7.5.3: the document the
+    /// response's bytes parse to with an XML parser (parse_xml_callback).
+    /// With no realm to parse in, the document is created empty.
+    fn commitXmlDocument(self: *IFrameIntegration, bytes: []const u8, response: XmlResponse) IFrameError!void {
+        if (self.parse_xml_callback) |parse_xml| {
+            if (self.browsing_context) |ctx| {
+                _ = parse_xml(self.runtime_context, ctx, bytes, response);
+                return;
+            }
+        }
         if (self.create_document_callback) |create_doc| {
             if (self.browsing_context) |ctx| {
                 _ = create_doc(self.runtime_context, ctx);
