@@ -27,7 +27,6 @@ const Element = interfaces.Element;
 const DOMTokenListImpl = @import("DOMTokenList.zig");
 const NamedNodeMapImpl = @import("NamedNodeMap.zig");
 const ParentNodeImpl = @import("ParentNode.zig");
-const HTMLElementImpl = @import("HTMLElement.zig");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
@@ -3047,17 +3046,16 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime
     var width: f64 = 0;
     var height: f64 = 0;
 
-    // Try to get CSS dimensions from the element's inline style
-    // Inline style properties are stored directly in HTMLElement's InternalState
-    // (not in CSSStyleDeclaration) so they survive V8 GC of the style wrapper
-    if (HTMLElementImpl.getInternalState(instance)) |html_internal| {
-        // Get width and height directly from HTMLElement's inline style properties
-        if (html_internal.getInlineStyleProperty("width")) |width_value| {
+    // Try to get CSS dimensions from the element's inline style: the
+    // declarations the element keeps (dom.cssom.InlineStyle), not its
+    // CSSStyleDeclaration's, so they survive V8 GC of the style wrapper
+    if (dom.cssom.inlineStyleOf(instance)) |inline_style| {
+        if (inline_style.getProperty("width")) |width_value| {
             if (parseCssLengthToPixels(width_value)) |w| {
                 width = w;
             }
         }
-        if (html_internal.getInlineStyleProperty("height")) |height_value| {
+        if (inline_style.getProperty("height")) |height_value| {
             if (parseCssLengthToPixels(height_value)) |h| {
                 height = h;
             }
