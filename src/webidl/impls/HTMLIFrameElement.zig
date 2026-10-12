@@ -1667,6 +1667,10 @@ fn runCommit(context: ?*anyopaque) void {
             }
         }
     }
+    // "Create and initialize a Document object" step 7: the keying of the
+    // new document's agent cluster, decided before its realm is chosen and
+    // any of its script runs.
+    obtainAgentCluster(integration, record, response, new_origin);
     integration.realmForDocument(new_origin) catch |err| {
         log.warn("[navigation] no realm for {s}: {s}", .{ record.url, @errorName(err) });
         return endLoadDelay(integration);
@@ -1707,6 +1711,83 @@ fn runCommit(context: ?*anyopaque) void {
     integration.setNextRefresh(if (response.headers) |h| h.get("refresh") else null);
     defer integration.setNextRefresh(null);
     commitNavigation(integration, record, response);
+}
+
+/// HTML "create and initialize a Document object" step 7 for the document
+/// `record`'s navigation makes from `response`, of origin `new_origin`, in a
+/// frame's or a popup's navigable:
+///
+/// "1. Let oacHeader be the result of getting a structured field value given
+/// `Origin-Agent-Cluster` and "item" from navigationParams's response's
+/// header list. 2. Let requestsOAC be true if oacHeader is not null and
+/// oacHeader[0] is the boolean true; otherwise false. 3. If
+/// navigationParams's reserved environment is a non-secure context, then set
+/// requestsOAC to false. 4. Let agent be the result of obtaining a
+/// similar-origin window agent given navigationParams's origin,
+/// browsingContext's group, and requestsOAC."
+///
+/// What is recorded is the keying of the document's origin in the group's
+/// historical agent cluster key map (dom.agent_cluster_keys), which the new
+/// window's originAgentCluster and its agent cluster read back. Step 6's
+/// document, which keeps the initial about:blank document's Window (the same
+/// condition realmForNewDocument decides by), gets the agent that Window was
+/// made with: "create a new browsing context and document" step 9 obtained it
+/// for the same origin with requestsOAC false.
+///
+/// An opaque origin is always origin-keyed and recorded nowhere: a network
+/// error's document, a data: document, and a navigable sandboxed into an
+/// opaque origin ("determining the origin" step 1). An about: document's or
+/// a javascript: URL's result's origin is its creator's, decided when that
+/// was made.
+fn obtainAgentCluster(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult, new_origin: Origin) void {
+    if (new_origin.is_opaque or response.is_network_error) return;
+    const browsing_context = integration.browsing_context orelse return;
+    if (browsing_context.sandbox_flags) |flags| {
+        if (flags.sandboxesSameOrigin()) return;
+    }
+    const allocator = integration.allocator;
+    const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+    const keys = dom_module.agent_cluster_keys;
+    const origin = fetch_mod.internal.origins.serializedOriginOf(allocator, response_url) catch return;
+    defer allocator.free(origin);
+    const reuses_window = blk: {
+        // A popup opened with noopener was "created given null" opener: its
+        // initial about:blank document's origin was a new opaque one
+        // ("create a new browsing context and document" step 7), same origin
+        // with no document - not the opener's, which Crane gives it.
+        if (browsing_context.parent == null and browsing_context.disowned) break :blk false;
+        const old_document = activeDocumentOf(integration) orelse break :blk false;
+        const old_origin = if (integration.window_proxy) |proxy| proxy.document_origin else Origin.createOpaque();
+        break :blk document_lifecycle.isInitialAboutBlank(old_document) and old_origin.isSameOrigin(new_origin);
+    };
+    const requests_oac = !reuses_window and keys.requestsOAC(
+        allocator,
+        if (response.headers) |headers| headers.get("origin-agent-cluster") else null,
+        reservedEnvironmentIsSecure(browsing_context, response_url, allocator),
+    );
+    // The Browser the navigable's documents belong to: its active document's
+    // (the initial about:blank one at least), else its container document's.
+    const scope: ?*runtime.BrowserScope = if (activeDocumentOf(integration) orelse containerDocumentOf(integration)) |document|
+        runtime.BrowserScope.ofInstance(document)
+    else
+        null;
+    _ = keys.obtain(scope, browsing_context.virtual_group_id, origin, requests_oac, browsing_context.isCrossOriginIsolated());
+}
+
+/// HTML 8.1.3.5 for a navigation's reserved environment in
+/// `browsing_context`'s navigable, fetching `url`: a secure context when its
+/// top-level creation URL is potentially trustworthy. A top-level
+/// navigable's (a popup's) is `url`; a child navigable's is its parent
+/// environment's - the top-level document's creation URL, which its URL
+/// stands for.
+fn reservedEnvironmentIsSecure(browsing_context: *html_core.BrowsingContext, url: []const u8, allocator: std.mem.Allocator) bool {
+    const keys = dom_module.agent_cluster_keys;
+    if (browsing_context.parent == null) return keys.isSecureTopLevelCreationUrl(allocator, url);
+    const top = browsing_context.getTop();
+    const top_document: *runtime.Instance = @ptrCast(@alignCast(top.getActiveDocument() orelse return false));
+    const top_url = documentUrlOf(top_document, allocator) catch return false;
+    defer allocator.free(top_url);
+    return keys.isSecureTopLevelCreationUrl(allocator, top_url);
 }
 
 /// HTML "determine navigation params policy container" for the document
@@ -4105,26 +4186,6 @@ pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     internal.sandbox_token_list = token_list;
 
     return token_list;
-}
-
-/// Internal: Update sandbox flags when DOMTokenList changes
-/// Called when the sandbox attribute value changes.
-pub fn updateSandboxFlags(instance: *runtime.Instance) anyerror!void {
-    const internal = getInternal(instance) orelse return;
-
-    if (internal.sandbox_token_list) |token_list| {
-        // Get the serialized value from DOMTokenList
-        const value = try DOMTokenListImpl.get_value(token_list);
-        const value_slice = value.asSlice();
-
-        if (value_slice.len > 0) {
-            // Apply sandbox with the token values
-            try internal.integration.setSandbox(value_slice);
-        } else {
-            // Empty sandbox attribute = all restrictions
-            try internal.integration.setSandbox("");
-        }
-    }
 }
 
 // ============================================================================

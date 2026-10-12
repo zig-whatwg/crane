@@ -640,6 +640,15 @@ pub const Window = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_item" },
+            .named_getter = .{ .function = "call_getter", .implemented = @hasDecl(WindowImpl, "call_getter") },
+            .legacy_unenumerable_named_properties = true,
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -2235,6 +2244,14 @@ pub const Window = struct {
 
     pub const get_pushManager = mixins.PushManagerAttribute.get_pushManager;
 
+    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(WindowImpl, "call_getter")) {
+            return try WindowImpl.call_getter(instance, name);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
     pub const call_structuredClone = mixins.WindowOrWorkerGlobalScope.call_structuredClone;
 
     pub const call_atob = mixins.WindowOrWorkerGlobalScope.call_atob;
@@ -2263,10 +2280,6 @@ pub const Window = struct {
 
     pub fn call_cancelIdleCallback(instance: *runtime.Instance, handle: u32) anyerror!void {
         return try WindowImpl.call_cancelIdleCallback(instance, handle);
-    }
-
-    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
-        return try WindowImpl.call_getter(instance, name);
     }
 
     pub fn call_focus(instance: *runtime.Instance) anyerror!void {

@@ -271,6 +271,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Every native callback owns what `info` hands it - a dispatcher written beside interface.zig repeats its leaks](architecture-every-native-callback-owns-what-info-hands-it.md) - Run each callback's statement 10,000 times under `gc_bench --c-alloc` and read `global_handle_bytes`; a dispatcher that bypasses interface.zig's release predicates must be measured on its own.
 
 ### Spec Compliance
+- [Node intersection excludes boundary contact](spec-compliance-node-intersection-excludes-boundary-contact.md) - Test both equal-boundary edges and collapsed interior points.
+- [A frame navigation sees only the response headers its fetch copied](spec-compliance-a-frame-navigation-sees-only-the-headers-its-fetch-copied.md) - A header a frame or popup navigation reads must be on fetch_integration's copy list - a missing one reads as "not sent", silently.
 - [MIME parameters compare string contents](spec-compliance-mime-parameters-compare-string-contents.md) - Check collection equality before using it for specification strings, and test parsing independently of its callers.
 - [Preserve quotes until MIME parsing](spec-compliance-preserve-quotes-until-mime-parsing.md) - Header splitting preserves the quoted representation that later MIME parsing consumes; test the composed algorithms and allocation failures.
 - [Blob type is not a MIME parser](spec-compliance-blob-type-is-not-a-mime-parser.md) - Split WPT results by API, browser and body state; non-null Fetch bodies use raw Content-Type, while null bodies use MIME extraction.
@@ -358,6 +360,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Codegen
 
+- [A special operation is found by its metadata, not its name](codegen-a-special-operation-is-found-by-its-metadata-not-its-name.md) - The binding map's names say a function is bound, never what it is; when the binding needs a member's role, codegen states it in a table beside the delegate, from the IDL, with an explicit default for "none".
 - [An anonymous indexed getter is gated like an overload](codegen-an-anonymous-indexed-getter-is-gated-like-an-overload.md) - When the binding needs to know whether an impl implements a member, codegen states it next to the gated delegate; never have the adapter reach into impls, and never wire a delegate the impl may not have.
 - [An iterable declaration's members are not operations](codegen-an-iterable-declaration-s-members-are-not-operations.md) - When the spec says "define" members, the binding defines them; codegen must not turn them into operations for an impl to implement.
 - [Nullable dictionary members can need a presence bit](codegen-nullable-dictionary-members-can-need-a-presence-bit.md) - Preserve absence separately from null when the consuming algorithm distinguishes them.
@@ -480,6 +483,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A union conversion needs a case per member type](testing-a-union-conversion-needs-a-case-per-member-type.md) - Enumerate the flattened member types from the IDL and give each its own case - plus an offset view and a detached buffer - before calling a conversion done.
 ### Debugging
 
+- [A Range oracle can overflow on contradictory node order](debugging-range-oracle-stack-overflow-can-start-in-node-order.md) - Check oracle dependencies and native ordering antisymmetry before replacing a correct Range helper.
 - [A pull inflater needs short-input and block-transition tests](debugging-a-pull-inflater-needs-short-input-and-block-transition-tests.md) - Test streaming adapters at interrupted operations and block transitions with external data.
 - [When every file in a directory fails, find the setup step that fails once per file, not the commonest message](debugging-a-harness-setup-step-failing-in-every-file-is-the-cause-not-the-commonest-message.md) - Rank failure clusters by how many files they hit and where they first appear, not by how many subtests they hold: a setup step that fails once in every file looks small in the counts but is the cause of everything after it.
 - [A Wrapperless Removal Orphans the Node Until Browser End](debugging-a-wrapperless-removal-orphans-the-node-until-browser-end.md) - A feature that starts passing can expose a leak in code merged rounds earlier; any InternalState owning non-arena memory needs a teardown sweep until refcounting.

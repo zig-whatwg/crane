@@ -44,6 +44,11 @@ pub const NavigationResult = struct {
     /// taken (`takePolicyContainer`); null for a response from no network,
     /// whose document gets a new policy container.
     policy_container: ?@import("fetch").internal.PolicyContainer = null,
+    /// The response's `Origin-Agent-Cluster` header list value (Fetch
+    /// "get"), which "create and initialize a Document object" step 7.1
+    /// parses as a structured field item. Owned; null when it has none, and
+    /// for a response from no network.
+    origin_agent_cluster: ?[]const u8 = null,
     /// What Navigation Timing's "create the navigation timing entry" takes
     /// from an HTTP(S) navigation's fetch: its timing info, redirect count
     /// and response status. Owned; null for a response from no network.
@@ -66,6 +71,7 @@ pub const NavigationResult = struct {
         self.allocator.free(self.final_url);
         self.allocator.free(self.content_type);
         if (self.policy_container) |*container| container.deinit();
+        if (self.origin_agent_cluster) |value| self.allocator.free(value);
         if (self.timing) |*timing| timing.timing_info.deinit();
     }
 
@@ -381,7 +387,11 @@ fn fetchHttpUrl(
 
     // HTML "create a policy container from a fetch response": the
     // response's CSP headers (step 3) and `Referrer-Policy` header (step 5).
-    const policy_container = policyContainerOf(allocator, response, url) catch return NavigationError.OutOfMemory;
+    var policy_container = policyContainerOf(allocator, response, url) catch return NavigationError.OutOfMemory;
+    errdefer policy_container.deinit();
+    // "Create and initialize a Document object" step 7.1: the header the
+    // document's requestsOAC is read from (dom.agent_cluster_keys).
+    const origin_agent_cluster = response.header_list.get(allocator, "Origin-Agent-Cluster") catch return NavigationError.OutOfMemory;
 
     // Navigation Timing: the fetch's timing info, its redirect count (the
     // response's URL list beyond the first URL) and status.
@@ -393,6 +403,7 @@ fn fetchHttpUrl(
         .final_url = final_url,
         .allocator = allocator,
         .policy_container = policy_container,
+        .origin_agent_cluster = origin_agent_cluster,
         .timing = .{
             .timing_info = result.timing_info,
             .redirect_count = if (response.redirect_taint != .same_origin) 0 else @intCast(@min(response.url_list.items.len -| 1, std.math.maxInt(u16))),

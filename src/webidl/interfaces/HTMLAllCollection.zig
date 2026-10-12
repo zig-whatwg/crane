@@ -60,9 +60,14 @@ pub const HTMLAllCollection = struct {
 
         pub const has_constructor = false;
 
-        /// The anonymous indexed getter (`getter T (unsigned long index)`,
-        /// `call_getter`) is implemented: the binding installs indexed access.
-        pub const indexed_getter_implemented = @hasDecl(HTMLAllCollectionImpl, "call_getter");
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_getter", .implemented = @hasDecl(HTMLAllCollectionImpl, "call_getter") },
+            .named_getter = .{ .function = "call_namedItem" },
+            .legacy_unenumerable_named_properties = true,
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -118,16 +123,16 @@ pub const HTMLAllCollection = struct {
         return try HTMLAllCollectionImpl.get_length(instance);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?runtime.JSValue {
-        return try HTMLAllCollectionImpl.call_namedItem(instance, name);
-    }
-
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         if (comptime @hasDecl(HTMLAllCollectionImpl, "call_getter")) {
             return try HTMLAllCollectionImpl.call_getter(instance, index);
         } else {
             return error.NotImplemented;
         }
+    }
+
+    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?runtime.JSValue {
+        return try HTMLAllCollectionImpl.call_namedItem(instance, name);
     }
 
     pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(DOMString)) anyerror!?runtime.JSValue {

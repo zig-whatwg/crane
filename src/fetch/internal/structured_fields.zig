@@ -1,7 +1,9 @@
-//! RFC 9651 §4.2 Dictionary parsing, projected onto the String values
-//! Reporting §3.3 consumes. Other item types, inner lists and parameters
-//! are fully validated before being discarded; one malformed value rejects
-//! the entire field. Keys borrow the input; String values are owned.
+//! RFC 9651 §4.2 parsing, projected onto what its callers consume: a
+//! Dictionary's String values (Reporting §3.3), and an Item's Boolean
+//! (HTML's `Origin-Agent-Cluster`). Other item types, inner lists and
+//! parameters are fully validated before being discarded; one malformed
+//! value rejects the entire field. Keys borrow the input; String values are
+//! owned.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -52,6 +54,37 @@ pub fn parseDictionary(allocator: Allocator, input: []const u8) Error!Dictionary
         if (parser.peek() == null) return error.InvalidField;
     }
     return result;
+}
+
+/// RFC 9651 §4.2 with field type "item" - what Fetch's "get a structured
+/// field value" given "item" parses - projected onto the Boolean: the item's
+/// bare item when it is a Boolean, null for an item of any other type. Its
+/// parameters are validated and discarded. A field that is not exactly one
+/// valid item is error.InvalidField (Fetch: the header's value is null).
+pub fn parseItemBoolean(allocator: Allocator, input: []const u8) Error!?bool {
+    // 1. "Convert input_bytes into an ASCII string input_string; if
+    // conversion fails, fail parsing."
+    for (input) |c| if (c > 127) return error.InvalidField;
+    var parser: Parser = .{ .allocator = allocator, .input = input };
+    // 2. "Discard any leading SP characters from input_string."
+    parser.spaces();
+    // 5. "Let output be the result of running Parsing an Item": §4.2.3, a
+    // bare item, then its parameters. §4.2.8 "Parsing a Boolean": "?", then
+    // "1" (true) or "0" (false).
+    var boolean: ?bool = null;
+    if (parser.consume('?')) {
+        if (parser.consume('1')) {
+            boolean = true;
+        } else if (parser.consume('0')) {
+            boolean = false;
+        } else return error.InvalidField;
+    } else if (try parser.bare()) |string| allocator.free(string);
+    try parser.parameters();
+    // 6-7. "Discard any leading SP characters from input_string. If
+    // input_string is not empty, fail parsing."
+    parser.spaces();
+    if (parser.peek() != null) return error.InvalidField;
+    return boolean;
 }
 
 const Parser = struct {

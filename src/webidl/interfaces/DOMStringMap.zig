@@ -47,6 +47,16 @@ pub const DOMStringMap = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .named_getter = .{ .function = "call_getter", .implemented = @hasDecl(DOMStringMapImpl, "call_getter") },
+            .named_setter = .{ .function = "call_setter", .implemented = @hasDecl(DOMStringMapImpl, "call_setter") },
+            .named_deleter = .{ .function = "call_deleter", .implemented = @hasDecl(DOMStringMapImpl, "call_deleter") },
+            .legacy_override_built_ins = true,
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -92,26 +102,38 @@ pub const DOMStringMap = struct {
         }
     }
 
-    /// Extended attributes: [CEReactions]
-    pub fn call_setter(instance: *runtime.Instance, name: DOMString, value: DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        return try DOMStringMapImpl.call_setter(instance, name, value);
+    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!DOMString {
+        if (comptime @hasDecl(DOMStringMapImpl, "call_getter")) {
+            return try DOMStringMapImpl.call_getter(instance, name);
+        } else {
+            return error.NotImplemented;
+        }
     }
 
-    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!DOMString {
-        return try DOMStringMapImpl.call_getter(instance, name);
+    /// Extended attributes: [CEReactions]
+    pub fn call_setter(instance: *runtime.Instance, name: DOMString, value: DOMString) anyerror!void {
+        if (comptime @hasDecl(DOMStringMapImpl, "call_setter")) {
+            // [CEReactions] - Trigger Custom Element lifecycle callbacks
+            const ce_scope = runtime.CEReactions.begin(instance);
+            defer runtime.CEReactions.end(ce_scope);
+
+            return try DOMStringMapImpl.call_setter(instance, name, value);
+        } else {
+            return error.NotImplemented;
+        }
     }
 
     /// Extended attributes: [CEReactions]
     pub fn call_deleter(instance: *runtime.Instance, name: DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
+        if (comptime @hasDecl(DOMStringMapImpl, "call_deleter")) {
+            // [CEReactions] - Trigger Custom Element lifecycle callbacks
+            const ce_scope = runtime.CEReactions.begin(instance);
+            defer runtime.CEReactions.end(ce_scope);
 
-        return try DOMStringMapImpl.call_deleter(instance, name);
+            return try DOMStringMapImpl.call_deleter(instance, name);
+        } else {
+            return error.NotImplemented;
+        }
     }
 
     /// HTML [CEReactions]: the functions that run a custom element reactions

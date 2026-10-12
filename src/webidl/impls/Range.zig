@@ -1455,11 +1455,13 @@ pub fn call_intersectsNode(instance: *runtime.Instance, node: *runtime.Instance)
     const beforeEnd = compareBoundaryPoints(parent, offset, end, internal.end_offset);
     const afterStart = compareBoundaryPoints(parent, offset + 1, start, internal.start_offset);
 
-    // Step 6: Return true if (parent, offset) is before end and (parent, offset+1) is after start
-    if (beforeEnd != .after and afterStart != .before) {
+    // Step 5: If (parent, offset) is before end and (parent, offset + 1)
+    // is after start, then return true. Both comparisons are strict.
+    if (beforeEnd == .before and afterStart == .after) {
         return true;
     }
 
+    // Step 6: Return false.
     return false;
 }
 

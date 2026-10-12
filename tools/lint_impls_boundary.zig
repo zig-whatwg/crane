@@ -16,8 +16,16 @@
 //!     `@import("Other.zig").member`. Lower-case files there are helper
 //!     modules (same_object.zig, node_filter.zig), not impls. Only a file's
 //!     references to ITSELF are exempt; a parent's `init` counts.
-//!   * everywhere else in src/ except the generated layers: every reference
-//!     through the `impls` module.
+//!   * everywhere else in src/ except the generated layers - and in tests/ and
+//!     tools/, which the module graph (B11) must cut off from `impls` too:
+//!     every reference through the `impls` module, `impls.<helper>` included,
+//!     plus one `impls.@import` for a file that imports the module and
+//!     reaches nothing in it.
+//!
+//! A use counts ONCE, however many times its name is declared in the file (an
+//! alias declared in several functions is one name), and a name inside a
+//! string literal is text. `--list` prints every site as `path:line
+//! Impl.member`, the work list of a conversion batch.
 //!
 //! Keying on the member, not just a per-file total, is what catches a swap:
 //! trading one reference for a new one leaves the total unchanged.
@@ -145,11 +153,15 @@ fn collect(
         pos = at + needle.len;
         if (at > 0 and (isIdentChar(code[at - 1]) or code[at - 1] == '.')) continue;
         if (pos >= code.len or code[pos] != '.') continue;
+        // `test "Blob.text() ..."` names a test; it does not call anything.
+        if (inString(code, at)) continue;
         var target = impl;
         var member_start = pos + 1;
         if (target == null) {
             const name = identAt(code, member_start);
-            if (name.len == 0 or !std.ascii.isUpper(name[0])) continue;
+            // A lower-case member is a helper module of the impls (`impls.cleanup`):
+            // not an interface's impl, but reaching it is the same edge.
+            if (name.len == 0) continue;
             target = name;
             member_start += name.len;
             if (member_start >= code.len or code[member_start] != '.') {
@@ -162,6 +174,20 @@ fn collect(
         const member = identAt(code, member_start);
         try out.append(gpa, .{ .line = line, .impl = target.?, .member = member, .code = std.mem.trim(u8, code, " \t") });
     }
+}
+
+/// Whether `at` lies inside a `"..."` literal on this line.
+fn inString(code: []const u8, at: usize) bool {
+    var inside = false;
+    var i: usize = 0;
+    while (i < at) : (i += 1) {
+        if (inside and code[i] == '\\') {
+            i += 1;
+        } else if (code[i] == '"') {
+            inside = !inside;
+        }
+    }
+    return inside;
 }
 
 pub fn contains(items: []const []const u8, name: []const u8) bool {
@@ -206,6 +232,7 @@ fn references(gpa: std.mem.Allocator, itself: []const []const u8, text: []const 
     defer aliases.deinit(gpa);
     var declarations: std.ArrayList(u32) = .empty;
     defer declarations.deinit(gpa);
+    var first_import: u32 = 0;
 
     // Pass 1: `const impls = @import("impls");`
     var lines = std.mem.splitScalar(u8, text, '\n');
@@ -214,7 +241,10 @@ fn references(gpa: std.mem.Allocator, itself: []const []const u8, text: []const 
         number += 1;
         const decl = constDecl(codeOf(raw)) orelse continue;
         if (std.mem.eql(u8, decl.rhs, "@import(\"impls\")")) {
-            try modules.append(gpa, decl.name);
+            // A name declared again (another function's scope) is the same
+            // name: each use below is matched once, whatever the declarations.
+            if (!contains(modules.items, decl.name)) try modules.append(gpa, decl.name);
+            if (first_import == 0) first_import = number;
             try declarations.append(gpa, number);
         }
     }
@@ -229,7 +259,9 @@ fn references(gpa: std.mem.Allocator, itself: []const []const u8, text: []const 
         const target = by_file orelse implsMember(decl.rhs) orelse moduleMember(decl.rhs, modules.items) orelse continue;
         try declarations.append(gpa, number);
         if (target.len == 0 or !std.ascii.isUpper(target[0])) continue;
-        try aliases.append(gpa, .{ .name = decl.name, .impl = target });
+        for (aliases.items) |seen| {
+            if (std.mem.eql(u8, seen.name, decl.name) and std.mem.eql(u8, seen.impl, target)) break;
+        } else try aliases.append(gpa, .{ .name = decl.name, .impl = target });
     }
 
     var out: std.ArrayList(Reference) = .empty;
@@ -243,6 +275,12 @@ fn references(gpa: std.mem.Allocator, itself: []const []const u8, text: []const 
         for (modules.items) |module| try collect(gpa, &out, number, code, module, null, itself);
         for (aliases.items) |alias| try collect(gpa, &out, number, code, alias.name, alias.impl, itself);
         try inlineImports(gpa, &out, number, code, itself);
+    }
+    // Outside the impls, an import of the module that reaches no impl is
+    // still an edge in the module graph - the final step (B11) removes
+    // `impls` from that module's imports - so it counts, once.
+    if (itself.len == 0 and out.items.len == 0 and first_import != 0) {
+        try out.append(gpa, .{ .line = first_import, .impl = "impls", .member = "@import", .code = "const impls = @import(\"impls\");" });
     }
     return out;
 }
@@ -319,6 +357,18 @@ pub const Counts = std.StringHashMapUnmanaged(u32);
 pub const Violation = struct { key: []const u8, allowed: u32, found: u32 };
 
 fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+    return std.mem.lessThan(u8, a, b);
+}
+
+/// `path:line` order, numerically by line within a path.
+fn siteLessThan(_: void, a: []const u8, b: []const u8) bool {
+    const a_at = std.mem.indexOfScalar(u8, a, ':') orelse a.len;
+    const b_at = std.mem.indexOfScalar(u8, b, ':') orelse b.len;
+    const path_order = std.mem.order(u8, a[0..a_at], b[0..b_at]);
+    if (path_order != .eq) return path_order == .lt;
+    const a_line = std.fmt.parseInt(u32, a[@min(a_at + 1, a.len)..][0 .. std.mem.indexOfScalar(u8, a[@min(a_at + 1, a.len)..], ' ') orelse 0], 10) catch 0;
+    const b_line = std.fmt.parseInt(u32, b[@min(b_at + 1, b.len)..][0 .. std.mem.indexOfScalar(u8, b[@min(b_at + 1, b.len)..], ' ') orelse 0], 10) catch 0;
+    if (a_line != b_line) return a_line < b_line;
     return std.mem.lessThan(u8, a, b);
 }
 
@@ -583,6 +633,27 @@ fn implName(path: []const u8) ?[]const u8 {
     return rest[0 .. rest.len - 4];
 }
 
+/// Whether `path` (repo-relative) is scanned: src/ outside the generated layers,
+/// and the tests and tools that import `impls` - the module graph (B11) must
+/// drop that edge too. Not the lint itself (its text is full of examples), not
+/// upstream WPT, not generated dot-files.
+pub fn scanned(path: []const u8) bool {
+    if (!std.mem.endsWith(u8, path, ".zig")) return false;
+    if (skipped(path)) return false;
+    if (std.mem.eql(u8, path, "tools/lint_impls_boundary.zig")) return false;
+    if (std.mem.startsWith(u8, path, "tests/wpt/")) return false;
+    var parts = std.mem.splitScalar(u8, path, '/');
+    while (parts.next()) |part| {
+        if (part.len > 0 and part[0] == '.') return false;
+    }
+    return std.mem.startsWith(u8, path, "src/") or std.mem.startsWith(u8, path, "tests/") or std.mem.startsWith(u8, path, "tools/");
+}
+
+/// One `--list` line: `path:line Impl.member`.
+pub fn formatSite(buf: []u8, path: []const u8, ref: Reference) ![]u8 {
+    return std.fmt.bufPrint(buf, "{s}:{d} {s}.{s}", .{ path, ref.line, ref.impl, ref.member });
+}
+
 fn skipped(path: []const u8) bool {
     for (skipped_prefixes) |prefix| {
         if (std.mem.startsWith(u8, path, prefix)) return true;
@@ -598,6 +669,7 @@ pub fn main(init: std.process.Init) !void {
 
     var update = false;
     var rebase = false;
+    var list_sites = false;
     var args = try init.minimal.args.iterateAllocator(arena);
     defer args.deinit();
     _ = args.next();
@@ -606,8 +678,10 @@ pub fn main(init: std.process.Init) !void {
             update = true;
         } else if (std.mem.eql(u8, arg, "--rebase-for-rule-change")) {
             rebase = true;
+        } else if (std.mem.eql(u8, arg, "--list")) {
+            list_sites = true;
         } else {
-            std.debug.print("usage: lint_impls_boundary [--update | --rebase-for-rule-change]\n", .{});
+            std.debug.print("usage: lint_impls_boundary [--update | --rebase-for-rule-change | --list]\n", .{});
             std.process.exit(2);
         }
     }
@@ -654,25 +728,27 @@ pub fn main(init: std.process.Init) !void {
     // `Impl.member` of every reference the scan sees: what some code calls.
     var routed: std.StringHashMapUnmanaged(void) = .empty;
     var sites = std.StringHashMapUnmanaged(std.ArrayList(Reference)).empty;
-    var src = try std.Io.Dir.cwd().openDir(io, "src", .{ .iterate = true });
-    defer src.close(io);
-    var walker = try src.walk(arena);
-    defer walker.deinit();
-    while (try walker.next(io)) |entry| {
-        if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".zig")) continue;
-        const path = try std.fmt.allocPrint(arena, "src/{s}", .{entry.path});
-        if (skipped(path)) continue;
-        const text = try std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20));
-        const refs = (try scanFile(arena, path, text)).?;
-        for (refs.items) |ref| {
-            try routed.put(arena, try std.fmt.allocPrint(arena, "{s}.{s}", .{ ref.impl, ref.member }), {});
-            const key = try std.fmt.allocPrint(arena, "{s} {s}.{s}", .{ path, ref.impl, ref.member });
-            const gop = try current.getOrPut(arena, key);
-            if (!gop.found_existing) gop.value_ptr.* = 0;
-            gop.value_ptr.* += 1;
-            const site = try sites.getOrPut(arena, key);
-            if (!site.found_existing) site.value_ptr.* = .empty;
-            try site.value_ptr.append(arena, ref);
+    for ([_][]const u8{ "src", "tests", "tools" }) |root| {
+        var src = try std.Io.Dir.cwd().openDir(io, root, .{ .iterate = true });
+        defer src.close(io);
+        var walker = try src.walk(arena);
+        defer walker.deinit();
+        while (try walker.next(io)) |entry| {
+            if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".zig")) continue;
+            const path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ root, entry.path });
+            if (!scanned(path)) continue;
+            const text = try std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20));
+            const refs = (try scanFile(arena, path, text)).?;
+            for (refs.items) |ref| {
+                try routed.put(arena, try std.fmt.allocPrint(arena, "{s}.{s}", .{ ref.impl, ref.member }), {});
+                const key = try std.fmt.allocPrint(arena, "{s} {s}.{s}", .{ path, ref.impl, ref.member });
+                const gop = try current.getOrPut(arena, key);
+                if (!gop.found_existing) gop.value_ptr.* = 0;
+                gop.value_ptr.* += 1;
+                const site = try sites.getOrPut(arena, key);
+                if (!site.found_existing) site.value_ptr.* = .empty;
+                try site.value_ptr.append(arena, ref);
+            }
         }
     }
 
@@ -716,6 +792,25 @@ pub fn main(init: std.process.Init) !void {
     var buffer: [8192]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(io, &buffer);
     const out = &stdout_writer.interface;
+
+    // --list: every site, one per line, sorted - what a batch converts.
+    if (list_sites) {
+        var lines: std.ArrayList([]const u8) = .empty;
+        var site_it = sites.iterator();
+        while (site_it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            const path = key[0 .. std.mem.indexOfScalar(u8, key, ' ') orelse key.len];
+            for (entry.value_ptr.items) |ref| {
+                var buf: [512]u8 = undefined;
+                try lines.append(arena, try arena.dupe(u8, try formatSite(&buf, path, ref)));
+            }
+        }
+        std.mem.sort([]const u8, lines.items, {}, siteLessThan);
+        for (lines.items) |line| try out.print("{s}\n", .{line});
+        try out.print("# {d} sites\n", .{lines.items.len});
+        try out.flush();
+        return;
+    }
 
     // Strict, not a ratchet: a name that says a function is bound when it is not.
     if (name_misuse.items.len > 0) {
@@ -968,6 +1063,97 @@ test "outside the impls, every use of the impls module is counted" {
         "7:Node.InternalState",
         "9:Element.getInternalState",
     });
+}
+
+test "a name declared more than once is one name: each use counts once" {
+    const text =
+        \\const NodeImpl = @import("Node.zig");
+        \\fn a() void {
+        \\    const NodeImpl = @import("Node.zig");
+        \\    _ = NodeImpl.getParent(n);
+        \\}
+        \\fn b() void {
+        \\    const NodeImpl = @import("Node.zig");
+        \\    _ = NodeImpl.getOwnerDocument(n);
+        \\    _ = NodeImpl.getOwnerDocument(m);
+        \\}
+    ;
+    var refs = try implReferences(testing.allocator, "HTMLIFrameElement", text);
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{ "4:Node.getParent", "8:Node.getOwnerDocument", "9:Node.getOwnerDocument" });
+}
+
+test "an impls module declared more than once is one module" {
+    const text =
+        \\const impls = @import("impls");
+        \\fn f() void {
+        \\    const impls = @import("impls");
+        \\    _ = impls.Node.getParent(n);
+        \\}
+    ;
+    var refs = try externalReferences(testing.allocator, text);
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{"4:Node.getParent"});
+}
+
+test "an import of impls that reaches nothing is one reference: the module graph must drop it" {
+    const text =
+        \\const impls = @import("impls");
+        \\const interfaces = @import("interfaces");
+        \\pub fn main() void {
+        \\    _ = interfaces.Node.get_parentNode(x);
+        \\}
+    ;
+    var refs = try externalReferences(testing.allocator, text);
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{"1:impls.@import"});
+}
+
+test "an import of impls that reaches an impl is not also an unused import" {
+    var refs = try externalReferences(testing.allocator, "const impls = @import(\"impls\");\n_ = impls.Node.getParent(n);\n");
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{"2:Node.getParent"});
+}
+
+test "scanned roots: src, tests and tools count; the lint itself and upstream WPT do not" {
+    try testing.expect(scanned("src/browser/Browser.zig"));
+    try testing.expect(scanned("tests/dom/event_dispatch_test.zig"));
+    try testing.expect(scanned("tools/interfaces_main.zig"));
+    try testing.expect(!scanned("tools/lint_impls_boundary.zig"));
+    try testing.expect(!scanned("tests/wpt/foo.zig"));
+    try testing.expect(!scanned("tests/dom/.all_tests.zig"));
+    try testing.expect(!scanned("src/webidl/interfaces/Node.zig"));
+}
+
+test "a name inside a string literal is text, not a reference" {
+    const text =
+        \\const Blob = @import("impls").Blob;
+        \\test "Blob.text() is the UTF-8 decode" {
+        \\    _ = Blob.call_text(b);
+        \\    std.debug.print("Blob.deinit \\"x\\" {}", .{Blob.size});
+        \\}
+    ;
+    var refs = try externalReferences(testing.allocator, text);
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{ "3:Blob.call_text", "4:Blob.size" });
+}
+
+test "a helper module of the impls reached by name is counted: impls.cleanup" {
+    var refs = try externalReferences(testing.allocator, "const impls = @import(\"impls\");\nfn f() void { impls.cleanup.cleanupAllDomRegistries(); }\n");
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{"2:cleanup.cleanupAllDomRegistries"});
+}
+
+test "--list orders sites by path, then numerically by line" {
+    try testing.expect(siteLessThan({}, "a.zig:9 X.y", "a.zig:10 X.y"));
+    try testing.expect(siteLessThan({}, "a.zig:99 X.y", "b.zig:1 X.y"));
+    try testing.expect(!siteLessThan({}, "a.zig:10 X.y", "a.zig:9 X.y"));
+}
+
+test "--list prints one line per site: file:line Impl.member" {
+    var buf: [128]u8 = undefined;
+    const line = try formatSite(&buf, "src/html/event_utils.zig", .{ .line = 160, .impl = "Event", .member = "setIsTrusted" });
+    try testing.expectEqualStrings("src/html/event_utils.zig:160 Event.setIsTrusted", line);
 }
 
 test "a violation is any key above its baseline, including a key the baseline lacks" {

@@ -667,12 +667,6 @@ fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContain
     return &internal.policy_container;
 }
 
-/// Get the Node internal state from a Document instance
-/// Uses the registry pattern for proper inheritance chain
-pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
-    return NodeImpl.getInternalState(instance);
-}
-
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
@@ -2217,8 +2211,12 @@ pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) anyerro
     if (!try isRegistrableDomainSuffixOfOrEqualTo(allocator, value, effective)) return error.SecurityError;
 
     // 6. "If the surrounding agent's agent cluster's is origin-keyed is true,
-    // then return." Crane's agent clusters are site-keyed
-    // (Window.originAgentCluster is false).
+    // then return." This document's window's agent cluster: script that
+    // reaches this document is same origin-domain with it, so in its cluster
+    // (Window.originAgentCluster answers for it).
+    if (internal.default_view) |window| {
+        if (try interfaces.Window.get_originAgentCluster(window)) return;
+    }
 
     // 7. "Set this's origin's domain to the result of parsing the given
     // value."

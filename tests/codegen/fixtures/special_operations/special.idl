@@ -1,0 +1,72 @@
+interface Thing {};
+
+// No special operation: no special_operations at all.
+interface Plain {
+  readonly attribute unsigned long length;
+  Thing? item(unsigned long index);
+  Thing? namedItem(DOMString name);
+};
+
+// Named getter, setter and deleter declared with identifiers (Storage).
+interface KeyStore {
+  readonly attribute unsigned long length;
+  getter DOMString? getItem(DOMString key);
+  setter undefined setItem(DOMString key, DOMString value);
+  deleter undefined removeItem(DOMString key);
+};
+
+// An identified indexed getter that is not called `item` (SVGNumberList).
+interface NumberList {
+  readonly attribute unsigned long length;
+  getter Thing getItem(unsigned long index);
+  setter undefined (unsigned long index, Thing newItem);
+};
+
+// Anonymous named getter, setter and deleter (DOMStringMap).
+[LegacyOverrideBuiltIns]
+interface StringMap {
+  getter DOMString (DOMString name);
+  setter undefined (DOMString name, DOMString value);
+  deleter undefined (DOMString name);
+};
+
+// An anonymous indexed getter and an anonymous named one (HTMLFormElement):
+// one delegate per variety.
+[LegacyOverrideBuiltIns, LegacyUnenumerableNamedProperties]
+interface Form {
+  readonly attribute unsigned long length;
+  getter Thing (unsigned long index);
+  getter (Thing or Plain) (DOMString name);
+};
+
+// A named collection, its heir, and an heir that redeclares the named getter
+// (HTMLCollection, HTMLOptionsCollection, HTMLFormControlsCollection).
+[LegacyUnenumerableNamedProperties]
+interface Collection {
+  readonly attribute unsigned long length;
+  getter Thing? item(unsigned long index);
+  getter Thing? namedItem(DOMString name);
+};
+interface OptionsCollection : Collection {
+  setter undefined (unsigned long index, Thing? option);
+};
+interface ControlsCollection : Collection {
+  getter (Thing or Plain)? namedItem(DOMString name);
+};
+
+// The browsers' exceptions (golden rule 2): no named properties for either.
+interface TouchEvent {
+  getter boolean getModifierState(DOMString keyArg);
+};
+[LegacyOverrideBuiltIns]
+interface Document {
+  getter object (DOMString name);
+};
+interface XMLDocument : Document {};
+interface OptionsHeir : OptionsCollection {};
+
+// Crane's own named properties: CSSOM's camel-cased attributes.
+interface CSSStyleDeclaration {
+  readonly attribute unsigned long length;
+  getter CSSOMString item(unsigned long index);
+};

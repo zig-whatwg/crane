@@ -76,9 +76,12 @@ pub const AudioTrackList = struct {
 
         pub const has_constructor = false;
 
-        /// The anonymous indexed getter (`getter T (unsigned long index)`,
-        /// `call_getter`) is implemented: the binding installs indexed access.
-        pub const indexed_getter_implemented = @hasDecl(AudioTrackListImpl, "call_getter");
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_getter", .implemented = @hasDecl(AudioTrackListImpl, "call_getter") },
+        };
     };
 
     pub const State = runtime.FlattenedState(
