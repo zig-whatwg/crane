@@ -562,6 +562,7 @@ progress = [
   "1a94e0043 - ancestors count; baseline recorded; lint-impls ratchet in zig build test",
   "d80e120d56 - Codex row 13 converts collection-code references (1,691 -> 1,633)",
   "2026-10-11 - design decided (tmp/plans/impls-boundary-design.md): codegen-emitted init/deinit chain, lint counts each reference once (rebase to ~980), generated on* accessors, construction facts as chain arguments; batches B0-B11",
+  "8a0e526ca3 - B3: node-tree reads through interfaces.Node and the other generated interfaces; CharacterData's data as a construction argument, read in place through dom.character_data",
 ]
 
   [[infra.items]]

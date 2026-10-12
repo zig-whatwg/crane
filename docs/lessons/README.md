@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [An IDL string getter copies; a tree read borrows](architecture-an-idl-string-getter-copies-a-tree-read-borrows.md) - Before moving a call onto the generated interface, read the generated member and the impl member side by side: a link getter forwards, a string getter copies, a setter runs the IDL algorithm.
 - [A union result is owned as its active member is](architecture-a-union-result-is-owned-as-its-active-member.md) - An ownership rule keyed on a type is wrong for a union: ask the value which member it holds, and keep the safe default for every member you cannot prove fresh.
 - [A curl multi handle is its agent's; the connections are its Browser's](architecture-a-multi-handle-is-the-agent-s-the-connections-are-the-browser-s.md) - Choose a network object's owner by its thread rule: single-threaded handles go to the agent that pumps them; shared, locked state goes to the Browser - never to a thread, and never to the process.
 - [Free a parser buffer on one cleanup path](architecture-free-a-parser-buffer-on-one-cleanup-path.md) - Use one deferred cleanup for temporary storage, and test failure at the final allocation as well as success.
