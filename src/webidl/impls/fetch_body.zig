@@ -640,6 +640,11 @@ pub fn parseFormData(allocator: std.mem.Allocator, mime_type: ?*const @import("m
         const index = fetch.internal.mime.parameterIndex(mime.*, "boundary") orelse return error.TypeError;
         const boundary = try @import("infra").bytes.isomorphicEncode(allocator, mime.parameters.entries.items()[index].value);
         defer allocator.free(boundary);
+        // RFC 2046 section 5.1.1 requires a nonempty boundary. MIME parsing
+        // accepts an empty quoted parameter, but it is not a delimiter.
+        // Blink Body::formData likewise rejects before starting its loader:
+        // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/fetch/body.cc
+        if (boundary.len == 0) return error.TypeError;
         const entries = xhr.multipart_parser.parseMultipartFormData(allocator, bytes, boundary) catch return error.TypeError;
         defer {
             for (entries) |*entry| entry.deinit(allocator);
