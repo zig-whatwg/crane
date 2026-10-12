@@ -461,10 +461,9 @@ fn destroyWorkerRealmIn(
     }
     ffi.v8_Context_Dispose(context);
 
-    // What the process keeps per isolate: its templates in the registry
-    // (disposed here - Globals of this isolate), its template storage and its
-    // allocator in the isolate's data slots.
-    template_registry.clearForIsolate(isolate);
+    // What the adapter keeps in the isolate's data slots: its template
+    // storage - the registry's templates disposed with it, Globals of this
+    // isolate - and its allocator.
     isolate_templates.cleanupTemplateStorage(isolate, allocator);
     isolate_allocator.deinitIsolateAllocator(isolate);
 }

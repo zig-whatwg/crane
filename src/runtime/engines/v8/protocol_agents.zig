@@ -23,7 +23,6 @@ const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
 const intl_binding = @import("intl_binding.zig");
 const isolate_templates = @import("isolate_templates.zig");
-const template_registry = @import("template_registry.zig");
 const context_manager = @import("context_manager.zig");
 /// worker_realm.zig's agent operations.
 const worker_realm = @import("worker_realm.zig");
@@ -50,10 +49,6 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     // A host that already started the platform set the runtime flags then
     // too.
     if (!ffi.v8_Platform_IsInitialized()) snapshot_loader.initializePlatformForRuntime();
-    // The teardown handlers of the adapter's per-isolate modules, once, while
-    // the process starts: agents are made on every Browser and worker thread
-    // (docs/instances.md), and the handler table is read-only after this.
-    isolate_lifecycle.registerBuiltinHandlers() catch |err| log.warn("the isolate teardown handlers were not registered: {}", .{err});
     // [code_generation_checks]: the process's dispatchers, once, before any
     // agent's thread runs; each agent enables its isolate's callbacks.
     ffi.v8_SetProtocolCodeGenerationDispatchers(onCodeGenerationFromStrings, onWasmCodeGeneration);
@@ -133,9 +128,6 @@ const AgentRecord = struct {
     /// V8PerIsolateData; disposed by the agent's end. Read and written on
     /// the agent's own thread only.
     window_properties_template: ?*ffi.FunctionTemplate = null,
-    /// template_registry.cache_generation when it was made: a later
-    /// generation means the template registry was rebuilt, and so must it be.
-    window_properties_generation: u64 = 0,
     /// The agent's live Intl objects' internal slots (intl_binding.Objects):
     /// made by its first Intl construction, on the agent's thread; freed by
     /// its end. The adapter's per-isolate state is the agent's (instances
@@ -292,15 +284,11 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // What every agent's isolate has before a realm is made in it: the
     // isolate's allocator (the templates it caches), and ShadowRealm support
     // (HostCreateShadowRealmContextCallback, and the agent's own record of
-    // its ShadowRealms). destroyAgent undoes them. The teardown handlers of
-    // the adapter's per-isolate modules are the process's (initializeEngine);
-    // a host that never started the engine gets them here, on its one thread.
+    // its ShadowRealms). destroyAgent undoes them (the teardown steps are
+    // isolate_lifecycle's constant table).
     {
         const entered = EnteredIsolate.of(@ptrCast(isolate));
         defer entered.leave();
-        if (!isolate_lifecycle.builtinHandlersRegistered()) {
-            isolate_lifecycle.registerBuiltinHandlers() catch |err| log.warn("the isolate's teardown handlers were not registered: {}", .{err});
-        }
         isolate_allocator.initIsolateAllocator(isolate, options.allocator, false) catch |err| {
             // One restored from a snapshot may have it already.
             if (err != error.AllocatorAlreadyInitialized) log.warn("the isolate's allocator was not made: {}", .{err});
@@ -363,9 +351,8 @@ pub fn endAgent(agent: *Agent) void {
     if (host_agent) {
         isolate_lifecycle.cleanupAll(isolate, allocator);
     } else {
-        // cleanupAll's isolate-scoped handlers, without the thread's.
+        // cleanupAll's isolate-scoped steps, without the thread's.
         isolate_templates.cleanupTemplateStorage(isolate, allocator);
-        template_registry.clearForIsolate(isolate);
         isolate_allocator.deinitIsolateAllocator(isolate);
     }
     ffi.v8_Isolate_RequestGarbageCollection(isolate);

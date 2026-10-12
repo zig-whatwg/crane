@@ -43,17 +43,9 @@ const specialBinding = @import("interface.zig").specialBinding;
 
 const log = std.log.scoped(.template_registry);
 
-/// One isolate's templates, by interface name. The names are BORROWED: they
-/// are the generated interfaces' comptime names, which outlive the registry.
-const IsolateTemplates = std.StringHashMapUnmanaged(*v8.FunctionTemplate);
-
-/// What the registry's tables are allocated with: the process's, as the
-/// registry is (instances B2 moves it onto the agent record).
-const table_allocator = std.heap.c_allocator;
-
-/// The template registry: per isolate, its FunctionTemplates by interface
-/// name - entries that live exactly as long as their isolate
-/// (`clearForIsolate`) and grow with it.
+/// Each isolate's registry is its own: the `registered` map of its template
+/// storage (isolate_templates.zig, the isolate's data slot 1), entries that
+/// live exactly as long as their isolate and grow with it.
 ///
 /// It was one fixed array of 8,192 (interface, isolate) entries for the whole
 /// process, and every isolate registers ~1,260. A file with many shared
@@ -63,68 +55,12 @@ const table_allocator = std.heap.c_allocator;
 /// interface it had just registered, made a second one (createTemplateFresh),
 /// and XMLHttpRequestEventTarget.prototype's [[Prototype]] was not that
 /// realm's EventTarget.prototype (xhr/idlharness.any.worker.html 151/160
-/// after it, 153/160 alone). A map per isolate cannot fill, and finds an
-/// entry without scanning every other isolate's.
-///
-/// Isolates are made, read and ended on several threads (a worker's runs on
-/// its own), so the table of isolates is read and written under
-/// `templates_lock`, held only for a find, an insert or a removal. Each
-/// isolate's map is heap-allocated - a rehash of the table never moves it -
-/// and is read and written only on its isolate's thread, without the lock.
-// process-wide: interface templates per live isolate, keyed by isolate, under templates_lock (instances B2 moves each isolate's map onto its agent record).
-var templates: std.AutoHashMapUnmanaged(*v8.Isolate, *IsolateTemplates) = .empty;
-// process-wide: guards `templates` (the table of isolates), shared by every isolate's thread.
-var templates_lock: std.Io.Mutex = .init;
-
-/// `isolate`'s map, or null.
-fn setOf(isolate: *v8.Isolate) ?*IsolateTemplates {
-    std.Io.Threaded.mutexLock(&templates_lock);
-    defer std.Io.Threaded.mutexUnlock(&templates_lock);
-    return templates.get(isolate);
-}
-
-/// `isolate`'s map, made if it has none. Null when out of memory.
-fn setFor(isolate: *v8.Isolate) ?*IsolateTemplates {
-    std.Io.Threaded.mutexLock(&templates_lock);
-    defer std.Io.Threaded.mutexUnlock(&templates_lock);
-    const slot = templates.getOrPut(table_allocator, isolate) catch return null;
-    if (slot.found_existing) return slot.value_ptr.*;
-    const set = table_allocator.create(IsolateTemplates) catch {
-        templates.removeByPtr(slot.key_ptr);
-        return null;
-    };
-    set.* = .empty;
-    slot.value_ptr.* = set;
-    return set;
-}
-
-/// Take `isolate`'s map out of the table: the caller frees it.
-fn takeSet(isolate: *v8.Isolate) ?*IsolateTemplates {
-    std.Io.Threaded.mutexLock(&templates_lock);
-    defer std.Io.Threaded.mutexUnlock(&templates_lock);
-    const kv = templates.fetchRemove(isolate) orelse return null;
-    return kv.value;
-}
-
-fn destroySet(set: *IsolateTemplates, dispose: bool) void {
-    if (dispose) {
-        var iter = set.valueIterator();
-        while (iter.next()) |template| v8.v8_FunctionTemplate_Dispose(template.*);
-    }
-    set.deinit(table_allocator);
-    table_allocator.destroy(set);
-}
-
-/// Every isolate's map out of the table, each freed (`dispose`: its
-/// templates disposed first).
-fn destroyAllSets(dispose: bool) void {
-    std.Io.Threaded.mutexLock(&templates_lock);
-    defer std.Io.Threaded.mutexUnlock(&templates_lock);
-    var sets = templates.valueIterator();
-    while (sets.next()) |set| destroySet(set.*, dispose);
-    templates.deinit(table_allocator);
-    templates = .empty;
-}
+/// after it, 153/160 alone). Then it was a process-wide map of per-isolate
+/// maps under a mutex, taken on every wrap of every agent's thread. An
+/// isolate's own map cannot fill, needs no lock - an isolate is used on one
+/// thread at a time - and nothing of another isolate reaches it (instances
+/// B2).
+const isolate_templates = @import("isolate_templates.zig");
 
 /// Snapshot mode flag - when true, templates are NOT cached
 ///
@@ -152,95 +88,26 @@ fn destroyAllSets(dispose: bool) void {
 /// ```
 pub var snapshot_mode: bool = false;
 
-/// Global cache generation counter
-/// Incremented each time clear() is called to invalidate all per-interface caches.
-/// Per-interface static caches in V8Interface(T) store this generation along with
-/// their cached templates. When the generation doesn't match, the cache is stale.
-pub var cache_generation: u64 = 0;
-
-/// Dispose and remove only the templates belonging to `isolate`.
-///
-/// `clear()` below wipes EVERY entry. That was harmless while the registry could
-/// only ever hold one isolate's templates, but register() is now per-(interface,
-/// isolate) - so disposing one isolate with clear() would dispose a still-live
-/// worker isolate's FunctionTemplates too, and the next use of those would be a
-/// use-after-free.
-///
-/// The cache generation is still bumped: per-interface caches in V8Interface(T)
-/// compare against a cached isolate pointer, and V8 may hand the same address to a
-/// new isolate, so they must be invalidated whenever any isolate goes away.
-///
-/// The process-wide C++ caches that clear() also resets - async iterator
-/// templates, module resolve/dynamic-import callbacks, the namespace context -
-/// are deliberately NOT touched here. They are not per-isolate, and tearing them
-/// down while another isolate is still running would break it. Full teardown
-/// still goes through clear().
+/// Dispose and remove `isolate`'s templates, before it is disposed, on its
+/// thread: its template storage ends (isolate_templates.cleanupTemplateStorage).
+/// No other isolate's entry is touched.
 pub fn clearForIsolate(isolate: *v8.Isolate) void {
-    if (takeSet(isolate)) |set| destroySet(set, true);
-    cache_generation +%= 1;
-}
-
-/// Clear all registered templates
-///
-/// MUST be called before disposing an isolate and creating a new one.
-/// V8 FunctionTemplates are bound to a specific isolate and cannot be reused
-/// across isolates. Failure to call this before creating a new isolate will
-/// cause crashes (bus errors) when trying to use stale template references.
-///
-/// This also increments the cache_generation counter, which invalidates all
-/// per-interface static caches in V8Interface(T). This is necessary because:
-/// 1. V8 may reuse the same memory address for a new isolate
-/// 2. Per-interface caches check (isolate == cached_isolate) which would
-///    incorrectly match if addresses are reused
-/// 3. The generation counter ensures we detect isolate disposal even if
-///    the new isolate has the same address
-pub fn clear() void {
-    // Dispose V8 FunctionTemplate handles before clearing entries
-    // V8 Global handles must be explicitly disposed to release resources
-    destroyAllSets(true);
-    // Increment generation to invalidate all per-interface static caches
-    cache_generation +%= 1;
-    // Clear the async iterator template cache in C++ layer
-    // This cache is also isolate-specific and must be cleared
-    v8.v8_ClearAsyncIteratorTemplateCache();
-    // Clear module callbacks - their user_data pointers become invalid
-    // when the Zig runtime is deinitialized
-    v8.v8_ClearModuleResolveCallback();
-    v8.v8_ClearDynamicImportCallback();
-
-    // Clear Zig-side global state that holds V8 references: the global
-    // namespace context (holds V8 context references).
-    const namespace = @import("namespace.zig");
-    namespace.clearGlobalContext();
+    isolate_templates.cleanupTemplateStorage(isolate, std.heap.c_allocator);
 }
 
 /// clearForIsolate without disposing anything: for a test whose templates are
 /// synthetic pointers.
 pub fn forgetIsolateForTest(isolate: *v8.Isolate) void {
-    if (takeSet(isolate)) |set| destroySet(set, false);
+    isolate_templates.forgetTemplateStorage(isolate);
 }
 
-/// How many (interface, isolate) entries are currently registered.
+/// How many interfaces `isolate` has registered.
 ///
 /// Exposed for tests and diagnostics: the count is what distinguishes a genuine
 /// re-registration (updates in place) from an append.
-pub fn registeredCount() usize {
-    std.Io.Threaded.mutexLock(&templates_lock);
-    defer std.Io.Threaded.mutexUnlock(&templates_lock);
-    var count: usize = 0;
-    var sets = templates.valueIterator();
-    while (sets.next()) |set| count += set.*.count();
-    return count;
-}
-
-/// Remove every entry WITHOUT disposing any V8 handle.
-///
-/// `clear()` calls `v8_FunctionTemplate_Dispose` on each entry, which is correct
-/// for real templates and fatal for a test using synthetic pointers. This exists
-/// so a test can borrow the registry and put it back.
-pub fn resetForTest() void {
-    destroyAllSets(false);
-    cache_generation +%= 1;
+pub fn registeredCount(isolate: *v8.Isolate) usize {
+    const storage = isolate_templates.getTemplateStorage(isolate) orelse return 0;
+    return storage.registered.count();
 }
 
 /// Register a FunctionTemplate for an interface
@@ -251,7 +118,6 @@ pub fn resetForTest() void {
 /// **Snapshot Mode**: When `snapshot_mode` is true, templates ARE still registered
 /// for deduplication purposes (ensuring parent templates are reused). The Global
 /// handles will be cleared by v8_Snapshot_ClearGlobalHandles() before CreateBlob().
-/// After snapshot creation, the registry should be cleared via clear().
 pub fn register(
     interface_name: []const u8,
     template: *v8.FunctionTemplate,
@@ -261,14 +127,14 @@ pub fn register(
     // The handles will be cleared by v8_Snapshot_ClearGlobalHandles() before CreateBlob().
 
     // One entry per (interface, isolate): V8 Global<FunctionTemplate> handles
-    // are isolate-scoped and cannot be shared, and a second isolate
-    // registering "Element" must not take the first one's entry. Registering
-    // the same interface again in the same isolate replaces its entry.
-    const set = setFor(isolate) orelse {
+    // are isolate-scoped and cannot be shared, and each isolate's entries are
+    // in its own storage. Registering the same interface again in the same
+    // isolate replaces its entry.
+    const storage = isolate_templates.storageFor(isolate) orelse {
         log.err("template registry: out of memory registering '{s}'", .{interface_name});
         return;
     };
-    set.put(table_allocator, interface_name, template) catch {
+    storage.registered.put(storage.allocator, interface_name, template) catch {
         log.err("template registry: out of memory registering '{s}'", .{interface_name});
     };
 }
@@ -291,8 +157,8 @@ pub fn getTemplate(interface_name: []const u8) ?*v8.FunctionTemplate {
 pub fn getTemplateForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) ?*v8.FunctionTemplate {
     // If no isolate provided, can't match
     const key = isolate orelse return null;
-    const set = setOf(key) orelse return null;
-    return set.get(interface_name);
+    const storage = isolate_templates.getTemplateStorage(key) orelse return null;
+    return storage.registered.get(interface_name);
 }
 
 /// Wrap a Zig runtime.Instance into a V8 Object with the correct prototype
