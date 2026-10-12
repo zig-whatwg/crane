@@ -379,6 +379,21 @@ pub fn serializeCookies(allocator: std.mem.Allocator, cookies: []const Cookie) !
     return output.toOwnedSlice(allocator);
 }
 
+/// A conservative, allocation-free request shortcut. Expiry, path, Secure
+/// and SameSite still belong to retrieval; a false result proves no stored
+/// cookie's host could match, so a site/PSL comparison cannot affect output.
+pub fn hasCookiesForHost(jar: *CookieJar, host: []const u8) bool {
+    jar.lock();
+    defer jar.unlock();
+    for (jar.cookies.items) |cookie| {
+        const domain = cookie.domain orelse continue;
+        if (cookie.host_only) {
+            if (std.ascii.eqlIgnoreCase(host, domain)) return true;
+        } else if (domain_matching.domainMatches(host, domain)) return true;
+    }
+    return false;
+}
+
 /// "Retrieve Cookies" with `options`, then "Serialize Cookies": the
 /// cookie-string - a `Cookie` header's value, or document.cookie's. Empty
 /// when no cookie matches. OWNED.

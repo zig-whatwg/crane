@@ -23,6 +23,7 @@ pub fn requestCookieHeader(allocator: Allocator, request: *const InternalRequest
     //    then it should return.
     const jar = request.cookie_jar orelse return null;
     const url = RequestUrl.of(request.currentUrl()) orelse return null;
+    if (!cookiestore.http_integration.hasCookiesForHost(jar, url.host)) return null;
     // 2. Let sameSite be the result of determining the same-site mode for
     //    request.
     const same_site = try sameSiteMode(allocator, request);
@@ -81,10 +82,15 @@ pub fn storeResponseCookies(allocator: Allocator, request: *const InternalReques
     }
 }
 
-/// Fetch "determine the same-site mode" for `request`.
-///
-/// RFC 6265bis 5.2/5.8.3, with Chromium cookie_util.cc
-/// ComputeSameSiteContextForRequest's separation of site and navigation.
+/// Browser-shaped replacement for Fetch's six "determine the same-site
+/// mode" steps, not a literal transcription. The browsers retain Strict
+/// on same-site top-level navigation and permit Lax on cross-site safe
+/// top-level navigation (RFC 6265bis 5.8.3); Fetch steps 2-3 currently
+/// order those decisions differently and step 1 only admits GET/POST.
+/// Keep site and navigation separate, as Chromium does in
+/// ComputeSameSiteContextForRequest:
+/// https://github.com/chromium/chromium/blob/main/net/cookies/cookie_util.cc
+/// The missing captured client/ancestor facts are tracked below.
 fn sameSiteMode(allocator: Allocator, request: *const InternalRequest) !cookiestore.SameSiteMode {
     const top_level = request.mode == .navigate and request.destination == .document;
     // TODO (cookies lane Q3, 2026-10-12): navigation must populate this
@@ -95,13 +101,18 @@ fn sameSiteMode(allocator: Allocator, request: *const InternalRequest) !cookiest
         // A user-agent request without a client starts at its own site.
         .client => request.getUrl(),
     };
-    var same_site = try cookiestore.sameSite(allocator, origin, request.currentUrl());
-    // RFC 6265bis 5.2: every redirect must remain same-site. Browser WPT
-    // failures stop at different assertions (no majority); Q6 follows the
-    // spec here rather than inferring unreported later assertion results.
+    var sites = cookiestore.SiteComparison.init(allocator, origin);
+    defer sites.deinit();
+    var same_site = try sites.matches(request.currentUrl());
+    // Fetch same-site mode step 5 / request redirect-taint:
+    // https://fetch.spec.whatwg.org/#concept-request-tainted-origin
+    // Preserve the origin-based site guard across the URL list. Browser
+    // WPT failures stop at different assertions (row 24 Q6: no majority
+    // evidence for a redirect exception); do not infer unreported results.
     if (same_site) {
-        for (request.url_list.items) |url| {
-            if (!try cookiestore.sameSite(allocator, origin, url)) {
+        // currentUrl is the last entry, already checked above.
+        for (request.url_list.items[0 .. request.url_list.items.len - 1]) |url| {
+            if (!try sites.matches(url)) {
                 same_site = false;
                 break;
             }
