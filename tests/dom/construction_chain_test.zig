@@ -13,6 +13,13 @@
 //!   its init chained to CharacterData's past Text's.
 //! - The destruction chain frees every level: std.testing.allocator fails a
 //!   test whose teardown left anything behind.
+//! - A fact given at construction travels the chain as a construction
+//!   argument (`initWith`), the C++ constructor's parameter list - not a
+//!   non-IDL factory (the user's decision Q4). A CookieStore is told whether
+//!   its relevant settings object is a secure context: Window and
+//!   ServiceWorkerGlobalScope make their cookieStore attribute's store with
+//!   `interfaces.CookieStore.initWith(.., .{ .is_secure_context = .. })`,
+//!   where both used to name CookieStore's impl for its `createForOrigin`.
 const std = @import("std");
 const testing = std.testing;
 const runtime = @import("runtime");
@@ -89,4 +96,23 @@ test "a tree's teardown frees every level of every node in it" {
     _ = try interfaces.Node.call_appendChild(fragment, try interfaces.Text.init(allocator, ctx));
     _ = try interfaces.Node.call_appendChild(fragment, try interfaces.Comment.init(allocator, ctx));
     _ = try interfaces.Node.call_appendChild(fragment, try interfaces.CDATASection.init(allocator, ctx));
+}
+
+test "CookieStore takes is_secure_context at construction; nothing else does" {
+    try testing.expect(interfaces.CookieStore.takesConstructionArg("is_secure_context"));
+    try testing.expect(!interfaces.CookieStore.takesConstructionArg("origin"));
+    // Its parent's chain has no such argument, and no unrelated chain does.
+    try testing.expect(!interfaces.EventTarget.takesConstructionArg("is_secure_context"));
+    try testing.expect(!interfaces.HTMLDivElement.takesConstructionArg("is_secure_context"));
+}
+
+test "a CookieStore made with or without its construction argument is torn down whole" {
+    var realm: Realm = undefined;
+    try realm.init();
+    defer realm.deinit();
+
+    const insecure = try interfaces.CookieStore.initWith(allocator, &realm.ctx, .{ .is_secure_context = false });
+    interfaces.CookieStore.deinit(insecure);
+    const secure = try interfaces.CookieStore.init(allocator, &realm.ctx);
+    interfaces.CookieStore.deinit(secure);
 }

@@ -45,7 +45,6 @@ const encoding = @import("encoding");
 /// An XMLHttpRequest is an XMLHttpRequestEventTarget, which is an EventTarget:
 /// its event handlers, `onreadystatechange` among them, live in EventTarget's
 /// event handler map, and its events are dispatched there.
-const XMLHttpRequestEventTargetImpl = @import("XMLHttpRequestEventTarget.zig");
 const EventTargetImpl = @import("EventTarget.zig");
 
 pub const State = XMLHttpRequest.State;
@@ -135,16 +134,10 @@ pub fn installHooks() void {
     });
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try XMLHttpRequestEventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer XMLHttpRequestEventTargetImpl.deinit(instance);
-
+/// XMLHttpRequest's own construction steps: the generated chain runs XMLHttpRequestEventTarget's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Create internal state
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
@@ -152,14 +145,12 @@ pub fn init(
     internal.* = InternalState.initState(allocator);
 
     // Store in instance
-    const state = instance.getState(StateType);
+    const state = instance.getState(State);
     state.own._internal = internal;
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// XMLHttpRequest's own teardown: the generated chain runs XMLHttpRequestEventTarget's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinitState(instance);
@@ -167,7 +158,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         state.own._internal = null;
     }
     // The event handlers and listeners go with EventTarget's state.
-    XMLHttpRequestEventTargetImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit here - GC layer handles it
 }
 
@@ -178,8 +168,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 1. Set this's upload object to a new XMLHttpRequestUpload object."
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(ctx.allocator, State, &XMLHttpRequest.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try XMLHttpRequest.init(ctx.allocator, ctx);
+    errdefer XMLHttpRequest.deinit(instance);
 
     // Step 1: Set upload object (TODO: when XMLHttpRequestUpload is implemented)
     // For now, the XHR state is initialized in init()

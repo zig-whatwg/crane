@@ -29,25 +29,6 @@ pub const ImplError = error{
 /// Internal state for implementation-specific data
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // An XMLHttpRequestEventTarget is an EventTarget: its handlers live in
-    // EventTarget's map, and events are dispatched at it.
-    return EventTargetImpl.init(allocator, StateType, vtable, ctx);
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // Releases the event handler map's values with the rest of EventTarget's
-    // state. GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-    EventTargetImpl.deinit(instance);
-}
-
 /// Getter for onloadstart
 pub fn get_onloadstart(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "loadstart");

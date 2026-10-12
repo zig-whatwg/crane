@@ -16,7 +16,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const XMLHttpRequestUpload = interfaces.XMLHttpRequestUpload;
-const XMLHttpRequestEventTargetImpl = @import("XMLHttpRequestEventTarget.zig");
 
 pub const State = XMLHttpRequestUpload.State;
 
@@ -26,21 +25,3 @@ pub const ImplError = error{
 
 /// Internal state for implementation-specific data
 pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // An XMLHttpRequestUpload is an XMLHttpRequestEventTarget, whose event
-    // handlers - and listeners - are EventTarget's.
-    return XMLHttpRequestEventTargetImpl.init(allocator, StateType, vtable, ctx);
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-    XMLHttpRequestEventTargetImpl.deinit(instance);
-}

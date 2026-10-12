@@ -20,7 +20,6 @@ const SharedWorkerGlobalScope = interfaces.SharedWorkerGlobalScope;
 
 // Ancestors: a SharedWorkerGlobalScope IS a WorkerGlobalScope and an
 // EventTarget, and reaches their state through their impls.
-const WorkerGlobalScopeImpl = @import("WorkerGlobalScope.zig");
 const EventTargetImpl = @import("EventTarget.zig");
 
 /// The worker host: the side of "run a worker" that owns this scope's agent.
@@ -46,19 +45,14 @@ pub const InternalState = struct {
     }
 };
 
-/// Initialize instance.
+/// SharedWorkerGlobalScope's own construction steps: the generated chain runs WorkerGlobalScope's first.
 ///
-/// Chains to WorkerGlobalScope, and so to EventTarget. When `ctx` is the realm
-/// of a worker the host is running, the scope takes that worker's name.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try WorkerGlobalScopeImpl.init(allocator, StateType, vtable, ctx);
-    errdefer WorkerGlobalScopeImpl.deinit(instance);
-    if (worker_host.scopeSettings(ctx)) |settings| {
+/// When its realm is that of a worker the host is running, the scope takes
+/// that worker's name.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
+    if (worker_host.scopeSettings(instance.ctx)) |settings| {
         const internal_state = try allocator.create(InternalState);
         errdefer allocator.destroy(internal_state);
         internal_state.* = .{
@@ -67,18 +61,16 @@ pub fn init(
         };
         instance.getState(State).own._internal = internal_state;
     }
-    return instance;
 }
 
-/// Deinitialize instance.
-pub fn deinit(instance: *runtime.Instance) void {
+/// SharedWorkerGlobalScope's own teardown: the generated chain runs WorkerGlobalScope's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    WorkerGlobalScopeImpl.deinit(instance);
 }
 
 /// Getter for name: "The name getter steps are to return this's name."

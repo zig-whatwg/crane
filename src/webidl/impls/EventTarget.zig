@@ -215,40 +215,31 @@ pub fn installHooks() void {
     dom_module.event_handlers.install(.{ .get = getHandlerAddress, .set = setHandlerAddress, .erase = eraseAllEventListenersAndHandlers });
 }
 
-/// Initialize instance (creates the instance)
-/// This is the root of the DOM inheritance chain - creates the Instance and
-/// initializes EventTarget's internal state.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
+/// EventTarget's own construction steps, the first of every EventTarget's
+/// chain: the generated root makes the instance, then this registers
+/// EventTarget's internal state.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize EventTarget internal state in registry
     _ = try initInternal(instance, allocator);
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// EventTarget's own teardown, the last of every EventTarget's destruction
+/// chain. The slot itself is the collector's to free, or the queue's.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up internal state from registry
     if (getInternalFromRegistry(instance)) |internal| {
         internal.deinit();
         removeFromRegistry(instance);
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Constructor implementation
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-eventtarget
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &EventTarget.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try EventTarget.init(ctx.allocator, ctx);
+    errdefer EventTarget.deinit(instance);
 
     // Note: EventTarget.State.own is empty struct, so no _internal field
     // For now, we'll manage internal state separately
