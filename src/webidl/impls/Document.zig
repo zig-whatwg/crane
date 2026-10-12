@@ -1203,12 +1203,6 @@ pub fn get_prerendering(instance: *runtime.Instance) anyerror!bool {
     return false;
 }
 
-/// Getter for onprerenderingchange
-/// Returns the event handler for prerenderingchange events.
-pub fn get_onprerenderingchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "prerenderingchange");
-}
-
 /// Getter for fullscreenEnabled
 /// Fullscreen API - Returns whether fullscreen is enabled
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreenenabled
@@ -1225,16 +1219,6 @@ pub fn get_fullscreen(instance: *runtime.Instance) anyerror!bool {
     return internal.fullscreen_element != null;
 }
 
-/// Getter for onfullscreenchange
-pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "fullscreenchange");
-}
-
-/// Getter for onfullscreenerror
-pub fn get_onfullscreenerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "fullscreenerror");
-}
-
 /// Getter for timeline
 pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
@@ -1247,26 +1231,6 @@ pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_pictureInPictureEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return false;
-}
-
-/// Getter for onpointerlockchange
-pub fn get_onpointerlockchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerlockchange");
-}
-
-/// Getter for onpointerlockerror
-pub fn get_onpointerlockerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerlockerror");
-}
-
-/// Getter for onfreeze
-pub fn get_onfreeze(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "freeze");
-}
-
-/// Getter for onresume
-pub fn get_onresume(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "resume");
 }
 
 /// Getter for wasDiscarded
@@ -1855,16 +1819,6 @@ pub fn get_visibilityState(instance: *runtime.Instance) anyerror!enums.DocumentV
     return internal.visibility_state;
 }
 
-/// Getter for onreadystatechange
-pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "readystatechange");
-}
-
-/// Getter for onvisibilitychange
-pub fn get_onvisibilitychange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "visibilitychange");
-}
-
 /// Getter for fgColor
 /// HTML §14.3.11 (obsolete) - Returns document's text color
 pub fn get_fgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
@@ -2109,67 +2063,9 @@ pub fn setActiveElement(instance: *runtime.Instance, element: ?*runtime.Instance
     internal.active_element = element;
 }
 
-// =============================================================================
-// Event Handler Helpers
-// =============================================================================
-
-/// Document's own event handler IDL attributes (onreadystatechange,
-/// onvisibilitychange, ...): the document is their target, and they live in
-/// its event handler map on EventTarget with every other handler. The
-/// GlobalEventHandlers members are inherited (impls/GlobalEventHandlers.zig).
-fn getEventHandler(instance: *runtime.Instance, name: []const u8) typedefs.EventHandler {
-    return @import("EventTarget.zig").eventHandler(typedefs.EventHandler, instance, name);
-}
-
-fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typedefs.EventHandler) ImplError!void {
-    @import("EventTarget.zig").setEventHandler(typedefs.EventHandler, instance, name, handler) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return error.InvalidStateError,
-    };
-}
-
-// =============================================================================
-// Event Handler Getters
-// =============================================================================
-
-// =============================================================================
-// Event Handler Setters
-// =============================================================================
-
-/// Setter for onprerenderingchange
-pub fn set_onprerenderingchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "prerenderingchange", value);
-}
-
-/// Setter for onfullscreenchange
-pub fn set_onfullscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "fullscreenchange", value);
-}
-
-/// Setter for onfullscreenerror
-pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "fullscreenerror", value);
-}
-
-/// Setter for onpointerlockchange
-pub fn set_onpointerlockchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "pointerlockchange", value);
-}
-
-/// Setter for onpointerlockerror
-pub fn set_onpointerlockerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "pointerlockerror", value);
-}
-
-/// Setter for onfreeze
-pub fn set_onfreeze(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "freeze", value);
-}
-
-/// Setter for onresume
-pub fn set_onresume(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "resume", value);
-}
+// Document's own event handler IDL attributes (onreadystatechange,
+// onvisibilitychange, ...) are the generated interface's: HTML's getter and
+// setter, through dom.event_handlers (HTML 8.1.8.1).
 
 /// HTML document.domain's setter.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
@@ -2383,16 +2279,6 @@ pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) any
         internal.design_mode = runtime.DOMString.initInterned("off");
     }
     // Invalid values are ignored per spec
-}
-
-/// Setter for onreadystatechange
-pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "readystatechange", value);
-}
-
-/// Setter for onvisibilitychange
-pub fn set_onvisibilitychange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "visibilitychange", value);
 }
 
 /// Setter for fgColor

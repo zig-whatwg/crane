@@ -2593,7 +2593,7 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
     const element_name = internal.data.local_name.asSlice();
     const forwards_to_window = (std.mem.eql(u8, element_name, "body") or std.mem.eql(u8, element_name, "frameset")) and
-        @import("event_handler_target.zig").isWindowReflecting(local_name);
+        dom.event_handlers.isWindowReflecting(local_name);
 
     // A document with no browsing context has no active global to run in,
     // and "getting the current value" would never compile the handler there

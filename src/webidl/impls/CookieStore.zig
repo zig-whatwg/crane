@@ -136,17 +136,6 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-/// Getter for onchange (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "change");
-}
-
-/// Setter for onchange: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "change", value);
-}
-
 // ============================================================================
 // Process cookie changes
 //

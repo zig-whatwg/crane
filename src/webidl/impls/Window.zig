@@ -1669,23 +1669,6 @@ pub fn get_portalHost(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null;
 }
 
-// =============================================================================
-// Event handler IDL attributes (HTML §8.1.8.1)
-// =============================================================================
-//
-// The GlobalEventHandlers and WindowEventHandlers members are inherited
-// (impls/GlobalEventHandlers.zig, impls/WindowEventHandlers.zig). These
-// helpers are for Window's own - ondevicemotion, onorientationchange, ... -
-// whose target is the window, in its event handler map on EventTarget.
-
-fn getEventHandler(instance: *runtime.Instance, name: []const u8) typedefs.EventHandler {
-    return @import("EventTarget.zig").eventHandler(typedefs.EventHandler, instance, name);
-}
-
-fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typedefs.EventHandler) !void {
-    try @import("EventTarget.zig").setEventHandler(typedefs.EventHandler, instance, name, handler);
-}
-
 /// Set the secure context flag
 /// Called by browser context when URL changes to update security state.
 /// Per Secure Contexts spec, a context is secure if:

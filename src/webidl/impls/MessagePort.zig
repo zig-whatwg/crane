@@ -245,32 +245,12 @@ pub fn deinit(instance: *runtime.Instance) void {
 // fired at this port finds them.
 // ============================================================================
 
-pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "close");
-}
-
-pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "message");
-}
-
-pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "messageerror");
-}
-
-pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "close", value);
-}
-
 /// "The first time a MessagePort object's onmessage IDL attribute is set, the
 /// port's port message queue must be enabled, as if the start() method had
 /// been called."
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     try dom.event_handlers.set(typedefs.EventHandler, instance, "message", value);
     enableQueue(instance);
-}
-
-pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "messageerror", value);
 }
 
 /// Operation: start

@@ -199,16 +199,6 @@ pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return reason.take();
 }
 
-/// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "abort");
-}
-
-/// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "abort", value);
-}
-
 /// Static operation: any(signals)
 ///
 /// Spec: "return the result of creating a dependent abort signal from

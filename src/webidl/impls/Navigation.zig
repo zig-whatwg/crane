@@ -424,38 +424,6 @@ pub fn get_canGoForward(instance: *runtime.Instance) anyerror!bool {
     return index + 1 < entries.items.len;
 }
 
-pub fn get_onnavigate(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "navigate");
-}
-
-pub fn get_onnavigatesuccess(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "navigatesuccess");
-}
-
-pub fn get_onnavigateerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "navigateerror");
-}
-
-pub fn get_oncurrententrychange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "currententrychange");
-}
-
-pub fn set_onnavigate(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "navigate", value);
-}
-
-pub fn set_onnavigatesuccess(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "navigatesuccess", value);
-}
-
-pub fn set_onnavigateerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "navigateerror", value);
-}
-
-pub fn set_oncurrententrychange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "currententrychange", value);
-}
-
 // ============================================================================
 // Operations
 // ============================================================================

@@ -141,12 +141,6 @@ pub fn get_activeCues(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 pub fn get_sourceBuffer(_: *runtime.Instance) anyerror!?*runtime.Instance {
     return null;
 }
-pub fn get_oncuechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "cuechange");
-}
-pub fn set_oncuechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "cuechange", value);
-}
 pub fn call_addCue(_: *runtime.Instance, _: *runtime.Instance) anyerror!void {
     // Cue ownership and WebVTT parsing are the separately queued follow-up (Q10).
     return error.NotImplemented;

@@ -190,13 +190,6 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
     return state.own._internal.?;
 }
 
-/// Getter for onreadystatechange
-///
-/// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
-pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "readystatechange");
-}
-
 /// Getter for readyState
 ///
 /// Spec: "The readyState getter steps are to return the value from the table..."
@@ -455,13 +448,6 @@ pub fn get_responseText(instance: *runtime.Instance) anyerror!runtime.USVString 
 pub fn get_responseXML(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
-}
-
-/// Setter for onreadystatechange
-///
-/// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
-pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "readystatechange", value);
 }
 
 /// Setter for timeout

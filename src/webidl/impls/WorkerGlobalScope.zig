@@ -25,7 +25,6 @@ const WorkerType = workers.WorkerType;
 
 // A global scope is an EventTarget: it chains to EventTarget's state, and its
 // event handler IDL attributes live in EventTarget's event handler map.
-const EventTargetImpl = @import("EventTarget.zig");
 const WorkerLocationImpl = @import("WorkerLocation.zig");
 const WorkerNavigatorImpl = @import("WorkerNavigator.zig");
 const same_object = @import("same_object.zig");
@@ -485,82 +484,15 @@ pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return nav_instance;
 }
 
-// Event handler IDL attributes (HTML §8.1.8.1). Every one keeps its value in
-// EventTarget's event handler map, which is also where dispatch finds it.
-
-fn handler(comptime Handler: type, instance: *runtime.Instance, comptime event_type: []const u8) Handler {
-    return EventTargetImpl.eventHandler(Handler, instance, event_type);
-}
-
-fn setHandler(comptime Handler: type, instance: *runtime.Instance, comptime event_type: []const u8, value: Handler) !void {
-    try EventTargetImpl.setEventHandler(Handler, instance, event_type, value);
-}
-
-/// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.OnErrorEventHandler {
-    return handler(typedefs.OnErrorEventHandler, instance, "error");
-}
-
-/// Getter for onlanguagechange
-pub fn get_onlanguagechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return handler(typedefs.EventHandler, instance, "languagechange");
-}
-
-/// Getter for onoffline
-pub fn get_onoffline(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return handler(typedefs.EventHandler, instance, "offline");
-}
-
-/// Getter for ononline
-pub fn get_ononline(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return handler(typedefs.EventHandler, instance, "online");
-}
-
-/// Getter for onrejectionhandled
-pub fn get_onrejectionhandled(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return handler(typedefs.EventHandler, instance, "rejectionhandled");
-}
-
-/// Getter for onunhandledrejection
-pub fn get_onunhandledrejection(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return handler(typedefs.EventHandler, instance, "unhandledrejection");
-}
+// Event handler IDL attributes (HTML §8.1.8.1) - onerror, ononline, ... -
+// are the generated interface's: HTML's getter and setter, through
+// dom.event_handlers, in EventTarget's event handler map.
 
 /// Getter for fonts
 pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // FontFaceSet is not yet implemented
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHandler) anyerror!void {
-    try setHandler(typedefs.OnErrorEventHandler, instance, "error", value);
-}
-
-/// Setter for onlanguagechange
-pub fn set_onlanguagechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try setHandler(typedefs.EventHandler, instance, "languagechange", value);
-}
-
-/// Setter for onoffline
-pub fn set_onoffline(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try setHandler(typedefs.EventHandler, instance, "offline", value);
-}
-
-/// Setter for ononline
-pub fn set_ononline(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try setHandler(typedefs.EventHandler, instance, "online", value);
-}
-
-/// Setter for onrejectionhandled
-pub fn set_onrejectionhandled(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try setHandler(typedefs.EventHandler, instance, "rejectionhandled", value);
-}
-
-/// Setter for onunhandledrejection
-pub fn set_onunhandledrejection(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try setHandler(typedefs.EventHandler, instance, "unhandledrejection", value);
 }
 
 /// Operation: importScripts - "import scripts into worker global scope"
