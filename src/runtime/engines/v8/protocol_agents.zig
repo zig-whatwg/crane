@@ -22,6 +22,7 @@ const isolate_lifecycle = @import("isolate_lifecycle.zig");
 const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
 const intl_binding = @import("intl_binding.zig");
+const observable_array = @import("observable_array.zig");
 const isolate_templates = @import("isolate_templates.zig");
 const context_manager = @import("context_manager.zig");
 /// worker_realm.zig's agent operations.
@@ -133,6 +134,9 @@ const AgentRecord = struct {
     /// its end. The adapter's per-isolate state is the agent's (instances
     /// B2), as the nine process-wide Intl registries it replaces were not.
     intl_objects: ?*intl_binding.Objects = null,
+    /// The agent's live ObservableArray states (observable_array.Registry):
+    /// made by its first array, on the agent's thread; freed by its end.
+    observable_arrays: ?*observable_array.Registry = null,
 };
 
 /// The agent's PatternMatcher, made on its first use; null for an isolate
@@ -151,6 +155,15 @@ pub fn intlObjectsOf(isolate: *ffi.Isolate) ?*intl_binding.Objects {
     const record = recordOf(isolate) orelse return null;
     if (record.intl_objects == null) record.intl_objects = intl_binding.Objects.create(record.allocator) catch null;
     return record.intl_objects;
+}
+
+/// The agent's ObservableArray registry, made on its first use with the
+/// agent's allocator; null for an isolate createAgent did not make, or when
+/// there is no memory for it. Called on the agent's own thread only.
+pub fn observableArraysOf(isolate: *ffi.Isolate) ?*observable_array.Registry {
+    const record = recordOf(isolate) orelse return null;
+    if (record.observable_arrays == null) record.observable_arrays = observable_array.Registry.create(record.allocator) catch null;
+    return record.observable_arrays;
 }
 
 var agents_lock: std.Io.Mutex = .init;
@@ -324,6 +337,7 @@ pub fn endAgent(agent: *Agent) void {
     const window_properties = if (record) |r| r.window_properties_template else null;
     const deferred_teardown = if (record) |r| r.deferred_teardown else null;
     const intl_objects = if (record) |r| r.intl_objects else null;
+    const observable_arrays = if (record) |r| r.observable_arrays else null;
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
@@ -331,6 +345,9 @@ pub fn endAgent(agent: *Agent) void {
     // weak handles are this isolate's, disarmed here before the collections
     // below could reach a freed cell.
     if (intl_objects) |objects| objects.destroy();
+    // Its ObservableArray states, the same way: their proxies' weak handles
+    // disarmed before the collections below.
+    if (observable_arrays) |registry| registry.destroy();
     // Its utility context and compiled patterns: handles of this isolate,
     // released before it is disposed.
     ffi.v8_PatternMatcher_Delete(pattern_matcher);
