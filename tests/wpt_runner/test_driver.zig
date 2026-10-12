@@ -697,10 +697,16 @@ const Command = struct {
         const window = (self.target_window orelse return self.reject(noSuchWindow())).get() orelse return self.reject(noSuchWindow());
         const context = browser_state.browsingContextOf(window) orelse return self.reject(noSuchWindow());
         if (context.is_closed) return self.reject(noSuchWindow());
-        const document = (interfaces.Window.get_document(window) catch null) orelse return self.reject(noSuchWindow());
+        // "The current browsing context's active document": the browsing
+        // context's, not Window.document's - that getter is script's, and
+        // checks its accessor's origin against the window's, so it refused a
+        // cross-origin popup's document to the remote end.
+        const document: *Instance = @ptrCast(@alignCast(context.getActiveDocument() orelse return self.reject(noSuchWindow())));
         const url = interfaces.Document.get_URL(document) catch return self.reject(outOfMemory());
         defer document.ctx.allocator.free(url);
-        const jar = context.cookie_jar orelse {
+        // The user agent's store as this context reaches it: a frame's is its
+        // top-level context's (`cookie_jar` is set on top-level contexts only).
+        const jar = context.cookieJar() orelse {
             // No store: a document no cookie can be associated with.
             return switch (self.kind) {
                 .get_cookies => self.resolveCookieList(&.{}),
