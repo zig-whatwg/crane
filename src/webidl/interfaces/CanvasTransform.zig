@@ -68,40 +68,6 @@ pub const CanvasTransform = struct {
         },
     );
 
-    const delegates = .{
-        .call_getTransform = &call_getTransform,
-        .call_resetTransform = &call_resetTransform,
-        .call_rotate = &call_rotate,
-        .call_scale = &call_scale,
-        .call_setTransform = &call_setTransform,
-        .call_transform = &call_transform,
-        .call_translate = &call_translate,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return CanvasTransformImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return CanvasTransformImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        CanvasTransformImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

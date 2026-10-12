@@ -58,26 +58,19 @@ fn bitmapSize(instance: *runtime.Instance) struct { u32, u32 } {
     return .{ width, height };
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer interfaces.HTMLElement.deinit(instance);
+/// HTMLCanvasElement's own construction steps: the generated chain runs
+/// HTMLElement's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
-    instance.getState(StateType).own._internal = internal;
-    return instance;
+    instance.getState(State).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// HTMLCanvasElement's own teardown: the generated chain runs HTMLElement's
+/// after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     if (instance.stateAs(State)) |state| if (state.own._internal) |internal| {
         // The context, if it is still the one this canvas made, loses its
         // state: script that still holds it gets InvalidStateError.
@@ -85,9 +78,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         state.own._internal = null;
         internal.allocator.destroy(internal);
     };
-    // Chain to parent class
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
 }
 
 /// The hooks this type owns: its width and height attributes' change steps
@@ -137,8 +127,8 @@ fn canvasUsability(instance: *runtime.Instance) dom.image_sources.Usability {
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(ctx.allocator, State, &HTMLCanvasElement.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try HTMLCanvasElement.init(ctx.allocator, ctx);
+    errdefer HTMLCanvasElement.deinit(instance);
 
     // TODO: Implement constructor logic with parameters
 

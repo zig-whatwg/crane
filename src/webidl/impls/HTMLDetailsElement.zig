@@ -22,7 +22,6 @@ const HTMLDetailsElement = interfaces.HTMLDetailsElement;
 
 // Ancestors: a details element IS an HTMLElement, an Element, a Node and an
 // EventTarget, and reaches their state through their impls.
-const HTMLElementImpl = @import("HTMLElement.zig");
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
 const EventTargetImpl = @import("EventTarget.zig");
@@ -66,41 +65,35 @@ pub fn installHooks() void {
     };
 }
 
-/// Initialize instance: the chain to HTMLElement.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer HTMLElementImpl.deinit(instance);
+/// HTMLDetailsElement's own construction steps: the generated chain runs HTMLElement's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // From the arena that holds the element's state, as every element's
     // internal state is: an element in a tree is freed with its tree, and
     // teardown does not always run `deinit` - a block from the context
     // allocator leaked once per parsed details element.
     const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = .{ .allocator = allocator };
-    instance.getState(StateType).own._internal = internal;
-    return instance;
+    instance.getState(State).own._internal = internal;
 }
 
-/// Deinitialize instance. A toggle task still queued finds the element gone
+/// HTMLDetailsElement's own teardown: the generated chain runs HTMLElement's after it.
+/// A toggle task still queued finds the element gone
 /// (its generation) and does nothing.
-pub fn deinit(instance: *runtime.Instance) void {
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.toggle_task) |task| task.cancelled = true;
         runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
-    HTMLElementImpl.deinit(instance);
 }
 
 /// Constructor implementation
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &HTMLDetailsElement.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try HTMLDetailsElement.init(ctx.allocator, ctx);
+    errdefer HTMLDetailsElement.deinit(instance);
     return instance;
 }
 

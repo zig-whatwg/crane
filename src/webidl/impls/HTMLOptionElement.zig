@@ -174,20 +174,11 @@ pub fn installHooks() void {
     @import("dom").teardown_sweeps.install(.element_types, &cleanupAllRemainingInternal);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-
-    // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer interfaces.HTMLElement.deinit(instance);
-
+/// HTMLOptionElement's own construction steps: the generated chain runs HTMLElement's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
+    _ = StateType;
+    _ = args;
     // A new option at this address: an entry already under it is a dead
     // option's that a teardown missed. `StateMap` fills lazily, so left in
     // place it would be taken for this one's - a selectedness nobody set
@@ -199,24 +190,20 @@ pub fn init(
     // No state is recorded here on purpose: `StateMap` fills in lazily on the
     // first assignment, so an element the parser created and script never
     // touched allocates nothing and leaves nothing to clean up.
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// HTMLOptionElement's own teardown: the generated chain runs HTMLElement's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // The state owns nothing heap-allocated, so dropping the entry is all of it.
     _ = StateMap.remove(instance);
-
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
 }
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(ctx.allocator, State, &HTMLOptionElement.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try HTMLOptionElement.init(ctx.allocator, ctx);
+    errdefer HTMLOptionElement.deinit(instance);
 
     // TODO: Implement constructor logic with parameters
 

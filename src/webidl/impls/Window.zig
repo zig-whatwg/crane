@@ -481,32 +481,20 @@ pub fn installHooks() void {
     });
 }
 
-/// Initialize Window instance
-/// Creates the instance with a new top-level browsing context.
-/// Chains to EventTarget.init() to ensure EventTarget internal state is registered.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-
-    // Chain to parent class (EventTarget) to initialize EventTarget internal state
-    // This ensures window.addEventListener() works correctly
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
-
+/// Window's own construction steps: the generated chain runs EventTarget's
+/// first, so window.addEventListener() finds EventTarget's state.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize Window's own internal state
-    const state = instance.getState(StateType);
+    const state = instance.getState(State);
     const internal = try runtime.arenaOf(instance).create(InternalState);
     // The Window's own top-level context, on its Browser's list - until a
     // navigable it is shown in replaces it (replaceBrowsingContext).
-    const navigables = @import("dom").browser_state.navigablesOf(ctx) orelse return error.NoBrowserScope;
+    const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return error.NoBrowserScope;
     internal.* = try InternalState.init(allocator, navigables);
     internal.ui_backend = internal.stub_ui_backend.backend();
     state.own._internal = internal;
-
-    return instance;
 }
 
 // ============================================================================
@@ -707,8 +695,8 @@ fn settingsTrustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance 
     return factory;
 }
 
-/// Deinitialize Window instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// Window's own teardown: the generated chain runs EventTarget's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // The host is freeing the Window: its wrapper must not free it again.
     // The realm's teardown frees the Window before the wrapper cache's, which
     // would otherwise run this deinit a second time.
@@ -743,9 +731,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         // 2. If Document isn't cleaned up explicitly, its children leak
         // 3. Document.deinit() -> Node.deinit() recursively cleans all child nodes
         if (internal.document) |doc| {
-            const DocumentImpl = @import("Document.zig");
             log.debug("[Window.deinit] Cleaning up Document {*}", .{doc});
-            DocumentImpl.deinit(doc);
+            interfaces.Document.deinit(doc);
             internal.document = null;
             log.debug("[Window.deinit] Document cleanup DONE", .{});
         } else {
@@ -760,8 +747,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         state.own._internal = null;
     }
 
-    // Chain to parent class (EventTarget) to clean up EventTarget internal state
-    EventTargetImpl.deinit(instance);
     // NOTE: EventTarget.deinit() does NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
@@ -1466,15 +1451,10 @@ pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
     }
 
     // Create the CookieStore WebIDL instance
-    const CookieStoreImpl = @import("CookieStore.zig");
-    const CookieStore = interfaces.CookieStore;
-
-    const cookie_store_instance = CookieStoreImpl.createForOrigin(
+    const cookie_store_instance = interfaces.CookieStore.initWith(
         internal.allocator,
-        CookieStore.State,
-        &CookieStore.vtable,
         instance.ctx,
-        internal.is_secure_context,
+        .{ .is_secure_context = internal.is_secure_context },
     ) catch {
         return error.OutOfMemory;
     };

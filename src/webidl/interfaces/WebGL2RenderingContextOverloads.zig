@@ -101,51 +101,6 @@ pub const WebGL2RenderingContextOverloads = struct {
         },
     );
 
-    const delegates = .{
-        .call_bufferData = &call_bufferData,
-        .call_bufferSubData = &call_bufferSubData,
-        .call_compressedTexImage2D = &call_compressedTexImage2D,
-        .call_compressedTexSubImage2D = &call_compressedTexSubImage2D,
-        .call_readPixels = &call_readPixels,
-        .call_texImage2D = &call_texImage2D,
-        .call_texSubImage2D = &call_texSubImage2D,
-        .call_uniform1fv = &call_uniform1fv,
-        .call_uniform1iv = &call_uniform1iv,
-        .call_uniform2fv = &call_uniform2fv,
-        .call_uniform2iv = &call_uniform2iv,
-        .call_uniform3fv = &call_uniform3fv,
-        .call_uniform3iv = &call_uniform3iv,
-        .call_uniform4fv = &call_uniform4fv,
-        .call_uniform4iv = &call_uniform4iv,
-        .call_uniformMatrix2fv = &call_uniformMatrix2fv,
-        .call_uniformMatrix3fv = &call_uniformMatrix3fv,
-        .call_uniformMatrix4fv = &call_uniformMatrix4fv,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return WebGL2RenderingContextOverloadsImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return WebGL2RenderingContextOverloadsImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        WebGL2RenderingContextOverloadsImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

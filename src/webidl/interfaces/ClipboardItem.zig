@@ -88,25 +88,79 @@ pub const ClipboardItem = struct {
     };
     pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
-    /// Initialize a new instance
+    /// Make a new instance: the construction chain, this interface's State
+    /// and vtable.
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return ClipboardItemImpl.init(allocator, State, &vtable, ctx);
+        return initChain(allocator, State, &vtable, ctx, .{});
     }
 
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
+    /// Make a new instance with construction arguments: facts given at
+    /// construction, as a C++ constructor's parameters. Each field of `args`
+    /// must be taken by an impl on the chain (its `construction_args`).
+    pub fn initWith(allocator: std.mem.Allocator, ctx: runtime.Context, args: anytype) !*runtime.Instance {
+        inline for (@typeInfo(@TypeOf(args)).@"struct".fields) |field| {
+            if (comptime !takesConstructionArg(field.name)) @compileError("ClipboardItem has no construction argument '" ++ field.name ++ "'");
+        }
+        return initChain(allocator, State, &vtable, ctx, args);
+    }
+
+    /// The construction chain for a descendant's State and vtable, for an
+    /// impl that still chains by hand.
     pub fn initWithState(
         allocator: std.mem.Allocator,
         comptime StateType: type,
         vtable_ptr: *const runtime.VTable,
         ctx: runtime.Context,
     ) !*runtime.Instance {
-        return ClipboardItemImpl.init(allocator, StateType, vtable_ptr, ctx);
+        return initChain(allocator, StateType, vtable_ptr, ctx, .{});
     }
 
-    /// Clean up instance resources
+    /// The construction chain: the parent interface's, then the impl's own
+    /// steps (`initOwn`), whose failure unwinds the parent's part and frees
+    /// the slot. An impl that still defines `init` chains by hand.
+    pub inline fn initChain(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+        args: anytype,
+    ) !*runtime.Instance {
+        if (comptime @hasDecl(ClipboardItemImpl, "init") and @hasDecl(ClipboardItemImpl, "initOwn")) @compileError("ClipboardItemImpl defines both init and initOwn");
+        if (comptime @hasDecl(ClipboardItemImpl, "init")) return ClipboardItemImpl.init(allocator, StateType, vtable_ptr, ctx);
+        const instance = try runtime.Instance.init(allocator, StateType, vtable_ptr, ctx);
+        if (comptime @hasDecl(ClipboardItemImpl, "initOwn")) {
+            errdefer {
+                runtime.gc.releaseStorage(instance);
+            }
+            try ClipboardItemImpl.initOwn(instance, allocator, StateType, args);
+        }
+        return instance;
+    }
+
+    /// Whether an impl on the construction chain takes the construction
+    /// argument `name`. A level that chains by hand passes nothing on.
+    pub fn takesConstructionArg(comptime name: []const u8) bool {
+        if (comptime @hasDecl(ClipboardItemImpl, "init")) return false;
+        if (comptime @hasDecl(ClipboardItemImpl, "construction_args")) {
+            inline for (ClipboardItemImpl.construction_args) |arg| {
+                if (comptime std.mem.eql(u8, arg, name)) return true;
+            }
+        }
+        return false;
+    }
+
+    /// The vtable's destructor: the destruction chain.
     pub fn deinit(instance: *runtime.Instance) void {
-        ClipboardItemImpl.deinit(instance);
+        deinitChain(instance);
+    }
+
+    /// The destruction chain: the impl's own part (`deinitOwn`), then the
+    /// parent interface's - construction in reverse. An impl that still
+    /// defines `deinit` chains by hand.
+    pub inline fn deinitChain(instance: *runtime.Instance) void {
+        if (comptime @hasDecl(ClipboardItemImpl, "deinit") and @hasDecl(ClipboardItemImpl, "deinitOwn")) @compileError("ClipboardItemImpl defines both deinit and deinitOwn");
+        if (comptime @hasDecl(ClipboardItemImpl, "deinit")) return ClipboardItemImpl.deinit(instance);
+        if (comptime @hasDecl(ClipboardItemImpl, "deinitOwn")) ClipboardItemImpl.deinitOwn(instance);
     }
 
     /// The impl's process-wide hooks, installed once at process start

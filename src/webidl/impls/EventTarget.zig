@@ -85,13 +85,6 @@ pub const InternalState = struct {
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*infra.List(EventListenerRecord) = null,
 
-    /// Runtime type discriminator for duck typing
-    /// This field helps distinguish EventTarget types at runtime.
-    /// - 0: Plain EventTarget or AbortSignal
-    /// - 1-12: Node types (ELEMENT_NODE, TEXT_NODE, etc.)
-    /// This is filled in by Node's init - EventTarget itself uses 0.
-    node_type: u16 = 0,
-
     /// HTML "event handler map" (§8.1.8.1): the event handlers whose target
     /// this is, by event type ("click" for onclick). Created with the first
     /// one - most targets never have any. A value is the handler as the
@@ -114,7 +107,6 @@ pub const InternalState = struct {
         return .{
             .allocator = allocator,
             .event_listener_list = null,
-            .node_type = 0,
         };
     }
 
@@ -223,40 +215,31 @@ pub fn installHooks() void {
     dom_module.event_handlers.install(.{ .get = getHandlerAddress, .set = setHandlerAddress, .erase = eraseAllEventListenersAndHandlers });
 }
 
-/// Initialize instance (creates the instance)
-/// This is the root of the DOM inheritance chain - creates the Instance and
-/// initializes EventTarget's internal state.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
+/// EventTarget's own construction steps, the first of every EventTarget's
+/// chain: the generated root makes the instance, then this registers
+/// EventTarget's internal state.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize EventTarget internal state in registry
     _ = try initInternal(instance, allocator);
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// EventTarget's own teardown, the last of every EventTarget's destruction
+/// chain. The slot itself is the collector's to free, or the queue's.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up internal state from registry
     if (getInternalFromRegistry(instance)) |internal| {
         internal.deinit();
         removeFromRegistry(instance);
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Constructor implementation
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-eventtarget
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &EventTarget.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try EventTarget.init(ctx.allocator, ctx);
+    errdefer EventTarget.deinit(instance);
 
     // Note: EventTarget.State.own is empty struct, so no _internal field
     // For now, we'll manage internal state separately
@@ -1781,19 +1764,11 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return getInternalFromRegistry(instance);
 }
 
-/// Set the node type for this EventTarget (used by Node)
-pub fn setNodeType(instance: *runtime.Instance, node_type: u16) void {
-    if (getInternalFromRegistry(instance)) |internal| {
-        internal.node_type = node_type;
-    }
-}
-
-/// Get the node type for this EventTarget
+/// The node type of an EventTarget that is a node, 0 for one that is not:
+/// its NodeBase's, which Node's construction sets (no copy is kept here).
 pub fn getNodeType(instance: *runtime.Instance) u16 {
-    if (getInternalFromRegistry(instance)) |internal| {
-        return internal.node_type;
-    }
-    return 0; // Plain EventTarget
+    const node_base = dom_module.instance_bridge.getNodeBase(instance) orelse return 0;
+    return node_base.node_type;
 }
 
 /// Get all event listeners for a specific type

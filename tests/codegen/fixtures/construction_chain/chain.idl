@@ -1,0 +1,22 @@
+// A root (Base), a child and a grandchild: the generated construction chain runs the
+// root's steps first and the grandchild's last; destruction runs the reverse.
+[Exposed=Window]
+interface Base {
+  readonly attribute DOMString baseName;
+};
+
+[Exposed=Window]
+interface Middle : Base {
+  readonly attribute DOMString middleName;
+};
+
+[Exposed=Window]
+interface Leaf : Middle {
+  readonly attribute DOMString leafName;
+};
+
+// A mixin is never instantiated: it has no lifecycle and no vtable.
+interface mixin Shared {
+  readonly attribute DOMString sharedName;
+};
+Leaf includes Shared;

@@ -61,7 +61,6 @@ pub const NodeSteps = struct {
     destroy_uninserted: *const fn (node: *runtime.Instance) void,
     /// DOM clone-a-node, with an explicit document, parent and fallback registry.
     clone: ?*const fn (*runtime.Instance, ?*runtime.Instance, bool, ?*runtime.Instance, ?*runtime.Instance) anyerror!*runtime.Instance = null,
-    set_type: ?*const fn (*runtime.Instance, u16) anyerror!void = null,
 };
 
 const Hooks = struct {
@@ -133,13 +132,6 @@ pub fn cloneWithRegistry(node: *runtime.Instance, document: ?*runtime.Instance, 
     const steps = node_steps.node orelse return error.InvalidStateError;
     const algorithm = steps.clone orelse return error.InvalidStateError;
     return algorithm(node, document, subtree, parent, fallback_registry);
-}
-
-/// Set the node kind during initialization, before publishing the node.
-pub fn setType(node: *runtime.Instance, kind: u16) !void {
-    const steps = node_steps.node orelse return error.InvalidStateError;
-    const algorithm = steps.set_type orelse return error.InvalidStateError;
-    return algorithm(node, kind);
 }
 
 test "without installed steps nothing is set or freed" {

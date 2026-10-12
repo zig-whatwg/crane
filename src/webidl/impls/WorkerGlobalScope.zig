@@ -170,28 +170,21 @@ pub const InternalState = struct {
     }
 };
 
-/// Initialize instance (creates the instance)
+/// WorkerGlobalScope's own construction steps: the generated chain runs EventTarget's first.
 ///
-/// A WorkerGlobalScope is an EventTarget, so this chains to EventTarget's
-/// init. When `ctx` is the realm of a worker the host is running, the scope
-/// takes that worker's type and URL ("run a worker" steps 7-9 set them on the
+/// When its realm is that of a worker the host is running, the scope takes
+/// that worker's type and URL ("run a worker" steps 7-9 set them on the
 /// global scope before its script runs).
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
-    if (@import("html").worker_host.scopeSettings(ctx)) |settings| {
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
+    if (@import("html").worker_host.scopeSettings(instance.ctx)) |settings| {
         try setUpFromUrl(instance, allocator, settings.url, settings.worker_type);
         if (instance.getState(State).own._internal) |internal| {
             internal.cookie_jar = settings.cookie_jar;
             internal.time_origin_ns = settings.time_origin_ns;
         }
     }
-    return instance;
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -366,15 +359,14 @@ fn setUpFromUrl(instance: *runtime.Instance, allocator: std.mem.Allocator, url: 
     state.own._internal = internal_state;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// WorkerGlobalScope's own teardown: the generated chain runs EventTarget's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    EventTargetImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 

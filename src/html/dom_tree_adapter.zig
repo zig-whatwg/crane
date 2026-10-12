@@ -64,7 +64,6 @@ const document_internals = dom.document_internals;
 
 // Import impls only for internal state access (Golden Rule #12 exception - to be migrated)
 const impls = @import("impls");
-const NodeImpl = impls.Node;
 const DocumentTypeImpl = impls.DocumentType;
 const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
 
@@ -430,11 +429,6 @@ pub const DomTreeAdapter = struct {
             webidl.Opt(runtime.DOMString).passed(dom_string),
         ) catch return DomTreeAdapterError.OutOfMemory;
 
-        // Set node type
-        NodeImpl.setNodeType(comment, NodeImpl.NodeType.COMMENT_NODE) catch {
-            return DomTreeAdapterError.DomOperationFailed;
-        };
-
         // Set owner document
         node_document.set(comment, self.document) catch {
             return DomTreeAdapterError.DomOperationFailed;
@@ -449,11 +443,6 @@ pub const DomTreeAdapter = struct {
             self.allocator,
             self.ctx,
         ) catch return DomTreeAdapterError.OutOfMemory;
-
-        // Set node type
-        NodeImpl.setNodeType(doctype, NodeImpl.NodeType.DOCUMENT_TYPE_NODE) catch {
-            return DomTreeAdapterError.DomOperationFailed;
-        };
 
         // Set DocumentType-specific fields
         if (DocumentTypeImpl.getInternal(doctype)) |dt_internal| {

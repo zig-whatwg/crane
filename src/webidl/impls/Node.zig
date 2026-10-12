@@ -25,8 +25,7 @@ const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.NodeBase;
 
-// Import parent class impl for initialization chain
-const EventTargetImpl = @import("EventTarget.zig");
+// CharacterData's state (debt: B3 reaches it through the interface)
 const CharacterDataImpl = @import("CharacterData.zig");
 
 pub const State = Node.State;
@@ -151,12 +150,6 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Get or create the EventTarget internal state (for event handling)
-fn getEventTargetInternal(instance: *runtime.Instance) ?*EventTargetImpl.InternalState {
-    // Access EventTarget's internal state via its registry
-    return EventTargetImpl.getInternalState(instance);
-}
-
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
@@ -173,25 +166,24 @@ pub fn installHooks() void {
     dom_module.node_creation.installNode(.{
         .destroy_uninserted = &deinitNodeByType,
         .clone = &cloneANode,
-        .set_type = &setNodeType,
     });
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class initialization: EventTarget
+/// Node's own construction steps: the generated chain runs EventTarget's
+/// first.
+///
+/// The node type is a construction fact: the interface the node implements,
+/// read off the most-derived State at comptime (`nodeTypeOf`) and stored
+/// once - WebKit passes it to Node's constructor, `Node(Document&, NodeType,
+/// ...)`, and its `nodeType()` is not virtual. No creation path sets it
+/// afterwards.
 ///
 /// IMPORTANT: Due to state hierarchy complexity, internal state is stored
 /// in a global registry rather than in the State struct. This allows
 /// proper inheritance without type conflicts.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (EventTarget)
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = args;
+    const node_type = comptime nodeTypeOf(StateType);
 
     // Initialize Node internal state in global registry
     // The registry owns this block, so `Registry.remove` returns it to the arena.
@@ -199,6 +191,8 @@ pub fn init(
     // block was dropped from the map and held to process exit.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
+    internal.node_type = node_type;
+    errdefer Registry.remove(instance);
 
     // Create NodeBase - the unified tree structure
     const node_base = try allocator.create(NodeBase);
@@ -206,7 +200,7 @@ pub fn init(
 
     node_base.* = NodeBase{
         .allocator = allocator,
-        .node_type = NodeType.ELEMENT_NODE, // Default, will be set by subclass
+        .node_type = node_type,
         .node_name = "", // Default, will be set by subclass
         .parent_node = null,
         .first_child = null,
@@ -222,8 +216,25 @@ pub fn init(
 
     // Register the Instance <-> NodeBase mapping
     try instance_bridge.register(instance, node_base);
+}
 
-    return instance;
+/// DOM 4.4: the node type of a node whose most-derived State is
+/// `StateType` - the first node interface on its chain, walking up from the
+/// most-derived (so a CDATASection, which is a Text, is CDATA_SECTION_NODE).
+/// A State on no node interface's chain (Node or CharacterData made
+/// directly, which nothing does) gets ELEMENT_NODE, the default it always had.
+fn nodeTypeOf(comptime StateType: type) u16 {
+    if (StateType == interfaces.Element.State) return NodeType.ELEMENT_NODE;
+    if (StateType == interfaces.Attr.State) return NodeType.ATTRIBUTE_NODE;
+    if (StateType == interfaces.CDATASection.State) return NodeType.CDATA_SECTION_NODE;
+    if (StateType == interfaces.Text.State) return NodeType.TEXT_NODE;
+    if (StateType == interfaces.ProcessingInstruction.State) return NodeType.PROCESSING_INSTRUCTION_NODE;
+    if (StateType == interfaces.Comment.State) return NodeType.COMMENT_NODE;
+    if (StateType == interfaces.Document.State) return NodeType.DOCUMENT_NODE;
+    if (StateType == interfaces.DocumentType.State) return NodeType.DOCUMENT_TYPE_NODE;
+    if (StateType == interfaces.DocumentFragment.State) return NodeType.DOCUMENT_FRAGMENT_NODE;
+    if (!@hasField(StateType, "base") or @FieldType(StateType, "base") == void) return NodeType.ELEMENT_NODE;
+    return nodeTypeOf(@FieldType(StateType, "base"));
 }
 
 /// Get Node's internal state from the registry
@@ -328,7 +339,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                         Registry.remove(instance);
                         // Cleanup complete; see the note at the end of deinit.
                         runtime.instance_lifecycle.markCleanupComplete(instance);
-                        EventTargetImpl.deinit(instance);
+                        interfaces.EventTarget.deinitChain(instance);
                         return;
                     };
                     defer internal.allocator.free(alloc_children);
@@ -377,7 +388,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     runtime.instance_lifecycle.markCleanupComplete(instance);
 
     // EventTarget cleanup happens via inheritance chain
-    EventTargetImpl.deinit(instance);
+    interfaces.EventTarget.deinitChain(instance);
 }
 
 /// Deinitialize a node based on its node type.
@@ -430,7 +441,7 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
 
     const internal = Registry.get(instance) orelse {
         // No internal state found, try generic EventTarget cleanup
-        EventTargetImpl.deinit(instance);
+        interfaces.EventTarget.deinitChain(instance);
         return;
     };
 
@@ -467,7 +478,7 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
             // For unknown types, do generic Node cleanup
             // (this handles ATTRIBUTE_NODE and legacy types)
             Registry.remove(instance);
-            EventTargetImpl.deinit(instance);
+            interfaces.EventTarget.deinitChain(instance);
         },
     }
 }
@@ -1404,7 +1415,6 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
                 NodeType.CDATA_SECTION_NODE => blk: {
                     const cdata = try interfaces.CDATASection.init(copy_ctx.allocator, copy_ctx);
                     errdefer runtime.Instance.deinit(cdata);
-                    try setNodeType(cdata, NodeType.CDATA_SECTION_NODE);
                     try interfaces.CharacterData.set_data(cdata, data_str);
                     break :blk cdata;
                 },
@@ -1997,22 +2007,6 @@ pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?runtime.
 // =============================================================================
 // Helper Functions for External Use
 // =============================================================================
-
-/// Set the node type (used by Element, Text, Comment, etc. during construction)
-pub fn setNodeType(instance: *runtime.Instance, node_type: u16) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.node_type = node_type;
-
-    // Also update NodeBase's node_type
-    if (internal.node_base) |node_base| {
-        node_base.node_type = node_type;
-    }
-
-    // Also update EventTarget's node_type for duck typing
-    if (getEventTargetInternal(instance)) |et_internal| {
-        et_internal.node_type = node_type;
-    }
-}
 
 /// Set the local name (used by Element, Attr, etc.)
 /// Also updates the NodeBase's node_name for DOM operations.
