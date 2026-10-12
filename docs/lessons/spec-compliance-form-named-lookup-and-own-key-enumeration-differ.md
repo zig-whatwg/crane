@@ -7,7 +7,7 @@
 
 **What Happened**: Implementing HTML's supported-name algorithm exposed a binding dependency. WebKit's `HTMLFormElement::supportedPropertyNames` and Gecko's `GetSupportedNames` return no names; Blink supplies a named query without a named enumerator. All retain named lookup. Crane's adapter used one supported-name function for both lookup and own-key enumeration, so returning an empty list would disable the getter.
 
-**Fix**: The integrator's codex-lpo Q7 ruling keeps the full current-name list in the impl and routes the adapter split separately. A native test checks name order, deduplication and allocation failure cleanup. The Crane enumeration regression follows the browsers and remains a recorded follow-up until the adapter changes.
+**Fix**: The integrator's codex-lpo Q7 ruling keeps the full current-name list in the impl and routes the adapter split separately. Main 9cac517954 supplies bindlpo's generated `Meta.named_properties_in_own_keys = false` for HTMLFormElement, separating enumeration from lookup. A native test checks name order, deduplication and allocation failure cleanup; the Crane enumeration regression follows the browsers.
 
 **Takeaway**: **Check lookup, descriptors, enumerable keys and all own keys separately; one enumeration flag does not establish all four behaviors.**
 

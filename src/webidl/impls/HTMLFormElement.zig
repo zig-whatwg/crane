@@ -309,12 +309,13 @@ pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anye
 }
 
 /// HTML "the form element", supported property names, steps 1–8.
-/// Browser deviation, routed to the adapter owner (codex-lpo Q7): WebKit's
+/// Browser deviation (codex-lpo Q7): WebKit's
 /// HTMLFormElement::supportedPropertyNames and Gecko's GetSupportedNames are
 /// empty; Blink has NamedPropertyQuery but no enumerator. See
-/// https://github.com/whatwg/html/issues/1731. Crane currently needs this full
-/// list for lookup as well as ownKeys; [LegacyUnenumerableNamedProperties]
-/// already excludes these names from Object.keys and for-in.
+/// https://github.com/whatwg/html/issues/1731. The generated
+/// Meta.named_properties_in_own_keys = false excludes these names from ownKeys;
+/// this full list supports named lookup. [LegacyUnenumerableNamedProperties]
+/// also makes each named property's descriptor non-enumerable.
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     var names = @import("infra").List(runtime.DOMString).init(allocator);
     errdefer {
