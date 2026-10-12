@@ -278,6 +278,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A named property enumerator returns names only](architecture-a-named-property-enumerator-returns-names-only.md) - An interceptor returns the key type its kind names, and a proxy in front of an object can hide what the object's own callbacks do wrong: test an unproxied object of every interceptor shape.
 
 ### Spec Compliance
+- [A reflected attribute is set and removed by DOM's algorithms, not by setAttribute](spec-compliance-a-reflected-attribute-is-set-and-removed-by-dom-s.md) - "Set / delete the content attribute" are DOM's set-an-attribute-value and remove-by-namespace-and-local-name: an algorithm calls the algorithm, never setAttribute or removeAttribute.
 - [A label limit must not discard the public suffix](spec-compliance-domain-limits-must-not-drop-the-public-suffix.md) - Match the rightmost labels without truncating the hostname's security boundary.
 - [document.domain is a two-sided opt-in](spec-compliance-document-domain-is-a-two-sided-opt-in.md) - An unchanged document.domain getter does not mean unchanged access: setting it is an explicit opt-in, and both origins must opt in.
 - [A union's sequence member is decided by @@iterator, not IsArray](spec-compliance-a-union-s-sequence-member-is-decided-by-iterator-not-isarray.md) - Never route a union by the JavaScript type you expect callers to pass - follow 3.2.25's steps, and test with a non-Array iterable and a Proxy that logs its traps.

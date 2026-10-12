@@ -563,6 +563,7 @@ progress = [
   "d80e120d56 - Codex row 13 converts collection-code references (1,691 -> 1,633)",
   "2026-10-11 - design decided (tmp/plans/impls-boundary-design.md): codegen-emitted init/deinit chain, lint counts each reference once (rebase to ~980), generated on* accessors, construction facts as chain arguments; batches B0-B11",
   "8a0e526ca3 - B3: node-tree reads through interfaces.Node and the other generated interfaces; CharacterData's data as a construction argument, read in place through dom.character_data",
+  "922b3fb427 - B4: Element's attribute list, ID, classes and qualified name are dom.element_data.ElementData, read in place; writes through dom.element_attributes.set/remove; an HTML element's inline style is dom.cssom.InlineStyle",
 ]
 
   [[infra.items]]
