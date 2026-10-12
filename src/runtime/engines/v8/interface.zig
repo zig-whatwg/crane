@@ -7843,6 +7843,15 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const v8_object: *v8.Object = @ptrCast(@alignCast(@constCast(raw_ptr)));
                     info.setReturnValue(@ptrCast(v8_object));
+                    // setReturnValue reads the handle into a Local; the
+                    // impl handed the iterator over (an owned Global, as
+                    // every value an impl returns is the binding's). Kept,
+                    // it was a strong root: the iterator, its reader and
+                    // its stream lived to the agent's end - one per
+                    // `for await` (instances B2's measurement).
+                    if (ReturnPayload == runtime.JSValue) {
+                        if (result == .handle) v8.v8_Global_Dispose(@ptrCast(v8_object));
+                    }
                 } else if (fn_info.params.len == 2) {
                     // call_values(instance, options) - has options
                     // Parse options from JavaScript argument
@@ -7912,6 +7921,15 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const v8_object: *v8.Object = @ptrCast(@alignCast(@constCast(raw_ptr)));
                     info.setReturnValue(@ptrCast(v8_object));
+                    // setReturnValue reads the handle into a Local; the
+                    // impl handed the iterator over (an owned Global, as
+                    // every value an impl returns is the binding's). Kept,
+                    // it was a strong root: the iterator, its reader and
+                    // its stream lived to the agent's end - one per
+                    // `for await` (instances B2's measurement).
+                    if (ReturnPayload == runtime.JSValue) {
+                        if (result == .handle) v8.v8_Global_Dispose(@ptrCast(v8_object));
+                    }
                 } else {
                     @compileError("Unexpected call_values signature");
                 }
