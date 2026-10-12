@@ -4742,25 +4742,79 @@ pub const WebGL2RenderingContext = struct {
     };
     pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
-    /// Initialize a new instance
+    /// Make a new instance: the construction chain, this interface's State
+    /// and vtable.
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return WebGL2RenderingContextImpl.init(allocator, State, &vtable, ctx);
+        return initChain(allocator, State, &vtable, ctx, .{});
     }
 
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
+    /// Make a new instance with construction arguments: facts given at
+    /// construction, as a C++ constructor's parameters. Each field of `args`
+    /// must be taken by an impl on the chain (its `construction_args`).
+    pub fn initWith(allocator: std.mem.Allocator, ctx: runtime.Context, args: anytype) !*runtime.Instance {
+        inline for (@typeInfo(@TypeOf(args)).@"struct".fields) |field| {
+            if (comptime !takesConstructionArg(field.name)) @compileError("WebGL2RenderingContext has no construction argument '" ++ field.name ++ "'");
+        }
+        return initChain(allocator, State, &vtable, ctx, args);
+    }
+
+    /// The construction chain for a descendant's State and vtable, for an
+    /// impl that still chains by hand.
     pub fn initWithState(
         allocator: std.mem.Allocator,
         comptime StateType: type,
         vtable_ptr: *const runtime.VTable,
         ctx: runtime.Context,
     ) !*runtime.Instance {
-        return WebGL2RenderingContextImpl.init(allocator, StateType, vtable_ptr, ctx);
+        return initChain(allocator, StateType, vtable_ptr, ctx, .{});
     }
 
-    /// Clean up instance resources
+    /// The construction chain: the parent interface's, then the impl's own
+    /// steps (`initOwn`), whose failure unwinds the parent's part and frees
+    /// the slot. An impl that still defines `init` chains by hand.
+    pub inline fn initChain(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+        args: anytype,
+    ) !*runtime.Instance {
+        if (comptime @hasDecl(WebGL2RenderingContextImpl, "init") and @hasDecl(WebGL2RenderingContextImpl, "initOwn")) @compileError("WebGL2RenderingContextImpl defines both init and initOwn");
+        if (comptime @hasDecl(WebGL2RenderingContextImpl, "init")) return WebGL2RenderingContextImpl.init(allocator, StateType, vtable_ptr, ctx);
+        const instance = try runtime.Instance.init(allocator, StateType, vtable_ptr, ctx);
+        if (comptime @hasDecl(WebGL2RenderingContextImpl, "initOwn")) {
+            errdefer {
+                runtime.gc.releaseStorage(instance);
+            }
+            try WebGL2RenderingContextImpl.initOwn(instance, allocator, StateType, args);
+        }
+        return instance;
+    }
+
+    /// Whether an impl on the construction chain takes the construction
+    /// argument `name`. A level that chains by hand passes nothing on.
+    pub fn takesConstructionArg(comptime name: []const u8) bool {
+        if (comptime @hasDecl(WebGL2RenderingContextImpl, "init")) return false;
+        if (comptime @hasDecl(WebGL2RenderingContextImpl, "construction_args")) {
+            inline for (WebGL2RenderingContextImpl.construction_args) |arg| {
+                if (comptime std.mem.eql(u8, arg, name)) return true;
+            }
+        }
+        return false;
+    }
+
+    /// The vtable's destructor: the destruction chain.
     pub fn deinit(instance: *runtime.Instance) void {
-        WebGL2RenderingContextImpl.deinit(instance);
+        deinitChain(instance);
+    }
+
+    /// The destruction chain: the impl's own part (`deinitOwn`), then the
+    /// parent interface's - construction in reverse. An impl that still
+    /// defines `deinit` chains by hand.
+    pub inline fn deinitChain(instance: *runtime.Instance) void {
+        if (comptime @hasDecl(WebGL2RenderingContextImpl, "deinit") and @hasDecl(WebGL2RenderingContextImpl, "deinitOwn")) @compileError("WebGL2RenderingContextImpl defines both deinit and deinitOwn");
+        if (comptime @hasDecl(WebGL2RenderingContextImpl, "deinit")) return WebGL2RenderingContextImpl.deinit(instance);
+        if (comptime @hasDecl(WebGL2RenderingContextImpl, "deinitOwn")) WebGL2RenderingContextImpl.deinitOwn(instance);
     }
 
     /// The impl's process-wide hooks, installed once at process start

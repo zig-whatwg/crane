@@ -98,26 +98,19 @@ pub const InternalState = struct {
     }
 };
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-
+/// CookieChangeEvent's own construction steps: the generated chain runs Event's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize internal state
     const internal = try InternalState.init(allocator);
 
-    const state = instance.getState(StateType);
+    const state = instance.getState(State);
     state.own._internal = internal;
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// CookieChangeEvent's own teardown: the generated chain runs Event's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.releaseArrays(instance);
@@ -125,7 +118,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         state.own._internal = null;
     }
     // The Event state the constructor made: the type, the Event internal.
-    EventImpl.deinit(instance);
 }
 
 /// Helper to get internal state
@@ -142,8 +134,8 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 /// 2. Set this's deleted attribute to eventInitDict["deleted"]
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CookieChangeEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(ctx.allocator, State, &CookieChangeEvent.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try CookieChangeEvent.init(ctx.allocator, ctx);
+    errdefer CookieChangeEvent.deinit(instance);
 
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 
@@ -245,8 +237,8 @@ pub fn createFromChanges(
     ctx: runtime.Context,
     changed: []const cookiestore.CookieChange,
 ) !*runtime.Instance {
-    const instance = try init(allocator, State, &CookieChangeEvent.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try CookieChangeEvent.init(allocator, ctx);
+    errdefer CookieChangeEvent.deinit(instance);
 
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 

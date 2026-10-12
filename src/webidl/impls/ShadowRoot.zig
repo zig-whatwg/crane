@@ -166,37 +166,24 @@ fn markDeclarative(instance: *runtime.Instance, keep_registry_null: bool) void {
     if (keep_registry_null) internal.keep_custom_element_registry_null = true;
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to DocumentFragmentImpl.init() to properly initialize the inheritance chain.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const DocumentFragmentImpl = @import("DocumentFragment.zig");
-    const NodeImpl = @import("Node.zig");
-
-    // Chain to DocumentFragment's init which chains to Node which chains to EventTarget
-    // This properly initializes the entire inheritance chain using registries
-    const instance = try DocumentFragmentImpl.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    // Set the node type for ShadowRoot (same as DocumentFragment per spec)
-    if (NodeImpl.getInternalState(instance)) |node_internal| {
-        node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
-    }
-
+/// ShadowRoot's own construction steps: the generated chain runs
+/// DocumentFragment's first (and so Node's, whose node type for a shadow root
+/// is DOCUMENT_FRAGMENT_NODE: it is a DocumentFragment).
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize ShadowRoot's own internal state and register it
     const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
     internal.* = InternalState.init(allocator);
     try Registry.set(instance, internal);
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// ShadowRoot's own teardown: the generated chain runs DocumentFragment's
+/// after it - what it is as a DocumentFragment: its Node state, its whole
+/// subtree (its children have a parent, so the wrapper cache never frees
+/// them - only that walk does) and its EventTarget state.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
     if (Registry.get(instance)) |internal| {
         internal.registry_edge.release(instance);
@@ -204,13 +191,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.allocator.destroy(internal);
     }
     Registry.remove(instance);
-    // Then what it is as a DocumentFragment: its Node state, its whole
-    // subtree (its children have a parent, so the wrapper cache never frees
-    // them - only this walk does) and its EventTarget state. This deinit
-    // stopped at its own state before, and every shadow root left all of
-    // that behind. Node.deinit's lifecycle guard makes a second call a no-op.
-    interfaces.DocumentFragment.deinit(instance);
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
@@ -262,8 +242,8 @@ pub fn create(
     clonable: bool,
     serializable: bool,
 ) !*runtime.Instance {
-    const instance = try init(allocator, State, &ShadowRoot.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try ShadowRoot.init(allocator, ctx);
+    errdefer ShadowRoot.deinit(instance);
 
     // DOM attach-a-shadow-root step 5: create with the host's node document.
     // For an element, ownerDocument is its node document.

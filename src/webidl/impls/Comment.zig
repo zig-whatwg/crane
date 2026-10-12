@@ -9,10 +9,6 @@ const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const Comment = interfaces.Comment;
 
-// Parent class implementation
-const CharacterDataImpl = @import("CharacterData.zig");
-const NodeImpl = @import("Node.zig");
-
 pub const State = Comment.State;
 
 pub const ImplError = error{
@@ -41,20 +37,10 @@ pub const InternalState = struct {
 const utils = @import("webidl").utils;
 const Registry = runtime.InstanceRegistry(.comment, InternalState);
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: CharacterData → Node → EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (CharacterData) which chains to Node → EventTarget
-    const instance = try CharacterDataImpl.init(allocator, StateType, vtable, ctx);
-    errdefer CharacterDataImpl.deinit(instance);
-
-    // Set node type to COMMENT_NODE (8)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.COMMENT_NODE);
+/// Comment's own construction steps: the generated chain runs CharacterData's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
 
     // Initialize Comment internal state in global registry
     // The registry owns this block, so `Registry.remove` returns it to the
@@ -62,8 +48,6 @@ pub fn init(
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    return instance;
 }
 
 /// Get Comment's internal state from the registry
@@ -71,30 +55,22 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// Comment's own teardown: the generated chain runs CharacterData's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
     Registry.remove(instance);
-
-    // Chain to parent deinit
-    CharacterDataImpl.deinit(instance);
 }
 
 /// Constructor implementation
 /// DOM §4.11 - Comment(data)
 /// Creates a new Comment node with the given data
 pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &Comment.vtable, ctx);
-    errdefer deinit(instance);
-
-    // Set the comment data via CharacterData
+    // The data is CharacterData's construction argument.
     const data_slice = if (data.was_passed) data.value.asSlice() else "";
-    try CharacterDataImpl.setData(instance, data_slice);
-
-    return instance;
+    return Comment.initWith(ctx.allocator, ctx, .{ .data = data_slice });
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,

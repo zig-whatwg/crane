@@ -20,7 +20,6 @@ const infra = @import("infra");
 const Text = interfaces.Text;
 
 // Import related impls
-const CharacterDataImpl = @import("CharacterData.zig");
 const NodeImpl = @import("Node.zig");
 
 // Import DOM algorithms
@@ -87,29 +86,19 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class initialization: CharacterData -> Node -> EventTarget
+/// Text's own construction steps: the generated chain runs CharacterData's first.
 ///
 /// IMPORTANT: Due to state hierarchy complexity, internal state is stored
 /// in a global registry rather than in the State struct.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (CharacterData) which chains to Node -> EventTarget
-    const instance = try CharacterDataImpl.init(allocator, StateType, vtable, ctx);
-    errdefer CharacterDataImpl.deinit(instance);
-
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize Text internal state in global registry
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    return instance;
 }
 
 /// Get Text's internal state from the registry
@@ -117,32 +106,22 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// Text's own teardown: the generated chain runs CharacterData's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
     Registry.remove(instance);
-    // CharacterData cleanup happens via inheritance chain
-    CharacterDataImpl.deinit(instance);
 }
 
 /// Constructor implementation
 /// DOM §4.12 - Text(data)
 /// Creates a new Text node with the given data
 pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &Text.vtable, ctx);
-    errdefer deinit(instance);
-
-    // Set node type to TEXT_NODE (3)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.TEXT_NODE);
-
-    // Set the text data via CharacterData
+    // The data is CharacterData's construction argument.
     const data_slice = if (data.was_passed) data.value.asSlice() else "";
-    try CharacterDataImpl.setData(instance, data_slice);
-
-    return instance;
+    return Text.initWith(ctx.allocator, ctx, .{ .data = data_slice });
 }
 
 // =============================================================================
@@ -167,17 +146,17 @@ pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
     // Step 1: Walk backwards to find the first contiguous Text node
     var first: *runtime.Instance = instance;
-    while (NodeImpl.getPreviousSibling(first)) |prev| {
-        const prev_type = NodeImpl.getNodeType(prev) orelse break;
-        if (prev_type != NodeImpl.NodeType.TEXT_NODE) break;
+    while (interfaces.Node.get_previousSibling(first) catch null) |prev| {
+        const prev_type = interfaces.Node.get_nodeType(prev) catch break;
+        if (prev_type != interfaces.Node.get_TEXT_NODE()) break;
         first = prev;
     }
 
     // Step 2: Walk forward from first, collecting all contiguous Text node data
     var current: ?*runtime.Instance = first;
     while (current) |node| {
-        const node_type = NodeImpl.getNodeType(node) orelse break;
-        if (node_type != NodeImpl.NodeType.TEXT_NODE) break;
+        const node_type = interfaces.Node.get_nodeType(node) catch break;
+        if (node_type != interfaces.Node.get_TEXT_NODE()) break;
 
         // Get this Text node's data. Concatenated as code units: a pair
         // split across two nodes is one pair in the result (infra.wtf8).
@@ -186,7 +165,7 @@ pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
         try infra.wtf8.appendJoined(allocator, &result, data.asSlice());
 
         // Move to next sibling
-        current = NodeImpl.getNextSibling(node);
+        current = interfaces.Node.get_nextSibling(node) catch null;
     }
 
     const owned = try result.toOwnedSlice(allocator);
@@ -253,9 +232,9 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
         instance.ctx,
         webidl.Opt(runtime.DOMString).passed(new_data),
     );
-    errdefer deinit(new_node);
+    errdefer Text.deinit(new_node);
 
-    if (NodeImpl.getOwnerDocument(instance)) |doc| {
+    if (interfaces.Node.get_ownerDocument(instance) catch null) |doc| {
         try NodeImpl.setOwnerDocument(new_node, doc);
     }
 

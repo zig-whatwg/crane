@@ -12,8 +12,8 @@
 //! ## Architecture Note (Golden Rule #13)
 //!
 //! Per Golden Rule #13, impls should call interfaces, not other impls.
-//! This file uses interfaces for factory method calls (call_constructor, etc.)
-//! but may use impls for internal initialization (setNodeType, etc.).
+//! This file uses interfaces for factory method calls (call_constructor, etc.);
+//! a node's type is its interface's, set by the generated construction chain.
 
 const std = @import("std");
 const log = std.log.scoped(.document_impl);
@@ -39,7 +39,6 @@ const NodeImpl = @import("Node.zig");
 const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
-const SelectionImpl = @import("Selection.zig");
 const same_object = @import("same_object.zig");
 
 // Import ParentNode mixin for shared ParentNode interface methods
@@ -751,7 +750,7 @@ fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
     // Steps 1.1.1–1.1.3: create in the same realm, with no browsing context.
     // WebKit Document::ensureTemplateDocument keeps this state per document.
     const owner = try call_constructor(document.ctx);
-    errdefer deinit(owner);
+    errdefer Document.deinit(owner);
     const owner_internal = getInternal(owner) orelse return error.InvalidStateError;
     owner_internal.is_template_owner_document = true;
     owner_internal.doc_type = internal.doc_type;
@@ -840,23 +839,13 @@ fn isActiveDocumentFullyActive(document: *runtime.Instance) bool {
     return !internal.destroyed;
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class initialization: Node -> EventTarget
+/// Document's own construction steps: the generated chain runs Node's first.
 ///
 /// IMPORTANT: Due to state hierarchy complexity, internal state is stored
 /// in a global registry rather than in the State struct.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (Node) which chains to EventTarget
-    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
-    errdefer NodeImpl.deinit(instance);
-
-    // Set node type to DOCUMENT_NODE
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_NODE);
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
 
     // Initialize Document's own internal state in registry
     // The registry owns this block, so `Registry.remove` returns it to the
@@ -864,8 +853,6 @@ pub fn init(
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    return instance;
 }
 
 /// dom.target_element: `document`'s target element, or null once the
@@ -955,8 +942,8 @@ pub fn getBoundV8Wrapper(instance: *runtime.Instance) ?*anyopaque {
     return internal.bound_v8_wrapper;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// Document's own teardown: the generated chain runs Node's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     if (getInternal(instance)) |internal| internal.script_delivery_continuation_suppressed = true;
     @import("html").script_execution.discardDocumentScripts(instance);
     // Clean up internal state from registry
@@ -981,15 +968,13 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
     }
     Registry.remove(instance);
-    // Node cleanup happens via inheritance chain
-    NodeImpl.deinit(instance);
 }
 
 /// Constructor implementation
 /// DOM §4.6 - new Document()
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &Document.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try Document.init(ctx.allocator, ctx);
+    errdefer Document.deinit(instance);
 
     // Set default values
     const internal = getInternal(instance) orelse return error.InvalidStateError;
@@ -1469,8 +1454,9 @@ pub fn get_cookie(instance: *runtime.Instance) anyerror!runtime.USVString {
         .path = target.parts.path,
         .is_http = false,
         .is_secure = target.parts.secure,
-        // TODO: the same-site mode of the document - "strict-or-less" until
-        //       fetch has "same site" (fetch/algorithms/cookies.zig).
+        // TODO (cookies lane Q3, 2026-10-12): settings/navigation must
+        // expose the document's captured site for cookies, including its
+        // cross-site ancestors. An origin alone cannot decide this mode.
         .same_site = .strict_or_less,
     });
     if (std.unicode.utf8ValidateSlice(cookie_string)) return cookie_string;
@@ -1587,7 +1573,7 @@ const svg_namespace = "http://www.w3.org/2000/svg";
 /// Whether `node` is an element in `namespace` whose local name is
 /// `local_name`.
 fn isElementNamed(node: *runtime.Instance, namespace: []const u8, local_name: []const u8) bool {
-    if ((NodeImpl.getNodeType(node) orelse 0) != NodeImpl.NodeType.ELEMENT_NODE) return false;
+    if ((interfaces.Node.get_nodeType(node) catch 0) != interfaces.Node.get_ELEMENT_NODE()) return false;
     const allocator = node.ctx.allocator;
     var name = interfaces.Element.get_localName(node) catch return false;
     defer name.deinit(allocator);
@@ -1600,8 +1586,8 @@ fn isElementNamed(node: *runtime.Instance, namespace: []const u8, local_name: []
 /// The first child of `parent` that is an element in `namespace` named
 /// `local_name`, or null.
 fn firstChildNamed(parent: *runtime.Instance, namespace: []const u8, local_name: []const u8) ?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(parent);
-    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+    var child = interfaces.Node.get_firstChild(parent) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
         if (isElementNamed(c, namespace, local_name)) return c;
     }
     return null;
@@ -1635,8 +1621,8 @@ fn titleElementOf(document: *runtime.Instance) ?*runtime.Instance {
 /// The first inclusive descendant of `root`'s children, in tree order, that
 /// is an element in `namespace` named `local_name`.
 fn firstDescendantNamed(root: *runtime.Instance, namespace: []const u8, local_name: []const u8) ?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(root);
-    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+    var child = interfaces.Node.get_firstChild(root) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
         if (isElementNamed(c, namespace, local_name)) return c;
         if (firstDescendantNamed(c, namespace, local_name)) |found| return found;
     }
@@ -1648,11 +1634,11 @@ fn firstDescendantNamed(root: *runtime.Instance, namespace: []const u8, local_na
 fn childTextContent(allocator: std.mem.Allocator, node: *runtime.Instance) ![]u8 {
     var text: std.ArrayListUnmanaged(u8) = .empty;
     errdefer text.deinit(allocator);
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
+    var child = interfaces.Node.get_firstChild(node) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
+        const node_type = interfaces.Node.get_nodeType(c) catch 0;
         // A CDATASection is a Text node too.
-        if (node_type != NodeImpl.NodeType.TEXT_NODE and node_type != NodeImpl.NodeType.CDATA_SECTION_NODE) continue;
+        if (node_type != interfaces.Node.get_TEXT_NODE() and node_type != interfaces.Node.get_CDATA_SECTION_NODE()) continue;
         var data = try interfaces.CharacterData.get_data(c);
         defer data.deinit(c.ctx.allocator);
         try text.appendSlice(allocator, data.asSlice());
@@ -2240,6 +2226,8 @@ pub fn set_cookie(instance: *runtime.Instance, value: runtime.USVString) anyerro
         .is_secure = target.parts.secure,
         .host = target.parts.host,
         .http_only_allowed = false,
+        // TODO (cookies lane Q3): consume the same captured site-for-cookies
+        // fact here for same_site_strict_or_lax_allowed (RFC 6265bis 5.7.18).
     });
 }
 
@@ -2260,7 +2248,7 @@ pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror
         //    document element."
         const title = try createTitle(instance, svg_namespace);
         errdefer NodeImpl.deinitNodeByType(title);
-        _ = try interfaces.Node.call_insertBefore(svg, title, NodeImpl.getFirstChild(svg));
+        _ = try interfaces.Node.call_insertBefore(svg, title, interfaces.Node.get_firstChild(svg) catch null);
         break :blk title;
     } else if (documentElementInHtmlNamespace(instance)) blk: {
         // "If the document element is in the HTML namespace":
@@ -2290,7 +2278,7 @@ pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 /// Whether the document element is in the HTML namespace.
 fn documentElementInHtmlNamespace(document: *runtime.Instance) bool {
     const element = documentElementOf(document) orelse return false;
-    if ((NodeImpl.getNodeType(element) orelse 0) != NodeImpl.NodeType.ELEMENT_NODE) return false;
+    if ((interfaces.Node.get_nodeType(element) catch 0) != interfaces.Node.get_ELEMENT_NODE()) return false;
     const allocator = element.ctx.allocator;
     var namespace = (interfaces.Element.get_namespaceURI(element) catch return false) orelse return false;
     defer namespace.deinit(allocator);
@@ -2334,8 +2322,8 @@ pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror
     // Per WebIDL, undefined is converted to null for nullable types.
     // Per HTML spec, null is not a valid body element, so throw HierarchyRequestError.
     const actual_value = value orelse return error.HierarchyRequestError;
-    const value_node_type = NodeImpl.getNodeType(actual_value) orelse 0;
-    if (value_node_type != NodeImpl.NodeType.ELEMENT_NODE) {
+    const value_node_type = interfaces.Node.get_nodeType(actual_value) catch 0;
+    if (value_node_type != interfaces.Node.get_ELEMENT_NODE()) {
         return error.HierarchyRequestError;
     }
 
@@ -2966,7 +2954,7 @@ fn applyInlineFormatting(document: *runtime.Instance, internal: *InternalState, 
     const selection = selection_opt orelse return false;
 
     // Step 2: Check if selection has content (not collapsed)
-    const is_collapsed = SelectionImpl.get_isCollapsed(selection) catch return false;
+    const is_collapsed = interfaces.Selection.get_isCollapsed(selection) catch return false;
     if (is_collapsed) {
         // No content selected - nothing to format
         // TODO: Toggle "future typing" state
@@ -2974,7 +2962,7 @@ fn applyInlineFormatting(document: *runtime.Instance, internal: *InternalState, 
     }
 
     // Step 3: Get the range
-    const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
+    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
 
     // Step 4: Create the formatting element
     const element = call_createElement(document, runtime.DOMString.initInterned(tag_name), webidl.Opt(runtime.JSValue).notPassed()) catch return false;
@@ -2999,14 +2987,14 @@ fn applyCreateLink(document: *runtime.Instance, _: *InternalState, url: []const 
     const selection = selection_opt orelse return false;
 
     // Step 2: Check if selection has content
-    const is_collapsed = SelectionImpl.get_isCollapsed(selection) catch return false;
+    const is_collapsed = interfaces.Selection.get_isCollapsed(selection) catch return false;
     if (is_collapsed) {
         // No content selected - can't create link without text
         return false;
     }
 
     // Step 3: Get the range
-    const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
+    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
 
     // Step 4: Create anchor element
     const anchor = call_createElement(document, runtime.DOMString.initInterned("a"), webidl.Opt(runtime.JSValue).notPassed()) catch return false;
@@ -3028,10 +3016,10 @@ fn applyInsertText(document: *runtime.Instance, _: *InternalState, text: []const
     const selection = selection_opt orelse return false;
 
     // Step 2: Get the range (or create one if collapsed)
-    const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
+    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
 
     // Step 3: Delete selected content if any
-    const is_collapsed = SelectionImpl.get_isCollapsed(selection) catch false;
+    const is_collapsed = interfaces.Selection.get_isCollapsed(selection) catch false;
     if (!is_collapsed) {
         RangeImpl.call_deleteContents(range) catch return false;
     }
@@ -3043,7 +3031,7 @@ fn applyInsertText(document: *runtime.Instance, _: *InternalState, text: []const
     RangeImpl.call_insertNode(range, text_node) catch return false;
 
     // Step 6: Collapse selection after the inserted text
-    SelectionImpl.call_collapseToEnd(selection) catch {};
+    interfaces.Selection.call_collapseToEnd(selection) catch {};
 
     return true;
 }
@@ -3530,9 +3518,6 @@ pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMStr
     const cdata = try interfaces.CDATASection.init(internal.allocator, instance.ctx);
     errdefer interfaces.CDATASection.deinit(cdata);
 
-    // Set node type
-    try NodeImpl.setNodeType(cdata, NodeImpl.NodeType.CDATA_SECTION_NODE);
-
     // DOM 4.5: the new CDATASection node's data is `data`.
     try interfaces.CharacterData.set_data(cdata, data);
 
@@ -3799,9 +3784,6 @@ pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!*runtim
     // Use interface instead of impl (per Golden Rule #13)
     const fragment = try interfaces.DocumentFragment.init(internal.allocator, instance.ctx);
     errdefer interfaces.DocumentFragment.deinit(fragment);
-
-    // Set node type
-    try NodeImpl.setNodeType(fragment, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
 
     // Set owner document
     try NodeImpl.setOwnerDocument(fragment, instance);

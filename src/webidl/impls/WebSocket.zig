@@ -288,22 +288,6 @@ pub fn installHooks() void {
     @import("dom").unloading_cleanup.install(&makeDisappearIn);
 }
 
-/// Initialize instance (creates the instance)
-///
-/// Through EventTarget's init, which registers the EventTarget state - the
-/// event listener list and the event handler map - that every WebSocket event
-/// is dispatched through. Made with `runtime.Instance.init` instead, a socket
-/// had that state only once `addEventListener` created it lazily, so
-/// `ws.onerror = f` on a fresh socket threw InvalidStateError.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    return EventTargetImpl.init(allocator, StateType, vtable, ctx);
-}
-
 /// End the pending-activity hold the constructor took, once.
 fn releasePendingActivity(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
@@ -366,8 +350,8 @@ fn makeDisappear(instance: *runtime.Instance) void {
     releasePendingActivity(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// WebSocket's own teardown: the generated chain runs EventTarget's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     forgetSocket(instance);
     // Whatever pending-activity hold is left on it goes with it.
     releasePendingActivity(instance);
@@ -387,7 +371,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     // And the EventTarget state: listeners, handlers and the registry entry.
     // The registry is keyed by address, so an entry left behind is inherited
     // by whatever the slab puts at this address next - listeners and all.
-    EventTargetImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
@@ -804,8 +787,8 @@ fn releaseEventIfUnwrapped(event: *runtime.Instance, generation: u64) void {
 ///     protocols, and client.
 pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
     // "This": made first, so its relevant settings object answers step 1.
-    const instance = try init(ctx.allocator, State, &WebSocket.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try WebSocket.init(ctx.allocator, ctx);
+    errdefer WebSocket.deinit(instance);
 
     // Steps 1-2. Parse url against this's relevant settings object's API base
     // URL. With no base, which is what this passed, every relative url - "",

@@ -75,47 +75,6 @@ pub const CanvasPathDrawingStyles = struct {
         },
     );
 
-    const delegates = .{
-        .get_lineCap = &get_lineCap,
-        .get_lineDashOffset = &get_lineDashOffset,
-        .get_lineJoin = &get_lineJoin,
-        .get_lineWidth = &get_lineWidth,
-        .get_miterLimit = &get_miterLimit,
-
-        .set_lineCap = &set_lineCap,
-        .set_lineDashOffset = &set_lineDashOffset,
-        .set_lineJoin = &set_lineJoin,
-        .set_lineWidth = &set_lineWidth,
-        .set_miterLimit = &set_miterLimit,
-
-        .call_getLineDash = &call_getLineDash,
-        .call_setLineDash = &call_setLineDash,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return CanvasPathDrawingStylesImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return CanvasPathDrawingStylesImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        CanvasPathDrawingStylesImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

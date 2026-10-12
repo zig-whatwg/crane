@@ -537,6 +537,15 @@ The generated interface X.zig          ->  its own impl (the one allowed referen
 Never `@import("impls")` or name an `XImpl` outside the generated layers in new
 code, and never cast another type's `_internal` to its `InternalState`.
 
+**Construction and destruction are the generated chain.** `interfaces.X.init`
+runs the parent interface's chain, then `XImpl.initOwn(instance, allocator,
+comptime StateType, args)`; `deinit` runs `XImpl.deinitOwn`, then the parent's.
+An impl writes only its own part (or none), never an ancestor's init or deinit;
+a fact given at construction is listed in `pub const construction_args` and
+passed with `interfaces.X.initWith(.., .{ .name = value })`. An impl still
+defining `init`/`deinit` chains by hand, and the chain honours it
+([lesson](docs/lessons/codegen-the-generated-interface-is-the-class.md)).
+
 **Existing references are debt, not precedent.** About 200 files outside the
 generated layers still reference impls (most of them impls reaching ancestors,
 which the old rule allowed). A change that touches such a line converts it.

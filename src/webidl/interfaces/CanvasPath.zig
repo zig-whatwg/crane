@@ -73,43 +73,6 @@ pub const CanvasPath = struct {
         },
     );
 
-    const delegates = .{
-        .call_arc = &call_arc,
-        .call_arcTo = &call_arcTo,
-        .call_bezierCurveTo = &call_bezierCurveTo,
-        .call_closePath = &call_closePath,
-        .call_ellipse = &call_ellipse,
-        .call_lineTo = &call_lineTo,
-        .call_moveTo = &call_moveTo,
-        .call_quadraticCurveTo = &call_quadraticCurveTo,
-        .call_rect = &call_rect,
-        .call_roundRect = &call_roundRect,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return CanvasPathImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return CanvasPathImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        CanvasPathImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

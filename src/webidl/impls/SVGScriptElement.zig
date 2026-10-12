@@ -18,7 +18,6 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const SVGScriptElement = interfaces.SVGScriptElement;
 
-const SVGElementImpl = @import("SVGElement.zig");
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
 
@@ -67,17 +66,10 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, _: bool) anyer
     target.already_started = source.already_started;
 }
 
-/// Initialize instance, through the chain SVGElement -> Element -> Node ->
-/// EventTarget.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try SVGElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer SVGElementImpl.deinit(instance);
-
+/// SVGScriptElement's own construction steps: the generated chain runs SVGElement's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // The node's name, which the DOM's insertion and children-changed steps
     // dispatch on.
     try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("script"));
@@ -85,11 +77,10 @@ pub fn init(
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
     instance.getState(State).own._internal = internal;
-    return instance;
 }
 
-/// Deinitialize instance, through its ancestors' impls.
-pub fn deinit(instance: *runtime.Instance) void {
+/// SVGScriptElement's own teardown: the generated chain runs SVGElement's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     if (instance.stateAs(State)) |state| {
         if (state.own._internal) |internal| {
             internal.flags.script_text.deinit();
@@ -97,7 +88,6 @@ pub fn deinit(instance: *runtime.Instance) void {
             state.own._internal = null;
         }
     }
-    SVGElementImpl.deinit(instance);
 }
 
 /// dom.script_elements: `element`'s script element state, if it is an SVG

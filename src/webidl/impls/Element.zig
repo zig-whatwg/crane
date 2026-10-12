@@ -24,14 +24,10 @@ const same_object = @import("same_object.zig");
 const Element = interfaces.Element;
 
 // Import related impls
-const NodeImpl = @import("Node.zig");
-const AttrImpl = @import("Attr.zig");
 const DOMTokenListImpl = @import("DOMTokenList.zig");
-const CharacterDataImpl = @import("CharacterData.zig");
 const NamedNodeMapImpl = @import("NamedNodeMap.zig");
 const ParentNodeImpl = @import("ParentNode.zig");
 const HTMLElementImpl = @import("HTMLElement.zig");
-const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
@@ -634,23 +630,13 @@ fn setCustomElementDefinition(instance: *runtime.Instance, definition: ?*dom.cus
     if (old) |value| value.deinit();
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class initialization: Node -> EventTarget
+/// Element's own construction steps: the generated chain runs Node's first.
 ///
 /// IMPORTANT: Due to state hierarchy complexity, internal state is stored
 /// in a global registry rather than in the State struct.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (Node) which chains to EventTarget
-    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
-    errdefer NodeImpl.deinit(instance);
-
-    // Set node type to ELEMENT_NODE
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ELEMENT_NODE);
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
 
     // Initialize Element's own internal state in registry
     // The registry owns this block, so `Registry.remove` returns it to the
@@ -658,8 +644,6 @@ pub fn init(
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    return instance;
 }
 
 /// Get Element's internal state from the registry
@@ -667,8 +651,8 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// Element's own teardown: the generated chain runs Node's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         if (internal.custom_element_ever_enqueued) dom.custom_elements.cancelElement(instance);
@@ -692,8 +676,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
     }
     Registry.remove(instance);
-    // Node cleanup happens via inheritance chain
-    NodeImpl.deinit(instance);
 }
 
 /// `shadow`, still the shadow root this element made, loses its host.
@@ -1292,7 +1274,7 @@ pub fn set_slot(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 fn isHtmlElementInHtmlDocument(instance: *runtime.Instance, internal: *const InternalState) bool {
     const ns = internal.namespace_uri orelse return false;
     if (!std.mem.eql(u8, ns.asSlice(), infra.namespaces.HTML_NAMESPACE)) return false;
-    const document = NodeImpl.getOwnerDocument(instance) orelse return false;
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return false;
     return dom.document_internals.getDocumentType(document) == .html;
 }
 
@@ -1667,7 +1649,7 @@ fn insertAdjacent(
     // Case-insensitive comparison per spec
     if (std.ascii.eqlIgnoreCase(where, "beforebegin")) {
         // Insert before this element (requires parent)
-        const parent = NodeImpl.getParent(element) orelse return null;
+        const parent = (interfaces.Node.get_parentNode(element) catch null) orelse return null;
 
         // Insert node into parent before element
         _ = interfaces.Node.call_insertBefore(parent, node, element) catch {
@@ -1676,7 +1658,7 @@ fn insertAdjacent(
         return node;
     } else if (std.ascii.eqlIgnoreCase(where, "afterbegin")) {
         // Insert as first child of this element
-        const first_child = NodeImpl.getFirstChild(element);
+        const first_child = interfaces.Node.get_firstChild(element) catch null;
 
         if (first_child) |fc| {
             _ = interfaces.Node.call_insertBefore(element, node, fc) catch {
@@ -1696,8 +1678,8 @@ fn insertAdjacent(
         return node;
     } else if (std.ascii.eqlIgnoreCase(where, "afterend")) {
         // Insert after this element (requires parent)
-        const parent = NodeImpl.getParent(element) orelse return null;
-        const next_sibling = NodeImpl.getNextSibling(element);
+        const parent = (interfaces.Node.get_parentNode(element) catch null) orelse return null;
+        const next_sibling = interfaces.Node.get_nextSibling(element) catch null;
 
         if (next_sibling) |ns| {
             _ = interfaces.Node.call_insertBefore(parent, node, ns) catch {

@@ -39,34 +39,12 @@ pub fn installHooks() void {
     dom_module.attribute_change_steps.install("meta", &attributeChangeSteps);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // HTMLMetaElement has no additional cleanup
-    // Chain to parent class
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
-}
-
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(ctx.allocator, State, &HTMLMetaElement.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try HTMLMetaElement.init(ctx.allocator, ctx);
+    errdefer HTMLMetaElement.deinit(instance);
 
     // TODO: Implement constructor logic with parameters
 
@@ -104,8 +82,7 @@ fn insertionSteps(node: *NodeBase) void {
     // The "referrer" metadata name runs for a meta element inserted into the
     // document.
     referrerMetadataName(instance);
-    const ElementImpl = @import("Element.zig");
-    const http_equiv = (ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("http-equiv")) catch return) orelse return;
+    const http_equiv = (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("http-equiv")) catch return) orelse return;
     // The attribute is an enumerated attribute: its keywords match ASCII
     // case-insensitively.
     if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "refresh")) refreshState(instance);
@@ -212,16 +189,14 @@ fn inDocumentTree(node: *NodeBase) bool {
 
 /// The Refresh state (`http-equiv="refresh"`): a timed redirect.
 fn refreshState(meta: *runtime.Instance) void {
-    const ElementImpl = @import("Element.zig");
     // Step 1: "If the meta element has no content attribute, or if that
     // attribute's value is the empty string, then return."
-    const content = (ElementImpl.call_getAttribute(meta, runtime.DOMString.initInterned("content")) catch return) orelse return;
+    const content = (interfaces.Element.call_getAttribute(meta, runtime.DOMString.initInterned("content")) catch return) orelse return;
     // Step 2: "Let input be the value of the element's content attribute."
     const input = content.asSlice();
     if (input.len == 0) return;
     // Step 3: "Run the shared declarative refresh steps with the meta
     // element's node document, input, and the meta element."
-    const NodeImpl = @import("Node.zig");
-    const document = NodeImpl.getOwnerDocument(meta) orelse return;
+    const document = (interfaces.Node.get_ownerDocument(meta) catch null) orelse return;
     dom_module.document_lifecycle.declarativeRefresh(document, input, meta);
 }

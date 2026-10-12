@@ -225,30 +225,20 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: Element -> Node -> EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (Element)
-    const instance = try ElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer ElementImpl.deinit(instance);
-
+/// HTMLElement's own construction steps: the generated chain runs Element's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize HTMLElement's own internal state in registry
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// HTMLElement's own teardown: the generated chain runs Element's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         if (internal.internals_traced) @import("engine").forgetTracedChild(instance, .{ .name = "elementInternals" });
@@ -256,15 +246,13 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
     }
     Registry.remove(instance);
-    // Parent cleanup happens via inheritance chain
-    ElementImpl.deinit(instance);
 }
 
 /// Constructor implementation
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#htmlelement
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &HTMLElement.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try HTMLElement.init(ctx.allocator, ctx);
+    errdefer HTMLElement.deinit(instance);
 
     // HTMLElement constructor is typically not called directly
     // Elements are created via document.createElement()
@@ -437,10 +425,8 @@ pub fn get_autocorrect(instance: *runtime.Instance) anyerror!bool {
 pub fn get_innerText(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // Get text content - in a full implementation this would use the layout backend
     // For now, fall back to textContent-like behavior
-    const NodeImpl = @import("Node.zig");
-
     // Use Node's textContent as fallback
-    if (try NodeImpl.get_textContent(instance)) |text| {
+    if (try interfaces.Node.get_textContent(instance)) |text| {
         return text;
     }
     return runtime.DOMString.initEmpty();

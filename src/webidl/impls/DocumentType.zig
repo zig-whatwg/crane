@@ -76,20 +76,10 @@ pub fn installHooks() void {
     @import("dom").node_creation.installDocumentType(.{ .set_ids = &setIdsHook });
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: Node → EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (Node) which chains to EventTarget
-    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
-    errdefer NodeImpl.deinit(instance);
-
-    // Set node type to DOCUMENT_TYPE_NODE (10)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_TYPE_NODE);
+/// DocumentType's own construction steps: the generated chain runs Node's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
 
     // Initialize DocumentType internal state in global registry
     // The registry owns this block, so `Registry.remove` returns it to the
@@ -97,8 +87,6 @@ pub fn init(
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    return instance;
 }
 
 /// `dom.node_creation.setDoctypeIds`: the parser's DOCTYPE token's name,
@@ -110,16 +98,13 @@ fn setIdsHook(doctype: *runtime.Instance, name: ?[]const u8, public_id: ?[]const
     if (system_id) |s| internal.system_id = internal.allocator.dupe(u8, s) catch "";
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// DocumentType's own teardown: the generated chain runs Node's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
     Registry.remove(instance);
-
-    // Chain to parent deinit
-    NodeImpl.deinit(instance);
 }
 
 // =============================================================================
@@ -169,8 +154,8 @@ pub fn createDocumentType(
     public_id: []const u8,
     system_id: []const u8,
 ) !*runtime.Instance {
-    const instance = try init(allocator, State, &DocumentType.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try DocumentType.init(allocator, ctx);
+    errdefer DocumentType.deinit(instance);
 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 

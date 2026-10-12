@@ -69,31 +69,24 @@ pub fn installHooks() void {
     @import("dom").navigation_history_entries.install(.{ .create = &createForEntry, .entry_id = &entryIdOf });
 }
 
-/// Initialize instance (creates the instance): an EventTarget, which the
-/// dispose event is fired at.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
+/// NavigationHistoryEntry's own construction steps: the generated chain runs
+/// EventTarget's first (the dispose event is fired at an entry).
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
-    instance.getState(StateType).own._internal = internal;
-    return instance;
+    instance.getState(State).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// NavigationHistoryEntry's own teardown: the generated chain runs EventTarget's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    EventTargetImpl.deinit(instance);
 }
 
 /// dom.navigation_history_entries: a new NavigationHistoryEntry in

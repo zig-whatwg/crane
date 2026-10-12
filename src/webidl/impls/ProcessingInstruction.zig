@@ -18,9 +18,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const ProcessingInstruction = interfaces.ProcessingInstruction;
 
-// Import related impls
-const CharacterDataImpl = @import("CharacterData.zig");
-const NodeImpl = @import("Node.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = ProcessingInstruction.State;
@@ -106,32 +103,20 @@ pub fn installHooks() void {
     @import("dom").teardown_sweeps.install(.element_types, &sweepLive);
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain through CharacterData -> Node -> EventTarget. Calling
-    // runtime.Instance.init directly (the codegen stub) left the node with no
-    // CharacterData state, so storing its data threw InvalidStateError and
-    // document.createProcessingInstruction() could never return a usable node.
-    const instance = try CharacterDataImpl.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
+/// ProcessingInstruction's own construction steps: the generated chain runs CharacterData's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize ProcessingInstruction internal state
-    const state = instance.getState(StateType);
+    const state = instance.getState(State);
     const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
     trackLive(instance);
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// ProcessingInstruction's own teardown: the generated chain runs CharacterData's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     untrackLive(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
@@ -145,11 +130,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
-    // And CharacterData's and Node's teardown: its data, its NodeBase and its
-    // registry entries. Stopping here left them behind for every PI torn down,
-    // with its tree or when its wrapper was collected.
-    interfaces.CharacterData.deinit(instance);
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 // =============================================================================
@@ -190,19 +170,14 @@ pub fn createProcessingInstruction(
     target: []const u8,
     data: []const u8,
 ) !*runtime.Instance {
-    const instance = try init(allocator, State, &ProcessingInstruction.vtable, ctx);
-    errdefer deinit(instance);
+    // The data is CharacterData's construction argument.
+    const instance = try ProcessingInstruction.initWith(allocator, ctx, .{ .data = data });
+    errdefer ProcessingInstruction.deinit(instance);
 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Set node type to PROCESSING_INSTRUCTION_NODE (7)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE);
-
     // Set the target
     internal.target = try allocator.dupe(u8, target);
-
-    // Set the data via CharacterData
-    try CharacterDataImpl.setData(instance, data);
 
     return instance;
 }

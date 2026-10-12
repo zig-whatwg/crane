@@ -87,45 +87,6 @@ pub const NavigatorID = struct {
         },
     );
 
-    const delegates = .{
-        .get_appCodeName = &get_appCodeName,
-        .get_appName = &get_appName,
-        .get_appVersion = &get_appVersion,
-        .get_oscpu = &get_oscpu,
-        .get_platform = &get_platform,
-        .get_product = &get_product,
-        .get_productSub = &get_productSub,
-        .get_userAgent = &get_userAgent,
-        .get_vendor = &get_vendor,
-        .get_vendorSub = &get_vendorSub,
-
-        .call_taintEnabled = &call_taintEnabled,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return NavigatorIDImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return NavigatorIDImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        NavigatorIDImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

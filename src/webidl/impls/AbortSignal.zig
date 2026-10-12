@@ -151,31 +151,24 @@ pub fn installHooks() void {
     abort_algorithms.install(.{ .add = addAlgorithm, .remove = removeAlgorithm, .create_dependent = createDependentAbortSignal });
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // An AbortSignal is an EventTarget: `abort` is fired at it and heard.
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
-
+/// AbortSignal's own construction steps: the generated chain runs
+/// EventTarget's first (an AbortSignal is an EventTarget: `abort` is fired at
+/// it and heard).
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
-    instance.getState(StateType).own._internal = internal;
-
-    return instance;
+    instance.getState(State).own._internal = internal;
 }
 
 /// A new AbortSignal in `ctx`'s realm.
 fn newSignal(ctx: runtime.Context) !*runtime.Instance {
-    return init(ctx.allocator, State, &AbortSignal.vtable, ctx);
+    return AbortSignal.init(ctx.allocator, ctx);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// AbortSignal's own teardown: the generated chain runs EventTarget's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         // A signal freed before script saw it lets the reason waiting for its
@@ -185,7 +178,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit(internal.allocator);
         state.own._internal = null;
     }
-    EventTargetImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 

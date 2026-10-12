@@ -22,9 +22,7 @@ const HTMLDetailsElement = interfaces.HTMLDetailsElement;
 
 // Ancestors: a details element IS an HTMLElement, an Element, a Node and an
 // EventTarget, and reaches their state through their impls.
-const HTMLElementImpl = @import("HTMLElement.zig");
 const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
 const EventTargetImpl = @import("EventTarget.zig");
 
 // The hooks the element installs its steps into: the attribute change steps
@@ -66,41 +64,35 @@ pub fn installHooks() void {
     };
 }
 
-/// Initialize instance: the chain to HTMLElement.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer HTMLElementImpl.deinit(instance);
+/// HTMLDetailsElement's own construction steps: the generated chain runs HTMLElement's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // From the arena that holds the element's state, as every element's
     // internal state is: an element in a tree is freed with its tree, and
     // teardown does not always run `deinit` - a block from the context
     // allocator leaked once per parsed details element.
     const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = .{ .allocator = allocator };
-    instance.getState(StateType).own._internal = internal;
-    return instance;
+    instance.getState(State).own._internal = internal;
 }
 
-/// Deinitialize instance. A toggle task still queued finds the element gone
+/// HTMLDetailsElement's own teardown: the generated chain runs HTMLElement's after it.
+/// A toggle task still queued finds the element gone
 /// (its generation) and does nothing.
-pub fn deinit(instance: *runtime.Instance) void {
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.toggle_task) |task| task.cancelled = true;
         runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
-    HTMLElementImpl.deinit(instance);
 }
 
 /// Constructor implementation
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &HTMLDetailsElement.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try HTMLDetailsElement.init(ctx.allocator, ctx);
+    errdefer HTMLDetailsElement.deinit(instance);
     return instance;
 }
 
@@ -169,13 +161,13 @@ fn insertionStepsCallback(node: *NodeBase) void {
 /// `element`'s name attribute (in no namespace), when present and not the
 /// empty string. BORROWED: the attribute's value.
 fn groupName(element: *runtime.Instance) ?[]const u8 {
-    const name = (ElementImpl.call_getAttributeNS(element, null, runtime.DOMString.initInterned("name")) catch null) orelse return null;
+    const name = (interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("name")) catch null) orelse return null;
     const slice = name.asSlice();
     return if (slice.len == 0) null else slice;
 }
 
 fn hasOpen(element: *runtime.Instance) bool {
-    return ElementImpl.call_hasAttributeNS(element, null, runtime.DOMString.initInterned("open")) catch false;
+    return interfaces.Element.call_hasAttributeNS(element, null, runtime.DOMString.initInterned("open")) catch false;
 }
 
 fn removeOpen(element: *runtime.Instance) void {
@@ -187,11 +179,11 @@ fn removeOpen(element: *runtime.Instance) void {
 /// The next node after `node` in tree order within `root`'s tree, or null
 /// past the last.
 fn nextInTree(node: *runtime.Instance, root: *runtime.Instance) ?*runtime.Instance {
-    if (NodeImpl.getFirstChild(node)) |child| return child;
+    if (interfaces.Node.get_firstChild(node) catch null) |child| return child;
     var current = node;
     while (current != root) {
-        if (NodeImpl.getNextSibling(current)) |sibling| return sibling;
-        current = NodeImpl.getParent(current) orelse return null;
+        if (interfaces.Node.get_nextSibling(current) catch null) |sibling| return sibling;
+        current = (interfaces.Node.get_parentNode(current) catch null) orelse return null;
     }
     return null;
 }
@@ -202,7 +194,7 @@ fn nextInTree(node: *runtime.Instance, root: *runtime.Instance) ?*runtime.Instan
 /// string and equals `element`'s. Null when `element` is in no group (no
 /// name, or the empty one) or no other member is open.
 fn openGroupMember(element: *runtime.Instance, name: []const u8) ?*runtime.Instance {
-    const root = NodeImpl.call_getRootNode(element, webidl.Opt(dictionaries.GetRootNodeOptions).notPassed()) catch return null;
+    const root = interfaces.Node.call_getRootNode(element, webidl.Opt(dictionaries.GetRootNodeOptions).notPassed()) catch return null;
     var node: ?*runtime.Instance = root;
     while (node) |current| : (node = nextInTree(current, root)) {
         if (current == element) continue;

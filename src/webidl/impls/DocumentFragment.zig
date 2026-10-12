@@ -95,34 +95,20 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to NodeImpl.init() to properly initialize the inheritance chain.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to Node's init which chains to EventTarget
-    // This properly initializes the entire inheritance chain
-    const instance = try interfaces.Node.initWithState(allocator, StateType, vtable, ctx);
-    errdefer interfaces.Node.deinit(instance);
-
-    // Set the node type for this DocumentFragment
-    try dom.node_creation.setType(instance, interfaces.Node.get_DOCUMENT_FRAGMENT_NODE());
-
+/// DocumentFragment's own construction steps: the generated chain runs Node's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize DocumentFragment's own internal state and register it
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// DocumentFragment's own teardown: the generated chain runs Node's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
     if (Registry.get(instance)) |internal| {
         engine.forgetTracedChild(instance, .{ .name = "template owner document" });
@@ -130,18 +116,13 @@ pub fn deinit(instance: *runtime.Instance) void {
         // Remove from registry to prevent double-free
         Registry.remove(instance);
     }
-    // Node cleanup happens via inheritance chain
-    interfaces.Node.deinit(instance);
 }
 
 /// Constructor implementation
 /// DOM §4.8 - DocumentFragment()
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &DocumentFragment.vtable, ctx);
-    errdefer deinit(instance);
-
-    // Set node type to DOCUMENT_FRAGMENT_NODE (11)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
+    const instance = try DocumentFragment.init(ctx.allocator, ctx);
+    errdefer DocumentFragment.deinit(instance);
 
     return instance;
 }

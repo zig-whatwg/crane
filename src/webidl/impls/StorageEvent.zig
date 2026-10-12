@@ -193,7 +193,7 @@ pub fn get_storageArea(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 /// storageArea to null).
 pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), key: webidl.Opt(?runtime.DOMString), oldValue: webidl.Opt(?runtime.DOMString), newValue: webidl.Opt(?runtime.DOMString), url: webidl.Opt(runtime.USVString), storageArea: webidl.Opt(?*runtime.Instance)) anyerror!void {
     if (EventImpl.getDispatchFlag(instance)) return;
-    try EventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
+    try interfaces.Event.call_initEvent(instance, @"type", bubbles, cancelable);
     const internal = getInternal(instance) orelse return;
     const optionalSlice = struct {
         fn of(value: webidl.Opt(?runtime.DOMString)) ?[]const u8 {

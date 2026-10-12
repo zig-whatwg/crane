@@ -775,8 +775,6 @@ src/webidl/impls/IntersectionObserver.zig clock.@import 1
 src/webidl/impls/IntersectionObserver.zig clock.monotonicMillis 1
 src/webidl/impls/MessageEvent.zig clock.@import 1
 src/webidl/impls/MessageEvent.zig clock.monotonicMillis 2
-src/webidl/impls/MouseEvent.zig clock.@import 1
-src/webidl/impls/MouseEvent.zig clock.monotonicMillis 1
 src/webidl/impls/NavigateEvent.zig clock.@import 1
 src/webidl/impls/NavigateEvent.zig clock.monotonicMillis 1
 src/webidl/impls/NavigationCurrentEntryChangeEvent.zig clock.@import 1
@@ -789,8 +787,6 @@ src/webidl/impls/PageSwapEvent.zig clock.@import 1
 src/webidl/impls/PageSwapEvent.zig clock.monotonicMillis 1
 src/webidl/impls/PageTransitionEvent.zig clock.@import 1
 src/webidl/impls/PageTransitionEvent.zig clock.monotonicMillis 1
-src/webidl/impls/PointerEvent.zig clock.@import 1
-src/webidl/impls/PointerEvent.zig clock.monotonicMillis 1
 src/webidl/impls/PopStateEvent.zig clock.@import 1
 src/webidl/impls/PopStateEvent.zig clock.monotonicMillis 1
 src/webidl/impls/ProgressEvent.zig clock.@import 1
@@ -798,8 +794,6 @@ src/webidl/impls/ProgressEvent.zig clock.monotonicMillis 1
 src/webidl/impls/PromiseRejectionEvent.zig clock.@import 1
 src/webidl/impls/PromiseRejectionEvent.zig clock.monotonicMillis 1
 src/webidl/impls/SubtleCrypto.zig host.@import 1
-src/webidl/impls/WheelEvent.zig clock.@import 1
-src/webidl/impls/WheelEvent.zig clock.monotonicMillis 1
 src/webidl/impls/Window.zig clock.@import 1
 src/webidl/impls/XMLHttpRequest.zig clock.@import 1
 src/webidl/impls/XMLHttpRequest.zig clock.monotonicMillis 2

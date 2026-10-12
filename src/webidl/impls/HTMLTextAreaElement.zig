@@ -12,12 +12,10 @@ const webidl = @import("webidl");
 const HTMLTextAreaElement = interfaces.HTMLTextAreaElement;
 
 const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
 // A Text node's data lives in CharacterData's inline/heap storage, NOT in
 // Node.InternalState.node_value - that field stays null for parsed and created
-// text alike, so reading it yields "" for every textarea. Node.zig's own
-// collectTextContent goes through here for the same reason.
-const CharacterDataImpl = @import("CharacterData.zig");
+// text alike, so reading it yields "" for every textarea. It is read in place
+// through dom.character_data, as Node.zig's collectTextContent reads it.
 const form_associated = @import("html").form_associated;
 const dom = @import("dom");
 const log = std.log.scoped(.textarea);
@@ -316,17 +314,17 @@ fn childTextContent(instance: *runtime.Instance, allocator: std.mem.Allocator) !
     var out = std.ArrayListUnmanaged(u8).empty;
     errdefer out.deinit(allocator);
 
-    var child = NodeImpl.getFirstChild(instance);
+    var child = interfaces.Node.get_firstChild(instance) catch null;
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.TEXT_NODE or
-            node_type == NodeImpl.NodeType.CDATA_SECTION_NODE)
+        const node_type = interfaces.Node.get_nodeType(c) catch 0;
+        if (node_type == interfaces.Node.get_TEXT_NODE() or
+            node_type == interfaces.Node.get_CDATA_SECTION_NODE())
         {
-            if (CharacterDataImpl.getData(c)) |data| {
+            if (dom.character_data.dataOf(c)) |data| {
                 try out.appendSlice(allocator, data);
             }
         }
-        child = NodeImpl.getNextSibling(c);
+        child = interfaces.Node.get_nextSibling(c) catch null;
     }
     return out.toOwnedSlice(allocator);
 }

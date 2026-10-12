@@ -2282,56 +2282,157 @@ fn isConstantInList(needle: types.Constant, haystack: []const types.Constant) bo
     return false;
 }
 
-/// Write lifecycle functions
+/// What the lifecycle of one interface's generated file is made of.
+pub const LifecycleOptions = struct {
+    /// The interface: the struct its generated file declares.
+    interface_name: []const u8,
+    /// It inherits from an interface (`Meta.ParentInterface`); a root does not.
+    has_parent: bool,
+    /// A mixin is never instantiated: it gets no lifecycle (and no vtable),
+    /// only its impl's hooks.
+    is_mixin: bool = false,
+};
+
+/// Write the construction and destruction chain
+/// (tmp/plans/impls-boundary-design.md 3.2.3; the user's decision Q1).
 ///
-/// Example output:
+/// The generated interface is the class. C++ chains constructors and
+/// destructors by the language - `HTMLDivElement(...) : HTMLElement(tagName,
+/// document)` - and a derived class never names its base's private parts. So:
+///
+/// - `initChain` runs the parent interface's chain, then the impl's own steps
+///   (`initOwn(instance, allocator, StateType, args)`). Their failure unwinds
+///   the parent's part (`deinitChain`) and frees the slot. A root makes the
+///   instance itself (`runtime.Instance.init`).
+/// - `deinitChain` runs the impl's `deinitOwn`, then the parent's chain: the
+///   reverse order. `deinit` (the vtable's destructor, so not inline) runs it.
+/// - Both are `inline`: the chain costs no frame per level, in any mode.
+/// - An impl that still defines `init` / `deinit` chains by hand, and the chain
+///   honours it - impls convert one by one. One defining both ways is a
+///   compile error.
+/// - `initWith(allocator, ctx, args)`: construction arguments, facts given at
+///   construction (WebKit's `Text::create(document, data)` -> `Node(document,
+///   ...)`). Each field of `args` must be taken by an impl on the chain - one
+///   listing it in its `construction_args` - or it is a compile error. A level
+///   that chains by hand passes nothing on.
+///
+/// Example output (an interface `Text` whose parent is CharacterData):
 /// ```zig
-/// pub fn init(allocator: std.mem.Allocator) !*runtime.Instance {
-///     const instance = try runtime.Instance.init(allocator, State, &vtable, ctx);
-///     errdefer runtime.Instance.deinit(instance);
-///
-///     const state = instance.getState(State);
-///     instance.state = state;
-///
-///     // Initialize the state (Impl receives full hierarchy)
-///     ImplType.init(state);
-///
+/// pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+///     return initChain(allocator, State, &vtable, ctx, .{});
+/// }
+/// pub inline fn initChain(allocator, comptime StateType: type, vtable_ptr, ctx, args: anytype) !*runtime.Instance {
+///     if (comptime @hasDecl(TextImpl, "init")) return TextImpl.init(allocator, StateType, vtable_ptr, ctx);
+///     const instance = try Meta.ParentInterface.initChain(allocator, StateType, vtable_ptr, ctx, args);
+///     if (comptime @hasDecl(TextImpl, "initOwn")) {
+///         errdefer { Meta.ParentInterface.deinitChain(instance); runtime.gc.releaseStorage(instance); }
+///         try TextImpl.initOwn(instance, allocator, StateType, args);
+///     }
 ///     return instance;
 /// }
-///
 /// pub fn deinit(instance: *runtime.Instance) void {
-///     const state = instance.getState(State);
-///     ImplType.deinit(state);
+///     deinitChain(instance);
+/// }
+/// pub inline fn deinitChain(instance: *runtime.Instance) void {
+///     if (comptime @hasDecl(TextImpl, "deinit")) return TextImpl.deinit(instance);
+///     if (comptime @hasDecl(TextImpl, "deinitOwn")) TextImpl.deinitOwn(instance);
+///     Meta.ParentInterface.deinitChain(instance);
 /// }
 /// ```
 pub fn writeLifecycleFunctions(
     writer: anytype,
     impl_name: []const u8,
+    options: LifecycleOptions,
 ) !void {
     // "NodeImpl" -> "Node": the impls root's name for it.
     const impl_decl = if (std.mem.endsWith(u8, impl_name, "Impl")) impl_name[0 .. impl_name.len - 4] else impl_name;
-    // init() - delegates to Impl.init() which delegates to Instance.init()
-    try writer.writeAll("    /// Initialize a new instance\n");
+    if (options.is_mixin) return writeInstallHooks(writer, impl_decl, "    ");
+
+    const name = options.interface_name;
+
+    try writer.writeAll("    /// Make a new instance: the construction chain, this interface's State\n");
+    try writer.writeAll("    /// and vtable.\n");
     try writer.writeAll("    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {\n");
-    try writer.print("        return {s}.init(allocator, State, &vtable, ctx);\n", .{impl_name});
+    try writer.writeAll("        return initChain(allocator, State, &vtable, ctx, .{});\n");
     try writer.writeAll("    }\n\n");
 
-    // initWithState() - for subclasses to call with their own StateType and vtable
-    try writer.writeAll("    /// Initialize with custom state type (for subclasses)\n");
-    try writer.writeAll("    /// Subclasses call this to properly initialize the base class state.\n");
+    try writer.writeAll("    /// Make a new instance with construction arguments: facts given at\n");
+    try writer.writeAll("    /// construction, as a C++ constructor's parameters. Each field of `args`\n");
+    try writer.writeAll("    /// must be taken by an impl on the chain (its `construction_args`).\n");
+    try writer.writeAll("    pub fn initWith(allocator: std.mem.Allocator, ctx: runtime.Context, args: anytype) !*runtime.Instance {\n");
+    try writer.writeAll("        inline for (@typeInfo(@TypeOf(args)).@\"struct\".fields) |field| {\n");
+    try writer.print("            if (comptime !takesConstructionArg(field.name)) @compileError(\"{s} has no construction argument '\" ++ field.name ++ \"'\");\n", .{name});
+    try writer.writeAll("        }\n");
+    try writer.writeAll("        return initChain(allocator, State, &vtable, ctx, args);\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    /// The construction chain for a descendant's State and vtable, for an\n");
+    try writer.writeAll("    /// impl that still chains by hand.\n");
     try writer.writeAll("    pub fn initWithState(\n");
     try writer.writeAll("        allocator: std.mem.Allocator,\n");
     try writer.writeAll("        comptime StateType: type,\n");
     try writer.writeAll("        vtable_ptr: *const runtime.VTable,\n");
     try writer.writeAll("        ctx: runtime.Context,\n");
     try writer.writeAll("    ) !*runtime.Instance {\n");
-    try writer.print("        return {s}.init(allocator, StateType, vtable_ptr, ctx);\n", .{impl_name});
+    try writer.writeAll("        return initChain(allocator, StateType, vtable_ptr, ctx, .{});\n");
     try writer.writeAll("    }\n\n");
 
-    // deinit() - delegates to Impl.deinit()
-    try writer.writeAll("    /// Clean up instance resources\n");
-    try writer.print("    pub fn deinit(instance: *runtime.Instance) void {{\n", .{});
-    try writer.print("        {s}.deinit(instance);\n", .{impl_name});
+    try writer.writeAll("    /// The construction chain: the parent interface's, then the impl's own\n");
+    try writer.writeAll("    /// steps (`initOwn`), whose failure unwinds the parent's part and frees\n");
+    try writer.writeAll("    /// the slot. An impl that still defines `init` chains by hand.\n");
+    try writer.writeAll("    pub inline fn initChain(\n");
+    try writer.writeAll("        allocator: std.mem.Allocator,\n");
+    try writer.writeAll("        comptime StateType: type,\n");
+    try writer.writeAll("        vtable_ptr: *const runtime.VTable,\n");
+    try writer.writeAll("        ctx: runtime.Context,\n");
+    try writer.writeAll("        args: anytype,\n");
+    try writer.writeAll("    ) !*runtime.Instance {\n");
+    try writer.print("        if (comptime @hasDecl({s}, \"init\") and @hasDecl({s}, \"initOwn\")) @compileError(\"{s} defines both init and initOwn\");\n", .{ impl_name, impl_name, impl_name });
+    try writer.print("        if (comptime @hasDecl({s}, \"init\")) return {s}.init(allocator, StateType, vtable_ptr, ctx);\n", .{ impl_name, impl_name });
+    if (options.has_parent) {
+        try writer.writeAll("        const instance = try Meta.ParentInterface.initChain(allocator, StateType, vtable_ptr, ctx, args);\n");
+    } else {
+        try writer.writeAll("        const instance = try runtime.Instance.init(allocator, StateType, vtable_ptr, ctx);\n");
+    }
+    try writer.print("        if (comptime @hasDecl({s}, \"initOwn\")) {{\n", .{impl_name});
+    try writer.writeAll("            errdefer {\n");
+    if (options.has_parent) try writer.writeAll("                Meta.ParentInterface.deinitChain(instance);\n");
+    try writer.writeAll("                runtime.gc.releaseStorage(instance);\n");
+    try writer.writeAll("            }\n");
+    try writer.print("            try {s}.initOwn(instance, allocator, StateType, args);\n", .{impl_name});
+    try writer.writeAll("        }\n");
+    try writer.writeAll("        return instance;\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    /// Whether an impl on the construction chain takes the construction\n");
+    try writer.writeAll("    /// argument `name`. A level that chains by hand passes nothing on.\n");
+    try writer.writeAll("    pub fn takesConstructionArg(comptime name: []const u8) bool {\n");
+    try writer.print("        if (comptime @hasDecl({s}, \"init\")) return false;\n", .{impl_name});
+    try writer.print("        if (comptime @hasDecl({s}, \"construction_args\")) {{\n", .{impl_name});
+    try writer.print("            inline for ({s}.construction_args) |arg| {{\n", .{impl_name});
+    try writer.writeAll("                if (comptime std.mem.eql(u8, arg, name)) return true;\n");
+    try writer.writeAll("            }\n");
+    try writer.writeAll("        }\n");
+    if (options.has_parent) {
+        try writer.writeAll("        return Meta.ParentInterface.takesConstructionArg(name);\n");
+    } else {
+        try writer.writeAll("        return false;\n");
+    }
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    /// The vtable's destructor: the destruction chain.\n");
+    try writer.writeAll("    pub fn deinit(instance: *runtime.Instance) void {\n");
+    try writer.writeAll("        deinitChain(instance);\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    /// The destruction chain: the impl's own part (`deinitOwn`), then the\n");
+    try writer.writeAll("    /// parent interface's - construction in reverse. An impl that still\n");
+    try writer.writeAll("    /// defines `deinit` chains by hand.\n");
+    try writer.writeAll("    pub inline fn deinitChain(instance: *runtime.Instance) void {\n");
+    try writer.print("        if (comptime @hasDecl({s}, \"deinit\") and @hasDecl({s}, \"deinitOwn\")) @compileError(\"{s} defines both deinit and deinitOwn\");\n", .{ impl_name, impl_name, impl_name });
+    try writer.print("        if (comptime @hasDecl({s}, \"deinit\")) return {s}.deinit(instance);\n", .{ impl_name, impl_name });
+    try writer.print("        if (comptime @hasDecl({s}, \"deinitOwn\")) {s}.deinitOwn(instance);\n", .{ impl_name, impl_name });
+    if (options.has_parent) try writer.writeAll("        Meta.ParentInterface.deinitChain(instance);\n");
     try writer.writeAll("    }\n\n");
 
     try writeInstallHooks(writer, impl_decl, "    ");
@@ -5185,25 +5286,37 @@ test "writeVTable generates vtable constant" {
     try testing.expect(std.mem.indexOf(u8, output, "pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);") != null);
 }
 
-test "writeLifecycleFunctions generates init and deinit" {
+test "writeLifecycleFunctions generates the construction and destruction chain" {
     var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
     defer buffer.deinit();
 
     const writer = &buffer.writer;
 
-    try writeLifecycleFunctions(writer, "NodeImpl");
+    try writeLifecycleFunctions(writer, "NodeImpl", .{ .interface_name = "Node", .has_parent = true });
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub fn init(") != null);
     try testing.expect(std.mem.indexOf(u8, output, "pub fn deinit(") != null);
-    // init() should delegate to Impl.init() with State and vtable
-    try testing.expect(std.mem.indexOf(u8, output, "NodeImpl.init(allocator, State, &vtable, ctx)") != null);
+    // init() runs the chain with State and vtable; the chain honours a legacy Impl.init.
+    try testing.expect(std.mem.indexOf(u8, output, "return initChain(allocator, State, &vtable, ctx, .{});") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "NodeImpl.init(allocator, StateType, vtable_ptr, ctx)") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "Meta.ParentInterface.initChain(") != null);
+}
+
+test "a mixin's lifecycle is its hooks alone" {
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeLifecycleFunctions(&buffer.writer, "ParentNodeImpl", .{ .interface_name = "ParentNode", .has_parent = false, .is_mixin = true });
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "pub fn installHooks() void {") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub fn init(") == null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub fn deinit(") == null);
 }
 
 test "every interface exposes its impl's installHooks, a no-op when the impl declares none" {
     var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
     defer buffer.deinit();
-    try writeLifecycleFunctions(&buffer.writer, "NodeImpl");
+    try writeLifecycleFunctions(&buffer.writer, "NodeImpl", .{ .interface_name = "Node", .has_parent = true });
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "    pub fn installHooks() void {\n") != null);
     // Looked up, so an interface with no impl yet still compiles.

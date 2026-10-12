@@ -20,7 +20,6 @@ const infra = @import("infra");
 const CharacterData = interfaces.CharacterData;
 
 // Import parent class impl for initialization chain
-const NodeImpl = @import("Node.zig");
 
 // Import DOM algorithms from src/dom/
 const dom = @import("dom");
@@ -203,29 +202,30 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class initialization: Node -> EventTarget
+/// What a CharacterData node is given at construction (`initWith`): its
+/// data. Text(data), Comment(data), document.createTextNode and
+/// createProcessingInstruction make a node with its data, as WebKit's
+/// `Text::create(document, data)` passes it to CharacterData's constructor;
+/// none runs "replace data" on a node no one can observe yet. Made with no
+/// arguments, a node's data is the empty string.
+pub const construction_args = .{"data"};
+
+/// CharacterData's own construction steps: the generated chain runs Node's first.
 ///
 /// IMPORTANT: Due to state hierarchy complexity, internal state is stored
 /// in a global registry rather than in the State struct.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (Node) which chains to EventTarget
-    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
-    errdefer NodeImpl.deinit(instance);
-
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
     // Initialize CharacterData internal state in global registry
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = try InternalState.init(allocator);
-
-    return instance;
+    if (@hasField(@TypeOf(args), "data")) {
+        errdefer deinitOwn(instance);
+        try internal.setData(args.data);
+    }
 }
 
 /// Get CharacterData's internal state from the registry
@@ -233,15 +233,13 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// CharacterData's own teardown: the generated chain runs Node's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
     Registry.remove(instance);
-    // Node cleanup happens via inheritance chain
-    NodeImpl.deinit(instance);
 }
 
 // =============================================================================
@@ -407,16 +405,10 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
 // Helper Functions
 // =============================================================================
 
-/// Set the data directly (used by Text, Comment constructors)
-pub fn setData(instance: *runtime.Instance, data: []const u8) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.setData(data);
-}
-
-/// Get the data directly as a slice
-/// Returns null if instance has no internal state
-pub fn getData(instance: *runtime.Instance) ?[]const u8 {
-    const internal = getInternal(instance) orelse return null;
+/// dom.character_data: `node`'s data, borrowed until it next changes, or
+/// null when `node` has no CharacterData state.
+fn dataOf(node: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(node) orelse return null;
     return internal.getData();
 }
 
@@ -437,6 +429,9 @@ pub fn deleteDataRange(instance: *runtime.Instance, offset: u32, count: u32) !vo
 pub fn installHooks() void {
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.character_data, &sweepRemaining);
+    // Its data, read in place by the tree's own algorithms (textContent,
+    // nodeValue, isEqualNode, an option's text).
+    @import("dom").character_data.install(.{ .data_of = &dataOf });
 }
 
 /// dom.teardown_sweeps: at its Browser's end, every CharacterData state still in

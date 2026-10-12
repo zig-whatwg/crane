@@ -93,56 +93,6 @@ pub const CanvasTextDrawingStyles = struct {
         },
     );
 
-    const delegates = .{
-        .get_direction = &get_direction,
-        .get_font = &get_font,
-        .get_fontKerning = &get_fontKerning,
-        .get_fontStretch = &get_fontStretch,
-        .get_fontVariantCaps = &get_fontVariantCaps,
-        .get_lang = &get_lang,
-        .get_letterSpacing = &get_letterSpacing,
-        .get_textAlign = &get_textAlign,
-        .get_textBaseline = &get_textBaseline,
-        .get_textRendering = &get_textRendering,
-        .get_wordSpacing = &get_wordSpacing,
-
-        .set_direction = &set_direction,
-        .set_font = &set_font,
-        .set_fontKerning = &set_fontKerning,
-        .set_fontStretch = &set_fontStretch,
-        .set_fontVariantCaps = &set_fontVariantCaps,
-        .set_lang = &set_lang,
-        .set_letterSpacing = &set_letterSpacing,
-        .set_textAlign = &set_textAlign,
-        .set_textBaseline = &set_textBaseline,
-        .set_textRendering = &set_textRendering,
-        .set_wordSpacing = &set_wordSpacing,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return CanvasTextDrawingStylesImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return CanvasTextDrawingStylesImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        CanvasTextDrawingStylesImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

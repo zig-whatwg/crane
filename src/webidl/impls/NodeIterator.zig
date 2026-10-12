@@ -19,8 +19,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const NodeIterator = interfaces.NodeIterator;
 
-// Import related impls
-const NodeImpl = @import("Node.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 // Import DOM module for tree navigation via NodeBase
@@ -434,7 +432,7 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
 /// Returns null if no next node exists within root
 fn getNextNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*runtime.Instance {
     // If node has children, return first child
-    if (NodeImpl.getFirstChild(node)) |child| {
+    if (interfaces.Node.get_firstChild(node) catch null) |child| {
         return child;
     }
 
@@ -448,12 +446,12 @@ fn getNextNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*runtim
         }
 
         // Try next sibling
-        if (NodeImpl.getNextSibling(current)) |sibling| {
+        if (interfaces.Node.get_nextSibling(current) catch null) |sibling| {
             return sibling;
         }
 
         // Move up to parent
-        const parent = NodeImpl.getParent(current) orelse return null;
+        const parent = (interfaces.Node.get_parentNode(current) catch null) orelse return null;
 
         // Check if parent is root
         if (root) |r| {
@@ -473,13 +471,13 @@ fn getPreviousNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*ru
     }
 
     // If node has previous sibling, return its last descendant
-    if (NodeImpl.getPreviousSibling(node)) |sibling| {
+    if (interfaces.Node.get_previousSibling(node) catch null) |sibling| {
         return getLastInclusiveDescendant(sibling);
     }
 
     // Otherwise the parent - which may be the root itself: the iterator
     // collection is the root's INCLUSIVE descendants.
-    return NodeImpl.getParent(node);
+    return interfaces.Node.get_parentNode(node) catch null;
 }
 
 /// Get the last inclusive descendant of a node
@@ -488,7 +486,7 @@ fn getLastInclusiveDescendant(node: *runtime.Instance) *runtime.Instance {
     var current = node;
 
     while (true) {
-        const last_child = NodeImpl.getLastChild(current) orelse return current;
+        const last_child = (interfaces.Node.get_lastChild(current) catch null) orelse return current;
         current = last_child;
     }
 }

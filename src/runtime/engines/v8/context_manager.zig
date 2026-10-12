@@ -373,7 +373,6 @@ pub fn deinit() void {
                 coordinator.cleanupPhase(.dom_tree);
 
                 if (entry.window_instance) |window_instance| {
-                    const WindowImpl = @import("impls").Window;
                     log.debug("[context_manager.deinit] DOM Tree cleanup: Window.deinit for {*}", .{window_instance});
 
                     // Remove Window from wrapper cache FIRST to prevent double-free
@@ -383,7 +382,7 @@ pub fn deinit() void {
                     }
 
                     // Now call Window.deinit to clean up Document and DOM tree
-                    WindowImpl.deinit(window_instance);
+                    @import("interfaces").Window.deinit(window_instance);
                     log.debug("[context_manager.deinit] DOM Tree cleanup: Window.deinit DONE", .{});
                 } else {
                     log.debug("[context_manager.deinit] DOM Tree cleanup: NO window_instance for context", .{});
@@ -1125,7 +1124,7 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
                 }
 
                 // Now call Window.deinit which will clean up Location, Document, and DOM tree
-                WindowImpl.deinit(wi);
+                @import("interfaces").Window.deinit(wi);
             }
 
             // Clean up V8 wrapper cache
