@@ -24,6 +24,9 @@ const HTMLElement = interfaces.HTMLElement;
 
 // Import parent impl for chaining initialization
 const ElementImpl = @import("Element.zig");
+// An element's attributes and local name, read in place (dom.element_data,
+// which Element installs).
+const element_data = @import("dom").element_data;
 
 // Import CSSStyleDeclaration impl for inline style creation
 const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
@@ -908,11 +911,11 @@ fn fireSyntheticPointerEvent(target: *runtime.Instance, comptime event_type: []c
 /// textarea with a disabled attribute. Deviation, stated: a control disabled
 /// only through a disabled fieldset ancestor is not recognised here.
 fn isDisabledFormControl(instance: *runtime.Instance) bool {
-    const element = ElementImpl.getInternal(instance) orelse return false;
-    const name = element.local_name.asSlice();
+    const data = element_data.of(instance) orelse return false;
+    const name = data.local_name.asSlice();
     const controls = [_][]const u8{ "button", "input", "select", "textarea" };
     for (controls) |control| {
-        if (std.mem.eql(u8, name, control)) return element.findAttribute(null, "disabled") != null;
+        if (std.mem.eql(u8, name, control)) return element_data.hasAttribute(data, "disabled");
     }
     return false;
 }

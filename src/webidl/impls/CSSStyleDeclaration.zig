@@ -19,8 +19,9 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const CSSStyleDeclaration = interfaces.CSSStyleDeclaration;
 
-// Import Element impl for tag name access
-const ElementImpl = @import("Element.zig");
+// An element's local name, read in place (dom.element_data, which Element
+// installs).
+const element_data = @import("dom").element_data;
 
 // Import HTMLElement impl for inline style storage delegation
 const HTMLElementImpl = @import("HTMLElement.zig");
@@ -445,8 +446,8 @@ fn getComputedPropertyValue(property: []const u8, element: *runtime.Instance) ru
 /// Per HTML spec, different elements have different default display values
 fn getDefaultDisplay(element: *runtime.Instance) []const u8 {
     // Get the element's tag name
-    const elem_internal = ElementImpl.getInternal(element) orelse return "inline";
-    const tag_name = elem_internal.local_name.asSlice();
+    const data = element_data.of(element) orelse return "inline";
+    const tag_name = data.local_name.asSlice();
 
     // Block-level elements
     if (isBlockElement(tag_name)) {

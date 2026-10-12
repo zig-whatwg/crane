@@ -15,9 +15,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-
-// Import impl modules for accessing internal state
-const ElementImpl = @import("Element.zig");
+// An element's ID, read in place (dom.element_data, which Element installs).
+const element_data = @import("dom").element_data;
 
 pub const State = interfaces.NonElementParentNode.State;
 
@@ -81,8 +80,8 @@ fn findElementById(node: *runtime.Instance, target_id: []const u8) ?*runtime.Ins
         const node_type = interfaces.Node.get_nodeType(c) catch 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             // Get element's id
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const elem_id = elem_internal.id.asSlice();
+            if (element_data.of(c)) |data| {
+                const elem_id = data.id.asSlice();
                 if (std.mem.eql(u8, elem_id, target_id)) {
                     return c;
                 }
