@@ -182,33 +182,23 @@ pub fn installHooks() void {
     });
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-
-    // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer HTMLElementImpl.deinit(instance);
-
+/// HTMLIFrameElement's own construction steps: the generated chain runs HTMLElement's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize internal state
-    const state = instance.getState(StateType);
+    const state = instance.getState(State);
     state.own._internal = try InternalState.init(allocator, runtime.arenaOf(instance));
     log.debug("[HTMLIFrameElement.init] instance={*} -> internal={*} -> integration={*}", .{ instance, state.own._internal.?, state.own._internal.?.integration });
 
     // Set Node's local name for iframe identification during DOM operations
     const NodeImpl = @import("Node.zig");
     try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("iframe"));
-
-    return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance. An iframe keeps a deinit of its own rather than a
+/// deinitOwn: a finished teardown is refused here, before any ancestor's part
+/// runs again; otherwise its own part, then HTMLElement's chain.
 pub fn deinit(instance: *runtime.Instance) void {
     // Guard against double-deinit. Every caller checks that the teardown has
     // not begun: the tree's (deinitNodeByType) marks it begun BEFORE it
@@ -234,15 +224,13 @@ pub fn deinit(instance: *runtime.Instance) void {
     } else {
         log.debug("[HTMLIFrameElement.deinit] instance={*} -> No internal state", .{instance});
     }
-    // Chain to parent class cleanup
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    interfaces.HTMLElement.deinitChain(instance);
 }
 
 /// Constructor implementation
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &HTMLIFrameElement.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try HTMLIFrameElement.init(ctx.allocator, ctx);
+    errdefer HTMLIFrameElement.deinit(instance);
     return instance;
 }
 
