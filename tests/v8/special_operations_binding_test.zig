@@ -11,7 +11,10 @@
 //!   property's descriptor is enumerable unless
 //!   [LegacyUnenumerableNamedProperties] (3.9.1 step 2.1.8);
 //! - an interface with named properties and no indexed ones takes an array
-//!   index as a name (Blink's bind_gen forwards the same way).
+//!   index as a name (Blink's bind_gen forwards the same way);
+//! - the named property visibility algorithm (3.9.7) on a read: an own
+//!   property of O hides a named property, under [LegacyOverrideBuiltIns]
+//!   too, which skips only the prototype chain (step 3).
 //!
 //! Values are made the way the binding makes them: by script, in a Window
 //! realm. Storage, which needs a Browser's storage shed, is
@@ -298,5 +301,55 @@ test "a named property's name may be long, and keeps its lone surrogates" {
         \\  check('long in', long in ds, true);
         \\  check('long delete', delete ds[long], true);
         \\  check('long gone', body.hasAttribute('data-' + long), false);
+    );
+}
+
+test "an own property hides a named property; the prototype chain does not, without [LegacyOverrideBuiltIns]" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { doc, body } = html();
+        \\  const children = body.children;
+        \\  children.later = 5;
+        \\  const a = doc.createElement('a');
+        \\  a.id = 'later';
+        \\  body.appendChild(a);
+        \\  check('expando hides the named property', children.later, 5);
+        \\  check('delete the expando', delete children.later, true);
+        \\  check('then the named property', children.later, a);
+        \\  const b = doc.createElement('a');
+        \\  b.id = 'item';
+        \\  body.appendChild(b);
+        \\  check('the prototype hides it', typeof children.item, 'function');
+    );
+}
+
+/// HTMLFormElement's named getter is its impl's to implement (Codex row 23);
+/// until it does, the binding installs none and this has nothing to test.
+const form_named_getter_bound = specialBinding(interfaces.HTMLFormElement).named_getter != null;
+
+test "[LegacyOverrideBuiltIns]: an own property hides a named property (visibility step 2), the prototype chain does not (step 3)" {
+    if (!form_named_getter_bound) return error.SkipZigTest;
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { doc, body } = html();
+        \\  const form = doc.createElement('form');
+        \\  body.appendChild(form);
+        \\  const add = (name) => { const input = doc.createElement('input'); input.name = name; form.appendChild(input); return input; };
+        \\  form.later = 5;
+        \\  const later = add('later');
+        \\  check('expando hides the named property', form.later, 5);
+        \\  const desc = Object.getOwnPropertyDescriptor(form, 'later');
+        \\  check('its descriptor', desc && desc.value, 5);
+        \\  check('delete the expando', delete form.later, true);
+        \\  check('then the named property', form.later, later);
+        \\  Object.defineProperty(form, 'fixed', { value: 6, configurable: false, writable: false });
+        \\  add('fixed');
+        \\  check('a non-configurable expando hides it', form.fixed, 6);
+        \\  check('and stays', delete form.fixed, false);
+        \\  check('still the expando', form.fixed, 6);
+        \\  const submit = add('submit');
+        \\  check('over the prototype chain', form.submit, submit);
     );
 }

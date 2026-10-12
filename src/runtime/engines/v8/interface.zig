@@ -6611,17 +6611,27 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// LegacyPlatformObjectGetOwnProperty step 2, for [[Get]]: the value
-        /// of a visible named property. A named interceptor is consulted
-        /// after the prototype chain unless named properties mask it (V8's
-        /// non-masking interceptor answers steps 2 and 4-6 of the visibility
-        /// algorithm for a read), so only step 1 is asked of it
-        /// (`whole_visibility` false); an indexed one always masks, so a
-        /// forwarded array index asks the whole algorithm
-        /// (`Storage.prototype[9] = p` hides storage's key "9").
+        /// of a named property the visibility algorithm (3.9.7) finds visible.
+        /// What V8 has already answered decides which steps are asked here:
+        ///   - a non-masking interceptor (no [LegacyOverrideBuiltIns]) is
+        ///     consulted only once O's own properties and its prototype chain
+        ///     have no P - steps 2 and 4-6 - so it asks step 1;
+        ///   - a masking one is consulted BEFORE O's own properties
+        ///     (LookupIterator visits a holder's interceptor first), so it asks
+        ///     steps 1-3: step 2, an own property hides the named property, holds
+        ///     under [LegacyOverrideBuiltIns], which skips only the prototype
+        ///     chain (form-nameditem.html: `form.x = 5` before a control named
+        ///     x is added keeps reading 5);
+        ///   - an indexed one always masks, so a forwarded array index asks
+        ///     the whole algorithm (`Storage.prototype[9] = p` hides
+        ///     storage's key "9") - `whole_visibility`.
+        /// Crane's CSS attributes are no WebIDL named properties: as before.
         fn namedGet(info: *const v8.PropertyCallbackInfo, key: []const u8, comptime whole_visibility: bool) v8.Intercepted {
             if (comptime !has_named_getter) return .kNo;
             const instance = holderInstance(info) orelse return .kNo;
-            if (whole_visibility) {
+            if (whole_visibility or (comptime special.legacy_override_built_ins and !is_css_style_declaration)) {
+                // isVisible stops at step 1 for an unsupported name: the
+                // own-property question is asked only of a supported one.
                 if (!isVisible(instance, info, key)) return .kNo;
             } else if (!is_css_style_declaration and !isSupportedPropertyName(instance, key)) {
                 // CSSStyleDeclaration answers every CSS property name -
