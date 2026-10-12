@@ -68,45 +68,107 @@ pub fn extractBoundary(allocator: Allocator, content_type: []const u8) ![]const 
     return try allocator.dupe(u8, boundary_value);
 }
 
-/// Parse Content-Disposition header to extract name and optional filename
+/// Parse Content-Disposition parameters into owned name/filename strings.
+/// The caller frees each present string with allocator.
 ///
 /// Examples:
 ///   "form-data; name=\"username\""
 ///   "form-data; name=\"avatar\"; filename=\"photo.jpg\""
 ///
 /// RFC 7578 Section 4.2: Each part MUST contain a Content-Disposition header field
-fn parseContentDisposition(line: []const u8) !struct { name: ?[]const u8, filename: ?[]const u8 } {
+fn parseContentDisposition(allocator: Allocator, line: []const u8) !struct { name: ?[]const u8, filename: ?[]const u8 } {
     var name: ?[]const u8 = null;
     var filename: ?[]const u8 = null;
+    errdefer if (name) |value| allocator.free(value);
+    errdefer if (filename) |value| allocator.free(value);
 
-    // Find "name=" parameter
-    if (std.mem.indexOf(u8, line, "name=")) |name_start| {
-        const value_start = name_start + 5; // Skip "name="
-        if (value_start < line.len) {
-            if (line[value_start] == '"') {
-                // Quoted value
-                const quote_start = value_start + 1;
-                if (std.mem.indexOfScalarPos(u8, line, quote_start, '"')) |quote_end| {
-                    name = line[quote_start..quote_end];
+    // Browser-backed deviations from RFC 2183 section 2 / RFC 2045:
+    // WebKit parseParameters and Gecko FormDataParser::ParseHeader match
+    // lowercase names exactly and retain ordinary backslashes. Blink and
+    // Gecko take the last duplicate and allow whitespace before a quoted
+    // value; Blink and WebKit preserve semicolons inside quotes.
+    // WebKit: Source/WebCore/Modules/fetch/FetchBodyConsumer.cpp, parseParameters
+    // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/Modules/fetch/FetchBodyConsumer.cpp
+    // Gecko: dom/base/BodyUtil.cpp, FormDataParser::ParseHeader
+    // https://searchfox.org/mozilla-central/source/dom/base/BodyUtil.cpp
+    // Blink: ParsedContentDisposition, ParsedContentHeaderFieldParameters::Parse,
+    // ParameterValueForName and HeaderFieldTokenizer::ConsumeQuotedString
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/platform/network/parsed_content_disposition.cc
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/platform/network/parsed_content_header_field_parameters.cc
+    // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/platform/network/header_field_tokenizer.cc
+    // The unquoted multipart Blob-to-formData case passes in Chrome,
+    // Firefox and Safari at wpt.fyi cc74d2669f (file totals 40/40, 39/40, 40/40).
+    // https://wpt.fyi/results/fetch/api/response/response-consume.html?sha=cc74d2669f
+    var position: usize = 0;
+    while (position < line.len) {
+        while (position < line.len and (line[position] == ';' or line[position] == ' ' or line[position] == '\t')) : (position += 1) {}
+        const key_start = position;
+        while (position < line.len and line[position] != '=' and line[position] != ';') : (position += 1) {}
+        if (position == line.len) break;
+        if (line[position] == ';') {
+            position += 1;
+            continue;
+        }
+        // Do not trim whitespace before '=': WebKit and Gecko do not match it.
+        const key = line[key_start..position];
+        position += 1;
+        // WebKit and Blink omit an absent terminal value; Gecko alone accepts it.
+        if (position == line.len) break;
+        while (position < line.len and (line[position] == ' ' or line[position] == '\t')) : (position += 1) {}
+        var escaped_quotes: usize = 0;
+        const quoted = position < line.len and line[position] == '"';
+        if (quoted) position += 1;
+        const value_start = position;
+        var value_end = position;
+        if (quoted) {
+            while (position < line.len and line[position] != '"') {
+                if (line[position] == '\\' and position + 1 < line.len) {
+                    // Escaped quotes split all three engines. RFC 2183 refers
+                    // to RFC 822 sections 3.3/3.4: a quoted-pair yields the
+                    // quoted character. RFC 5322 section 3.2.1 preserves this.
+                    // Other quoted-pairs keep BOTH bytes (WebKit + Gecko),
+                    // but must be consumed together so a following quote closes.
+                    // https://www.rfc-editor.org/rfc/rfc822#section-3.3
+                    // https://www.rfc-editor.org/rfc/rfc5322#section-3.2.1
+                    if (line[position + 1] == '"') escaped_quotes += 1;
+                    position += 2;
+                } else {
+                    position += 1;
                 }
             }
+            value_end = position;
+            // WebKit and Gecko accept an unterminated quote through EOF.
+            if (position < line.len) position += 1;
+            while (position < line.len and (line[position] == ' ' or line[position] == '\t')) : (position += 1) {}
+            // With no separator, WebKit reads a second parameter, Gecko
+            // keeps trailing text in the first value, and Blink rejects.
+            // The three-way split follows RFC 2183 section 2: ';' is required.
+            if (position < line.len and line[position] != ';') return error.InvalidHeaders;
+        } else {
+            while (position < line.len and line[position] != ';') : (position += 1) {}
+            value_end = position;
         }
-    }
-
-    // Find "filename=" parameter
-    if (std.mem.indexOf(u8, line, "filename=")) |filename_start| {
-        const value_start = filename_start + 9; // Skip "filename="
-        if (value_start < line.len) {
-            if (line[value_start] == '"') {
-                // Quoted value
-                const quote_start = value_start + 1;
-                if (std.mem.indexOfScalarPos(u8, line, quote_start, '"')) |quote_end| {
-                    filename = line[quote_start..quote_end];
+        const value = if (quoted) line[value_start..value_end] else std.mem.trim(u8, line[value_start..value_end], " \t\r\n");
+        // An empty value explicitly followed by ';' is present (WebKit + Gecko).
+        const target = if (std.mem.eql(u8, key, "name")) &name else if (std.mem.eql(u8, key, "filename")) &filename else continue;
+        const owned = try allocator.alloc(u8, value.len - escaped_quotes);
+        var read: usize = 0;
+        var write: usize = 0;
+        while (read < value.len) {
+            if (quoted and value[read] == '\\' and read + 1 < value.len) {
+                if (value[read + 1] != '"') {
+                    owned[write] = value[read];
+                    write += 1;
                 }
+                read += 1;
             }
+            owned[write] = value[read];
+            write += 1;
+            read += 1;
         }
+        if (target.*) |previous| allocator.free(previous);
+        target.* = owned;
     }
-
     return .{ .name = name, .filename = filename };
 }
 
@@ -134,16 +196,15 @@ fn parsePartHeaders(allocator: Allocator, headers: []const u8) !PartInfo {
         // https://wpt.fyi/results/fetch/api/body/formdata.any.html?sha=cc74d2669f
         if (std.ascii.startsWithIgnoreCase(line, "Content-Disposition:")) {
             const header_value = std.mem.trim(u8, line[20..], " ");
-            const parsed = try parseContentDisposition(header_value);
+            // The parser owns the decoded strings; transfer them directly.
+            const parsed = try parseContentDisposition(allocator, header_value);
             if (parsed.name) |n| {
-                const owned = try allocator.dupe(u8, n);
                 if (name) |previous| allocator.free(previous);
-                name = owned;
+                name = n;
             }
             if (parsed.filename) |f| {
-                const owned = try allocator.dupe(u8, f);
                 if (filename) |previous| allocator.free(previous);
-                filename = owned;
+                filename = f;
             }
         }
         // Parse Content-Type header
@@ -326,7 +387,10 @@ test "extractBoundary - missing" {
 
 test "parseContentDisposition - name only" {
     const line = "form-data; name=\"username\"";
-    const parsed = try parseContentDisposition(line);
+    const allocator = std.testing.allocator;
+    const parsed = try parseContentDisposition(allocator, line);
+    defer if (parsed.name) |value| allocator.free(value);
+    defer if (parsed.filename) |value| allocator.free(value);
 
     try std.testing.expect(parsed.name != null);
     try std.testing.expectEqualStrings("username", parsed.name.?);
@@ -335,7 +399,10 @@ test "parseContentDisposition - name only" {
 
 test "parseContentDisposition - name and filename" {
     const line = "form-data; name=\"avatar\"; filename=\"photo.jpg\"";
-    const parsed = try parseContentDisposition(line);
+    const allocator = std.testing.allocator;
+    const parsed = try parseContentDisposition(allocator, line);
+    defer if (parsed.name) |value| allocator.free(value);
+    defer if (parsed.filename) |value| allocator.free(value);
 
     try std.testing.expect(parsed.name != null);
     try std.testing.expectEqualStrings("avatar", parsed.name.?);
