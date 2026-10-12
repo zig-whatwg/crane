@@ -20,6 +20,8 @@ const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const cookiestore = @import("cookiestore");
 const fetch = @import("fetch");
+const origin_record = @import("origin_record.zig");
+const OriginRecord = origin_record.OriginRecord;
 
 /// One kind of global's answers. Each getter is handed a global `owns`
 /// accepted.
@@ -29,6 +31,11 @@ pub const Settings = struct {
     /// The settings object's origin, serialized. Owned by the caller,
     /// allocated with `global.ctx.allocator`.
     origin: *const fn (global: *runtime.Instance) anyerror!runtime.USVString,
+    /// The settings object's origin as the object it is (dom.origin_record):
+    /// a Window's is its associated Document's record, whose identity and
+    /// domain `origin`'s serialization does not carry. BORROWED; null where
+    /// this kind of global keeps none.
+    origin_record: ?*const fn (global: *runtime.Instance) ?*OriginRecord = null,
     /// The settings object's execution environment is a secure context.
     is_secure_context: *const fn (global: *runtime.Instance) bool,
     /// The settings object's cross-origin isolated capability.
@@ -64,6 +71,54 @@ pub const Settings = struct {
     /// documents. Absence means this kind of global does not prohibit.
     prohibits_mixed_security_contexts: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!bool = null,
 };
+
+/// `global`'s settings object's origin record (borrowed), or null where its
+/// kind keeps none.
+pub fn originRecordOf(global: *runtime.Instance) ?*OriginRecord {
+    const settings = of(global) orelse return null;
+    const get = settings.origin_record orelse return null;
+    return get(global);
+}
+
+/// `global`'s settings object's origin record with its serialization
+/// resolved - from the settings object's origin - for a document made with
+/// that origin (new Document(), parseHTMLUnsafe()). BORROWED: the document
+/// retains it. Null where the global's kind keeps no record.
+pub fn shareableOriginOf(global: *runtime.Instance) error{OutOfMemory}!?*OriginRecord {
+    const settings = of(global) orelse return null;
+    const get = settings.origin_record orelse return null;
+    const record = get(global) orelse return null;
+    if (record.serialized == null) {
+        const serialized = settings.origin(global) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            // Not known yet: the record stays unresolved.
+            else => return record,
+        };
+        defer global.ctx.allocator.free(serialized);
+        try record.resolve(serialized);
+    }
+    return record;
+}
+
+/// HTML "same origin-domain" for the origins of two globals' settings
+/// objects - a Window's is its associated Document's - read from the
+/// settings themselves, never through an access-checked IDL getter: the
+/// serializations and the records, whose identity and domains decide. False
+/// when either global's kind is unknown or its origin unreadable.
+/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#same-origin-domain
+pub fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
+    if (a == b) return true;
+    const a_settings = of(a) orelse return false;
+    const b_settings = of(b) orelse return false;
+    const a_origin = a_settings.origin(a) catch return false;
+    defer a.ctx.allocator.free(a_origin);
+    const b_origin = b_settings.origin(b) catch return false;
+    defer b.ctx.allocator.free(b_origin);
+    return origin_record.sameOriginDomain(
+        .{ .serialized = a_origin, .record = originRecordOf(a) },
+        .{ .serialized = b_origin, .record = originRecordOf(b) },
+    );
+}
 
 pub fn reportingOf(global: *runtime.Instance) ?*@import("reporting.zig").State {
     const settings = of(global) orelse return null;
