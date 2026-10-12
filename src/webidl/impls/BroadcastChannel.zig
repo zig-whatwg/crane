@@ -247,22 +247,6 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 // Event handlers: onmessage and onmessageerror, in EventTarget's event
 // handler map.
 
-pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "message");
-}
-
-pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "messageerror");
-}
-
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "message", value);
-}
-
-pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "messageerror", value);
-}
-
 /// "The close() method steps are to set this's closed flag to true." A
 /// closed channel is never a destination again, and nothing holds it.
 pub fn call_close(instance: *runtime.Instance) anyerror!void {

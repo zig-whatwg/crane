@@ -211,11 +211,15 @@ pub const AudioWorkletNode = struct {
         return try AudioWorkletNodeImpl.get_port(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onprocessorerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AudioWorkletNodeImpl.get_onprocessorerror(instance);
+        if (comptime @hasDecl(AudioWorkletNodeImpl, "get_onprocessorerror")) return try AudioWorkletNodeImpl.get_onprocessorerror(instance);
+        return event_handlers.value(EventHandler, instance, "onprocessorerror");
     }
 
     pub fn set_onprocessorerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AudioWorkletNodeImpl.set_onprocessorerror(instance, value);
+        if (comptime @hasDecl(AudioWorkletNodeImpl, "set_onprocessorerror")) return try AudioWorkletNodeImpl.set_onprocessorerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onprocessorerror", value);
     }
 };

@@ -19,11 +19,14 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const CSSStyleDeclaration = interfaces.CSSStyleDeclaration;
 
-// Import Element impl for tag name access
-const ElementImpl = @import("Element.zig");
+// An element's local name, read in place (dom.element_data, which Element
+// installs).
+const element_data = @import("dom").element_data;
 
-// Import HTMLElement impl for inline style storage delegation
-const HTMLElementImpl = @import("HTMLElement.zig");
+// An HTML element's inline style declarations, which it keeps and this
+// object reads and writes (dom.cssom.InlineStyle, through the
+// `inlineStyleOf` HTMLElement installs).
+const cssom = @import("dom").cssom;
 
 pub const State = CSSStyleDeclaration.State;
 
@@ -183,7 +186,7 @@ pub fn initForComputedStyle(
 }
 
 /// Create a CSSStyleDeclaration for element.style (inline styles)
-/// Properties are stored in the HTMLElement's InternalState, not in this CSSStyleDeclaration.
+/// Properties are the element's own (dom.cssom.InlineStyle), not this CSSStyleDeclaration's.
 /// This allows properties to survive V8 GC of this wrapper.
 pub fn initForInlineStyle(
     allocator: std.mem.Allocator,
@@ -218,11 +221,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn get_cssText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
 
-    // For inline styles, delegate to HTMLElement
+    // For inline styles, the element's own declarations (dom.cssom.inlineStyleOf)
     if (internal.is_inline_style) {
         if (internal.element) |element| {
-            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
-                const text = html_internal.getInlineStyleCssText();
+            if (cssom.inlineStyleOf(element)) |inline_style| {
+                const text = inline_style.cssText();
                 return runtime.DOMString.initInterned(text);
             }
         }
@@ -239,11 +242,11 @@ pub fn get_cssText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
 
-    // For inline styles, delegate to HTMLElement
+    // For inline styles, the element's own declarations (dom.cssom.inlineStyleOf)
     if (internal.is_inline_style) {
         if (internal.element) |element| {
-            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
-                return html_internal.getInlineStylePropertyCount();
+            if (cssom.inlineStyleOf(element)) |inline_style| {
+                return inline_style.propertyCount();
             }
         }
         return 0;
@@ -274,11 +277,11 @@ pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) any
 
     const text = value.asSlice();
 
-    // For inline styles, delegate to HTMLElement
+    // For inline styles, the element's own declarations (dom.cssom.inlineStyleOf)
     if (internal.is_inline_style) {
         if (internal.element) |element| {
-            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
-                try html_internal.setInlineStyleCssText(text);
+            if (cssom.inlineStyleOf(element)) |inline_style| {
+                try inline_style.setCssText(text);
                 return;
             }
         }
@@ -334,11 +337,11 @@ pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSS
         }
     }
 
-    // For inline styles, delegate to HTMLElement
+    // For inline styles, the element's own declarations (dom.cssom.inlineStyleOf)
     if (internal.is_inline_style) {
         if (internal.element) |element| {
-            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
-                if (html_internal.getInlineStyleProperty(prop_name)) |value| {
+            if (cssom.inlineStyleOf(element)) |inline_style| {
+                if (inline_style.getProperty(prop_name)) |value| {
                     return runtime.DOMString.initInterned(value);
                 }
             }
@@ -362,14 +365,14 @@ pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSS
 fn getComputedPropertyValue(property: []const u8, element: *runtime.Instance) runtime.DOMString {
     // Per CSS cascade, inline styles have highest priority (after !important)
     // Check inline styles first before returning computed defaults
-    if (HTMLElementImpl.getInternalState(element)) |html_internal| {
-        if (html_internal.getInlineStyleProperty(property)) |value| {
+    if (cssom.inlineStyleOf(element)) |inline_style| {
+        if (inline_style.getProperty(property)) |value| {
             log.debug("[DEBUG] getComputedPropertyValue: found inline style '{s}' = '{s}'\n", .{ property, value });
             return runtime.DOMString.initInterned(value);
         }
-        log.debug("[DEBUG] getComputedPropertyValue: no inline style for '{s}', has {d} props\n", .{ property, html_internal.inline_style_properties.count() });
+        log.debug("[DEBUG] getComputedPropertyValue: no inline style for '{s}', has {d} props\n", .{ property, inline_style.properties.count() });
     } else {
-        log.debug("[DEBUG] getComputedPropertyValue: HTMLElement internal state is null for property '{s}'\n", .{property});
+        log.debug("[DEBUG] getComputedPropertyValue: no inline style for property '{s}'\n", .{property});
     }
 
     // Handle display property - most commonly tested
@@ -445,8 +448,8 @@ fn getComputedPropertyValue(property: []const u8, element: *runtime.Instance) ru
 /// Per HTML spec, different elements have different default display values
 fn getDefaultDisplay(element: *runtime.Instance) []const u8 {
     // Get the element's tag name
-    const elem_internal = ElementImpl.getInternal(element) orelse return "inline";
-    const tag_name = elem_internal.local_name.asSlice();
+    const data = element_data.of(element) orelse return "inline";
+    const tag_name = data.local_name.asSlice();
 
     // Block-level elements
     if (isBlockElement(tag_name)) {
@@ -600,11 +603,11 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
         }
     }
 
-    // For inline styles, delegate to HTMLElement
+    // For inline styles, the element's own declarations (dom.cssom.inlineStyleOf)
     if (internal.is_inline_style) {
         if (internal.element) |element| {
-            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
-                if (html_internal.getInlineStyleProperty(kebab_name)) |value| {
+            if (cssom.inlineStyleOf(element)) |inline_style| {
+                if (inline_style.getProperty(kebab_name)) |value| {
                     return runtime.DOMString.initInterned(value);
                 }
             }
@@ -643,16 +646,16 @@ pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, v
     var kebab_buf: [256]u8 = undefined;
     const kebab_name = camelToKebab(prop_name, &kebab_buf) orelse return;
 
-    // For inline styles, delegate to HTMLElement
+    // For inline styles, the element's own declarations (dom.cssom.inlineStyleOf)
     if (internal.is_inline_style) {
         if (internal.element) |element| {
-            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
+            if (cssom.inlineStyleOf(element)) |inline_style| {
                 if (prop_value.len == 0) {
                     // Remove property - also remove expanded longhands for shorthands
-                    removePropertyWithShorthandExpansion(html_internal, kebab_name);
+                    removePropertyWithShorthandExpansion(inline_style, kebab_name);
                 } else {
                     // Set property - expand shorthands to longhands
-                    try setPropertyWithShorthandExpansion(html_internal, kebab_name, prop_value);
+                    try setPropertyWithShorthandExpansion(inline_style, kebab_name, prop_value);
                 }
                 return;
             }
@@ -691,15 +694,15 @@ pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, v
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
 
-    // For inline styles, delegate to HTMLElement
+    // For inline styles, the element's own declarations (dom.cssom.inlineStyleOf)
     if (internal.is_inline_style) {
         if (internal.element) |element| {
-            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
-                const count = html_internal.inline_style_properties.count();
+            if (cssom.inlineStyleOf(element)) |inline_style| {
+                const count = inline_style.properties.count();
                 if (count == 0) return &[_]runtime.DOMString{};
 
                 var names: std.ArrayList(runtime.DOMString) = .empty;
-                var iter = html_internal.inline_style_properties.iterator();
+                var iter = inline_style.properties.iterator();
                 while (iter.next()) |entry| {
                     const camel_name = try kebabToCamel(allocator, entry.key_ptr.*);
                     try names.append(allocator, runtime.DOMString.initOwned(camel_name));
@@ -727,7 +730,7 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
 
 /// Set property with CSS shorthand expansion
 /// When setting a shorthand like 'border', expands to all longhand properties
-fn setPropertyWithShorthandExpansion(html_internal: *HTMLElementImpl.InternalState, property: []const u8, value: []const u8) !void {
+fn setPropertyWithShorthandExpansion(inline_style: *cssom.InlineStyle, property: []const u8, value: []const u8) !void {
     log.debug("[DEBUG] setPropertyWithShorthandExpansion: property='{s}' value='{s}'\n", .{ property, value });
 
     // Handle 'border' shorthand
@@ -741,162 +744,162 @@ fn setPropertyWithShorthandExpansion(html_internal: *HTMLElementImpl.InternalSta
         log.debug("[DEBUG] border shorthand parsed: style='{s}' width='{s}' color='{s}'\n", .{ parsed.style, parsed.width, parsed.color });
 
         // Set border-style for all sides
-        try html_internal.setInlineStyleProperty("border-style", parsed.style);
+        try inline_style.setProperty("border-style", parsed.style);
         log.debug("[DEBUG] set border-style to '{s}'\n", .{parsed.style});
-        try html_internal.setInlineStyleProperty("border-top-style", parsed.style);
-        try html_internal.setInlineStyleProperty("border-right-style", parsed.style);
-        try html_internal.setInlineStyleProperty("border-bottom-style", parsed.style);
-        try html_internal.setInlineStyleProperty("border-left-style", parsed.style);
+        try inline_style.setProperty("border-top-style", parsed.style);
+        try inline_style.setProperty("border-right-style", parsed.style);
+        try inline_style.setProperty("border-bottom-style", parsed.style);
+        try inline_style.setProperty("border-left-style", parsed.style);
 
         // Set border-width for all sides (if specified)
         if (parsed.width.len > 0) {
-            try html_internal.setInlineStyleProperty("border-width", parsed.width);
-            try html_internal.setInlineStyleProperty("border-top-width", parsed.width);
-            try html_internal.setInlineStyleProperty("border-right-width", parsed.width);
-            try html_internal.setInlineStyleProperty("border-bottom-width", parsed.width);
-            try html_internal.setInlineStyleProperty("border-left-width", parsed.width);
+            try inline_style.setProperty("border-width", parsed.width);
+            try inline_style.setProperty("border-top-width", parsed.width);
+            try inline_style.setProperty("border-right-width", parsed.width);
+            try inline_style.setProperty("border-bottom-width", parsed.width);
+            try inline_style.setProperty("border-left-width", parsed.width);
         }
 
         // Set border-color for all sides (if specified)
         if (parsed.color.len > 0) {
-            try html_internal.setInlineStyleProperty("border-color", parsed.color);
-            try html_internal.setInlineStyleProperty("border-top-color", parsed.color);
-            try html_internal.setInlineStyleProperty("border-right-color", parsed.color);
-            try html_internal.setInlineStyleProperty("border-bottom-color", parsed.color);
-            try html_internal.setInlineStyleProperty("border-left-color", parsed.color);
+            try inline_style.setProperty("border-color", parsed.color);
+            try inline_style.setProperty("border-top-color", parsed.color);
+            try inline_style.setProperty("border-right-color", parsed.color);
+            try inline_style.setProperty("border-bottom-color", parsed.color);
+            try inline_style.setProperty("border-left-color", parsed.color);
         }
         return;
     }
 
     // Handle 'border-style' shorthand (sets all 4 sides)
     if (std.mem.eql(u8, property, "border-style")) {
-        try html_internal.setInlineStyleProperty("border-style", value);
-        try html_internal.setInlineStyleProperty("border-top-style", value);
-        try html_internal.setInlineStyleProperty("border-right-style", value);
-        try html_internal.setInlineStyleProperty("border-bottom-style", value);
-        try html_internal.setInlineStyleProperty("border-left-style", value);
+        try inline_style.setProperty("border-style", value);
+        try inline_style.setProperty("border-top-style", value);
+        try inline_style.setProperty("border-right-style", value);
+        try inline_style.setProperty("border-bottom-style", value);
+        try inline_style.setProperty("border-left-style", value);
         return;
     }
 
     // Handle 'border-width' shorthand (sets all 4 sides)
     if (std.mem.eql(u8, property, "border-width")) {
-        try html_internal.setInlineStyleProperty("border-width", value);
-        try html_internal.setInlineStyleProperty("border-top-width", value);
-        try html_internal.setInlineStyleProperty("border-right-width", value);
-        try html_internal.setInlineStyleProperty("border-bottom-width", value);
-        try html_internal.setInlineStyleProperty("border-left-width", value);
+        try inline_style.setProperty("border-width", value);
+        try inline_style.setProperty("border-top-width", value);
+        try inline_style.setProperty("border-right-width", value);
+        try inline_style.setProperty("border-bottom-width", value);
+        try inline_style.setProperty("border-left-width", value);
         return;
     }
 
     // Handle 'border-color' shorthand (sets all 4 sides)
     if (std.mem.eql(u8, property, "border-color")) {
-        try html_internal.setInlineStyleProperty("border-color", value);
-        try html_internal.setInlineStyleProperty("border-top-color", value);
-        try html_internal.setInlineStyleProperty("border-right-color", value);
-        try html_internal.setInlineStyleProperty("border-bottom-color", value);
-        try html_internal.setInlineStyleProperty("border-left-color", value);
+        try inline_style.setProperty("border-color", value);
+        try inline_style.setProperty("border-top-color", value);
+        try inline_style.setProperty("border-right-color", value);
+        try inline_style.setProperty("border-bottom-color", value);
+        try inline_style.setProperty("border-left-color", value);
         return;
     }
 
     // Handle 'margin' shorthand
     if (std.mem.eql(u8, property, "margin")) {
-        try html_internal.setInlineStyleProperty("margin", value);
-        try html_internal.setInlineStyleProperty("margin-top", value);
-        try html_internal.setInlineStyleProperty("margin-right", value);
-        try html_internal.setInlineStyleProperty("margin-bottom", value);
-        try html_internal.setInlineStyleProperty("margin-left", value);
+        try inline_style.setProperty("margin", value);
+        try inline_style.setProperty("margin-top", value);
+        try inline_style.setProperty("margin-right", value);
+        try inline_style.setProperty("margin-bottom", value);
+        try inline_style.setProperty("margin-left", value);
         return;
     }
 
     // Handle 'padding' shorthand
     if (std.mem.eql(u8, property, "padding")) {
-        try html_internal.setInlineStyleProperty("padding", value);
-        try html_internal.setInlineStyleProperty("padding-top", value);
-        try html_internal.setInlineStyleProperty("padding-right", value);
-        try html_internal.setInlineStyleProperty("padding-bottom", value);
-        try html_internal.setInlineStyleProperty("padding-left", value);
+        try inline_style.setProperty("padding", value);
+        try inline_style.setProperty("padding-top", value);
+        try inline_style.setProperty("padding-right", value);
+        try inline_style.setProperty("padding-bottom", value);
+        try inline_style.setProperty("padding-left", value);
         return;
     }
 
     // Not a shorthand, set directly
-    try html_internal.setInlineStyleProperty(property, value);
+    try inline_style.setProperty(property, value);
 }
 
 /// Remove property with CSS shorthand expansion
 /// When removing a shorthand like 'border', removes all longhand properties
-fn removePropertyWithShorthandExpansion(html_internal: *HTMLElementImpl.InternalState, property: []const u8) void {
+fn removePropertyWithShorthandExpansion(inline_style: *cssom.InlineStyle, property: []const u8) void {
     // Handle 'border' shorthand
     if (std.mem.eql(u8, property, "border")) {
-        html_internal.removeInlineStyleProperty("border-style");
-        html_internal.removeInlineStyleProperty("border-top-style");
-        html_internal.removeInlineStyleProperty("border-right-style");
-        html_internal.removeInlineStyleProperty("border-bottom-style");
-        html_internal.removeInlineStyleProperty("border-left-style");
-        html_internal.removeInlineStyleProperty("border-width");
-        html_internal.removeInlineStyleProperty("border-top-width");
-        html_internal.removeInlineStyleProperty("border-right-width");
-        html_internal.removeInlineStyleProperty("border-bottom-width");
-        html_internal.removeInlineStyleProperty("border-left-width");
-        html_internal.removeInlineStyleProperty("border-color");
-        html_internal.removeInlineStyleProperty("border-top-color");
-        html_internal.removeInlineStyleProperty("border-right-color");
-        html_internal.removeInlineStyleProperty("border-bottom-color");
-        html_internal.removeInlineStyleProperty("border-left-color");
+        inline_style.removeProperty("border-style");
+        inline_style.removeProperty("border-top-style");
+        inline_style.removeProperty("border-right-style");
+        inline_style.removeProperty("border-bottom-style");
+        inline_style.removeProperty("border-left-style");
+        inline_style.removeProperty("border-width");
+        inline_style.removeProperty("border-top-width");
+        inline_style.removeProperty("border-right-width");
+        inline_style.removeProperty("border-bottom-width");
+        inline_style.removeProperty("border-left-width");
+        inline_style.removeProperty("border-color");
+        inline_style.removeProperty("border-top-color");
+        inline_style.removeProperty("border-right-color");
+        inline_style.removeProperty("border-bottom-color");
+        inline_style.removeProperty("border-left-color");
         return;
     }
 
     // Handle 'border-style' shorthand
     if (std.mem.eql(u8, property, "border-style")) {
-        html_internal.removeInlineStyleProperty("border-style");
-        html_internal.removeInlineStyleProperty("border-top-style");
-        html_internal.removeInlineStyleProperty("border-right-style");
-        html_internal.removeInlineStyleProperty("border-bottom-style");
-        html_internal.removeInlineStyleProperty("border-left-style");
+        inline_style.removeProperty("border-style");
+        inline_style.removeProperty("border-top-style");
+        inline_style.removeProperty("border-right-style");
+        inline_style.removeProperty("border-bottom-style");
+        inline_style.removeProperty("border-left-style");
         return;
     }
 
     // Handle 'border-width' shorthand
     if (std.mem.eql(u8, property, "border-width")) {
-        html_internal.removeInlineStyleProperty("border-width");
-        html_internal.removeInlineStyleProperty("border-top-width");
-        html_internal.removeInlineStyleProperty("border-right-width");
-        html_internal.removeInlineStyleProperty("border-bottom-width");
-        html_internal.removeInlineStyleProperty("border-left-width");
+        inline_style.removeProperty("border-width");
+        inline_style.removeProperty("border-top-width");
+        inline_style.removeProperty("border-right-width");
+        inline_style.removeProperty("border-bottom-width");
+        inline_style.removeProperty("border-left-width");
         return;
     }
 
     // Handle 'border-color' shorthand
     if (std.mem.eql(u8, property, "border-color")) {
-        html_internal.removeInlineStyleProperty("border-color");
-        html_internal.removeInlineStyleProperty("border-top-color");
-        html_internal.removeInlineStyleProperty("border-right-color");
-        html_internal.removeInlineStyleProperty("border-bottom-color");
-        html_internal.removeInlineStyleProperty("border-left-color");
+        inline_style.removeProperty("border-color");
+        inline_style.removeProperty("border-top-color");
+        inline_style.removeProperty("border-right-color");
+        inline_style.removeProperty("border-bottom-color");
+        inline_style.removeProperty("border-left-color");
         return;
     }
 
     // Handle 'margin' shorthand
     if (std.mem.eql(u8, property, "margin")) {
-        html_internal.removeInlineStyleProperty("margin");
-        html_internal.removeInlineStyleProperty("margin-top");
-        html_internal.removeInlineStyleProperty("margin-right");
-        html_internal.removeInlineStyleProperty("margin-bottom");
-        html_internal.removeInlineStyleProperty("margin-left");
+        inline_style.removeProperty("margin");
+        inline_style.removeProperty("margin-top");
+        inline_style.removeProperty("margin-right");
+        inline_style.removeProperty("margin-bottom");
+        inline_style.removeProperty("margin-left");
         return;
     }
 
     // Handle 'padding' shorthand
     if (std.mem.eql(u8, property, "padding")) {
-        html_internal.removeInlineStyleProperty("padding");
-        html_internal.removeInlineStyleProperty("padding-top");
-        html_internal.removeInlineStyleProperty("padding-right");
-        html_internal.removeInlineStyleProperty("padding-bottom");
-        html_internal.removeInlineStyleProperty("padding-left");
+        inline_style.removeProperty("padding");
+        inline_style.removeProperty("padding-top");
+        inline_style.removeProperty("padding-right");
+        inline_style.removeProperty("padding-bottom");
+        inline_style.removeProperty("padding-left");
         return;
     }
 
     // Not a shorthand, remove directly
-    html_internal.removeInlineStyleProperty(property);
+    inline_style.removeProperty(property);
 }
 
 /// Parse border shorthand value into components

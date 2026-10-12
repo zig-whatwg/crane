@@ -418,60 +418,76 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.get_canTrickleIceCandidates(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onnegotiationneeded(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCPeerConnectionImpl.get_onnegotiationneeded(instance);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "get_onnegotiationneeded")) return try RTCPeerConnectionImpl.get_onnegotiationneeded(instance);
+        return event_handlers.value(EventHandler, instance, "onnegotiationneeded");
     }
 
     pub fn set_onnegotiationneeded(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCPeerConnectionImpl.set_onnegotiationneeded(instance, value);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "set_onnegotiationneeded")) return try RTCPeerConnectionImpl.set_onnegotiationneeded(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onnegotiationneeded", value);
     }
 
     pub fn get_onicecandidate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCPeerConnectionImpl.get_onicecandidate(instance);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "get_onicecandidate")) return try RTCPeerConnectionImpl.get_onicecandidate(instance);
+        return event_handlers.value(EventHandler, instance, "onicecandidate");
     }
 
     pub fn set_onicecandidate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCPeerConnectionImpl.set_onicecandidate(instance, value);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "set_onicecandidate")) return try RTCPeerConnectionImpl.set_onicecandidate(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onicecandidate", value);
     }
 
     pub fn get_onicecandidateerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCPeerConnectionImpl.get_onicecandidateerror(instance);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "get_onicecandidateerror")) return try RTCPeerConnectionImpl.get_onicecandidateerror(instance);
+        return event_handlers.value(EventHandler, instance, "onicecandidateerror");
     }
 
     pub fn set_onicecandidateerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCPeerConnectionImpl.set_onicecandidateerror(instance, value);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "set_onicecandidateerror")) return try RTCPeerConnectionImpl.set_onicecandidateerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onicecandidateerror", value);
     }
 
     pub fn get_onsignalingstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCPeerConnectionImpl.get_onsignalingstatechange(instance);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "get_onsignalingstatechange")) return try RTCPeerConnectionImpl.get_onsignalingstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onsignalingstatechange");
     }
 
     pub fn set_onsignalingstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCPeerConnectionImpl.set_onsignalingstatechange(instance, value);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "set_onsignalingstatechange")) return try RTCPeerConnectionImpl.set_onsignalingstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsignalingstatechange", value);
     }
 
     pub fn get_oniceconnectionstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCPeerConnectionImpl.get_oniceconnectionstatechange(instance);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "get_oniceconnectionstatechange")) return try RTCPeerConnectionImpl.get_oniceconnectionstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "oniceconnectionstatechange");
     }
 
     pub fn set_oniceconnectionstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCPeerConnectionImpl.set_oniceconnectionstatechange(instance, value);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "set_oniceconnectionstatechange")) return try RTCPeerConnectionImpl.set_oniceconnectionstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oniceconnectionstatechange", value);
     }
 
     pub fn get_onicegatheringstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCPeerConnectionImpl.get_onicegatheringstatechange(instance);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "get_onicegatheringstatechange")) return try RTCPeerConnectionImpl.get_onicegatheringstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onicegatheringstatechange");
     }
 
     pub fn set_onicegatheringstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCPeerConnectionImpl.set_onicegatheringstatechange(instance, value);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "set_onicegatheringstatechange")) return try RTCPeerConnectionImpl.set_onicegatheringstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onicegatheringstatechange", value);
     }
 
     pub fn get_onconnectionstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCPeerConnectionImpl.get_onconnectionstatechange(instance);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "get_onconnectionstatechange")) return try RTCPeerConnectionImpl.get_onconnectionstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onconnectionstatechange");
     }
 
     pub fn set_onconnectionstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCPeerConnectionImpl.set_onconnectionstatechange(instance, value);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "set_onconnectionstatechange")) return try RTCPeerConnectionImpl.set_onconnectionstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onconnectionstatechange", value);
     }
 
     pub fn get_peerIdentity(instance: *runtime.Instance) anyerror!runtime.JSValue {
@@ -487,11 +503,13 @@ pub const RTCPeerConnection = struct {
     }
 
     pub fn get_ontrack(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCPeerConnectionImpl.get_ontrack(instance);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "get_ontrack")) return try RTCPeerConnectionImpl.get_ontrack(instance);
+        return event_handlers.value(EventHandler, instance, "ontrack");
     }
 
     pub fn set_ontrack(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCPeerConnectionImpl.set_ontrack(instance, value);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "set_ontrack")) return try RTCPeerConnectionImpl.set_ontrack(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ontrack", value);
     }
 
     pub fn get_sctp(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -499,11 +517,13 @@ pub const RTCPeerConnection = struct {
     }
 
     pub fn get_ondatachannel(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCPeerConnectionImpl.get_ondatachannel(instance);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "get_ondatachannel")) return try RTCPeerConnectionImpl.get_ondatachannel(instance);
+        return event_handlers.value(EventHandler, instance, "ondatachannel");
     }
 
     pub fn set_ondatachannel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCPeerConnectionImpl.set_ondatachannel(instance, value);
+        if (comptime @hasDecl(RTCPeerConnectionImpl, "set_ondatachannel")) return try RTCPeerConnectionImpl.set_ondatachannel(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondatachannel", value);
     }
 
     pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!RTCConfiguration {

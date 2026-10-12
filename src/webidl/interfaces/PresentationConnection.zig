@@ -232,28 +232,36 @@ pub const PresentationConnection = struct {
         return try PresentationConnectionImpl.get_state(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onconnect(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PresentationConnectionImpl.get_onconnect(instance);
+        if (comptime @hasDecl(PresentationConnectionImpl, "get_onconnect")) return try PresentationConnectionImpl.get_onconnect(instance);
+        return event_handlers.value(EventHandler, instance, "onconnect");
     }
 
     pub fn set_onconnect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PresentationConnectionImpl.set_onconnect(instance, value);
+        if (comptime @hasDecl(PresentationConnectionImpl, "set_onconnect")) return try PresentationConnectionImpl.set_onconnect(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onconnect", value);
     }
 
     pub fn get_onclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PresentationConnectionImpl.get_onclose(instance);
+        if (comptime @hasDecl(PresentationConnectionImpl, "get_onclose")) return try PresentationConnectionImpl.get_onclose(instance);
+        return event_handlers.value(EventHandler, instance, "onclose");
     }
 
     pub fn set_onclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PresentationConnectionImpl.set_onclose(instance, value);
+        if (comptime @hasDecl(PresentationConnectionImpl, "set_onclose")) return try PresentationConnectionImpl.set_onclose(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onclose", value);
     }
 
     pub fn get_onterminate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PresentationConnectionImpl.get_onterminate(instance);
+        if (comptime @hasDecl(PresentationConnectionImpl, "get_onterminate")) return try PresentationConnectionImpl.get_onterminate(instance);
+        return event_handlers.value(EventHandler, instance, "onterminate");
     }
 
     pub fn set_onterminate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PresentationConnectionImpl.set_onterminate(instance, value);
+        if (comptime @hasDecl(PresentationConnectionImpl, "set_onterminate")) return try PresentationConnectionImpl.set_onterminate(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onterminate", value);
     }
 
     pub fn get_binaryType(instance: *runtime.Instance) anyerror!BinaryType {
@@ -265,11 +273,13 @@ pub const PresentationConnection = struct {
     }
 
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PresentationConnectionImpl.get_onmessage(instance);
+        if (comptime @hasDecl(PresentationConnectionImpl, "get_onmessage")) return try PresentationConnectionImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PresentationConnectionImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(PresentationConnectionImpl, "set_onmessage")) return try PresentationConnectionImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn call_send(instance: *runtime.Instance, message: DOMString) anyerror!void {

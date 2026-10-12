@@ -200,20 +200,26 @@ pub const NDEFReader = struct {
         return try NDEFReaderImpl.call_constructor(ctx);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onreading(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NDEFReaderImpl.get_onreading(instance);
+        if (comptime @hasDecl(NDEFReaderImpl, "get_onreading")) return try NDEFReaderImpl.get_onreading(instance);
+        return event_handlers.value(EventHandler, instance, "onreading");
     }
 
     pub fn set_onreading(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NDEFReaderImpl.set_onreading(instance, value);
+        if (comptime @hasDecl(NDEFReaderImpl, "set_onreading")) return try NDEFReaderImpl.set_onreading(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onreading", value);
     }
 
     pub fn get_onreadingerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NDEFReaderImpl.get_onreadingerror(instance);
+        if (comptime @hasDecl(NDEFReaderImpl, "get_onreadingerror")) return try NDEFReaderImpl.get_onreadingerror(instance);
+        return event_handlers.value(EventHandler, instance, "onreadingerror");
     }
 
     pub fn set_onreadingerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NDEFReaderImpl.set_onreadingerror(instance, value);
+        if (comptime @hasDecl(NDEFReaderImpl, "set_onreadingerror")) return try NDEFReaderImpl.set_onreadingerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onreadingerror", value);
     }
 
     pub fn call_write(instance: *runtime.Instance, message: NDEFMessageSource, options: webidl.Opt(NDEFWriteOptions)) anyerror!runtime.JSValue {

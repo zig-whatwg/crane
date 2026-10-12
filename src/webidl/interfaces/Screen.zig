@@ -229,13 +229,17 @@ pub const Screen = struct {
         return try ScreenImpl.get_isExtended(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     /// Extended attributes: [SecureContext]
     pub fn get_onchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ScreenImpl.get_onchange(instance);
+        if (comptime @hasDecl(ScreenImpl, "get_onchange")) return try ScreenImpl.get_onchange(instance);
+        return event_handlers.value(EventHandler, instance, "onchange");
     }
 
     /// Extended attributes: [SecureContext]
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ScreenImpl.set_onchange(instance, value);
+        if (comptime @hasDecl(ScreenImpl, "set_onchange")) return try ScreenImpl.set_onchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 };

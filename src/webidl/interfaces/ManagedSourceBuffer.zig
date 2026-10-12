@@ -183,11 +183,15 @@ pub const ManagedSourceBuffer = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onbufferedchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ManagedSourceBufferImpl.get_onbufferedchange(instance);
+        if (comptime @hasDecl(ManagedSourceBufferImpl, "get_onbufferedchange")) return try ManagedSourceBufferImpl.get_onbufferedchange(instance);
+        return event_handlers.value(EventHandler, instance, "onbufferedchange");
     }
 
     pub fn set_onbufferedchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ManagedSourceBufferImpl.set_onbufferedchange(instance, value);
+        if (comptime @hasDecl(ManagedSourceBufferImpl, "set_onbufferedchange")) return try ManagedSourceBufferImpl.set_onbufferedchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onbufferedchange", value);
     }
 };

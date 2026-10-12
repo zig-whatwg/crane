@@ -183,12 +183,16 @@ pub const XRSystem = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_ondevicechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSystemImpl.get_ondevicechange(instance);
+        if (comptime @hasDecl(XRSystemImpl, "get_ondevicechange")) return try XRSystemImpl.get_ondevicechange(instance);
+        return event_handlers.value(EventHandler, instance, "ondevicechange");
     }
 
     pub fn set_ondevicechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSystemImpl.set_ondevicechange(instance, value);
+        if (comptime @hasDecl(XRSystemImpl, "set_ondevicechange")) return try XRSystemImpl.set_ondevicechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondevicechange", value);
     }
 
     /// Extended attributes: [NewObject]

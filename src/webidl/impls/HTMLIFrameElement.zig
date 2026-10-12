@@ -38,6 +38,7 @@ const SandboxFlags = html_core.SandboxFlags;
 
 // DOM imports for post-connection steps callback
 const dom_module = @import("dom");
+const OriginRecord = dom_module.origin_record.OriginRecord;
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.NodeBase;
 
@@ -274,8 +275,11 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     }));
     const allocator = runtime_ctx.allocator;
 
-    // Create a Document instance using the WebIDL interface
-    const document_instance = interfaces.Document.init(allocator, runtime_ctx) catch {
+    // Create a Document instance using the WebIDL interface, of the origin
+    // the navigable was given for it (takeNextOrigin).
+    const origin = takeNextOrigin(browsing_ctx_ptr);
+    defer if (origin) |record| record.release();
+    const document_instance = interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin }) catch {
         return null;
     };
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
@@ -408,7 +412,12 @@ fn parseHtmlForIframe(
     // parsing finished left those scripts on the frame's initial about:blank
     // document: their getElementsByTagName, createElement and body were that
     // document's.
-    const document_instance = interfaces.Document.init(allocator, runtime_ctx) catch return null;
+    // Step 4's origin: navigationParams's, which the navigable was given
+    // for it (takeNextOrigin) - shared with its container document for
+    // srcdoc, its initiator's for a javascript: URL's String.
+    const origin = takeNextOrigin(browsing_ctx_ptr);
+    defer if (origin) |record| record.release();
+    const document_instance = interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin }) catch return null;
     document_internals.setDocumentType(document_instance, .html) catch {};
     document_internals.setContentType(document_instance, "text/html") catch {};
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
@@ -760,6 +769,13 @@ const Navigation = struct {
     /// entry (HTML "create navigation params by fetching" step 3) - guarded,
     /// as that document can go while the fetch is in flight.
     timing_reporter: ?dom_module.performance_timeline.GuardedTimingReporter = null,
+    /// A javascript: URL navigation's initiatorOrigin (navigate step 4's
+    /// initiator origin snapshot): the source document's origin record
+    /// itself, one reference - "navigate to a javascript: URL" step 4
+    /// compares it, as it is when the task runs, with the target's active
+    /// document's, and step 8 makes it the String's document's origin. It
+    /// outlives the source document. Null with no source document.
+    initiator_origin: ?*OriginRecord = null,
     /// The fetch in flight, until it answers.
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
@@ -776,6 +792,7 @@ const Navigation = struct {
         if (self.post_body) |b| self.allocator.free(b);
         if (self.post_content_type) |t| self.allocator.free(t);
         if (self.target_origin) |o| self.allocator.free(o);
+        if (self.initiator_origin) |record| record.release();
         if (self.referrer) |r| self.allocator.free(r);
         if (self.initiator_policy_container) |*container| container.deinit();
         if (self.javascript_policy_container) |*container| container.deinit();
@@ -797,6 +814,15 @@ fn giveAboutBaseUrl(document: *runtime.Instance, browsing_context: *html_core.Br
     const integration = integrationOfBrowsingContext(browsing_context) orelse return;
     const url = integration.next_about_base_url orelse return;
     dom_module.document_lifecycle.setAboutBaseUrl(document, url);
+}
+
+/// "Create and initialize a Document object": the origin record
+/// `browsing_context`'s navigable was given for the document about to be
+/// made (IFrameIntegration.next_origin), with its reference - or null, for
+/// a document of its own origin.
+fn takeNextOrigin(browsing_context: *html_core.BrowsingContext) ?*OriginRecord {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse return null;
+    return integration.takeNextOrigin();
 }
 
 /// The live navigable whose browsing context is `browsing_context`.
@@ -928,24 +954,19 @@ fn initiatorSameOrigin(source: ?*runtime.Instance, active_url: []const u8, alloc
 /// Otherwise, if A and B are same origin and their domains are identical and
 /// null, then return true. 3. Return false."
 ///
-/// Deviation, stated: this engine keeps no identity for an opaque origin
-/// (Origin.isSameOrigin treats each as distinct), so two documents are the
-/// same opaque origin only when they are the same document - one a
-/// sandboxed frame navigates itself in.
+/// The documents' origin records decide identity - two documents sharing one
+/// origin (an about:blank child and its creator, a sandboxed frame's
+/// documents) are the same origin, opaque or not - and their domains.
 fn initiatorSameOriginDomain(source: ?*runtime.Instance, active: *runtime.Instance, allocator: std.mem.Allocator) bool {
     const src = source orelse return true;
     const a = documentOriginOf(src, allocator) orelse return false;
     defer allocator.free(a);
     const b = documentOriginOf(active, allocator) orelse return false;
     defer allocator.free(b);
-    const a_opaque = std.mem.eql(u8, a, "null");
-    const b_opaque = std.mem.eql(u8, b, "null");
-    // Step 1.
-    if (a_opaque or b_opaque) return a_opaque and b_opaque and src == active;
-    // Step 2: both tuple origins.
-    const a_domain = dom_module.document_origin.domain(src);
-    const b_domain = dom_module.document_origin.domain(active);
-    return html_module.origin_domain.sameOriginDomainValues(a, a_domain, b, b_domain);
+    return dom_module.origin_record.sameOriginDomain(
+        .{ .serialized = a, .record = dom_module.document_origin.record(src) },
+        .{ .serialized = b, .record = dom_module.document_origin.record(active) },
+    );
 }
 
 /// `document`'s origin, serialized ("null" for an opaque one) and owned by
@@ -1115,6 +1136,14 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // or about:srcdoc (navigate step 22.3's document state).
     if (options.srcdoc != null or navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url)) {
         if (options.source_document) |source| record.initiator_base_url = documentBaseUrl(source, allocator);
+    }
+    // Step 4's initiatorOriginSnapshot, for a javascript: URL, whose
+    // navigation compares it (step 4 of "navigate to a javascript: URL") and
+    // gives it to its document (step 8): the source document's origin, held.
+    if (navigate_steps.isJavascript(url)) {
+        if (options.source_document) |source| {
+            if (dom_module.document_origin.shareable(source) catch null) |origin| record.initiator_origin = origin.retain();
+        }
     }
     navigations.put(std.heap.page_allocator, id, record) catch {
         record.destroy();
@@ -2104,6 +2133,10 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
             }) catch |err| log.debug("[navigation] no navigation timing entry for {s}: {s}", .{ record.url, @errorName(err) });
         }
     }
+    // "Create and initialize a Document object" step 4's origin -
+    // navigationParams's - for the document the commit makes.
+    integration.setNextOrigin(navigationParamsOriginRecord(integration, record, response, final_url, origin));
+    defer integration.setNextOrigin(null);
     integration.commitResponse(record.url, response) catch |err| {
         log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
         endLoadDelay(integration);
@@ -2223,6 +2256,40 @@ fn navigationParamsOrigin(integration: *IFrameIntegration, url: []const u8, allo
     const origin = try url_origin.getOrigin(allocator, &record);
     defer origin.deinit(allocator);
     return origin.serialize(allocator);
+}
+
+/// navigationParams's origin as the record the committed document is made
+/// with (one reference; null leaves it an origin of its own), following
+/// `navigationParamsOrigin`, whose serialization is `serialized`:
+///
+/// - a network error's document, and any document of a navigable sandboxed
+///   without allow-same-origin: a new opaque origin;
+/// - about:blank and about:srcdoc: the container document's origin record
+///   itself (a popup's: its active document's), shared - so a domain set
+///   in either document is both documents'
+///   (windows/document-domain-nested-navigate.window.js);
+/// - otherwise a new origin, `serialized`.
+fn navigationParamsOriginRecord(
+    integration: *IFrameIntegration,
+    record: *const Navigation,
+    response: *const navigation_fetch.NavigationFetchResult,
+    url: []const u8,
+    serialized: []const u8,
+) ?*OriginRecord {
+    const allocator = integration.allocator;
+    if (response.is_network_error) return OriginRecord.create(allocator, "null") catch null;
+    const bc = integration.browsing_context orelse return null;
+    const sandboxed = if (bc.sandbox_flags) |flags| flags.sandboxesSameOrigin() else false;
+    if (!sandboxed and (record.srcdoc != null or navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url))) {
+        const container_document: ?*runtime.Instance = if (integration.iframe_element) |element|
+            (interfaces.Node.get_ownerDocument(@ptrCast(@alignCast(element))) catch null)
+        else
+            null;
+        const from = container_document orelse activeDocumentOf(integration) orelse return null;
+        const shared = (dom_module.document_origin.shareable(from) catch null) orelse return null;
+        return shared.retain();
+    }
+    return OriginRecord.create(allocator, serialized) catch null;
 }
 
 /// `window`'s origin, serialized ("null" without one). Owned.
@@ -2508,7 +2575,7 @@ fn fireHashChange(data: ?*anyopaque) void {
         webidl.Opt(dictionaries.HashChangeEventInit).passed(.{ .base = .{}, .oldURL = task.old_url, .newURL = task.new_url }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = @import("EventTarget.zig").dispatchTrusted(task.window, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(task.window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
@@ -2532,7 +2599,13 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     // Step 2: "Set the ongoing navigation for targetNavigable to null."
     integration.ongoing_navigation = .none;
 
-    // Steps 4-5: the request - url, the initiator policy container - and
+    // Step 4: "If initiatorOrigin is not same origin-domain with
+    // targetNavigable's active document's origin, then return." The
+    // initiator's origin as it is now - a domain set since the navigation
+    // started counts.
+    if (!initiatorSameOriginDomainWithActive(integration, record)) return endLoadDelay(integration);
+
+    // Step 5: the request - url, the initiator policy container - and
     // "should navigation request of type be blocked by Content Security
     // Policy?" given it and cspNavigationType. Its client is the source
     // document's global, the record's reporter's, where its violations go;
@@ -2586,6 +2659,10 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     integration.setNextPolicyContainer(record.javascript_policy_container);
     record.javascript_policy_container = null;
     defer integration.setNextPolicyContainer(null);
+    // Step 8: "initiatorOrigin is newDocument's origin" - the record
+    // itself; with no initiator, the replaced document's.
+    integration.setNextOrigin(javascriptDocumentOrigin(integration, record));
+    defer integration.setNextOrigin(null);
     const ctx = navigableContext(integration) orelse return endLoadDelay(integration);
     if (!inRealm(ctx, commitJavascriptResult, .{ integration, record, url, html })) endLoadDelay(integration);
 }
@@ -2600,6 +2677,33 @@ fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, 
     const document_state = recordInHistory(integration, record, url, origin);
     integration.commitHtmlAt(url, html, integration.container_origin) catch return endLoadDelay(integration);
     attachDocument(integration, document_state);
+}
+
+/// "Navigate to a javascript: URL" step 4 for `record`: whether its
+/// initiatorOrigin is same origin-domain with the target navigable's active
+/// document's origin. True with no initiator - the user agent's own
+/// navigation - and with no active document to compare.
+fn initiatorSameOriginDomainWithActive(integration: *IFrameIntegration, record: *const Navigation) bool {
+    const initiator = record.initiator_origin orelse return true;
+    const active = activeDocumentOf(integration) orelse return true;
+    // Unresolved only when no getter could answer it: the record's
+    // identity still decides.
+    const initiator_serialized = initiator.serialized orelse "null";
+    const active_serialized = documentOriginOf(active, integration.allocator) orelse return false;
+    defer integration.allocator.free(active_serialized);
+    return dom_module.origin_record.sameOriginDomain(
+        .{ .serialized = initiator_serialized, .record = initiator },
+        .{ .serialized = active_serialized, .record = dom_module.document_origin.record(active) },
+    );
+}
+
+/// The origin record a javascript: URL's String document is made with (one
+/// reference): its initiator's, or with none the replaced document's.
+fn javascriptDocumentOrigin(integration: *IFrameIntegration, record: *const Navigation) ?*OriginRecord {
+    if (record.initiator_origin) |initiator| return initiator.retain();
+    const active = activeDocumentOf(integration) orelse return null;
+    const shared = (dom_module.document_origin.shareable(active) catch null) orelse return null;
+    return shared.retain();
 }
 
 /// The navigable's container element, if it has one (a popup has none).
@@ -3422,7 +3526,7 @@ fn fireLoadEventOnIframe(instance: *runtime.Instance) void {
 
     // Dispatch the event on the iframe element
     // HTMLIFrameElement inherits from HTMLElement -> Element -> Node -> EventTarget
-    _ = @import("EventTarget.zig").dispatchTrusted(instance, event) catch return;
+    _ = @import("dom").fire_event.dispatchTrusted(instance, event) catch return;
 }
 
 /// Getter for contentWindow
@@ -3574,6 +3678,16 @@ fn attachNavigableContext(
     }
     defer integration.setNextAboutBaseUrl(null);
 
+    // "Create a new browsing context and document": the initial about:blank
+    // document's origin is "the result of determining the origin given
+    // about:blank, sandboxFlags, and creatorOrigin" - a new opaque origin
+    // when sandboxed (`origin` is null then), else creator's origin itself,
+    // shared: a domain set through either document is both documents'
+    // (windows/document-domain-nested-set.window.js). With no creator, an
+    // origin of its own.
+    integration.setNextOrigin(initialDocumentOrigin(origin, creator, allocator));
+    defer integration.setNextOrigin(null);
+
     // Create the initial about:blank Document for the iframe.
     // Per HTML spec §7.5.1, every browsing context has an active document.
     // For about:blank, the document is created immediately when the browsing
@@ -3597,6 +3711,17 @@ fn attachNavigableContext(
         }
     }
     return realm;
+}
+
+/// The origin record an initial about:blank document is made with (one
+/// reference, or null for an origin of its own): a new opaque origin for a
+/// navigable whose Window is opaque (`window_origin` null: sandboxed without
+/// allow-same-origin), else its creator's.
+fn initialDocumentOrigin(window_origin: ?[]const u8, creator: ?*runtime.Instance, allocator: std.mem.Allocator) ?*OriginRecord {
+    if (window_origin == null) return OriginRecord.create(allocator, "null") catch null;
+    const document = creator orelse return null;
+    const record = (dom_module.document_origin.shareable(document) catch null) orelse return null;
+    return record.retain();
 }
 
 /// Give `document` a clone of `from`'s policy container (HTML "clone a

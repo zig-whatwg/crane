@@ -36,7 +36,6 @@ const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
 const same_object = @import("same_object.zig");
@@ -55,6 +54,7 @@ const names = @import("dom").names;
 const attr_nodes = @import("dom").attr_nodes;
 const traversal = @import("dom").traversal;
 const live_collections = @import("dom").live_collections;
+const OriginRecord = @import("dom").origin_record.OriginRecord;
 const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
 const editing = html_core.editing;
 
@@ -135,8 +135,12 @@ pub const InternalState = struct {
     /// Stored as owned slice
     url: []const u8,
 
-    /// Document origin (opaque for now)
-    origin: ?*anyopaque,
+    /// The document's origin (DOM "origin"; HTML 7.1.1): one reference to
+    /// the record it shares with every document whose origin HTML says is
+    /// this one's - its domain included. Set at construction (`initOwn`,
+    /// the `origin` construction argument), released at deinit. Null only
+    /// before initOwn runs.
+    origin: ?*OriginRecord,
 
     /// Document encoding (default: UTF-8)
     /// Stored as DOMString for proper memory management
@@ -218,10 +222,6 @@ pub const InternalState = struct {
     node_iterators: std.ArrayList(*runtime.Instance),
 
     // === HTML Document Properties ===
-
-    /// The document's origin's domain (HTML 7.1.1.2), serialized: what the
-    /// document.domain setter set. Empty while it is null. Owned.
-    domain: []const u8,
 
     /// Document referrer (the URI of the page that linked to this page)
     referrer: []const u8,
@@ -439,7 +439,6 @@ pub const InternalState = struct {
             .ranges = .empty,
             .node_iterators = .empty,
             // HTML properties
-            .domain = "",
             .referrer = "",
             .design_mode = runtime.DOMString.initInterned("off"),
             .visibility_state = ._visible_,
@@ -545,8 +544,9 @@ pub const InternalState = struct {
         if (self.url.len > 0) {
             self.allocator.free(self.url);
         }
-        if (self.domain.len > 0) {
-            self.allocator.free(self.domain);
+        if (self.origin) |record| {
+            self.origin = null;
+            record.release();
         }
         if (self.referrer.len > 0) {
             self.allocator.free(self.referrer);
@@ -712,7 +712,11 @@ pub fn installHooks() void {
         .delay_load_event = &lifecycleDelayLoadEvent,
         .undelay_load_event = &lifecycleUndelayLoadEvent,
     });
-    @import("dom").document_origin.install(.{ .domain = &originDomain });
+    @import("dom").document_origin.install(.{
+        .domain = &originDomain,
+        .record = &originRecord,
+        .shareable = &shareableOrigin,
+    });
     // Its policy container, for whatever sets or reads one without naming
     // this impl (navigation, meta referrer, a Window's settings object).
     @import("dom").policy_containers.install(.{ .of = &policyContainerOf });
@@ -845,7 +849,16 @@ fn isActiveDocumentFullyActive(document: *runtime.Instance) bool {
 /// in a global registry rather than in the State struct.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
-    _ = args;
+
+    // The document's origin, a construction fact (DOM: "origin ... an
+    // opaque origin" unless its creator says otherwise): the `origin`
+    // construction argument is the record of the document whose origin this
+    // one's IS - shared, so document.domain set through either changes both
+    // - and with none, an origin of its own, which a browsing-context
+    // document still derives from its URL and window.
+    const given: ?*OriginRecord = if (@hasField(@TypeOf(args), "origin")) args.origin else null;
+    const origin = if (given) |record| record.retain() else try OriginRecord.createOwn(allocator);
+    errdefer origin.release();
 
     // Initialize Document's own internal state in registry
     // The registry owns this block, so `Registry.remove` returns it to the
@@ -853,7 +866,13 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
+    internal.origin = origin;
 }
+
+/// What a Document is given at construction (`initWith`): `origin`, the
+/// record of the document whose origin it takes (BORROWED - the document
+/// retains it), or null for an origin of its own.
+pub const construction_args = .{"origin"};
 
 /// dom.target_element: `document`'s target element, or null once the
 /// element it names has been freed.
@@ -911,7 +930,9 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool)
     const url = try target.allocator.dupe(u8, source.url);
     if (target.url.len > 0) target.allocator.free(target.url);
     target.url = url;
-    target.origin = source.origin;
+    // The copy's origin IS the original's: shared, resolved first so the
+    // copy - which has no window - can serialize it.
+    try shareOriginInto(target, node);
     target.doc_type = source.doc_type;
     target.mode = source.mode;
     // DOM clone step 3.1 also copies "allow declarative shadow roots"
@@ -972,8 +993,17 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// DOM §4.6 - new Document()
+///
+/// "The new Document() constructor steps are to set this's origin to the
+/// origin of current global object's associated Document." - shared: the
+/// settings object of a Window answers with its associated Document's
+/// origin record (dom.global_settings), so a domain set on that document
+/// later is this one's too, as in browsers (WebKit's Document constructor
+/// takes the context document's SecurityOriginPolicy).
+/// Spec: https://dom.spec.whatwg.org/#dom-document-document
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try Document.init(ctx.allocator, ctx);
+    const origin: ?*OriginRecord = if (globalOfRealm(ctx)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
+    const instance = try Document.initWith(ctx.allocator, ctx, .{ .origin = origin });
     errdefer Document.deinit(instance);
 
     // Set default values
@@ -1203,12 +1233,6 @@ pub fn get_prerendering(instance: *runtime.Instance) anyerror!bool {
     return false;
 }
 
-/// Getter for onprerenderingchange
-/// Returns the event handler for prerenderingchange events.
-pub fn get_onprerenderingchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "prerenderingchange");
-}
-
 /// Getter for fullscreenEnabled
 /// Fullscreen API - Returns whether fullscreen is enabled
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreenenabled
@@ -1225,16 +1249,6 @@ pub fn get_fullscreen(instance: *runtime.Instance) anyerror!bool {
     return internal.fullscreen_element != null;
 }
 
-/// Getter for onfullscreenchange
-pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "fullscreenchange");
-}
-
-/// Getter for onfullscreenerror
-pub fn get_onfullscreenerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "fullscreenerror");
-}
-
 /// Getter for timeline
 pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
@@ -1247,26 +1261,6 @@ pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_pictureInPictureEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return false;
-}
-
-/// Getter for onpointerlockchange
-pub fn get_onpointerlockchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerlockchange");
-}
-
-/// Getter for onpointerlockerror
-pub fn get_onpointerlockerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "pointerlockerror");
-}
-
-/// Getter for onfreeze
-pub fn get_onfreeze(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "freeze");
-}
-
-/// Getter for onresume
-pub fn get_onresume(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "resume");
 }
 
 /// Getter for wasDiscarded
@@ -1339,7 +1333,7 @@ pub fn get_domain(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// when the document.domain setter set one, else its host; null for an
 /// opaque origin. OWNED by `allocator`.
 fn effectiveDomain(document: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) !?[]u8 {
-    if (internal.domain.len > 0) return try allocator.dupe(u8, internal.domain);
+    if (originDomain(document)) |domain| return try allocator.dupe(u8, domain);
     const serialized = (try serializedOrigin(document, internal, allocator)) orelse return null;
     defer allocator.free(serialized);
     const host = hostOfSerializedOrigin(serialized) orelse return null;
@@ -1347,8 +1341,9 @@ fn effectiveDomain(document: *runtime.Instance, internal: *InternalState, alloca
 }
 
 /// `document`'s origin, serialized - its window's (the relevant settings
-/// object's) when it has one, else its URL's - or null for an opaque origin.
-/// OWNED by `allocator`.
+/// object's) when it has one; else its origin record's, for a document made
+/// with another's origin (new Document(), createHTMLDocument(), a clone);
+/// else its URL's - or null for an opaque origin. OWNED by `allocator`.
 fn serializedOrigin(document: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) !?[]u8 {
     if (internal.default_view) |window| {
         // The getter's string is the window realm's to free.
@@ -1356,6 +1351,12 @@ fn serializedOrigin(document: *runtime.Instance, internal: *InternalState, alloc
         defer window.ctx.allocator.free(serialized);
         if (std.mem.eql(u8, serialized, "null")) return null;
         return try allocator.dupe(u8, serialized);
+    }
+    if (internal.origin) |record| {
+        if (record.serialized) |serialized| {
+            if (std.mem.eql(u8, serialized, "null")) return null;
+            return try allocator.dupe(u8, serialized);
+        }
     }
     const url = try get_URL(document);
     defer document.ctx.allocator.free(url);
@@ -1427,8 +1428,42 @@ fn endsWithDotted(host: []const u8, suffix: []const u8) bool {
 
 /// dom.document_origin: `document`'s origin's domain, or null.
 fn originDomain(document: *runtime.Instance) ?[]const u8 {
+    const record = originRecord(document) orelse return null;
+    return record.domain;
+}
+
+/// dom.document_origin: `document`'s origin record (borrowed).
+fn originRecord(document: *runtime.Instance) ?*OriginRecord {
     const internal = getInternal(document) orelse return null;
-    return if (internal.domain.len > 0) internal.domain else null;
+    return internal.origin;
+}
+
+/// dom.document_origin: `document`'s origin record, its serialization
+/// resolved (borrowed) - what a document made with this one's origin is
+/// given.
+fn shareableOrigin(document: *runtime.Instance) error{OutOfMemory}!?*OriginRecord {
+    const internal = getInternal(document) orelse return null;
+    const record = internal.origin orelse return null;
+    if (record.serialized == null) {
+        const serialized = serializedOrigin(document, internal, internal.allocator) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            // An origin no getter can answer is not known yet: the record
+            // stays unresolved, and a document made with it reads its URL.
+            else => return record,
+        };
+        defer if (serialized) |s| internal.allocator.free(s);
+        try record.resolve(serialized orelse "null");
+    }
+    return record;
+}
+
+/// Make `target`'s origin `source_document`'s: its own reference goes, and
+/// it holds the source's resolved record.
+fn shareOriginInto(target: *InternalState, source_document: *runtime.Instance) error{OutOfMemory}!void {
+    const record = (try shareableOrigin(source_document)) orelse return;
+    const previous = target.origin;
+    target.origin = record.retain();
+    if (previous) |old| old.release();
 }
 
 /// Getter for referrer
@@ -1855,16 +1890,6 @@ pub fn get_visibilityState(instance: *runtime.Instance) anyerror!enums.DocumentV
     return internal.visibility_state;
 }
 
-/// Getter for onreadystatechange
-pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "readystatechange");
-}
-
-/// Getter for onvisibilitychange
-pub fn get_onvisibilitychange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return getEventHandler(instance, "visibilitychange");
-}
-
 /// Getter for fgColor
 /// HTML §14.3.11 (obsolete) - Returns document's text color
 pub fn get_fgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
@@ -2109,67 +2134,9 @@ pub fn setActiveElement(instance: *runtime.Instance, element: ?*runtime.Instance
     internal.active_element = element;
 }
 
-// =============================================================================
-// Event Handler Helpers
-// =============================================================================
-
-/// Document's own event handler IDL attributes (onreadystatechange,
-/// onvisibilitychange, ...): the document is their target, and they live in
-/// its event handler map on EventTarget with every other handler. The
-/// GlobalEventHandlers members are inherited (impls/GlobalEventHandlers.zig).
-fn getEventHandler(instance: *runtime.Instance, name: []const u8) typedefs.EventHandler {
-    return @import("EventTarget.zig").eventHandler(typedefs.EventHandler, instance, name);
-}
-
-fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typedefs.EventHandler) ImplError!void {
-    @import("EventTarget.zig").setEventHandler(typedefs.EventHandler, instance, name, handler) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return error.InvalidStateError,
-    };
-}
-
-// =============================================================================
-// Event Handler Getters
-// =============================================================================
-
-// =============================================================================
-// Event Handler Setters
-// =============================================================================
-
-/// Setter for onprerenderingchange
-pub fn set_onprerenderingchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "prerenderingchange", value);
-}
-
-/// Setter for onfullscreenchange
-pub fn set_onfullscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "fullscreenchange", value);
-}
-
-/// Setter for onfullscreenerror
-pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "fullscreenerror", value);
-}
-
-/// Setter for onpointerlockchange
-pub fn set_onpointerlockchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "pointerlockchange", value);
-}
-
-/// Setter for onpointerlockerror
-pub fn set_onpointerlockerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "pointerlockerror", value);
-}
-
-/// Setter for onfreeze
-pub fn set_onfreeze(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "freeze", value);
-}
-
-/// Setter for onresume
-pub fn set_onresume(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "resume", value);
-}
+// Document's own event handler IDL attributes (onreadystatechange,
+// onvisibilitychange, ...) are the generated interface's: HTML's getter and
+// setter, through dom.event_handlers (HTML 8.1.8.1).
 
 /// HTML document.domain's setter.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
@@ -2209,9 +2176,12 @@ pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) anyerro
     // value."
     const host = url_mod.host_parser.parseHost(allocator, value, false, null) catch return error.SecurityError;
     defer host.deinit(allocator);
-    const domain = try url_mod.host_serializer.serializeHost(internal.allocator, host);
-    if (internal.domain.len > 0) internal.allocator.free(internal.domain);
-    internal.domain = domain;
+    const domain = try url_mod.host_serializer.serializeHost(allocator, host);
+    defer allocator.free(domain);
+    // The record every document of this origin shares (an about:blank or
+    // srcdoc child, the document that made this one): they all see it.
+    const record = internal.origin orelse return error.InvalidStateError;
+    try record.setDomain(domain);
 }
 
 /// HTML document.cookie's setter: nothing for a cookie-averse Document, a
@@ -2316,7 +2286,6 @@ pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
 /// element, so we throw HierarchyRequestError for null values.
 pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ElementImpl = @import("Element.zig");
 
     // Step 1: Validate new value is body or frameset
     // Per WebIDL, undefined is converted to null for nullable types.
@@ -2327,8 +2296,8 @@ pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror
         return error.HierarchyRequestError;
     }
 
-    const value_internal = ElementImpl.getInternal(actual_value) orelse return error.HierarchyRequestError;
-    const tag_name = value_internal.local_name.asSlice();
+    const value_data = @import("dom").element_data.of(actual_value) orelse return error.HierarchyRequestError;
+    const tag_name = value_data.local_name.asSlice();
 
     const is_body = if (internal.doc_type == .html)
         std.ascii.eqlIgnoreCase(tag_name, "body")
@@ -2384,16 +2353,6 @@ pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) any
         internal.design_mode = runtime.DOMString.initInterned("off");
     }
     // Invalid values are ignored per spec
-}
-
-/// Setter for onreadystatechange
-pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "readystatechange", value);
-}
-
-/// Setter for onvisibilitychange
-pub fn set_onvisibilitychange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    return setEventHandler(instance, "visibilitychange", value);
 }
 
 /// Setter for fgColor
@@ -2482,23 +2441,21 @@ pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.T
     // document's allow declarative shadow roots to true"; "parse HTML from a
     // string given document and compliantHTML" - whose parser takes the
     // document's allow declarative shadow roots.
-    const document = @import("html").dom_parser.parseHTML(allocator, realm, compliant, .{ .allow_declarative_shadow_roots = true }) catch |err| switch (err) {
+    const origin: ?*OriginRecord = if (globalOfRealm(realm)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
+    const document = @import("html").dom_parser.parseHTML(allocator, realm, compliant, .{ .allow_declarative_shadow_roots = true, .origin = origin }) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.NotSupportedError,
     };
     const document_internals = @import("dom").document_internals;
     try document_internals.setContentType(document, "text/html");
-    if (associatedDocumentOf(realm)) |associated| try document_internals.copyOrigin(document, associated);
     // Steps 5-6: the IDL has no options - no sanitizer. Step 7.
     return document;
 }
 
-/// The associated Document of `realm`'s global object, when it is a Window.
-fn associatedDocumentOf(realm: runtime.Context) ?*runtime.Instance {
+/// `realm`'s global object, if it has one.
+fn globalOfRealm(realm: runtime.Context) ?*runtime.Instance {
     const engine_realm = realm.realm orelse return null;
-    const global: *runtime.Instance = @ptrCast(@alignCast(engine_realm.global_object orelse return null));
-    if (global.stateAs(interfaces.Window.State) == null) return null;
-    return interfaces.Window.get_document(global) catch null;
+    return @ptrCast(@alignCast(engine_realm.global_object orelse return null));
 }
 
 /// Operation: exitPictureInPicture
@@ -3284,7 +3241,7 @@ pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMStrin
     // dispatchEvent never throws - which is exactly what "If the event's
     // initialized flag is not set, an InvalidStateError must be thrown"
     // checks. initEvent() sets it again.
-    EventImpl.setInitializedFlag(event, false);
+    if (@import("dom").event_dispatch.of(event)) |state| state.initialized_flag = false;
 
     // Step 10.
     return event;
@@ -4424,7 +4381,7 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     const generation = runtime.SlabAllocator.generationOf(event);
     defer event.releaseIfUnwrapped(generation);
     interfaces.Event.call_initEvent(event, runtime.DOMString.initInterned("beforeunload"), webidl.Opt(bool).passed(false), webidl.Opt(bool).passed(true)) catch return .{};
-    const not_canceled = @import("EventTarget.zig").dispatchTrusted(window, event) catch true;
+    const not_canceled = @import("dom").fire_event.dispatchTrusted(window, event) catch true;
     // Step 6's condition, less sticky activation: "eventFiringResult is
     // false, or the returnValue attribute of event is not the empty string".
     const return_value = interfaces.BeforeUnloadEvent.get_returnValue(event) catch runtime.DOMString.initEmpty();
@@ -4920,7 +4877,7 @@ fn fireEventWith(realm_of: *runtime.Instance, target: *runtime.Instance, event_t
         webidl.Opt(dictionaries.EventInit).passed(init_dict),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = @import("EventTarget.zig").dispatchTrusted(target, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch {};
     // A listener that kept the event keeps it alive; otherwise it is done.
     event.releaseIfUnwrapped(generation);
 }
@@ -4940,7 +4897,7 @@ fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, ev
         webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = persisted }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = @import("EventTarget.zig").dispatchTrusted(window, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
@@ -5078,13 +5035,6 @@ pub fn setContentType(instance: *runtime.Instance, content_type: []const u8) !vo
     internal.content_type.deinit(internal.allocator);
     // Set new content type (allocate owned string)
     internal.content_type = try runtime.DOMString.initDupe(internal.allocator, content_type);
-}
-
-/// Copy origin from another document
-pub fn copyOrigin(instance: *runtime.Instance, source: *runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const source_internal = getInternal(source) orelse return error.InvalidStateError;
-    internal.origin = source_internal.origin;
 }
 
 // =============================================================================

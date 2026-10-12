@@ -22,8 +22,6 @@ const HTMLDetailsElement = interfaces.HTMLDetailsElement;
 
 // Ancestors: a details element IS an HTMLElement, an Element, a Node and an
 // EventTarget, and reaches their state through their impls.
-const ElementImpl = @import("Element.zig");
-const EventTargetImpl = @import("EventTarget.zig");
 
 // The hooks the element installs its steps into: the attribute change steps
 // (DOM 4.9) and the insertion steps (DOM 4.2.3).
@@ -170,10 +168,12 @@ fn hasOpen(element: *runtime.Instance) bool {
     return interfaces.Element.call_hasAttributeNS(element, null, runtime.DOMString.initInterned("open")) catch false;
 }
 
+/// "Remove the open attribute on" `element`: DOM "remove an attribute by
+/// namespace and local name" given null and "open" - the algorithm, not the
+/// [CEReactions] removeAttributeNS member, whose own reaction scope would
+/// run reactions inside the exclusivity steps that called it.
 fn removeOpen(element: *runtime.Instance) void {
-    ElementImpl.call_removeAttributeNS(element, null, runtime.DOMString.initInterned("open")) catch |err| {
-        log.warn("details open attribute not removed: {}", .{err});
-    };
+    dom_module.element_attributes.remove(element, null, "open");
 }
 
 /// The next node after `node` in tree order within `root`'s tree, or null
@@ -315,7 +315,7 @@ fn fireToggleEvent(element: *runtime.Instance, old_state: []const u8, new_state:
     // then, and only an event nothing wrapped is freed here.
     const generation = runtime.SlabAllocator.generationOf(event);
     defer event.releaseIfUnwrapped(generation);
-    _ = try EventTargetImpl.dispatchTrusted(element, event);
+    _ = try @import("dom").fire_event.dispatchTrusted(element, event);
 }
 
 /// HTML "queue a details toggle event task" given element, oldState and

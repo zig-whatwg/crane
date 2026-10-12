@@ -15,8 +15,11 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLAnchorElement = interfaces.HTMLAnchorElement;
 
-// Import related impls for attribute access
-const ElementImpl = @import("Element.zig");
+// The element's attributes, read in place (dom.element_data, which Element
+// installs) and written through Element's own algorithms
+// (dom.element_attributes), where "handle attribute changes" runs.
+const dom = @import("dom");
+const element_data = dom.element_data;
 const DOMTokenListImpl = @import("DOMTokenList.zig");
 
 pub const State = HTMLAnchorElement.State;
@@ -104,11 +107,10 @@ pub fn get_ping(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Spec: https://html.spec.whatwg.org/multipage/text-level-semantics.html#dom-a-rel
 /// Reflects the rel attribute.
 pub fn get_rel(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    // Use Element's attribute access
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    const data = element_data.of(instance) orelse return error.InvalidState;
 
     // Look for the "rel" attribute
-    if (elem_internal.findAttribute(null, "rel")) |entry| {
+    if (element_data.getAttributeByNamespaceAndLocalName(data, null, "rel")) |entry| {
         return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
     }
 
@@ -120,7 +122,7 @@ pub fn get_rel(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Returns a DOMTokenList reflecting the rel attribute.
 pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = Registry.get(instance) orelse return error.InvalidState;
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    const data = element_data.of(instance) orelse return error.InvalidState;
 
     // Return cached DOMTokenList if it exists
     if (internal.rel_list) |existing| {
@@ -128,11 +130,11 @@ pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     }
 
     // Create a new DOMTokenList
-    const token_list = interfaces.DOMTokenList.init(elem_internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    const token_list = interfaces.DOMTokenList.init(data.allocator, instance.ctx) catch return error.OutOfMemory;
     errdefer interfaces.DOMTokenList.deinit(token_list);
 
     // Initialize with current rel attribute value
-    if (elem_internal.findAttribute(null, "rel")) |entry| {
+    if (element_data.getAttributeByNamespaceAndLocalName(data, null, "rel")) |entry| {
         interfaces.DOMTokenList.set_value(token_list, runtime.DOMString.initInterned(entry.value)) catch return error.OutOfMemory;
     }
 
@@ -304,8 +306,8 @@ pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString)
 /// A DOMString attribute reflecting content attribute `name`: its value, or
 /// the empty string. A copy - the binding frees what a getter returns.
 fn reflectGet(instance: *runtime.Instance, comptime name: []const u8) !runtime.DOMString {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    if (elem_internal.findAttribute(null, name)) |entry| {
+    const data = element_data.of(instance) orelse return error.InvalidState;
+    if (element_data.getAttributeByNamespaceAndLocalName(data, null, name)) |entry| {
         return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value);
     }
     return runtime.DOMString.initEmpty();
@@ -313,36 +315,43 @@ fn reflectGet(instance: *runtime.Instance, comptime name: []const u8) !runtime.D
 
 /// The USVString form of `reflectGet`, owned by the context allocator.
 fn reflectGetUsv(instance: *runtime.Instance, comptime name: []const u8) ![]const u8 {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    const value = if (elem_internal.findAttribute(null, name)) |entry| entry.value else "";
+    const data = element_data.of(instance) orelse return error.InvalidState;
+    const value = if (element_data.getAttributeByNamespaceAndLocalName(data, null, name)) |entry| entry.value else "";
     return instance.ctx.allocator.dupe(u8, value);
 }
 
 /// A boolean attribute: whether content attribute `name` is present.
 fn reflectHas(instance: *runtime.Instance, comptime name: []const u8) !bool {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    return elem_internal.findAttribute(null, name) != null;
+    const data = element_data.of(instance) orelse return error.InvalidState;
+    return element_data.getAttributeByNamespaceAndLocalName(data, null, name) != null;
 }
 
-/// Set content attribute `name` to `value`.
+/// A DOMString attribute's setter: HTML 2.6.1 "set the content attribute"
+/// with `value` - DOM "set an attribute value" given the element, `name`
+/// and `value`. The algorithm, not the [CEReactions] setAttribute member,
+/// whose scope would run reactions inside this setter's own.
 fn reflectSet(instance: *runtime.Instance, comptime name: []const u8, value: runtime.DOMString) !void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(name), .{ .domstring = value });
+    try dom.element_attributes.set(instance, name, value.asSlice(), .{});
 }
 
-/// A boolean attribute's setter: add the content attribute, or remove it.
+/// A boolean attribute's setter (HTML 2.6.1): "If the given value is false,
+/// then run this's delete the content attribute" - DOM "remove an attribute
+/// by namespace and local name" given null and `name` - and "if the given
+/// value is true, then run this's set the content attribute with the empty
+/// string."
 fn reflectSetBool(instance: *runtime.Instance, comptime name: []const u8, value: bool) !void {
     if (value) {
-        try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(name), .{ .domstring = runtime.DOMString.initInterned("") });
+        try dom.element_attributes.set(instance, name, "", .{});
     } else {
-        try ElementImpl.call_removeAttribute(instance, runtime.DOMString.initInterned(name));
+        dom.element_attributes.remove(instance, null, name);
     }
 }
 
 /// referrerPolicy: an enumerated attribute limited to the referrer policy
 /// keywords, with no missing or invalid value default (the empty string).
 fn reflectReferrerPolicy(instance: *runtime.Instance) !runtime.DOMString {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    const entry = elem_internal.findAttribute(null, "referrerpolicy") orelse return runtime.DOMString.initEmpty();
+    const data = element_data.of(instance) orelse return error.InvalidState;
+    const entry = element_data.getAttributeByNamespaceAndLocalName(data, null, "referrerpolicy") orelse return runtime.DOMString.initEmpty();
     const keywords = [_][]const u8{
         "no-referrer",                     "no-referrer-when-downgrade", "same-origin",
         "origin",                          "strict-origin",              "origin-when-cross-origin",
@@ -366,8 +375,8 @@ fn hasActivationBehavior(target: *runtime.Instance) bool {
 /// request navigate event). The image map coordinates of an ismap image are
 /// not modelled.
 fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) void {
-    const elem_internal = ElementImpl.getInternal(target) orelse return;
-    if (elem_internal.findAttribute(null, "href") == null) return;
+    const data = element_data.of(target) orelse return;
+    if (element_data.getAttributeByNamespaceAndLocalName(data, null, "href") == null) return;
     const navigables = @import("dom").navigables;
     // HTML 4.6.6: following it sends the element's pings, before the
     // navigation starts.
@@ -376,6 +385,6 @@ fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) vo
     // element has a download attribute ... download the hyperlink created by
     // element ... with userInvolvement"; otherwise follow it.
     const user_involvement = @import("html").user_activation.userNavigationInvolvement(event);
-    if (elem_internal.findAttribute(null, "download") != null) return navigables.downloadHyperlink(target, user_involvement);
+    if (element_data.getAttributeByNamespaceAndLocalName(data, null, "download") != null) return navigables.downloadHyperlink(target, user_involvement);
     navigables.followHyperlink(target, user_involvement);
 }

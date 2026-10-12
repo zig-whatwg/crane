@@ -218,35 +218,45 @@ pub const BatteryManager = struct {
         return try BatteryManagerImpl.get_level(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onchargingchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BatteryManagerImpl.get_onchargingchange(instance);
+        if (comptime @hasDecl(BatteryManagerImpl, "get_onchargingchange")) return try BatteryManagerImpl.get_onchargingchange(instance);
+        return event_handlers.value(EventHandler, instance, "onchargingchange");
     }
 
     pub fn set_onchargingchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BatteryManagerImpl.set_onchargingchange(instance, value);
+        if (comptime @hasDecl(BatteryManagerImpl, "set_onchargingchange")) return try BatteryManagerImpl.set_onchargingchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchargingchange", value);
     }
 
     pub fn get_onchargingtimechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BatteryManagerImpl.get_onchargingtimechange(instance);
+        if (comptime @hasDecl(BatteryManagerImpl, "get_onchargingtimechange")) return try BatteryManagerImpl.get_onchargingtimechange(instance);
+        return event_handlers.value(EventHandler, instance, "onchargingtimechange");
     }
 
     pub fn set_onchargingtimechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BatteryManagerImpl.set_onchargingtimechange(instance, value);
+        if (comptime @hasDecl(BatteryManagerImpl, "set_onchargingtimechange")) return try BatteryManagerImpl.set_onchargingtimechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchargingtimechange", value);
     }
 
     pub fn get_ondischargingtimechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BatteryManagerImpl.get_ondischargingtimechange(instance);
+        if (comptime @hasDecl(BatteryManagerImpl, "get_ondischargingtimechange")) return try BatteryManagerImpl.get_ondischargingtimechange(instance);
+        return event_handlers.value(EventHandler, instance, "ondischargingtimechange");
     }
 
     pub fn set_ondischargingtimechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BatteryManagerImpl.set_ondischargingtimechange(instance, value);
+        if (comptime @hasDecl(BatteryManagerImpl, "set_ondischargingtimechange")) return try BatteryManagerImpl.set_ondischargingtimechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondischargingtimechange", value);
     }
 
     pub fn get_onlevelchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BatteryManagerImpl.get_onlevelchange(instance);
+        if (comptime @hasDecl(BatteryManagerImpl, "get_onlevelchange")) return try BatteryManagerImpl.get_onlevelchange(instance);
+        return event_handlers.value(EventHandler, instance, "onlevelchange");
     }
 
     pub fn set_onlevelchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BatteryManagerImpl.set_onlevelchange(instance, value);
+        if (comptime @hasDecl(BatteryManagerImpl, "set_onlevelchange")) return try BatteryManagerImpl.set_onlevelchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onlevelchange", value);
     }
 };

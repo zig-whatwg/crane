@@ -218,36 +218,6 @@ pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return if (realm.hasEngine()) internal.exception else null;
 }
 
-/// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "abort");
-}
-
-/// Getter for oncomplete
-pub fn get_oncomplete(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "complete");
-}
-
-/// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "error");
-}
-
-/// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "abort", value);
-}
-
-/// Setter for oncomplete
-pub fn set_oncomplete(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "complete", value);
-}
-
-/// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "error", value);
-}
-
 /// Operation: objectStore
 ///
 /// Returns an object store in the transaction's scope.

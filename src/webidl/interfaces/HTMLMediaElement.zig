@@ -837,20 +837,26 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.get_mediaKeys(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onencrypted(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLMediaElementImpl.get_onencrypted(instance);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "get_onencrypted")) return try HTMLMediaElementImpl.get_onencrypted(instance);
+        return event_handlers.value(EventHandler, instance, "onencrypted");
     }
 
     pub fn set_onencrypted(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLMediaElementImpl.set_onencrypted(instance, value);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "set_onencrypted")) return try HTMLMediaElementImpl.set_onencrypted(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onencrypted", value);
     }
 
     pub fn get_onwaitingforkey(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLMediaElementImpl.get_onwaitingforkey(instance);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "get_onwaitingforkey")) return try HTMLMediaElementImpl.get_onwaitingforkey(instance);
+        return event_handlers.value(EventHandler, instance, "onwaitingforkey");
     }
 
     pub fn set_onwaitingforkey(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLMediaElementImpl.set_onwaitingforkey(instance, value);
+        if (comptime @hasDecl(HTMLMediaElementImpl, "set_onwaitingforkey")) return try HTMLMediaElementImpl.set_onwaitingforkey(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onwaitingforkey", value);
     }
 
     /// Extended attributes: [SameObject]

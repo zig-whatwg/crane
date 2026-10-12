@@ -65,11 +65,15 @@ pub const AbstractWorker = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AbstractWorkerImpl.get_onerror(instance);
+        if (comptime @hasDecl(AbstractWorkerImpl, "get_onerror")) return try AbstractWorkerImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AbstractWorkerImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(AbstractWorkerImpl, "set_onerror")) return try AbstractWorkerImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 };

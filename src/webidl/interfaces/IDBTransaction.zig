@@ -250,28 +250,36 @@ pub const IDBTransaction = struct {
         return try IDBTransactionImpl.get_error(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onabort(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBTransactionImpl.get_onabort(instance);
+        if (comptime @hasDecl(IDBTransactionImpl, "get_onabort")) return try IDBTransactionImpl.get_onabort(instance);
+        return event_handlers.value(EventHandler, instance, "onabort");
     }
 
     pub fn set_onabort(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBTransactionImpl.set_onabort(instance, value);
+        if (comptime @hasDecl(IDBTransactionImpl, "set_onabort")) return try IDBTransactionImpl.set_onabort(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onabort", value);
     }
 
     pub fn get_oncomplete(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBTransactionImpl.get_oncomplete(instance);
+        if (comptime @hasDecl(IDBTransactionImpl, "get_oncomplete")) return try IDBTransactionImpl.get_oncomplete(instance);
+        return event_handlers.value(EventHandler, instance, "oncomplete");
     }
 
     pub fn set_oncomplete(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBTransactionImpl.set_oncomplete(instance, value);
+        if (comptime @hasDecl(IDBTransactionImpl, "set_oncomplete")) return try IDBTransactionImpl.set_oncomplete(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncomplete", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBTransactionImpl.get_onerror(instance);
+        if (comptime @hasDecl(IDBTransactionImpl, "get_onerror")) return try IDBTransactionImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBTransactionImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(IDBTransactionImpl, "set_onerror")) return try IDBTransactionImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn call_abort(instance: *runtime.Instance) anyerror!void {

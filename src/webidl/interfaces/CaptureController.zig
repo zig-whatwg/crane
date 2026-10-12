@@ -211,12 +211,16 @@ pub const CaptureController = struct {
         return try CaptureControllerImpl.call_constructor(ctx);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_oncapturedmousechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try CaptureControllerImpl.get_oncapturedmousechange(instance);
+        if (comptime @hasDecl(CaptureControllerImpl, "get_oncapturedmousechange")) return try CaptureControllerImpl.get_oncapturedmousechange(instance);
+        return event_handlers.value(EventHandler, instance, "oncapturedmousechange");
     }
 
     pub fn set_oncapturedmousechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try CaptureControllerImpl.set_oncapturedmousechange(instance, value);
+        if (comptime @hasDecl(CaptureControllerImpl, "set_oncapturedmousechange")) return try CaptureControllerImpl.set_oncapturedmousechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncapturedmousechange", value);
     }
 
     pub fn get_zoomLevel(instance: *runtime.Instance) anyerror!?i32 {
@@ -224,11 +228,13 @@ pub const CaptureController = struct {
     }
 
     pub fn get_onzoomlevelchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try CaptureControllerImpl.get_onzoomlevelchange(instance);
+        if (comptime @hasDecl(CaptureControllerImpl, "get_onzoomlevelchange")) return try CaptureControllerImpl.get_onzoomlevelchange(instance);
+        return event_handlers.value(EventHandler, instance, "onzoomlevelchange");
     }
 
     pub fn set_onzoomlevelchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try CaptureControllerImpl.set_onzoomlevelchange(instance, value);
+        if (comptime @hasDecl(CaptureControllerImpl, "set_onzoomlevelchange")) return try CaptureControllerImpl.set_onzoomlevelchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onzoomlevelchange", value);
     }
 
     pub fn call_forwardWheel(instance: *runtime.Instance, element: ?*runtime.Instance) anyerror!runtime.JSValue {

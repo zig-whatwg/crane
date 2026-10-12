@@ -279,28 +279,36 @@ pub const MediaSource = struct {
         try MediaSourceImpl.set_duration(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onsourceopen(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaSourceImpl.get_onsourceopen(instance);
+        if (comptime @hasDecl(MediaSourceImpl, "get_onsourceopen")) return try MediaSourceImpl.get_onsourceopen(instance);
+        return event_handlers.value(EventHandler, instance, "onsourceopen");
     }
 
     pub fn set_onsourceopen(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaSourceImpl.set_onsourceopen(instance, value);
+        if (comptime @hasDecl(MediaSourceImpl, "set_onsourceopen")) return try MediaSourceImpl.set_onsourceopen(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsourceopen", value);
     }
 
     pub fn get_onsourceended(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaSourceImpl.get_onsourceended(instance);
+        if (comptime @hasDecl(MediaSourceImpl, "get_onsourceended")) return try MediaSourceImpl.get_onsourceended(instance);
+        return event_handlers.value(EventHandler, instance, "onsourceended");
     }
 
     pub fn set_onsourceended(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaSourceImpl.set_onsourceended(instance, value);
+        if (comptime @hasDecl(MediaSourceImpl, "set_onsourceended")) return try MediaSourceImpl.set_onsourceended(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsourceended", value);
     }
 
     pub fn get_onsourceclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaSourceImpl.get_onsourceclose(instance);
+        if (comptime @hasDecl(MediaSourceImpl, "get_onsourceclose")) return try MediaSourceImpl.get_onsourceclose(instance);
+        return event_handlers.value(EventHandler, instance, "onsourceclose");
     }
 
     pub fn set_onsourceclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaSourceImpl.set_onsourceclose(instance, value);
+        if (comptime @hasDecl(MediaSourceImpl, "set_onsourceclose")) return try MediaSourceImpl.set_onsourceclose(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsourceclose", value);
     }
 
     pub fn get_static_canConstructInDedicatedWorker(instance: *runtime.Instance) anyerror!bool {

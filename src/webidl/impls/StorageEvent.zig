@@ -25,6 +25,7 @@
 //! ```
 
 const std = @import("std");
+const event_construction = @import("dom").event_construction;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -32,7 +33,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const EventImpl = @import("Event.zig");
 const same_object = @import("same_object.zig");
 const StorageEvent = interfaces.StorageEvent;
 
@@ -141,7 +141,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const instance = try init(ctx.allocator, State, &StorageEvent.vtable, ctx);
     errdefer deinit(instance);
     const dict: dictionaries.StorageEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
-    try EventImpl.innerEventCreationSteps(instance, @"type", dict.base);
+    try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try internal.set(
         instance,
@@ -192,7 +192,7 @@ pub fn get_storageArea(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 /// argument (key, oldValue and newValue default to null, url to "",
 /// storageArea to null).
 pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), key: webidl.Opt(?runtime.DOMString), oldValue: webidl.Opt(?runtime.DOMString), newValue: webidl.Opt(?runtime.DOMString), url: webidl.Opt(runtime.USVString), storageArea: webidl.Opt(?*runtime.Instance)) anyerror!void {
-    if (EventImpl.getDispatchFlag(instance)) return;
+    if (event_construction.dispatchFlag(instance)) return;
     try interfaces.Event.call_initEvent(instance, @"type", bubbles, cancelable);
     const internal = getInternal(instance) orelse return;
     const optionalSlice = struct {

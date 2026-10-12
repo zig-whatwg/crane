@@ -32,7 +32,6 @@ const Window = interfaces.Window;
 
 // Import parent class impl for initialization chain
 // Window inherits from EventTarget per WebIDL
-const EventTargetImpl = @import("EventTarget.zig");
 
 // Import WindowOrWorkerGlobalScope mixin impl for shared global methods
 
@@ -465,6 +464,7 @@ pub fn installHooks() void {
     @import("dom").global_settings.install(.{
         .owns = &isWindow,
         .origin = &settingsOrigin,
+        .origin_record = &settingsOriginRecord,
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .indexed_db = &settingsIndexedDB,
@@ -524,6 +524,15 @@ fn setUserActivationTimestamps(window: *runtime.Instance, timestamps: @import("d
 fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return instance.ctx.allocator.dupe(u8, effectiveOrigin(instance, internal));
+}
+
+/// The settings object's origin as an object: the associated Document's
+/// origin record (borrowed), or null before the window has a document.
+fn settingsOriginRecord(instance: *runtime.Instance) ?*@import("dom").origin_record.OriginRecord {
+    if (!isWindow(instance)) return null;
+    const internal = getInternal(instance) orelse return null;
+    const document = internal.document orelse return null;
+    return @import("dom").document_origin.record(document);
 }
 
 /// Mixed Content 4.3: any authenticated embedding document prohibits
@@ -1009,51 +1018,18 @@ pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// HTML "same origin-domain" for two windows' origins - their documents'.
+/// A document whose origin is its creator's - about:blank, about:srcdoc, a
+/// javascript: URL's result - holds its creator's origin record, so one
+/// record on both sides is one origin (step 1, or 2 with identical
+/// domains), and a domain set through either document is both documents'.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#same-origin-domain
 fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
     const a_internal = getInternal(a) orelse return false;
     const b_internal = getInternal(b) orelse return false;
-    const a_origin = effectiveOrigin(a, a_internal);
-    const b_origin = effectiveOrigin(b, b_internal);
-    // 1. "If A and B are the same opaque origin, then return true." An
-    // opaque origin serializes as "null", which does not say which one it
-    // is: two different windows are not known to share one.
-    if (std.mem.eql(u8, a_origin, "null") or std.mem.eql(u8, b_origin, "null")) return false;
-    // 2. "If A and B are both tuple origins, run these substeps:"
-    const a_domain = originDomainOf(a, a_internal, 0);
-    const b_domain = originDomainOf(b, b_internal, 0);
-    return @import("html").origin_domain.sameOriginDomainValues(a_origin, a_domain, b_origin, b_domain);
-}
-
-/// The domain of the origin of `window`'s document, or null. A document
-/// whose origin is its creator's - about:blank, about:srcdoc, a javascript:
-/// URL's result (inheritsCreatorOrigin) - shares that origin, and so its
-/// domain: setting document.domain in one of the two documents affects both
-/// (HTML: the origin is aliased). Its creator's is read - the parent's for a
-/// frame, the opener's for a popup. Deviation, stated: the setter run in the
-/// aliasing document itself sets only that document's domain.
-fn originDomainOf(window: *runtime.Instance, internal: *InternalState, depth: u8) ?[]const u8 {
-    const document = internal.document orelse return null;
-    if (depth < 16 and documentInheritsCreatorOrigin(document)) {
-        const bc = internal.browsing_context;
-        if (bc.parent orelse bc.opener) |creator_bc| {
-            if (creator_bc.getActiveWindow()) |ptr| {
-                const creator: *runtime.Instance = @ptrCast(@alignCast(ptr));
-                if (creator != window) {
-                    if (getInternal(creator)) |creator_internal| return originDomainOf(creator, creator_internal, depth + 1);
-                }
-            }
-        }
-    }
-    return @import("dom").document_origin.domain(document);
-}
-
-/// Whether `document`'s URL is one whose document takes its creator's origin.
-fn documentInheritsCreatorOrigin(document: *runtime.Instance) bool {
-    const url = interfaces.Document.get_URL(document) catch return false;
-    // The getter clones into the document's context allocator.
-    defer document.ctx.allocator.free(url);
-    return url.len == 0 or inheritsCreatorOrigin(url);
+    return @import("dom").origin_record.sameOriginDomain(
+        .{ .serialized = effectiveOrigin(a, a_internal), .record = settingsOriginRecord(a) },
+        .{ .serialized = effectiveOrigin(b, b_internal), .record = settingsOriginRecord(b) },
+    );
 }
 
 /// Getter for name - The window's target name
@@ -1494,7 +1470,7 @@ pub fn get_documentPictureInPicture(instance: *runtime.Instance) anyerror!*runti
 /// "return this's current event" - the event whose listener is running in this
 /// Window's realm (set by EventTarget's inner invoke), else undefined.
 pub fn get_event(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const event = EventTargetImpl.currentEvent(instance) orelse return runtime.JSValue.jsUndefined;
+    const event = @import("dom").fire_event.currentEvent(instance) orelse return runtime.JSValue.jsUndefined;
     return .{ .instance = event };
 }
 
@@ -1667,23 +1643,6 @@ pub fn get_launchQueue(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_portalHost(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
-}
-
-// =============================================================================
-// Event handler IDL attributes (HTML §8.1.8.1)
-// =============================================================================
-//
-// The GlobalEventHandlers and WindowEventHandlers members are inherited
-// (impls/GlobalEventHandlers.zig, impls/WindowEventHandlers.zig). These
-// helpers are for Window's own - ondevicemotion, onorientationchange, ... -
-// whose target is the window, in its event handler map on EventTarget.
-
-fn getEventHandler(instance: *runtime.Instance, name: []const u8) typedefs.EventHandler {
-    return @import("EventTarget.zig").eventHandler(typedefs.EventHandler, instance, name);
-}
-
-fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typedefs.EventHandler) !void {
-    try @import("EventTarget.zig").setEventHandler(typedefs.EventHandler, instance, name, handler);
 }
 
 /// Set the secure context flag
@@ -2367,7 +2326,7 @@ fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: run
     };
     const generation = runtime.SlabAllocator.generationOf(event);
 
-    _ = EventTargetImpl.dispatchTrusted(target, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch {};
 
     // Who owns the event now. A GC during the dispatch may already have
     // collected it, once the last listener let go of the wrapper - then its
@@ -3672,8 +3631,10 @@ pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSVal
 // Named Property Access Support (for WindowProperties object)
 // ============================================================================
 
-// Import Element's impl for internal state access
-const ElementImpl = @import("Element.zig");
+// An element's ID, name attribute and local name, read in place
+// (dom.element_data, which Element installs).
+const element_data = @import("dom").element_data;
+const ElementData = element_data.ElementData;
 const clock = @import("clock");
 
 /// HTML "named objects" of a Window (§7.2.2.3) that a name attribute makes:
@@ -3697,8 +3658,8 @@ fn isNamedElementType(local_name: []const u8) bool {
 }
 
 /// Get the "name" attribute value from an element, if it has one
-fn getElementName(elem_internal: *const ElementImpl.InternalState) ?[]const u8 {
-    if (elem_internal.findAttribute(null, "name")) |entry| {
+fn getElementName(data: *const ElementData) ?[]const u8 {
+    if (element_data.getAttributeByNamespaceAndLocalName(data, null, "name")) |entry| {
         if (entry.value.len > 0) {
             return entry.value;
         }
@@ -3718,13 +3679,13 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
     while (child) |c| {
         const node_type = interfaces.Node.get_nodeType(c) catch 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const local_name = elem_internal.local_name.asSlice();
+            if (element_data.of(c)) |data| {
+                const local_name = data.local_name.asSlice();
 
                 // An HTML element whose id is the name is a named object -
                 // the element itself, an iframe as much as any other: only a
                 // navigable's target name makes the property a WindowProxy.
-                const elem_id = elem_internal.id.asSlice();
+                const elem_id = data.id.asSlice();
                 if (elem_id.len > 0 and std.mem.eql(u8, elem_id, target_name)) {
                     return runtime.JSValue.fromInstance(c);
                 }
@@ -3732,7 +3693,7 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
                 // So is an embed, form, img or object element whose name
                 // attribute is the name.
                 if (isNamedElementType(local_name)) {
-                    if (getElementName(elem_internal)) |element_name| {
+                    if (getElementName(data)) |element_name| {
                         if (std.mem.eql(u8, element_name, target_name)) {
                             return runtime.JSValue.fromInstance(c);
                         }
@@ -3752,17 +3713,17 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
 }
 
 /// Check if an element matches the target name (by id or name attribute)
-fn elementMatchesName(elem_internal: *const ElementImpl.InternalState, target_name: []const u8) bool {
+fn elementMatchesName(data: *const ElementData, target_name: []const u8) bool {
     // Check id attribute
-    const elem_id = elem_internal.id.asSlice();
+    const elem_id = data.id.asSlice();
     if (elem_id.len > 0 and std.mem.eql(u8, elem_id, target_name)) {
         return true;
     }
 
     // Check name attribute for specific element types
-    const local_name = elem_internal.local_name.asSlice();
+    const local_name = data.local_name.asSlice();
     if (isNamedElementType(local_name)) {
-        if (getElementName(elem_internal)) |element_name| {
+        if (getElementName(data)) |element_name| {
             if (std.mem.eql(u8, element_name, target_name)) {
                 return true;
             }
@@ -3778,8 +3739,8 @@ fn hasNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) bo
     while (child) |c| {
         const node_type = interfaces.Node.get_nodeType(c) catch 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                if (elementMatchesName(elem_internal, target_name)) {
+            if (element_data.of(c)) |data| {
+                if (elementMatchesName(data, target_name)) {
                     return true;
                 }
             }
@@ -3801,18 +3762,18 @@ fn collectNamedElementNames(node: *runtime.Instance, names: *std.ArrayList(runti
     while (child) |c| {
         const node_type = interfaces.Node.get_nodeType(c) catch 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (ElementImpl.getInternal(c)) |elem_internal| {
+            if (element_data.of(c)) |data| {
                 // Add id if present
-                const elem_id = elem_internal.id.asSlice();
+                const elem_id = data.id.asSlice();
                 if (elem_id.len > 0) {
                     const name = try runtime.DOMString.initDupe(allocator, elem_id);
                     try names.append(allocator, name);
                 }
 
                 // Add name attribute if element type participates
-                const local_name = elem_internal.local_name.asSlice();
+                const local_name = data.local_name.asSlice();
                 if (isNamedElementType(local_name)) {
-                    if (getElementName(elem_internal)) |element_name| {
+                    if (getElementName(data)) |element_name| {
                         const name = try runtime.DOMString.initDupe(allocator, element_name);
                         try names.append(allocator, name);
                     }

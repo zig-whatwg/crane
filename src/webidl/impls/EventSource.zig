@@ -534,24 +534,6 @@ pub fn get_withCredentials(instance: *runtime.Instance) anyerror!bool {
 pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
     return @intFromEnum(getInternal(instance).connection.state);
 }
-pub fn get_onopen(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "open");
-}
-pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "message");
-}
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "error");
-}
-pub fn set_onopen(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "open", value);
-}
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "message", value);
-}
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "error", value);
-}
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
     getInternal(instance).close();
 }

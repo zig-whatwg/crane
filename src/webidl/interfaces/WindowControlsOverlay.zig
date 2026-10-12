@@ -185,12 +185,16 @@ pub const WindowControlsOverlay = struct {
         return try WindowControlsOverlayImpl.get_visible(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_ongeometrychange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowControlsOverlayImpl.get_ongeometrychange(instance);
+        if (comptime @hasDecl(WindowControlsOverlayImpl, "get_ongeometrychange")) return try WindowControlsOverlayImpl.get_ongeometrychange(instance);
+        return event_handlers.value(EventHandler, instance, "ongeometrychange");
     }
 
     pub fn set_ongeometrychange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowControlsOverlayImpl.set_ongeometrychange(instance, value);
+        if (comptime @hasDecl(WindowControlsOverlayImpl, "set_ongeometrychange")) return try WindowControlsOverlayImpl.set_ongeometrychange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ongeometrychange", value);
     }
 
     pub fn call_getTitlebarAreaRect(instance: *runtime.Instance) anyerror!*runtime.Instance {

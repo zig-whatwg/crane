@@ -203,20 +203,26 @@ pub const BroadcastChannel = struct {
         return try BroadcastChannelImpl.get_name(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BroadcastChannelImpl.get_onmessage(instance);
+        if (comptime @hasDecl(BroadcastChannelImpl, "get_onmessage")) return try BroadcastChannelImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BroadcastChannelImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(BroadcastChannelImpl, "set_onmessage")) return try BroadcastChannelImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BroadcastChannelImpl.get_onmessageerror(instance);
+        if (comptime @hasDecl(BroadcastChannelImpl, "get_onmessageerror")) return try BroadcastChannelImpl.get_onmessageerror(instance);
+        return event_handlers.value(EventHandler, instance, "onmessageerror");
     }
 
     pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BroadcastChannelImpl.set_onmessageerror(instance, value);
+        if (comptime @hasDecl(BroadcastChannelImpl, "set_onmessageerror")) return try BroadcastChannelImpl.set_onmessageerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue) anyerror!void {

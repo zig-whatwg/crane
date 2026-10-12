@@ -344,92 +344,116 @@ pub const ServiceWorkerGlobalScope = struct {
         return value;
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_oninstall(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_oninstall(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_oninstall")) return try ServiceWorkerGlobalScopeImpl.get_oninstall(instance);
+        return event_handlers.value(EventHandler, instance, "oninstall");
     }
 
     pub fn set_oninstall(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_oninstall(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_oninstall")) return try ServiceWorkerGlobalScopeImpl.set_oninstall(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oninstall", value);
     }
 
     pub fn get_onactivate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onactivate(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onactivate")) return try ServiceWorkerGlobalScopeImpl.get_onactivate(instance);
+        return event_handlers.value(EventHandler, instance, "onactivate");
     }
 
     pub fn set_onactivate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onactivate(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onactivate")) return try ServiceWorkerGlobalScopeImpl.set_onactivate(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onactivate", value);
     }
 
     pub fn get_onfetch(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onfetch(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onfetch")) return try ServiceWorkerGlobalScopeImpl.get_onfetch(instance);
+        return event_handlers.value(EventHandler, instance, "onfetch");
     }
 
     pub fn set_onfetch(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onfetch(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onfetch")) return try ServiceWorkerGlobalScopeImpl.set_onfetch(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onfetch", value);
     }
 
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onmessage(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onmessage")) return try ServiceWorkerGlobalScopeImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onmessage")) return try ServiceWorkerGlobalScopeImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onmessageerror(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onmessageerror")) return try ServiceWorkerGlobalScopeImpl.get_onmessageerror(instance);
+        return event_handlers.value(EventHandler, instance, "onmessageerror");
     }
 
     pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onmessageerror(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onmessageerror")) return try ServiceWorkerGlobalScopeImpl.set_onmessageerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
     }
 
     pub fn get_onbackgroundfetchsuccess(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onbackgroundfetchsuccess(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onbackgroundfetchsuccess")) return try ServiceWorkerGlobalScopeImpl.get_onbackgroundfetchsuccess(instance);
+        return event_handlers.value(EventHandler, instance, "onbackgroundfetchsuccess");
     }
 
     pub fn set_onbackgroundfetchsuccess(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onbackgroundfetchsuccess(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onbackgroundfetchsuccess")) return try ServiceWorkerGlobalScopeImpl.set_onbackgroundfetchsuccess(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onbackgroundfetchsuccess", value);
     }
 
     pub fn get_onbackgroundfetchfail(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onbackgroundfetchfail(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onbackgroundfetchfail")) return try ServiceWorkerGlobalScopeImpl.get_onbackgroundfetchfail(instance);
+        return event_handlers.value(EventHandler, instance, "onbackgroundfetchfail");
     }
 
     pub fn set_onbackgroundfetchfail(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onbackgroundfetchfail(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onbackgroundfetchfail")) return try ServiceWorkerGlobalScopeImpl.set_onbackgroundfetchfail(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onbackgroundfetchfail", value);
     }
 
     pub fn get_onbackgroundfetchabort(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onbackgroundfetchabort(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onbackgroundfetchabort")) return try ServiceWorkerGlobalScopeImpl.get_onbackgroundfetchabort(instance);
+        return event_handlers.value(EventHandler, instance, "onbackgroundfetchabort");
     }
 
     pub fn set_onbackgroundfetchabort(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onbackgroundfetchabort(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onbackgroundfetchabort")) return try ServiceWorkerGlobalScopeImpl.set_onbackgroundfetchabort(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onbackgroundfetchabort", value);
     }
 
     pub fn get_onbackgroundfetchclick(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onbackgroundfetchclick(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onbackgroundfetchclick")) return try ServiceWorkerGlobalScopeImpl.get_onbackgroundfetchclick(instance);
+        return event_handlers.value(EventHandler, instance, "onbackgroundfetchclick");
     }
 
     pub fn set_onbackgroundfetchclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onbackgroundfetchclick(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onbackgroundfetchclick")) return try ServiceWorkerGlobalScopeImpl.set_onbackgroundfetchclick(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onbackgroundfetchclick", value);
     }
 
     pub fn get_onsync(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onsync(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onsync")) return try ServiceWorkerGlobalScopeImpl.get_onsync(instance);
+        return event_handlers.value(EventHandler, instance, "onsync");
     }
 
     pub fn set_onsync(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onsync(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onsync")) return try ServiceWorkerGlobalScopeImpl.set_onsync(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsync", value);
     }
 
     pub fn get_oncontentdelete(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_oncontentdelete(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_oncontentdelete")) return try ServiceWorkerGlobalScopeImpl.get_oncontentdelete(instance);
+        return event_handlers.value(EventHandler, instance, "oncontentdelete");
     }
 
     pub fn set_oncontentdelete(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_oncontentdelete(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_oncontentdelete")) return try ServiceWorkerGlobalScopeImpl.set_oncontentdelete(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncontentdelete", value);
     }
 
     /// Extended attributes: [SameObject]
@@ -445,67 +469,83 @@ pub const ServiceWorkerGlobalScope = struct {
     }
 
     pub fn get_oncookiechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_oncookiechange(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_oncookiechange")) return try ServiceWorkerGlobalScopeImpl.get_oncookiechange(instance);
+        return event_handlers.value(EventHandler, instance, "oncookiechange");
     }
 
     pub fn set_oncookiechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_oncookiechange(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_oncookiechange")) return try ServiceWorkerGlobalScopeImpl.set_oncookiechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncookiechange", value);
     }
 
     pub fn get_onnotificationclick(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onnotificationclick(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onnotificationclick")) return try ServiceWorkerGlobalScopeImpl.get_onnotificationclick(instance);
+        return event_handlers.value(EventHandler, instance, "onnotificationclick");
     }
 
     pub fn set_onnotificationclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onnotificationclick(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onnotificationclick")) return try ServiceWorkerGlobalScopeImpl.set_onnotificationclick(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onnotificationclick", value);
     }
 
     pub fn get_onnotificationclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onnotificationclose(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onnotificationclose")) return try ServiceWorkerGlobalScopeImpl.get_onnotificationclose(instance);
+        return event_handlers.value(EventHandler, instance, "onnotificationclose");
     }
 
     pub fn set_onnotificationclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onnotificationclose(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onnotificationclose")) return try ServiceWorkerGlobalScopeImpl.set_onnotificationclose(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onnotificationclose", value);
     }
 
     pub fn get_oncanmakepayment(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_oncanmakepayment(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_oncanmakepayment")) return try ServiceWorkerGlobalScopeImpl.get_oncanmakepayment(instance);
+        return event_handlers.value(EventHandler, instance, "oncanmakepayment");
     }
 
     pub fn set_oncanmakepayment(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_oncanmakepayment(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_oncanmakepayment")) return try ServiceWorkerGlobalScopeImpl.set_oncanmakepayment(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncanmakepayment", value);
     }
 
     pub fn get_onpaymentrequest(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onpaymentrequest(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpaymentrequest")) return try ServiceWorkerGlobalScopeImpl.get_onpaymentrequest(instance);
+        return event_handlers.value(EventHandler, instance, "onpaymentrequest");
     }
 
     pub fn set_onpaymentrequest(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onpaymentrequest(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpaymentrequest")) return try ServiceWorkerGlobalScopeImpl.set_onpaymentrequest(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onpaymentrequest", value);
     }
 
     pub fn get_onperiodicsync(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onperiodicsync(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onperiodicsync")) return try ServiceWorkerGlobalScopeImpl.get_onperiodicsync(instance);
+        return event_handlers.value(EventHandler, instance, "onperiodicsync");
     }
 
     pub fn set_onperiodicsync(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onperiodicsync(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onperiodicsync")) return try ServiceWorkerGlobalScopeImpl.set_onperiodicsync(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onperiodicsync", value);
     }
 
     pub fn get_onpush(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onpush(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpush")) return try ServiceWorkerGlobalScopeImpl.get_onpush(instance);
+        return event_handlers.value(EventHandler, instance, "onpush");
     }
 
     pub fn set_onpush(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onpush(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpush")) return try ServiceWorkerGlobalScopeImpl.set_onpush(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onpush", value);
     }
 
     pub fn get_onpushsubscriptionchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onpushsubscriptionchange(instance);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpushsubscriptionchange")) return try ServiceWorkerGlobalScopeImpl.get_onpushsubscriptionchange(instance);
+        return event_handlers.value(EventHandler, instance, "onpushsubscriptionchange");
     }
 
     pub fn set_onpushsubscriptionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onpushsubscriptionchange(instance, value);
+        if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpushsubscriptionchange")) return try ServiceWorkerGlobalScopeImpl.set_onpushsubscriptionchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onpushsubscriptionchange", value);
     }
 
     /// Extended attributes: [NewObject]

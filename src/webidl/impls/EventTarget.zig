@@ -10,6 +10,8 @@ const engine = @import("engine");
 const interfaces = @import("interfaces");
 const abort_algorithms = @import("dom").abort_algorithms;
 const dom_module = @import("dom");
+const event_dispatch = dom_module.event_dispatch;
+const EventState = event_dispatch.EventState;
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
@@ -211,8 +213,14 @@ pub fn installHooks() void {
     @import("dom").fire_event.install(.{
         .dispatch_trusted = dispatchTrusted,
         .dispatch_trusted_with_throws = dispatchTrustedWithThrows,
+        .current_event = currentEvent,
     });
-    dom_module.event_handlers.install(.{ .get = getHandlerAddress, .set = setHandlerAddress, .erase = eraseAllEventListenersAndHandlers });
+    dom_module.event_handlers.install(.{
+        .get = getHandlerAddress,
+        .set = setHandlerAddress,
+        .erase = eraseAllEventListenersAndHandlers,
+        .has_listeners = hasListeners,
+    });
 }
 
 /// EventTarget's own construction steps, the first of every EventTarget's
@@ -672,8 +680,8 @@ const CurrentEvent = struct {
 };
 var current_events: std.ArrayListUnmanaged(CurrentEvent) = .empty;
 
-/// `window`'s current event, or null for undefined.
-pub fn currentEvent(window: *runtime.Instance) ?*runtime.Instance {
+/// `window`'s current event, or null for undefined (dom.fire_event).
+fn currentEvent(window: *runtime.Instance) ?*runtime.Instance {
     for (current_events.items) |entry| {
         if (entry.window == window) return entry.event;
     }
@@ -1040,9 +1048,9 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
 
 /// DOM 2.10 "fire an event", for an event the user agent has already created
 /// and initialized: dispatch it with isTrusted true. Script's dispatchEvent()
-/// is the only thing that makes an event untrusted. Subtypes call this
-/// directly; code outside the hierarchy goes through `dom.fire_event`.
-pub fn dispatchTrusted(target: *runtime.Instance, event: *runtime.Instance) !bool {
+/// is the only thing that makes an event untrusted. Everything reaches it
+/// through `dom.fire_event`, which this installs.
+fn dispatchTrusted(target: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
     return dispatchEventWithTrust(target, event, true, null);
 }
 
@@ -1053,7 +1061,10 @@ fn dispatchTrustedWithThrows(target: *runtime.Instance, event: *runtime.Instance
 /// dispatchEvent()'s steps with isTrusted given: false for script (DOM 2.8
 /// step 2), true when the user agent fires the event.
 fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance, trusted: bool, did_throw: ?*bool) anyerror!bool {
-    const EventImpl = @import("Event.zig");
+    // The event's dispatch state, taken once: every step below works on it.
+    // An event with none never ran Event's constructing steps, so its
+    // initialized flag is unset.
+    const state = event_dispatch.of(event) orelse return error.InvalidStateError;
 
     // Step 1: If event's dispatch flag is set, or if its initialized flag is not
     //         set, then throw an "InvalidStateError" DOMException.
@@ -1062,15 +1073,14 @@ fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance,
     // hands back an event with the flag UNSET, and dispatching it must throw
     // until `initEvent` runs. Skipping the check made 8 subtests of
     // EventTarget-dispatchEvent.html report "did not throw".
-    if (EventImpl.getDispatchFlag(event)) return error.InvalidStateError;
-    if (!EventImpl.getInitializedFlag(event)) return error.InvalidStateError;
+    if (state.dispatch_flag or !state.initialized_flag) return error.InvalidStateError;
 
     // Step 2: Initialize event's isTrusted attribute to false - or, for an
     // event the user agent fires, true.
-    EventImpl.setIsTrusted(event, trusted);
+    state.is_trusted = trusted;
 
     // Step 3: Return the result of dispatching event to this
-    return dispatchWithThrowFlag(instance, event, did_throw);
+    return dispatchWithThrowFlag(instance, event, state, did_throw);
 }
 
 // ============================================================================
@@ -1080,9 +1090,9 @@ fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance,
 
 /// One struct of the event path, per "append to an event path" (DOM §2.9).
 ///
-/// The shadow-tree booleans and the touch target list live on Event's own
-/// `EventPathItem`, which this is mirrored into so `composedPath()` can see the
-/// path while listeners run.
+/// The shadow-tree booleans and the touch target list live on the event's own
+/// path (`dom.event_dispatch.PathItem`), which this is mirrored into so
+/// `composedPath()` can see the path while listeners run.
 const PathStruct = struct {
     /// invocation target: whose event listener list is consulted.
     invocation_target: *runtime.Instance,
@@ -1198,11 +1208,9 @@ fn buildEventPath(
 
 /// Mirror the path onto the event so `composedPath()` reports it.
 /// Dispatch step 9 empties it again.
-fn publishEventPath(event: *runtime.Instance, structs: []const PathStruct, allocator: std.mem.Allocator) void {
-    const EventImpl = @import("Event.zig");
-    const list = EventImpl.getPath(event) orelse return;
+fn publishEventPath(state: *EventState, structs: []const PathStruct, allocator: std.mem.Allocator) void {
     for (structs) |s| {
-        list.append(.{
+        state.path.append(.{
             .invocation_target = s.invocation_target,
             .invocation_target_in_shadow_tree = false,
             .shadow_adjusted_target = s.shadow_adjusted_target,
@@ -1217,25 +1225,21 @@ fn publishEventPath(event: *runtime.Instance, structs: []const PathStruct, alloc
 /// DOM §2.9 - dispatch
 /// https://dom.spec.whatwg.org/#concept-event-dispatch
 ///
+/// `state` is `event`'s (`dom.event_dispatch.of`), BORROWED for the dispatch.
 /// Returns false if the event's canceled flag is set, true otherwise.
-pub fn dispatch(target: *runtime.Instance, event: *runtime.Instance) !bool {
-    return dispatchWithThrowFlag(target, event, null);
-}
-
-fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, did_throw: ?*bool) !bool {
-    const EventImpl = @import("Event.zig");
+fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, state: *EventState, did_throw: ?*bool) !bool {
     const allocator = target.ctx.allocator;
 
     // Step 1: Set event's dispatch flag.
-    EventImpl.setDispatchFlag(event, true);
+    state.dispatch_flag = true;
 
     // Steps 7, 8 and 10 have to happen however we leave.
-    errdefer finishDispatch(event);
+    errdefer state.endDispatch(event);
 
     // Steps 2-5. targetOverride is target: the legacy target override flag is
     // only ever passed by HTML, and only for a Window. clearTargets (steps 5,
     // 6.10-6.11) needs shadow roots, which do not exist yet.
-    const related_target = EventImpl.getRelatedTarget(event);
+    const related_target = state.related_target;
 
     // `get_type` hands back a borrowed slice into the event's own storage, and
     // `initEvent` returns early while the dispatch flag is set, so no callback
@@ -1249,7 +1253,7 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, di
     try buildEventPath(&path, target, event_type, related_target);
     const structs = path.toSlice();
 
-    publishEventPath(event, structs, allocator);
+    publishEventPath(state, structs, allocator);
 
     // Steps 3, 6.4, 6.5 and 6.9.6.1: activationTarget - the target, if it has
     // activation behaviour, else (for a bubbling event) the first ancestor on
@@ -1267,11 +1271,11 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, di
     var i = structs.len;
     while (i > 0) {
         i -= 1;
-        EventImpl.setEventPhase(event, if (structs[i].shadow_adjusted_target != null)
+        state.phase = if (structs[i].shadow_adjusted_target != null)
             interfaces.Event.get_AT_TARGET()
         else
-            interfaces.Event.get_CAPTURING_PHASE());
-        invoke(structs, i, event, .capturing, did_throw);
+            interfaces.Event.get_CAPTURING_PHASE();
+        invoke(structs, i, event, state, .capturing, did_throw);
     }
 
     // Step 14: for each struct of event's path, in order, invoke with "bubbling".
@@ -1280,18 +1284,18 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, di
         if (s.shadow_adjusted_target != null) {
             // Step 14.1 - the target itself is AT_TARGET in both passes, which
             // is how its capturing listeners run before its bubbling ones.
-            EventImpl.setEventPhase(event, interfaces.Event.get_AT_TARGET());
+            state.phase = interfaces.Event.get_AT_TARGET();
         } else {
             // Step 14.2.1
             if (!bubbles) continue;
             // Step 14.2.2
-            EventImpl.setEventPhase(event, interfaces.Event.get_BUBBLING_PHASE());
+            state.phase = interfaces.Event.get_BUBBLING_PHASE();
         }
-        invoke(structs, index, event, .bubbling, did_throw);
+        invoke(structs, index, event, state, .bubbling, did_throw);
     }
 
     // Steps 7, 8, 9 and 10
-    finishDispatch(event);
+    state.endDispatch(event);
 
     // Step 11 (clearTargets) is not reachable yet.
 
@@ -1302,7 +1306,7 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, di
     // defaultPrevented is the canceled flag ("return true if this's canceled
     // flag is set").
     if (activation_target) |at| {
-        if (!(interfaces.Event.get_defaultPrevented(event) catch false)) {
+        if (!state.canceled_flag) {
             at.behavior.run(at.target, event);
         } else if (at.behavior.legacy_canceled_activation) |canceled| {
             canceled(at.target);
@@ -1310,7 +1314,7 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, di
     }
 
     // Step 13: return false if event's canceled flag is set; otherwise true.
-    return !EventImpl.getCanceledFlag(event);
+    return !state.canceled_flag;
 }
 
 const ActivationTarget = struct {
@@ -1343,24 +1347,9 @@ fn activationTargetOf(structs: []const PathStruct, event: *runtime.Instance, eve
     return null;
 }
 
-/// Dispatch steps 7-10: leave the event in a state that can be dispatched again.
-fn finishDispatch(event: *runtime.Instance) void {
-    const EventImpl = @import("Event.zig");
-    // Step 7
-    EventImpl.setEventPhase(event, interfaces.Event.get_NONE());
-    // Step 8
-    EventImpl.setCurrentTarget(event, null);
-    // Step 9
-    EventImpl.clearPath(event);
-    // Step 10
-    EventImpl.setDispatchFlag(event, false);
-    EventImpl.clearPropagationFlags(event);
-}
-
 /// DOM §2.9 - invoke
 /// https://dom.spec.whatwg.org/#concept-event-listener-invoke
-fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, phase: ListenerPhase, did_throw: ?*bool) void {
-    const EventImpl = @import("Event.zig");
+fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool) void {
     const s = structs[index];
 
     // Step 1: event's target is the shadow-adjusted target of the last struct at
@@ -1369,22 +1358,22 @@ fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, p
     while (j > 0) {
         j -= 1;
         if (structs[j].shadow_adjusted_target) |shadow_adjusted| {
-            EventImpl.setTarget(event, shadow_adjusted);
+            state.setTarget(event, shadow_adjusted);
             break;
         }
     }
 
     // Step 2
-    EventImpl.setRelatedTarget(event, s.related_target);
+    state.related_target = s.related_target;
 
     // Step 3: event's touch target list - needs UI Events, TODO.
 
     // Step 4: stopPropagation() ends the walk here, but the caller still has to
     // run steps 7-10, so this returns rather than unwinding.
-    if (EventImpl.getStopPropagationFlag(event)) return;
+    if (state.stop_propagation_flag) return;
 
     // Step 5
-    EventImpl.setCurrentTarget(event, s.invocation_target);
+    state.current_target = s.invocation_target;
 
     // Steps 6-8.
     //
@@ -1393,10 +1382,10 @@ fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, p
     // list, and `activateEventHandler` puts one there, so a handler runs in
     // registration order among the addEventListener listeners - and, being
     // non-capturing, only in the bubbling pass.
-    const found = innerInvoke(event, s.invocation_target, phase, did_throw);
+    const found = innerInvoke(event, state, s.invocation_target, phase, did_throw);
 
     // Step 9: "If found is false and event's isTrusted attribute is true:"
-    if (found or !(interfaces.Event.get_isTrusted(event) catch false)) return;
+    if (found or !state.is_trusted) return;
     const event_type = interfaces.Event.get_type(event) catch return;
     // Step 9.2: rename a legacy-mapped type, "and return otherwise".
     const legacy = dom_module.event_dispatch.legacyEventType(event_type.asSlice()) orelse return;
@@ -1407,7 +1396,7 @@ fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, p
     // invocationTargetInShadowTree, and legacyOutputDidListenersThrowFlag if
     // given." found was false, so no listener ran and the list is still the
     // one step 6 cloned; innerInvoke's own snapshot is that clone.
-    _ = innerInvoke(event, s.invocation_target, phase, did_throw);
+    _ = innerInvoke(event, state, s.invocation_target, phase, did_throw);
     // Step 9.4: "Set event's type attribute value to originalEventType."
     _ = dom_module.event_dispatch.swapType(event, original_event_type);
 }
@@ -1417,9 +1406,7 @@ fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, p
 ///
 /// Returns `found`: whether any listener matched the event's type, regardless of
 /// phase. Only step 9 of "invoke" consumes it.
-fn innerInvoke(event: *runtime.Instance, current_target: *runtime.Instance, phase: ListenerPhase, did_throw: ?*bool) bool {
-    const EventImpl = @import("Event.zig");
-
+fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *runtime.Instance, phase: ListenerPhase, did_throw: ?*bool) bool {
     const internal = getInternalFromRegistry(current_target) orelse return false;
     const list = internal.event_listener_list orelse return false;
     if (list.len == 0) return false;
@@ -1471,7 +1458,7 @@ fn innerInvoke(event: *runtime.Instance, current_target: *runtime.Instance, phas
         defer if (expired) |value| value.release();
 
         // Step 2.9
-        if (candidate.passive) EventImpl.setInPassiveListenerFlag(event, true);
+        if (candidate.passive) state.in_passive_listener_flag = true;
 
         // Step 2.11 - an exception is reported, never propagated. An event
         // handler's listener runs the event handler processing algorithm.
@@ -1482,10 +1469,10 @@ fn innerInvoke(event: *runtime.Instance, current_target: *runtime.Instance, phas
         }
 
         // Step 2.12
-        if (candidate.passive) EventImpl.setInPassiveListenerFlag(event, false);
+        if (candidate.passive) state.in_passive_listener_flag = false;
 
         // Step 2.14
-        if (EventImpl.getStopImmediatePropagationFlag(event)) break;
+        if (state.stop_immediate_propagation_flag) break;
     }
 
     // Step 3
@@ -1771,13 +1758,13 @@ pub fn getNodeType(instance: *runtime.Instance) u16 {
     return node_base.node_type;
 }
 
-/// Get all event listeners for a specific type
-pub fn getEventListenersForType(instance: *runtime.Instance, @"type": []const u8) []const EventListenerRecord {
-    const internal = getInternalFromRegistry(instance) orelse return &[_]EventListenerRecord{};
-    const list = internal.event_listener_list orelse return &[_]EventListenerRecord{};
-
-    // Note: This returns all listeners, caller should filter by type
-    // In a real implementation, we'd return a filtered view
-    _ = @"type";
-    return list.toSlice();
+/// dom.event_handlers: whether `instance`'s event listener list holds a
+/// listener whose removed is false - an event handler's included.
+fn hasListeners(instance: *runtime.Instance) bool {
+    const internal = getInternalFromRegistry(instance) orelse return false;
+    const list = internal.event_listener_list orelse return false;
+    for (list.toSlice()) |listener| {
+        if (!listener.removed) return true;
+    }
+    return false;
 }

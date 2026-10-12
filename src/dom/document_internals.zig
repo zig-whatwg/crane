@@ -132,13 +132,6 @@ pub fn getURL(instance: *runtime.Instance) ?[]const u8 {
     return internal.url;
 }
 
-/// Copy origin from another document
-pub fn copyOrigin(instance: *runtime.Instance, source: *runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const source_internal = getInternal(source) orelse return error.InvalidStateError;
-    internal.origin = source_internal.origin;
-}
-
 /// Get the document type (html or xml).
 pub fn getDocumentType(instance: *runtime.Instance) ?DocType {
     const internal = getInternal(instance) orelse return null;

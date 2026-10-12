@@ -310,52 +310,66 @@ pub const RTCDataChannel = struct {
         try RTCDataChannelImpl.set_bufferedAmountLowThreshold(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onopen(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCDataChannelImpl.get_onopen(instance);
+        if (comptime @hasDecl(RTCDataChannelImpl, "get_onopen")) return try RTCDataChannelImpl.get_onopen(instance);
+        return event_handlers.value(EventHandler, instance, "onopen");
     }
 
     pub fn set_onopen(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCDataChannelImpl.set_onopen(instance, value);
+        if (comptime @hasDecl(RTCDataChannelImpl, "set_onopen")) return try RTCDataChannelImpl.set_onopen(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onopen", value);
     }
 
     pub fn get_onbufferedamountlow(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCDataChannelImpl.get_onbufferedamountlow(instance);
+        if (comptime @hasDecl(RTCDataChannelImpl, "get_onbufferedamountlow")) return try RTCDataChannelImpl.get_onbufferedamountlow(instance);
+        return event_handlers.value(EventHandler, instance, "onbufferedamountlow");
     }
 
     pub fn set_onbufferedamountlow(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCDataChannelImpl.set_onbufferedamountlow(instance, value);
+        if (comptime @hasDecl(RTCDataChannelImpl, "set_onbufferedamountlow")) return try RTCDataChannelImpl.set_onbufferedamountlow(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onbufferedamountlow", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCDataChannelImpl.get_onerror(instance);
+        if (comptime @hasDecl(RTCDataChannelImpl, "get_onerror")) return try RTCDataChannelImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCDataChannelImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(RTCDataChannelImpl, "set_onerror")) return try RTCDataChannelImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn get_onclosing(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCDataChannelImpl.get_onclosing(instance);
+        if (comptime @hasDecl(RTCDataChannelImpl, "get_onclosing")) return try RTCDataChannelImpl.get_onclosing(instance);
+        return event_handlers.value(EventHandler, instance, "onclosing");
     }
 
     pub fn set_onclosing(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCDataChannelImpl.set_onclosing(instance, value);
+        if (comptime @hasDecl(RTCDataChannelImpl, "set_onclosing")) return try RTCDataChannelImpl.set_onclosing(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onclosing", value);
     }
 
     pub fn get_onclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCDataChannelImpl.get_onclose(instance);
+        if (comptime @hasDecl(RTCDataChannelImpl, "get_onclose")) return try RTCDataChannelImpl.get_onclose(instance);
+        return event_handlers.value(EventHandler, instance, "onclose");
     }
 
     pub fn set_onclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCDataChannelImpl.set_onclose(instance, value);
+        if (comptime @hasDecl(RTCDataChannelImpl, "set_onclose")) return try RTCDataChannelImpl.set_onclose(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onclose", value);
     }
 
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCDataChannelImpl.get_onmessage(instance);
+        if (comptime @hasDecl(RTCDataChannelImpl, "get_onmessage")) return try RTCDataChannelImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCDataChannelImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(RTCDataChannelImpl, "set_onmessage")) return try RTCDataChannelImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn get_binaryType(instance: *runtime.Instance) anyerror!BinaryType {

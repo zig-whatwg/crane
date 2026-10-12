@@ -228,19 +228,25 @@ pub const IDBRequest = struct {
         return try IDBRequestImpl.get_readyState(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onsuccess(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBRequestImpl.get_onsuccess(instance);
+        if (comptime @hasDecl(IDBRequestImpl, "get_onsuccess")) return try IDBRequestImpl.get_onsuccess(instance);
+        return event_handlers.value(EventHandler, instance, "onsuccess");
     }
 
     pub fn set_onsuccess(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBRequestImpl.set_onsuccess(instance, value);
+        if (comptime @hasDecl(IDBRequestImpl, "set_onsuccess")) return try IDBRequestImpl.set_onsuccess(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsuccess", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBRequestImpl.get_onerror(instance);
+        if (comptime @hasDecl(IDBRequestImpl, "get_onerror")) return try IDBRequestImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBRequestImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(IDBRequestImpl, "set_onerror")) return try IDBRequestImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 };

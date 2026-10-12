@@ -258,36 +258,46 @@ pub const Navigation = struct {
         return try NavigationImpl.get_canGoForward(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onnavigate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NavigationImpl.get_onnavigate(instance);
+        if (comptime @hasDecl(NavigationImpl, "get_onnavigate")) return try NavigationImpl.get_onnavigate(instance);
+        return event_handlers.value(EventHandler, instance, "onnavigate");
     }
 
     pub fn set_onnavigate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NavigationImpl.set_onnavigate(instance, value);
+        if (comptime @hasDecl(NavigationImpl, "set_onnavigate")) return try NavigationImpl.set_onnavigate(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onnavigate", value);
     }
 
     pub fn get_onnavigatesuccess(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NavigationImpl.get_onnavigatesuccess(instance);
+        if (comptime @hasDecl(NavigationImpl, "get_onnavigatesuccess")) return try NavigationImpl.get_onnavigatesuccess(instance);
+        return event_handlers.value(EventHandler, instance, "onnavigatesuccess");
     }
 
     pub fn set_onnavigatesuccess(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NavigationImpl.set_onnavigatesuccess(instance, value);
+        if (comptime @hasDecl(NavigationImpl, "set_onnavigatesuccess")) return try NavigationImpl.set_onnavigatesuccess(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onnavigatesuccess", value);
     }
 
     pub fn get_onnavigateerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NavigationImpl.get_onnavigateerror(instance);
+        if (comptime @hasDecl(NavigationImpl, "get_onnavigateerror")) return try NavigationImpl.get_onnavigateerror(instance);
+        return event_handlers.value(EventHandler, instance, "onnavigateerror");
     }
 
     pub fn set_onnavigateerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NavigationImpl.set_onnavigateerror(instance, value);
+        if (comptime @hasDecl(NavigationImpl, "set_onnavigateerror")) return try NavigationImpl.set_onnavigateerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onnavigateerror", value);
     }
 
     pub fn get_oncurrententrychange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NavigationImpl.get_oncurrententrychange(instance);
+        if (comptime @hasDecl(NavigationImpl, "get_oncurrententrychange")) return try NavigationImpl.get_oncurrententrychange(instance);
+        return event_handlers.value(EventHandler, instance, "oncurrententrychange");
     }
 
     pub fn set_oncurrententrychange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NavigationImpl.set_oncurrententrychange(instance, value);
+        if (comptime @hasDecl(NavigationImpl, "set_oncurrententrychange")) return try NavigationImpl.set_oncurrententrychange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncurrententrychange", value);
     }
 
     pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(NavigationReloadOptions)) anyerror!NavigationResult {

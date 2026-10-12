@@ -236,27 +236,35 @@ pub const VisualViewport = struct {
         return try VisualViewportImpl.get_scale(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onresize(instance: *runtime.Instance) anyerror!EventHandler {
-        return try VisualViewportImpl.get_onresize(instance);
+        if (comptime @hasDecl(VisualViewportImpl, "get_onresize")) return try VisualViewportImpl.get_onresize(instance);
+        return event_handlers.value(EventHandler, instance, "onresize");
     }
 
     pub fn set_onresize(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try VisualViewportImpl.set_onresize(instance, value);
+        if (comptime @hasDecl(VisualViewportImpl, "set_onresize")) return try VisualViewportImpl.set_onresize(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onresize", value);
     }
 
     pub fn get_onscroll(instance: *runtime.Instance) anyerror!EventHandler {
-        return try VisualViewportImpl.get_onscroll(instance);
+        if (comptime @hasDecl(VisualViewportImpl, "get_onscroll")) return try VisualViewportImpl.get_onscroll(instance);
+        return event_handlers.value(EventHandler, instance, "onscroll");
     }
 
     pub fn set_onscroll(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try VisualViewportImpl.set_onscroll(instance, value);
+        if (comptime @hasDecl(VisualViewportImpl, "set_onscroll")) return try VisualViewportImpl.set_onscroll(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onscroll", value);
     }
 
     pub fn get_onscrollend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try VisualViewportImpl.get_onscrollend(instance);
+        if (comptime @hasDecl(VisualViewportImpl, "get_onscrollend")) return try VisualViewportImpl.get_onscrollend(instance);
+        return event_handlers.value(EventHandler, instance, "onscrollend");
     }
 
     pub fn set_onscrollend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try VisualViewportImpl.set_onscrollend(instance, value);
+        if (comptime @hasDecl(VisualViewportImpl, "set_onscrollend")) return try VisualViewportImpl.set_onscrollend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onscrollend", value);
     }
 };

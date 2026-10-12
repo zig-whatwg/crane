@@ -168,29 +168,30 @@ fn hasAlreadyStarted(instance: *runtime.Instance) bool {
 // Spec: https://html.spec.whatwg.org/multipage/dom.html#reflecting-content-attributes-in-idl-attributes
 // =============================================================================
 
-const ElementImpl = @import("Element.zig");
+// The element's attributes, read in place (dom.element_data, which Element
+// installs) and written through Element's own algorithms
+// (dom.element_attributes), where "handle attribute changes" runs.
+const element_data = @import("dom").element_data;
+const element_attributes = @import("dom").element_attributes;
 
-/// Get a content attribute value from this element
+/// HTML 2.6.1 "get the content attribute": the value of the attribute in no
+/// namespace named `name`, borrowed, or null.
 fn getContentAttribute(instance: *runtime.Instance, name: []const u8) ?runtime.DOMString {
-    const elem_internal = ElementImpl.getInternalState(instance) orelse return null;
-
-    // Search attributes for matching name using findAttribute
-    if (elem_internal.findAttribute(null, name)) |attr| {
-        return runtime.DOMString.initInterned(attr.value);
-    }
-    return null;
+    const data = element_data.of(instance) orelse return null;
+    const attr = element_data.getAttributeByNamespaceAndLocalName(data, null, name) orelse return null;
+    return runtime.DOMString.initInterned(attr.value);
 }
 
 /// Set content attribute `name` - DOM "set an attribute value", the setter
 /// steps of a reflected attribute - so the change is observed like any other.
 fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: runtime.DOMString) !void {
-    try ElementImpl.setAttributeValue(instance, name, value.asSlice(), null, null);
+    try element_attributes.set(instance, name, value.asSlice(), .{});
 }
 
 /// Check if a boolean content attribute exists (presence = true)
 fn hasBooleanAttribute(instance: *runtime.Instance, name: []const u8) bool {
-    const elem_internal = ElementImpl.getInternalState(instance) orelse return false;
-    return elem_internal.findAttribute(null, name) != null;
+    const data = element_data.of(instance) orelse return false;
+    return element_data.hasAttribute(data, name);
 }
 
 /// Set or remove a boolean attribute (presence = true, absence = false)
@@ -199,7 +200,9 @@ fn setBooleanAttribute(instance: *runtime.Instance, name: []const u8, value: boo
         // Set the attribute with empty value (presence means true)
         try setContentAttribute(instance, name, runtime.DOMString.initEmpty());
     } else {
-        ElementImpl.removeAttributeByNamespaceAndLocalName(instance, null, name);
+        // HTML 2.6.1 "delete the content attribute": DOM "remove an attribute
+        // by namespace and local name" given null and `name`.
+        element_attributes.remove(instance, null, name);
     }
 }
 
@@ -398,7 +401,7 @@ pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) a
         try setContentAttribute(instance, "crossorigin", v);
     } else {
         // Setting to null removes the attribute
-        ElementImpl.removeAttributeByNamespaceAndLocalName(instance, null, "crossorigin");
+        element_attributes.remove(instance, null, "crossorigin");
     }
 }
 

@@ -369,6 +369,27 @@ pub fn setterPrefix(attr: types.Attribute) []const u8 {
     return if (attr.static) "set_static_" else "set_";
 }
 
+/// The types of the event handler IDL attributes (HTML 8.1.8.1).
+const event_handler_types = [_][]const u8{ "EventHandler", "OnErrorEventHandler", "OnBeforeUnloadEventHandler" };
+
+/// Whether `attr` is an event handler IDL attribute (HTML 8.1.8.1): a regular,
+/// writable attribute of type EventHandler, OnErrorEventHandler or
+/// OnBeforeUnloadEventHandler, named "on" and its event handler event type.
+/// HTML gives every one the same getter and setter steps, so the generated
+/// interface supplies them (`dom.event_handlers.value` / `setValue`) wherever
+/// the impl does not: WebKit's generator does the same (CodeGeneratorJS.pm,
+/// the IsEventHandlerType branch).
+pub fn isEventHandlerAttribute(attr: types.Attribute) bool {
+    if (attr.static or attr.readonly) return false;
+    const t = attr.idlType;
+    if (t.nullable or t.generic != null or t.unionTypes != null or t.sequence != null or t.record != null) return false;
+    if (!std.mem.startsWith(u8, attr.name, "on") or attr.name.len == 2) return false;
+    for (event_handler_types) |handler_type| {
+        if (std.mem.eql(u8, t.type, handler_type)) return true;
+    }
+    return false;
+}
+
 /// Whether `op` is a regular operation - a method of the interface prototype.
 /// WebIDL 2.5.3: "If an operation has an identifier, then it is a regular
 /// operation" - a special one (getter, setter, deleter, stringifier) declared
@@ -4187,6 +4208,8 @@ pub fn writeDelegateFunctions(
 
     // `reflection` is declared once, before the first accessor that uses it.
     var reflection_declared = false;
+    // So is `event_handlers` (src/dom/event_handlers.zig).
+    var event_handlers_declared = false;
 
     // Every function written below that runs a [CEReactions] bracket, for
     // the `ce_reactions` table at the end.
@@ -4245,6 +4268,15 @@ pub fn writeDelegateFunctions(
         if (reflection != null and !reflection_declared) {
             try writer.writeAll("    const reflection = @import(\"impls\").reflection;\n\n");
             reflection_declared = true;
+        }
+
+        // HTML 8.1.8.1: an event handler IDL attribute's getter and setter
+        // are HTML's unless the impl implements them. An inherited one is the
+        // mixin module's, which supplies them in turn.
+        const event_handler = inherited == null and isEventHandlerAttribute(attr);
+        if (event_handler and !event_handlers_declared) {
+            try writer.writeAll("    const event_handlers = @import(\"dom\").event_handlers;\n\n");
+            event_handlers_declared = true;
         }
 
         // Write extended attributes as comment
@@ -4310,6 +4342,9 @@ pub fn writeDelegateFunctions(
             try writer.print("        return try reflection.get({s}, instance, ", .{value_type});
             try reflect.writeSpec(writer, reflection.?);
             try writer.writeAll(");\n");
+        } else if (event_handler) {
+            try writer.print("        if (comptime @hasDecl({s}, \"{s}{s}\")) return try {s}.{s}{s}(instance);\n", .{ member_impl, get_prefix, sanitized_name, member_impl, get_prefix, sanitized_name });
+            try writer.print("        return event_handlers.value({s}, instance, \"{s}\");\n", .{ value_type, attr.name });
         } else {
             // Static attributes or non-[SameObject] - delegate directly to impl
             try writer.print("        return try {s}.{s}{s}(instance);\n", .{ member_impl, get_prefix, sanitized_name });
@@ -4436,6 +4471,9 @@ pub fn writeDelegateFunctions(
                 try writer.print("        try reflection.set({s}, instance, ", .{value_type});
                 try reflect.writeSpec(writer, r);
                 try writer.writeAll(", value);\n");
+            } else if (event_handler) {
+                try writer.print("        if (comptime @hasDecl({s}, \"{s}{s}\")) return try {s}.{s}{s}(instance, value);\n", .{ member_impl, set_prefix, sanitized_name, member_impl, set_prefix, sanitized_name });
+                try writer.print("        try event_handlers.setValue({s}, instance, \"{s}\", value);\n", .{ value_type, attr.name });
             } else {
                 try writer.print("        try {s}.{s}{s}(instance, value);\n", .{ member_impl, set_prefix, sanitized_name });
             }

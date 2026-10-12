@@ -16,7 +16,6 @@ const callbacks = @import("callbacks");
 const cookiestore = @import("cookiestore");
 const engine = @import("engine");
 const webidl = @import("webidl");
-const EventTargetImpl = @import("EventTarget.zig");
 const log = std.log.scoped(.cookie_store);
 
 // The Promise-returning operations make their promises and values through
@@ -134,17 +133,6 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     const state = instance.getState(State);
     return state.own._internal;
-}
-
-/// Getter for onchange (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "change");
-}
-
-/// Setter for onchange: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "change", value);
 }
 
 // ============================================================================
@@ -314,7 +302,7 @@ fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
     // Step 7: dispatch it - fired by the user agent, so trusted. EventTarget
     // is an ancestor, so its impl.
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(instance, event) catch |err| {
+    _ = @import("dom").fire_event.dispatchTrusted(instance, event) catch |err| {
         log.debug("change event not dispatched: {s}", .{@errorName(err)});
     };
     // An event no script saw is freed; a wrapped one belongs to its wrapper.

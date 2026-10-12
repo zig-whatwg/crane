@@ -269,44 +269,56 @@ pub const RTCIceTransport = struct {
         return try RTCIceTransportImpl.get_gatheringState(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCIceTransportImpl.get_onstatechange(instance);
+        if (comptime @hasDecl(RTCIceTransportImpl, "get_onstatechange")) return try RTCIceTransportImpl.get_onstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onstatechange");
     }
 
     pub fn set_onstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCIceTransportImpl.set_onstatechange(instance, value);
+        if (comptime @hasDecl(RTCIceTransportImpl, "set_onstatechange")) return try RTCIceTransportImpl.set_onstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
 
     pub fn get_ongatheringstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCIceTransportImpl.get_ongatheringstatechange(instance);
+        if (comptime @hasDecl(RTCIceTransportImpl, "get_ongatheringstatechange")) return try RTCIceTransportImpl.get_ongatheringstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "ongatheringstatechange");
     }
 
     pub fn set_ongatheringstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCIceTransportImpl.set_ongatheringstatechange(instance, value);
+        if (comptime @hasDecl(RTCIceTransportImpl, "set_ongatheringstatechange")) return try RTCIceTransportImpl.set_ongatheringstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ongatheringstatechange", value);
     }
 
     pub fn get_onselectedcandidatepairchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCIceTransportImpl.get_onselectedcandidatepairchange(instance);
+        if (comptime @hasDecl(RTCIceTransportImpl, "get_onselectedcandidatepairchange")) return try RTCIceTransportImpl.get_onselectedcandidatepairchange(instance);
+        return event_handlers.value(EventHandler, instance, "onselectedcandidatepairchange");
     }
 
     pub fn set_onselectedcandidatepairchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCIceTransportImpl.set_onselectedcandidatepairchange(instance, value);
+        if (comptime @hasDecl(RTCIceTransportImpl, "set_onselectedcandidatepairchange")) return try RTCIceTransportImpl.set_onselectedcandidatepairchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onselectedcandidatepairchange", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCIceTransportImpl.get_onerror(instance);
+        if (comptime @hasDecl(RTCIceTransportImpl, "get_onerror")) return try RTCIceTransportImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCIceTransportImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(RTCIceTransportImpl, "set_onerror")) return try RTCIceTransportImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn get_onicecandidate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCIceTransportImpl.get_onicecandidate(instance);
+        if (comptime @hasDecl(RTCIceTransportImpl, "get_onicecandidate")) return try RTCIceTransportImpl.get_onicecandidate(instance);
+        return event_handlers.value(EventHandler, instance, "onicecandidate");
     }
 
     pub fn set_onicecandidate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCIceTransportImpl.set_onicecandidate(instance, value);
+        if (comptime @hasDecl(RTCIceTransportImpl, "set_onicecandidate")) return try RTCIceTransportImpl.set_onicecandidate(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onicecandidate", value);
     }
 
     pub fn call_addRemoteCandidate(instance: *runtime.Instance, remoteCandidate: webidl.Opt(RTCIceCandidateInit)) anyerror!void {

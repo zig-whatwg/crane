@@ -197,12 +197,16 @@ pub const ScreenOrientation = struct {
         return try ScreenOrientationImpl.get_angle(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ScreenOrientationImpl.get_onchange(instance);
+        if (comptime @hasDecl(ScreenOrientationImpl, "get_onchange")) return try ScreenOrientationImpl.get_onchange(instance);
+        return event_handlers.value(EventHandler, instance, "onchange");
     }
 
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ScreenOrientationImpl.set_onchange(instance, value);
+        if (comptime @hasDecl(ScreenOrientationImpl, "set_onchange")) return try ScreenOrientationImpl.set_onchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 
     pub fn call_unlock(instance: *runtime.Instance) anyerror!void {

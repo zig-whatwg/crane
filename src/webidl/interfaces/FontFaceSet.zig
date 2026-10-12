@@ -220,28 +220,36 @@ pub const FontFaceSet = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onloading(instance: *runtime.Instance) anyerror!EventHandler {
-        return try FontFaceSetImpl.get_onloading(instance);
+        if (comptime @hasDecl(FontFaceSetImpl, "get_onloading")) return try FontFaceSetImpl.get_onloading(instance);
+        return event_handlers.value(EventHandler, instance, "onloading");
     }
 
     pub fn set_onloading(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try FontFaceSetImpl.set_onloading(instance, value);
+        if (comptime @hasDecl(FontFaceSetImpl, "set_onloading")) return try FontFaceSetImpl.set_onloading(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onloading", value);
     }
 
     pub fn get_onloadingdone(instance: *runtime.Instance) anyerror!EventHandler {
-        return try FontFaceSetImpl.get_onloadingdone(instance);
+        if (comptime @hasDecl(FontFaceSetImpl, "get_onloadingdone")) return try FontFaceSetImpl.get_onloadingdone(instance);
+        return event_handlers.value(EventHandler, instance, "onloadingdone");
     }
 
     pub fn set_onloadingdone(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try FontFaceSetImpl.set_onloadingdone(instance, value);
+        if (comptime @hasDecl(FontFaceSetImpl, "set_onloadingdone")) return try FontFaceSetImpl.set_onloadingdone(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onloadingdone", value);
     }
 
     pub fn get_onloadingerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try FontFaceSetImpl.get_onloadingerror(instance);
+        if (comptime @hasDecl(FontFaceSetImpl, "get_onloadingerror")) return try FontFaceSetImpl.get_onloadingerror(instance);
+        return event_handlers.value(EventHandler, instance, "onloadingerror");
     }
 
     pub fn set_onloadingerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try FontFaceSetImpl.set_onloadingerror(instance, value);
+        if (comptime @hasDecl(FontFaceSetImpl, "set_onloadingerror")) return try FontFaceSetImpl.set_onloadingerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onloadingerror", value);
     }
 
     pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {

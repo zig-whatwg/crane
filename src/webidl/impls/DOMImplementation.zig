@@ -70,6 +70,14 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
     return Accessor.getCast(instance);
 }
 
+/// The associated document's origin record, its serialization resolved
+/// (borrowed: the document made with it retains it); null without an
+/// associated document, which leaves the new document an origin of its own.
+fn associatedOrigin(internal: *InternalState) error{OutOfMemory}!?*dom.origin_record.OriginRecord {
+    const document = internal.document orelse return null;
+    return dom.document_origin.shareable(document);
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -184,10 +192,13 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     const allocator = internal.allocator;
     const ctx = instance.ctx;
 
-    // Step 1: Create new XMLDocument (use interface per Golden Rule #13)
-    const document = try interfaces.Document.init(
+    // Step 1: Create new XMLDocument (use interface per Golden Rule #13).
+    // Step 6, "document's origin is this's associated document's origin", is
+    // a construction fact here: the two share one origin record.
+    const document = try interfaces.Document.initWith(
         allocator,
         ctx,
+        .{ .origin = try associatedOrigin(internal) },
     );
     errdefer interfaces.Document.deinit(document);
 
@@ -223,11 +234,6 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     if (element) |elem| {
         // Use interface instead of impl (per Golden Rule #13)
         _ = try interfaces.Node.call_appendChild(document, elem);
-    }
-
-    // Step 6: Set document's origin from associated document
-    if (internal.document) |assoc_doc| {
-        try document_internals.copyOrigin(document, assoc_doc);
     }
 
     // Step 7: Set content type based on namespace
@@ -273,10 +279,13 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     const allocator = internal.allocator;
     const ctx = instance.ctx;
 
-    // Step 1: Create new HTML document (use interface per Golden Rule #13)
-    const doc = try interfaces.Document.init(
+    // Step 1: Create new HTML document (use interface per Golden Rule #13).
+    // Step 8, "doc's origin is this's associated document's origin", is a
+    // construction fact here: the two share one origin record.
+    const doc = try interfaces.Document.initWith(
         allocator,
         ctx,
+        .{ .origin = try associatedOrigin(internal) },
     );
     errdefer interfaces.Document.deinit(doc);
 
@@ -333,11 +342,6 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     errdefer runtime.Instance.deinit(body);
     // Use interface instead of impl (per Golden Rule #13)
     _ = try interfaces.Node.call_appendChild(html, body);
-
-    // Step 8: Set doc's origin from associated document
-    if (internal.document) |assoc_doc| {
-        try document_internals.copyOrigin(doc, assoc_doc);
-    }
 
     // Step 9: Return doc
     return doc;
