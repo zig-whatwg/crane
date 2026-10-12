@@ -195,12 +195,6 @@ pub fn init(
     return instance;
 }
 
-/// Get the Node internal state from a ShadowRoot instance
-pub fn getNodeInternal(instance: *runtime.Instance) ?*@import("Node.zig").InternalState {
-    const NodeImpl = @import("Node.zig");
-    return NodeImpl.getInternalState(instance);
-}
-
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
