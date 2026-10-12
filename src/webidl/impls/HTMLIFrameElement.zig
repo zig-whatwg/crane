@@ -469,7 +469,13 @@ fn createNavigationDocument(
     kind: document_internals.DocType,
     content_type: []const u8,
 ) ?*runtime.Instance {
-    const document_instance = interfaces.Document.init(allocator, runtime_ctx) catch return null;
+    // An XML document is an XMLDocument, as browsers make one (Blink's
+    // DocumentInit::CreateDocument for an XML MIME type), where step 9
+    // says Document of type "xml".
+    const document_instance = (if (kind == .xml)
+        interfaces.XMLDocument.init(allocator, runtime_ctx)
+    else
+        interfaces.Document.init(allocator, runtime_ctx)) catch return null;
     document_internals.setDocumentType(document_instance, kind) catch {};
     document_internals.setContentType(document_instance, content_type) catch {};
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);

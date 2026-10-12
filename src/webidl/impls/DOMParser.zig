@@ -208,9 +208,7 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: typedefs.Truste
 /// Browsers make the document an XMLDocument, where step 3 says Document:
 /// Chrome, Firefox and Safari all fail the "XMLDocument interface for ...
 /// parsed document" subtests of domparsing/DOMParser-parseFromString-xml.html
-/// (wpt.fyi cc74d2669f), which assert it is not one. Golden rule 2. The
-/// document's type is "xml"; its interface becomes XMLDocument with the
-/// generated construction chain (lane implsb2), as createDocument's does.
+/// (wpt.fyi cc74d2669f), which assert it is not one. Golden rule 2.
 fn parseXml(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
@@ -219,7 +217,7 @@ fn parseXml(
     url: []const u8,
     relevant_document: ?*runtime.Instance,
 ) anyerror!*runtime.Instance {
-    const document = try interfaces.Document.init(allocator, ctx);
+    const document = try interfaces.XMLDocument.init(allocator, ctx);
     errdefer dom.node_creation.destroyUninserted(document);
     // A document no navigation loads is ready at once (as createDocument's).
     dom.document_lifecycle.markReadyForPostLoadTasks(document);

@@ -520,7 +520,10 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
             const decoded = (try @import("html").xml_document_parser.decodeBytes(allocator, bytes, final_encoding)) orelse return;
             defer allocator.free(decoded.text);
             charset = decoded.encoding;
-            const doc = try interfaces.Document.init(allocator, instance.ctx);
+            // An XMLDocument, as browsers make (Blink's
+            // XMLHttpRequest::InitResponseDocument: XMLDocument::Create
+            // unless HTML), where step 6 says only "a document".
+            const doc = try interfaces.XMLDocument.init(allocator, instance.ctx);
             errdefer dom_mod.node_creation.destroyUninserted(doc);
             try dom_mod.document_internals.setDocumentType(doc, .xml);
             if (try @import("html").xml_document_parser.parseInto(doc, decoded.text, .{ .scripting = false }) != null) {
