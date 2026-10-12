@@ -1306,16 +1306,45 @@ fn implementsArm(comptime arm: []const u8, instance: *runtime.Instance) bool {
 /// cannot be checked. Null when `value` is no platform object, or one that
 /// implements none of them.
 fn platformObjectArm(comptime T: type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ?T {
-    const fields = @typeInfo(T).@"union".fields;
     const instance = fromV8Value(*runtime.Instance, allocator, isolate, context, value) catch return null;
-    inline for (fields) |field| {
-        if (field.type == *runtime.Instance and comptime unionArmInterface(field.name) != null) {
+    return checkedArm(T, instance) orelse uncheckedArm(T, instance);
+}
+
+/// Whether `T` is a union whose every arm is an interface - a
+/// `*runtime.Instance` - or such a union itself. A union member of a union
+/// contributes its own members to the outer one's flattened member types
+/// (WebIDL 2.13.29), so its interfaces are the outer union's too:
+/// CanvasImageSource's HTMLOrSVGImageElement holds HTMLImageElement and
+/// SVGImageElement. Codegen keeps such a member as a nested union.
+pub fn isInterfaceUnion(comptime T: type) bool {
+    if (@typeInfo(T) != .@"union") return false;
+    inline for (@typeInfo(T).@"union".fields) |field| {
+        if (field.type != *runtime.Instance and !isInterfaceUnion(field.type)) return false;
+    }
+    return true;
+}
+
+/// The arm of `T` - a nested interface union's included - whose named
+/// interface `instance` implements, in member order.
+fn checkedArm(comptime T: type, instance: *runtime.Instance) ?T {
+    inline for (@typeInfo(T).@"union".fields) |field| {
+        if (comptime field.type == *runtime.Instance and unionArmInterface(field.name) != null) {
             if (implementsArm(field.name, instance)) return @unionInit(T, field.name, instance);
+        } else if (comptime isInterfaceUnion(field.type)) {
+            if (checkedArm(field.type, instance)) |nested| return @unionInit(T, field.name, nested);
         }
     }
-    inline for (fields) |field| {
-        if (field.type == *runtime.Instance and comptime unionArmInterface(field.name) == null) {
+    return null;
+}
+
+/// The first arm of `T` (a nested interface union's included) that names no
+/// interface, and so accepts any platform object.
+fn uncheckedArm(comptime T: type, instance: *runtime.Instance) ?T {
+    inline for (@typeInfo(T).@"union".fields) |field| {
+        if (comptime field.type == *runtime.Instance and unionArmInterface(field.name) == null) {
             return @unionInit(T, field.name, instance);
+        } else if (comptime isInterfaceUnion(field.type)) {
+            if (uncheckedArm(field.type, instance)) |nested| return @unionInit(T, field.name, nested);
         }
     }
     return null;

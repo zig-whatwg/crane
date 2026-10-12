@@ -312,6 +312,9 @@ pub const Capabilities = struct {
     windows: Support,
     /// canPlayType answers "".
     media_decoding: Support,
+    /// Every image is broken: HTML "update the image data" finds the image
+    /// cannot be decoded and fires error.
+    image_decoding: Support,
     /// NotSupportedError.
     webcodecs: Support,
     media_capabilities: Support,
@@ -1159,6 +1162,34 @@ pub inline fn layoutBox(browser: *BrowserPlatform, document: LayoutNode, node: L
     return impl.layoutBox(browser, document, node);
 }
 
+/// What Crane knows of a replaced element (an img) that a layout needs to
+/// size its box, given with the query: the platform cannot read the DOM
+/// (OQ4). STOPGAP (decision 19b): this record and `replacedElementBox` are
+/// debt, replaced by OQ4's DOM-to-renderer design when that is settled.
+pub const ReplacedElementFacts = extern struct {
+    /// In a document: a disconnected element has no box.
+    connected: bool,
+    /// The element's natural size, when its image is available (HTML
+    /// 4.8.4.3's density-corrected natural width and height).
+    has_natural_size: bool,
+    natural_width: u32,
+    natural_height: u32,
+    /// The width and height content attributes' values, when present and
+    /// valid non-negative integers - presentational hints for the width and
+    /// height properties (HTML 15.4.3).
+    has_width_attribute: bool,
+    width_attribute: u32,
+    has_height_attribute: bool,
+    height_attribute: u32,
+};
+
+/// The box of replaced element `node`, sized from `element`'s facts; null:
+/// no layout box. STOPGAP (decision 19b), see `ReplacedElementFacts`.
+pub inline fn replacedElementBox(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNode, element: *const ReplacedElementFacts) ?BoxMetrics {
+    comptime gate(.layout, "replacedElementBox");
+    return impl.replacedElementBox(browser, document, node, element);
+}
+
 /// getClientRects, OWNED; empty with no box.
 pub inline fn clientRects(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNode, allocator: std.mem.Allocator) Error![]Rect {
     comptime gate(.layout, "clientRects");
@@ -1542,6 +1573,56 @@ pub inline fn mediaVideoSize(decoder: *MediaDecoder, seconds: f64, size: *VideoS
 pub inline fn closeMediaDecoder(decoder: *MediaDecoder) void {
     comptime gate(.media_decoding, "closeMediaDecoder");
     return impl.closeMediaDecoder(decoder);
+}
+
+// Image decoding [image_decoding] (decisions 19, 19a). Crane runs MIME
+// Sniffing's rules for images and HTML's image steps above the protocol; the
+// platform turns one complete resource's bytes into pixels.
+
+/// The limits Crane sets on one decode (decision 19: decoded-size limits sit
+/// on Crane's side of the protocol). An image whose header declares more is
+/// refused before any pixel memory is allocated.
+pub const ImageLimits = extern struct {
+    /// The largest width, and the largest height.
+    max_dimension: u32,
+    /// The largest width * height.
+    max_pixels: u64,
+};
+
+/// One decoded image: `width` x `height` pixels, rows top to bottom, each
+/// pixel R, G, B, A as 8-bit samples with straight (not premultiplied)
+/// alpha, in the image's own colour space - no colour management (decision
+/// 19: sRGB conversion only where a spec requires it). Of an animated image,
+/// its default image (the first frame). `pixels` (width * height * 4 bytes)
+/// is OWNED, allocated with the allocator `decodeImage` was given.
+pub const DecodedImage = extern struct {
+    width: u32,
+    height: u32,
+    pixels: Bytes,
+};
+
+/// Why a decode failed. Every one leaves HTML's image "broken".
+pub const ImageError = error{
+    OutOfMemory,
+    /// The `image_decoding` capability is unsupported.
+    NotSupported,
+    /// The platform decodes images, but not of this MIME type.
+    UnsupportedFormat,
+    /// Not a valid image of the type: HTML's "corrupted in some fatal way".
+    Corrupt,
+    /// The image's declared size exceeds the limits.
+    TooLarge,
+};
+
+/// Decode one complete image resource. `mime` is the image's type as Crane
+/// determined it (MIME Sniffing's rules for images, above the protocol): the
+/// platform decodes by it and does not sniff; a type it does not decode is
+/// `UnsupportedFormat`. `bytes` is BORROWED. Stateless, synchronous, any
+/// thread - HTML decodes "in parallel", so Crane may call it off the agent's
+/// thread.
+pub inline fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes, limits: ImageLimits) ImageError!DecodedImage {
+    comptime gate(.image_decoding, "decodeImage");
+    return impl.decodeImage(allocator, mime, bytes, limits);
 }
 
 /// A Media Capabilities decoding configuration.

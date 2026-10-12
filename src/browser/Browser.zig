@@ -258,6 +258,9 @@ pub const Browser = struct {
         errdefer allocator.destroy(scope);
         scope.* = runtime.BrowserScope.init(allocator);
         errdefer scope.deinit();
+        // The Browser's platform state (docs/platform-protocol.md section 3),
+        // which its realms' per-Browser platform operations take.
+        try @import("html").platform_state.create(scope);
         // The host's media backend, which every realm of this Browser reads
         // (html.media_runtime.MediaHost), set before any realm exists.
         (try scope.of(@import("html").media_runtime.MediaHost)).backend = config.media_backend;
@@ -381,7 +384,8 @@ pub const Browser = struct {
         // GOAWAY), its own and no other Browser's - then its side tables
         // (what their entries still hold of the engine is released without
         // it), then its slab and arena - every platform object of this
-        // Browser, and none of another's.
+        // Browser, and none of another's. Its platform state ends first.
+        @import("html").platform_state.destroy(self.scope);
         self.scope.deinit();
         self.allocator.destroy(self.scope);
 

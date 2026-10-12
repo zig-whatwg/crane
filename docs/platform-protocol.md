@@ -187,7 +187,9 @@ per-Browser fake state, and the platform's observers (screen, network reachabili
 that report through the EventSink.
 
 Crane holds the Browser's BrowserPlatform as part of the Browser (BrowserScope, docs/instances.md
-rule 2); a realm reaches it through `realm.browser_scope`. A worker realm carries its creator's scope,
+rule 2); a realm reaches it through `realm.browser_scope`. Built so far (decision 19b): Browser.init
+creates it and Browser.deinit destroys it, as a supplement of the scope that
+`html.platform_state.of(realm)` reads (src/html/platform_state.zig); its EventSink posts nothing yet. A worker realm carries its creator's scope,
 so a worker's requests use its Browser's BrowserPlatform.
 
 ## 4. Threads and asynchronous results
@@ -266,13 +268,14 @@ system state (defaults allowed), console output.
 | `http2` / `http3` | native when built with nghttp2 / unsupported | same | same | HTTP-network fetch step 8.3: an HTTP/2-only request is a network error / HTTP/1.1 and 2 only |
 | `thread_qos` | native | unsupported | as its host OS | default priority |
 | `resident_memory` | native | native | native | diagnostics report nothing |
-| `layout` | unsupported (headless) | unsupported | unsupported | CSSOM View with no layout box: zero boxes, no hit (6.9) |
+| `layout` | unsupported (headless) | unsupported | emulated - a STOPGAP (decision 19b): only a connected img has a box, sized from the facts Crane gives (`replacedElementBox`, 6.9); every other node has none | CSSOM View with no layout box: zero boxes, no hit (6.9) |
 | `os_permissions` | native: the OS permission system, per app (section 8) | unsupported (no OS permission system: Crane's store and the platform's policy) | emulated (Crane's store; scripted policy, section 9) | a request in the prompt state is denied |
 | `simple_dialogs` | native: system alerts over the key window (NSAlert; UIAlertController), the unsupported path with no window | unsupported | native (dismiss) | HTML 8.9.1 "cannot show simple dialogs" |
 | `printing` | unsupported | unsupported | native (no output) | printing steps end without output |
 | `file_picker` | native: NSOpenPanel / NSSavePanel; UIDocumentPickerViewController, PHPickerViewController - over the key window, the unsupported path with no window | unsupported | native (testdriver queue) | no files chosen (`cancel`) |
 | `windows` | native | native | native | every popup allowed; rects ignored |
 | `media_decoding` | unsupported until built (AVFoundation) | unsupported | native (WAV; WebM/Ogg) | canPlayType "" |
+| `image_decoding` | unsupported until built (ImageIO, decision 19) | unsupported until built (the system libpng, libjpeg-turbo, libwebp, libavif) | native (Zig decoders: PNG, BMP) | every image is broken: "update the image data" fires error |
 | `webcodecs`, `media_capabilities`, `encrypted_media` | unsupported | unsupported | unsupported | NotSupportedError |
 | `camera`, `microphone` | unsupported until built (AVFoundation) | unsupported | native (fake devices) | enumerateDevices() empty; getUserMedia NotFoundError |
 | `screen_capture` | unsupported | unsupported | unsupported | getDisplayMedia NotAllowedError |
@@ -459,6 +462,7 @@ plugs in (section 13).
 | Operation | Signature | Thread | Notes |
 |---|---|---|---|
 | `layoutBox` | `(browser, document: LayoutNode, node: LayoutNode) ?BoxMetrics` | agent, sync | offset{Top,Left,Width,Height}, offsetParent, client{Top,Left,Width,Height}, scroll{Width,Height}; null: no layout box (CSSOM View: offsetWidth 0, offsetParent null, ...). |
+| `replacedElementBox` | `(browser, document: LayoutNode, node: LayoutNode, element: *const ReplacedElementFacts) ?BoxMetrics` | agent, sync | **STOPGAP, debt (decision 19b)**: a replaced element's (an img's) box, sized from the facts Crane gives with the query - `ReplacedElementFacts{ connected, natural size, width and height attributes }` - because the platform cannot read the DOM yet. Element's clientWidth/clientHeight and an img's rendered width/height ask it; the testing platform sizes the box as CSS 2.1 10.3.2/10.6.2 size a replaced element with no style. Its LayoutNode ids are the queried nodes' addresses, opaque, with no id table. Replaced by OQ4's DOM-to-renderer design (section 13) when that is settled. |
 | `clientRects` | `(browser, document, node, allocator) Error![]Rect` | agent | getClientRects / getBoundingClientRect (union); empty with no box. |
 | `scrollPosition`, `setScrollPosition` | `(browser, document, node) Point`, `(browser, document, node, point, behavior) void` | agent | scrollTop/Left, scrollTo; the viewport when node is the document. |
 | `hitTest` | `(browser, document, point, allocator) Error![]LayoutNode` | agent | elementFromPoint / elementsFromPoint (CSSOM View); empty with no layout. |
@@ -525,6 +529,7 @@ or background use) the operation drops its Reply and Crane takes the spec's unsu
 | `pushMediaData` | media_decoding | `(decoder, bytes: Bytes, end_of_stream: bool, metadata: *MediaMetadata) MediaResult{ need_more, unsupported, decode_error, metadata, current_data }` - synchronous, as src/platform/media_backend.zig's push is today | - |
 | `mediaVideoSize` | media_decoding | `(decoder, seconds: f64, size: *VideoSize) bool` - the intrinsic size at a position, media_backend.zig's `video_size_at` (added in step 0: the contract omitted it) | false |
 | `closeMediaDecoder` | media_decoding | `(decoder) void` | - |
+| `decodeImage` | image_decoding | `(allocator, mime: Str, bytes: Bytes, limits: ImageLimits) ImageError!DecodedImage` - one complete resource to `DecodedImage{ width, height, pixels }`: RGBA8, straight alpha, rows top down, no colour management (decision 19), an animated image's default image; `pixels` OWNED. `mime` is the type Crane determined (MIME Sniffing's image rules run above); the platform does not sniff. Stateless, synchronous, any thread, no BrowserPlatform (HTML decodes in parallel). `ImageLimits{ max_dimension, max_pixels }` are Crane's (decision 19): a larger header is `TooLarge` before any pixel memory. `ImageError = error{ OutOfMemory, NotSupported, UnsupportedFormat, Corrupt, TooLarge }` | every image broken |
 | `mediaDecodingInfo` | media_capabilities | `(browser, config) DecodingInfo` | supported false |
 | `openCodec`, `codecInput`, `codecFlush`, `closeCodec` | webcodecs | `(browser, config: *const CodecConfig, output: CodecSink) Error!*Codec`, `(codec, chunk, reply: Reply(void))`, `(codec, reply)`, `(codec)` | isConfigSupported false; configure NotSupportedError |
 | `requestKeySystemAccess`, `createKeySession`, `keySessionGenerateRequest`, `keySessionUpdate`, `closeKeySession` | encrypted_media | each with a Reply; messages as events | requestMediaKeySystemAccess NotSupportedError |
@@ -703,6 +708,7 @@ time), kit/memory_clipboard otherwise.
 | Capability | The testing platform |
 |---|---|
 | media_decoding | WAV linear PCM (today tests/wpt_runner/wav_backend.zig) and WebM/Ogg (lane/webm), moved into the platform |
+| image_decoding | Zig decoders in src/platform/adapters/testing/ (decisions 19, 19a): PNG, and BMP as Blink reads it (WPT's security-features image.py serves image/bmp), so results do not depend on the machine's image libraries |
 | camera, microphone | one fake camera "fake_video_0" (640x480, 30 fps) and one fake microphone "fake_audio_0" (48 kHz mono); precedent Chrome's FakeVideoCaptureDeviceFactory, Gecko's MediaEngineFake, WebKit's MockRealtimeMediaSourceCenter |
 | os_permissions | governs no descriptor: Crane's store answers, and a request in the prompt state grants camera and microphone (the fake devices) and denies everything else (decision 9); tests script anything else with `test_driver.set_permission`, which writes the store |
 | simple_dialogs | dismissed at once (alert OK, confirm false, prompt null), logged to the test's output |
@@ -710,7 +716,7 @@ time), kit/memory_clipboard otherwise.
 | clipboard | kit/memory_clipboard per Browser |
 | notifications, geolocation | recorded; positions scripted per Browser |
 | console | the per-Browser sink in its options (the runner's per-test log) |
-| layout | headless |
+| layout | emulated, a STOPGAP (decision 19b): `replacedElementBox` sizes a connected img from Crane's facts (src/platform/adapters/testing/layout.zig); every other layout operation answers as headless |
 
 Its per-Browser options (`platform.PlatformBrowserOptions` in a testing build) carry the fake devices,
 the prompt policy and the console sink; its control surface for testdriver (queue a picked file,
@@ -767,6 +773,7 @@ not verified is marked UNVERIFIED.
 | EC key generation | SecKey `SecKeyCreateRandomKey`, `kSecAttrKeyTypeECSECPrimeRandom` | both | yes | kit/crypto | dynamic |
 | Ed25519, X25519 | - (no 25519 in SecKey.h; CryptoKit has them but is Swift-only, with no C or Objective-C API) | no | no callable API | kit/crypto | static |
 | Intl, collation, IDNA | libicucore.tbd, ICU 78.1 - but only 23 public headers in both SDKs (uchar, uidna, uregex, ustring, utext, ...; no collation, date or number formatting) | both | no - incomplete for Intl, V8 needs its own pinned ICU, and Unicode-version-dependent answers (IDNA, case mapping) would differ by OS version, breaking identical behaviour | V8's ICU, src/intl's CLDR data, src/url's IDNA | static |
+| image decoding | ImageIO (CGImageSource; the formats it covers per OS version UNVERIFIED) | both | yes (decision 19) | none | dynamic (next batch) |
 | media decoding | AVFoundation, AudioToolbox, VideoToolbox | both | yes for the formats Apple decodes (H.264, HEVC, AAC, MP3, ...); WebM/VP9/Opus support UNVERIFIED | none - Crane builds in no decoder ("host decoders only", the user, 2026-10-08) | dynamic |
 | camera, microphone; audio output | AVFoundation; AVFAudio, AudioToolbox | both | yes | none | dynamic |
 | clipboard | AppKit NSPasteboard; UIKit UIPasteboard | macOS; iOS | yes | kit/memory_clipboard | dynamic |
@@ -803,6 +810,7 @@ RHEL and Arch are UNVERIFIED.
 | WebCrypto primitives | OpenSSL 3 libcrypto (above) | Debian, Ubuntu | yes - covers every algorithm, OAEP labels, any PSS salt, any RSA exponent, HKDF, AES-KW; AES-CTR's counter-wrap rule is chosen per call as on darwin | kit/crypto | dynamic once the vectors pass |
 | Intl | libicu (a versioned soname per release) | all | no - the soname changes per release, V8 needs its pinned ICU, and Unicode-dependent answers would vary by distro | V8's ICU, src/intl | static |
 | clipboard | libxcb / libX11 (X11), libwayland-client (Wayland), loaded at run time | desktops only | yes when a display is present | kit/memory_clipboard | run-time load |
+| image decoding | libpng, libjpeg-turbo, libwebp, libavif (decision 19) | all (versions UNVERIFIED) | yes (decision 19); BMP, which none of them decodes, is the linux batch's question (decision 19a) | none | dynamic (next batch) |
 | media decoding, audio output | GStreamer or FFmpeg (libavcodec); PipeWire / PulseAudio / ALSA - loaded at run time | desktops (UNVERIFIED per distro) | to be decided when the capability is built | none | - |
 | notifications, geolocation, wake lock, file pickers | D-Bus services (org.freedesktop.Notifications, GeoClue2, xdg-desktop-portal), loaded at run time | desktops (UNVERIFIED per distro) | to be decided when built | none | - |
 
