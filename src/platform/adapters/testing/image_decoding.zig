@@ -7,17 +7,24 @@
 //! | MIME type | Decoder |
 //! |---|---|
 //! | image/png, image/apng | png.zig (W3C PNG Third Edition) |
+//! | image/bmp | bmp.zig (Windows and OS/2 bitmaps, as Blink reads them; decision 19a) |
 //!
 //! Anything else is `UnsupportedFormat`: the image is broken.
 
 const std = @import("std");
 const platform = @import("platform");
 const png = @import("png.zig");
+const bmp = @import("bmp.zig");
 
 pub fn decodeImage(allocator: std.mem.Allocator, mime: platform.Str, bytes: platform.Bytes, limits: platform.ImageLimits) platform.ImageError!platform.DecodedImage {
     const essence = mimeEssence(mime.slice());
     if (std.ascii.eqlIgnoreCase(essence, "image/png") or std.ascii.eqlIgnoreCase(essence, "image/apng")) {
         return png.decode(allocator, bytes.slice(), limits);
+    }
+    // MIME Sniffing's image type pattern gives image/bmp; image/x-bmp and
+    // image/x-ms-bmp are the names servers also send.
+    if (std.ascii.eqlIgnoreCase(essence, "image/bmp") or std.ascii.eqlIgnoreCase(essence, "image/x-bmp") or std.ascii.eqlIgnoreCase(essence, "image/x-ms-bmp")) {
+        return bmp.decode(allocator, bytes.slice(), limits);
     }
     return error.UnsupportedFormat;
 }

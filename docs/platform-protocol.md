@@ -273,7 +273,7 @@ system state (defaults allowed), console output.
 | `file_picker` | native: NSOpenPanel / NSSavePanel; UIDocumentPickerViewController, PHPickerViewController - over the key window, the unsupported path with no window | unsupported | native (testdriver queue) | no files chosen (`cancel`) |
 | `windows` | native | native | native | every popup allowed; rects ignored |
 | `media_decoding` | unsupported until built (AVFoundation) | unsupported | native (WAV; WebM/Ogg) | canPlayType "" |
-| `image_decoding` | unsupported until built (ImageIO, decision 19) | unsupported until built (the system libpng, libjpeg-turbo, libwebp, libavif) | native (Zig decoders: PNG) | every image is broken: "update the image data" fires error |
+| `image_decoding` | unsupported until built (ImageIO, decision 19) | unsupported until built (the system libpng, libjpeg-turbo, libwebp, libavif) | native (Zig decoders: PNG, BMP) | every image is broken: "update the image data" fires error |
 | `webcodecs`, `media_capabilities`, `encrypted_media` | unsupported | unsupported | unsupported | NotSupportedError |
 | `camera`, `microphone` | unsupported until built (AVFoundation) | unsupported | native (fake devices) | enumerateDevices() empty; getUserMedia NotFoundError |
 | `screen_capture` | unsupported | unsupported | unsupported | getDisplayMedia NotAllowedError |
@@ -705,7 +705,7 @@ time), kit/memory_clipboard otherwise.
 | Capability | The testing platform |
 |---|---|
 | media_decoding | WAV linear PCM (today tests/wpt_runner/wav_backend.zig) and WebM/Ogg (lane/webm), moved into the platform |
-| image_decoding | Zig decoders in src/platform/adapters/testing/ (decision 19): PNG, so results do not depend on the machine's image libraries |
+| image_decoding | Zig decoders in src/platform/adapters/testing/ (decisions 19, 19a): PNG, and BMP as Blink reads it (WPT's security-features image.py serves image/bmp), so results do not depend on the machine's image libraries |
 | camera, microphone | one fake camera "fake_video_0" (640x480, 30 fps) and one fake microphone "fake_audio_0" (48 kHz mono); precedent Chrome's FakeVideoCaptureDeviceFactory, Gecko's MediaEngineFake, WebKit's MockRealtimeMediaSourceCenter |
 | os_permissions | governs no descriptor: Crane's store answers, and a request in the prompt state grants camera and microphone (the fake devices) and denies everything else (decision 9); tests script anything else with `test_driver.set_permission`, which writes the store |
 | simple_dialogs | dismissed at once (alert OK, confirm false, prompt null), logged to the test's output |

@@ -74,7 +74,7 @@ pub const protocol = struct {
         // kit/memory_clipboard per Browser. Deviation: nothing leaves the
         // Browser and nothing another application copies arrives.
         c.clipboard = .emulated;
-        // Zig decoders compiled in (image_decoding.zig): PNG.
+        // Zig decoders compiled in (image_decoding.zig): PNG and BMP.
         c.image_decoding = .native;
         break :blk c;
     };
