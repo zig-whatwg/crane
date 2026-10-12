@@ -53,6 +53,8 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     // [code_generation_checks]: the process's dispatchers, once, before any
     // agent's thread runs; each agent enables its isolate's callbacks.
     ffi.v8_SetProtocolCodeGenerationDispatchers(onCodeGenerationFromStrings, onWasmCodeGeneration);
+    // HostCreateShadowRealmContextCallback's, the same way.
+    shadow_realm.installDispatcher();
     engine_snapshot = null;
     if (options.snapshot) |stamped| engine_snapshot = try usableSnapshot(stamped);
 }

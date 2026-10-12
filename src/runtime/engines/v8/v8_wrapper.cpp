@@ -10213,66 +10213,41 @@ extern "C" void v8_Context_GlobalHandle_Dispose(Global<Context>* handle) {
     }
 }
 
-/// Callback data for ShadowRealm context creation
-struct ShadowRealmCallbackData {
-    void* user_data;
-    void* (*callback)(void* user_data, void* initiator_context);
-};
-
-/// Global storage for ShadowRealm callback
-static ShadowRealmCallbackData* g_shadow_realm_callback = nullptr;
-
-/// Recursion guard for ShadowRealm callback
-/// V8's Context::New() can trigger this callback during harmony_shadow_realm initialization
-static thread_local bool g_in_shadow_realm_callback = false;
+/// HostCreateShadowRealmContextCallback's dispatcher: one Zig function for
+/// every agent (shadow_realm.shadowRealmContextCallback), which finds the
+/// agent's ShadowRealm data by its isolate. Handed the initiator context as a
+/// Global<Context>* it may read during the call; returns a Global<Context>*
+/// of the new context, or null.
+typedef void* (*ShadowRealmContextDispatch)(void* initiator_context);
+// process-wide: the one Zig dispatcher (shadow_realm.shadowRealmContextCallback) every agent's isolate calls, finding the agent's ShadowRealm data by isolate; written once at process start (protocol_agents.initializeEngine, before any agent's thread exists), read-only after. It was a heap record every createAgent rewrote, on whatever thread made the agent.
+static ShadowRealmContextDispatch g_shadow_realm_dispatch = nullptr;
 
 /// V8 internal callback for ShadowRealm context creation
 /// This is called by V8 when JavaScript code executes `new ShadowRealm()`
 static MaybeLocal<Context> V8HostCreateShadowRealmContextCallback(Local<Context> initiator_context) {
-    // Recursion guard: V8's Context::New() can trigger this callback
-    // during internal harmony_shadow_realm initialization.
-    // Return empty to break the recursion - V8 handles this gracefully.
-    if (g_in_shadow_realm_callback) {
-        return MaybeLocal<Context>();
-    }
-
-    g_in_shadow_realm_callback = true;
-
     Isolate* isolate = initiator_context->GetIsolate();
-
-    if (!g_shadow_realm_callback || !g_shadow_realm_callback->callback) {
-        // No callback registered - return empty to signal failure
-        g_in_shadow_realm_callback = false;
-        return MaybeLocal<Context>();
+    void* result = nullptr;
+    if (ShadowRealmContextDispatch dispatch = g_shadow_realm_dispatch) {
+        // The initiator, for Zig to read during the call.
+        Global<Context>* initiator_global = new Global<Context>(isolate, initiator_context);
+        result = dispatch(initiator_global);
+        delete initiator_global;
     }
-
-    // Create a Global handle for the initiator context to pass to Zig
-    Global<Context>* initiator_global = new Global<Context>(isolate, initiator_context);
-
-    // Call the Zig callback to create the ShadowRealm context
-    void* result = g_shadow_realm_callback->callback(
-        g_shadow_realm_callback->user_data,
-        initiator_global
-    );
-
-    // Clean up the initiator global - Zig has extracted what it needs
-    delete initiator_global;
-
     if (!result) {
-        // Zig callback returned null - context creation failed
-        g_in_shadow_realm_callback = false;
+        // v8-callbacks.h: "If the creation fails, the embedder must propagate
+        // that exception by returning an empty MaybeLocal" - an empty result
+        // with nothing pending is not one V8 can propagate.
+        if (!isolate->HasPendingException()) {
+            isolate->ThrowException(Exception::TypeError(
+                String::NewFromUtf8Literal(isolate, "The ShadowRealm's realm could not be created")));
+        }
         return MaybeLocal<Context>();
     }
 
-    // Result is a Global<Context>* to the new ShadowRealm context
+    // Result is a Global<Context>* to the new ShadowRealm context, kept by
+    // the agent's ShadowRealm data (its end disposes it).
     Global<Context>* new_context_global = static_cast<Global<Context>*>(result);
-    Local<Context> new_context = new_context_global->Get(isolate);
-
-    // The caller owns the Global handle, they'll clean it up
-    // V8 will keep the Local alive as needed
-
-    g_in_shadow_realm_callback = false;
-    return new_context;
+    return new_context_global->Get(isolate);
 }
 
 // ============================================================================
@@ -11097,30 +11072,18 @@ void v8_Free_ArrayBufferTransferData(ArrayBufferTransferData* data, size_t count
 
 extern "C" {
 
-/// Set the ShadowRealm context creation callback
-///
-/// This callback is invoked when JavaScript code executes `new ShadowRealm()`.
-/// The callback should create and return a new V8 context configured for
-/// ShadowRealm execution (with appropriate WebIDL interfaces exposed).
-///
-/// @param isolate - The V8 isolate to configure
-/// @param user_data - Opaque pointer passed to callback
-/// @param callback - Function to create ShadowRealm context
-///                   Parameters: (user_data, initiator_context as Global<Context>*)
-///                   Returns: Global<Context>* to the new context, or nullptr on failure
-void v8_Isolate_SetHostCreateShadowRealmContextCallback(
-    Isolate* isolate,
-    void* user_data,
-    void* (*callback)(void* user_data, void* initiator_context)
-) {
-    // Store callback data
-    if (!g_shadow_realm_callback) {
-        g_shadow_realm_callback = new ShadowRealmCallbackData();
-    }
-    g_shadow_realm_callback->user_data = user_data;
-    g_shadow_realm_callback->callback = callback;
+/// The process's ShadowRealm dispatcher: set once, while the process starts
+/// (engine.initializeEngine), before any agent's thread runs - never per
+/// agent, which with agents on their own threads would be concurrent writes
+/// of one global.
+void v8_SetShadowRealmContextDispatcher(ShadowRealmContextDispatch dispatch) {
+    g_shadow_realm_dispatch = dispatch;
+}
 
-    // Register with V8
+/// Let `isolate` make ShadowRealms (HostCreateShadowRealmContextCallback,
+/// through the process's dispatcher). With no dispatcher set - a host that
+/// never called initializeEngine - `new ShadowRealm()` throws a TypeError.
+void v8_Isolate_EnableShadowRealms(Isolate* isolate) {
     isolate->SetHostCreateShadowRealmContextCallback(V8HostCreateShadowRealmContextCallback);
 }
 

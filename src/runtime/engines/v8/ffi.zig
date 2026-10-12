@@ -1763,34 +1763,20 @@ pub extern fn v8_DynamicImport_Reject(
 
 // ShadowRealm support
 
-/// Callback type for ShadowRealm context creation
-///
-/// This callback is invoked when JavaScript code executes `new ShadowRealm()`.
-/// The callback should create and return a new V8 context configured for
-/// ShadowRealm execution (with appropriate WebIDL interfaces exposed).
-///
-/// @param user_data - Opaque pointer passed when registering the callback
-/// @param initiator_context - Global<Context>* to the context that created the ShadowRealm
-/// @return Global<Context>* to the new ShadowRealm context, or null on failure
-pub const ShadowRealmContextCallback = *const fn (
-    user_data: ?*anyopaque,
-    initiator_context: ?*anyopaque,
-) callconv(.c) ?*anyopaque;
+/// The process's HostCreateShadowRealmContextCallback dispatcher: invoked
+/// when JavaScript code executes `new ShadowRealm()` in an isolate that
+/// enabled ShadowRealms, with the initiator context (a Global<Context>*,
+/// readable during the call). Returns a Global<Context>* to the new
+/// ShadowRealm context, or null - the C++ side then throws a TypeError if
+/// nothing is pending.
+pub const ShadowRealmContextDispatch = *const fn (initiator_context: ?*anyopaque) callconv(.c) ?*anyopaque;
 
-/// Set the ShadowRealm context creation callback
-///
-/// This callback is invoked when JavaScript code executes `new ShadowRealm()`.
-/// The callback should create and return a new V8 context configured for
-/// ShadowRealm execution (with [Exposed=ShadowRealm] interfaces).
-///
-/// @param isolate - V8 Isolate to configure
-/// @param user_data - Opaque pointer passed to callback
-/// @param callback - Function to create ShadowRealm context
-pub extern fn v8_Isolate_SetHostCreateShadowRealmContextCallback(
-    isolate: *Isolate,
-    user_data: ?*anyopaque,
-    callback: ShadowRealmContextCallback,
-) void;
+/// Set the process's ShadowRealm dispatcher: once, while the process starts
+/// (engine.initializeEngine), before any agent's thread runs.
+pub extern fn v8_SetShadowRealmContextDispatcher(dispatch: ShadowRealmContextDispatch) void;
+
+/// Let `isolate` make ShadowRealms, through the process's dispatcher.
+pub extern fn v8_Isolate_EnableShadowRealms(isolate: *Isolate) void;
 
 /// Create a Global<Context>* handle from a Context*
 ///
