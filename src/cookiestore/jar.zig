@@ -12,8 +12,13 @@ const SameSite = @import("cookie.zig").SameSite;
 const PartitionKey = @import("cookie.zig").PartitionKey;
 const domain_matching = @import("domain_matching.zig");
 const clock = @import("clock");
-const platform = @import("platform");
 const ChangeType = @import("change_observer.zig").ChangeType;
+
+fn nowMillis() i64 {
+    // TODO(platform R1): platform.wallMillis() once the retained old platform
+    // root is retired (step 15); codex-cookies Q17.
+    return clock.wallMillis();
+}
 
 /// Who hears about the store's cookie changes (Cookie Store "process cookie
 /// changes"): a cookie inserted or replaced is `changed`, one removed -
@@ -286,7 +291,7 @@ pub const CookieJar = struct {
     /// remove them (WebDriver "delete cookies": the change hook hears each as
     /// `deleted`). Returns how many went.
     pub fn expireMatching(self: *Self, options: RetrieveOptions) usize {
-        const past = clock.wallMillis() - 1000;
+        const past = nowMillis() - 1000;
         var expired: usize = 0;
         for (self.cookies.items) |*cookie| {
             if (!cookieMatches(cookie, options)) continue;
@@ -360,7 +365,7 @@ pub const CookieJar = struct {
             .lax => options.same_site == .strict_or_less or options.same_site == .lax_or_less,
             .unset => switch (options.same_site) {
                 .none => false,
-                .lax_allowing_unsafe => platform.wallMillis() -| cookie.creation_time <= 120_000,
+                .lax_allowing_unsafe => nowMillis() -| cookie.creation_time <= 120_000,
                 else => true,
             },
             .none => true,
