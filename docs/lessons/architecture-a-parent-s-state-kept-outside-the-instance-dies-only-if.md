@@ -1,6 +1,8 @@
 # Architecture: A parent's state kept outside the instance dies only if the impl chains to the parent's deinit
 
 **Date**: 2026-10-01
+**Status** (2026-10-12, lane implsb2): chaining is now structural for every converted impl - the generated `initChain`/`deinitChain` run each ancestor's part, and an impl that defines neither `init` nor `deinit` cannot skip one (codegen-the-generated-interface-is-the-class.md). The non-chaining legacy impls remain until the follow-on converts them; the generation net stays until then.
+
 **Lesson**: EventTarget keeps every target's listeners in a process-wide
 registry keyed by instance address, and only EventTarget's deinit removes an
 entry. An impl that makes its instance with `runtime.Instance.init` instead of
