@@ -49,7 +49,7 @@ pub const ipv6_serializer = @import("ipv6_serializer");
 pub const host_serializer = @import("host_serializer");
 
 // Phase 6: Additional features
-pub const public_suffix = @import("public_suffix.zig");
+pub const public_suffix = @import("public_suffix");
 pub const origin = @import("origin");
 pub const blob_url = @import("blob_url");
 pub const equivalence = @import("equivalence");

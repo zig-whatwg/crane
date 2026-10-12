@@ -1455,8 +1455,9 @@ pub fn get_cookie(instance: *runtime.Instance) anyerror!runtime.USVString {
         .path = target.parts.path,
         .is_http = false,
         .is_secure = target.parts.secure,
-        // TODO: the same-site mode of the document - "strict-or-less" until
-        //       fetch has "same site" (fetch/algorithms/cookies.zig).
+        // TODO (cookies lane Q3, 2026-10-12): settings/navigation must
+        // expose the document's captured site for cookies, including its
+        // cross-site ancestors. An origin alone cannot decide this mode.
         .same_site = .strict_or_less,
     });
     if (std.unicode.utf8ValidateSlice(cookie_string)) return cookie_string;
@@ -2226,6 +2227,8 @@ pub fn set_cookie(instance: *runtime.Instance, value: runtime.USVString) anyerro
         .is_secure = target.parts.secure,
         .host = target.parts.host,
         .http_only_allowed = false,
+        // TODO (cookies lane Q3): consume the same captured site-for-cookies
+        // fact here for same_site_strict_or_lax_allowed (RFC 6265bis 5.7.18).
     });
 }
 
