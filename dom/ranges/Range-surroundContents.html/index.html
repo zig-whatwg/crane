@@ -26,7 +26,7 @@
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-d48c884729</code>, <span class="nowrap">12 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/d48c884729"><code>d48c884729</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c2c4b851ff</code>, <span class="nowrap">12 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c2c4b851ff"><code>c2c4b851ff</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/ranges/Range-surroundContents.html"><code>dom/<wbr>ranges/<wbr>Range-<wbr>surroundContents.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,14 +35,87 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-c076680d"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,0: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[0]</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-c076680d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c3fd2958"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,1: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[0].firstChild</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-c3fd2958" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1148b12e"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,2: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[1].firstChild</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-1148b12e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e2cde9db"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,3: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[5].firstChild</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-e2cde9db" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-88d5a397"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,4: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignPara1</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-88d5a397" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5f1fc59b"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,5: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignPara1.firstChild</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-5f1fc59b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-557af939"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,6: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedPara1</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-557af939" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-51a95356"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,7: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedPara1.firstChild</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-51a95356" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c076680d"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,0: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[0]</span></summary><pre class="msg">InvalidStateError</pre></details><a class="self" href="#s-c076680d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b003ea7e"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,0: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[0]</span></summary><pre class="msg">assert_true: First differing node: expected Text node &quot;Ijklmnop
+&quot;, got Text node &quot;Äb̈c̈d̈ëf̈g̈ḧ
+&quot; [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-b003ea7e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c3fd2958"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,1: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[0].firstChild</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-c3fd2958" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0b5c12b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,1: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[0].firstChild</span></summary><pre class="msg">assert_true: First differing node: expected Element node &lt;p id=&quot;b&quot; style=&quot;display:none&quot;&gt;Ijklmnop
+&lt;/p&gt;, got Text node &quot;Äb̈c̈d̈ëf̈g̈ḧ
+&quot; [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-0b5c12b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1148b12e"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,2: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[1].firstChild</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-1148b12e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9868ec49"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,2: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[1].firstChild</span></summary><pre class="msg">assert_true: First differing node: expected Element node &lt;p id=&quot;c&quot;&gt;Qrstuvwx&lt;/p&gt;, got Text node &quot;Ijklmnop
+&quot; [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-9868ec49" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e2cde9db"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,3: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[5].firstChild</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-e2cde9db" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-91651918"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,3: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node paras[5].firstChild</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-91651918" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-88d5a397"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,4: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignPara1</span></summary><pre class="msg">InvalidStateError</pre></details><a class="self" href="#s-88d5a397" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3ced38e0"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,4: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignPara1</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-3ced38e0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5f1fc59b"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,5: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignPara1.firstChild</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-5f1fc59b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a40e65d2"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,5: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignPara1.firstChild</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-a40e65d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-557af939"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,6: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedPara1</span></summary><pre class="msg">InvalidStateError</pre></details><a class="self" href="#s-557af939" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e23059f0"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,6: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedPara1</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-e23059f0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-51a95356"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,7: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedPara1.firstChild</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-51a95356" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ebf05c66"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,7: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedPara1.firstChild</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-ebf05c66" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-68858a17"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,8: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node document</span></summary><pre class="msg">assert_throws_dom: A INVALID_NODE_TYPE_ERR must be thrown in this case function &quot;function() {
         try {
           actualRange.surroundContents(actualNode);
@@ -56,7 +129,8 @@
           throw e;
         }
       }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException INVALID_NODE_TYPE_ERR: property &quot;code&quot; is equal to 11, expected 24</pre></details><a class="self" href="#s-68858a17" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-aa4b594f"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,9: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedDiv</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-aa4b594f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aa4b594f"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,9: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedDiv</span></summary><pre class="msg">InvalidStateError</pre></details><a class="self" href="#s-aa4b594f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f7764b13"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,9: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedDiv</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-f7764b13" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-575708f6"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,10: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignDoc</span></summary><pre class="msg">assert_throws_dom: A INVALID_NODE_TYPE_ERR must be thrown in this case function &quot;function() {
         try {
           actualRange.surroundContents(actualNode);
@@ -70,7 +144,8 @@
           throw e;
         }
       }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException INVALID_NODE_TYPE_ERR: property &quot;code&quot; is equal to 11, expected 24</pre></details><a class="self" href="#s-575708f6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-db82705a"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,11: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignPara2</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-db82705a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-db82705a"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,11: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignPara2</span></summary><pre class="msg">InvalidStateError</pre></details><a class="self" href="#s-db82705a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0dfe0039"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,11: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignPara2</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-0dfe0039" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-933fcb2b"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,12: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node xmlDoc</span></summary><pre class="msg">assert_throws_dom: A INVALID_NODE_TYPE_ERR must be thrown in this case function &quot;function() {
         try {
           actualRange.surroundContents(actualNode);
@@ -84,13 +159,92 @@
           throw e;
         }
       }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException INVALID_NODE_TYPE_ERR: property &quot;code&quot; is equal to 11, expected 24</pre></details><a class="self" href="#s-933fcb2b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ad438c14"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,13: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node xmlElement</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-ad438c14" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d59946e9"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,14: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedTextNode</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-d59946e9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-00a4f3fd"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,15: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignTextNode</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-00a4f3fd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7f01d458"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,16: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node processingInstruction</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-7f01d458" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-63d2bf06"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,17: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedProcessingInstruction</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-63d2bf06" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-82fad00d"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,18: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node comment</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-82fad00d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c17958dd"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,19: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedComment</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-c17958dd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ad438c14"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,13: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node xmlElement</span></summary><pre class="msg">InvalidStateError</pre></details><a class="self" href="#s-ad438c14" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3e6428df"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,13: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node xmlElement</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-3e6428df" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d59946e9"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,14: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedTextNode</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-d59946e9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2278657b"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,14: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedTextNode</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-2278657b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-00a4f3fd"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,15: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignTextNode</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-00a4f3fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-85cc9356"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,15: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node foreignTextNode</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-85cc9356" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7f01d458"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,16: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node processingInstruction</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-7f01d458" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-291696f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,16: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node processingInstruction</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-291696f3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-63d2bf06"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,17: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedProcessingInstruction</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-63d2bf06" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2d293719"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,17: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedProcessingInstruction</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-2d293719" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-82fad00d"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,18: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node comment</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-82fad00d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-865b9e29"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,18: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node comment</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-865b9e29" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c17958dd"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,19: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedComment</span></summary><pre class="msg">assert_throws_dom: A HIERARCHY_REQUEST_ERR must be thrown in this case function &quot;function() {
+        try {
+          actualRange.surroundContents(actualNode);
+        } catch (e) {
+          if (expectedDoctype != expectedIframe.contentDocument.firstChild) {
+            expectedIframe.contentDocument.insertBefore(expectedDoctype, expectedIframe.contentDocument.firstChild);
+          }
+          if (actualDoctype != actualIframe.contentDocument.firstChild) {
+            actualIframe.contentDocument.insertBefore(actualDoctype, actualIframe.contentDocument.firstChild);
+          }
+          throw e;
+        }
+      }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException HIERARCHY_REQUEST_ERR: property &quot;code&quot; is equal to 11, expected 3</pre></details><a class="self" href="#s-c17958dd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-93ed4499"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,19: resulting range position for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node detachedComment</span></summary><pre class="msg">assert_true: First differing node: expected Node object of unknown type, got Node object of unknown type [Actual and expected mismatch for range&#39;s tree root.  ] expected true got false</pre></details><a class="self" href="#s-93ed4499" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-0c54a71b"><details><summary><span class="mark">FAIL</span><span class="sub-name">6,20: resulting DOM for range [paras[5].firstChild, 2, paras[5].lastChild, 4], node docfrag</span></summary><pre class="msg">assert_throws_dom: A INVALID_NODE_TYPE_ERR must be thrown in this case function &quot;function() {
         try {
           actualRange.surroundContents(actualNode);
@@ -130,23 +284,6 @@
           throw e;
         }
       }&quot; threw object &quot;InvalidStateError: InvalidStateError&quot; that is not a DOMException INVALID_NODE_TYPE_ERR: property &quot;code&quot; is equal to 11, expected 24</pre></details><a class="self" href="#s-b5b4a050" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-da1d6aff"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,0: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node paras[0]</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-da1d6aff" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3aa9b1b0"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,1: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node paras[0].firstChild</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-3aa9b1b0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2f93c60f"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,2: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node paras[1].firstChild</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-2f93c60f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9579186c"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,3: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node paras[5].firstChild</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-9579186c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a139f8bb"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,4: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node foreignPara1</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-a139f8bb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d686391b"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,5: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node foreignPara1.firstChild</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-d686391b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-47698591"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,6: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node detachedPara1</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-47698591" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b33ff37e"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,7: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node detachedPara1.firstChild</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-b33ff37e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7ceb2fb7"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,9: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node detachedDiv</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-7ceb2fb7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-238353dd"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,11: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node foreignPara2</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-238353dd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-04ef4ff3"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,13: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node xmlElement</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-04ef4ff3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-34623019"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,14: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node detachedTextNode</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-34623019" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-19502f9f"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,15: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node foreignTextNode</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-19502f9f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-931428a5"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,16: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node processingInstruction</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-931428a5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-744dc7c4"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,17: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node detachedProcessingInstruction</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-744dc7c4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8341c549"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,18: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node comment</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-8341c549" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-430ea5c4"><details><summary><span class="mark">FAIL</span><span class="sub-name">30,19: resulting DOM for range [foreignDoc.body, 0, foreignTextNode, 36], node detachedComment</span></summary><pre class="msg">Exception seems to not be a DOMException?  RangeError: Maximum call stack size exceeded</pre></details><a class="self" href="#s-430ea5c4" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <p class="omitted">1,800 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
