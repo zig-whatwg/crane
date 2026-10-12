@@ -172,12 +172,23 @@ pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) !runtim
 pub fn call_setter(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) !void {
     const internal = getInternalState(instance) orelse return error.InvalidState;
 
-    // Convert camelCase name to hyphenated attribute name
+    // HTML DOMStringMap setter step 1: reject a hyphen followed by an ASCII
+    // lower alpha before converting or validating the attribute name.
+    // Blink DatasetDOMStringMap::SetItem checks IsValidPropertyName first.
+    const property = name.asSlice();
+    for (property, 0..) |character, index| {
+        if (character == '-' and index + 1 < property.len and std.ascii.isLower(property[index + 1])) return error.SyntaxError;
+    }
+
+    // Steps 2–3: ASCII uppercase becomes hyphen + lowercase; prefix data-.
     const allocator = internal.allocator;
-    const attr_name = try toHyphenated(allocator, name.asSlice());
+    const attr_name = try toHyphenated(allocator, property);
     defer allocator.free(attr_name);
 
-    // Set the attribute on the element
+    // Step 4 uses DOM's attribute-local-name grammar, not the XML Name grammar.
+    if (!@import("dom").names.isValidAttributeLocalName(attr_name)) return error.InvalidCharacterError;
+
+    // Step 5: set the attribute only after both checks have succeeded.
     const attr_dom_str = runtime.DOMString.initInterned(attr_name);
     try interfaces.Element.call_setAttribute(internal.element, attr_dom_str, .{ .domstring = value });
 }
