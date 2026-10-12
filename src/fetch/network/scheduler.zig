@@ -15,8 +15,11 @@
 //! handle is removed outside curl's own iteration; and the completion reaches
 //! its requester as a separate step - WebKit's `callOnMainThread`, here the
 //! caller's own task queueing. WebKit runs the multi handle on a network
-//! thread. This engine runs script, workers included, on one thread, so the
-//! scheduler is driven from that thread's event loop instead and needs no lock.
+//! thread. Here each agent - the window agent, and each worker on its own
+//! thread - has a scheduler of its own (fetch.algorithms.AgentFetches, on the
+//! agent's host), driven from that agent's event loop, so it needs no lock.
+//! The transfers of one Browser share its connections all the same: each
+//! joins its request's network context's connection share.
 //!
 //! A transfer is the same `Transfer` a blocking send performs, so a request is
 //! configured and its response built one way on both paths.
@@ -133,15 +136,15 @@ pub const NetworkScheduler = struct {
         request: *const NetworkRequest,
         client: @FieldType(Job, "client"),
     ) NetworkError!*Job {
-        if (curl_backend.getGlobalShare() == null) curl_backend.globalInit() catch return NetworkError.Unknown;
+        // The transfer first: making it takes curl's global state if no
+        // process holds it yet, which the multi handle needs too.
+        const transfer = try Transfer.create(allocator, request, .{});
+        errdefer transfer.destroy();
         const multi = self.multi orelse blk: {
             const m = curl.multi_init() orelse return NetworkError.OutOfMemory;
             self.multi = m;
             break :blk m;
         };
-
-        const transfer = try Transfer.create(allocator, request, .{});
-        errdefer transfer.destroy();
 
         const job = allocator.create(Job) catch return NetworkError.OutOfMemory;
         errdefer allocator.destroy(job);
@@ -191,7 +194,7 @@ pub const NetworkScheduler = struct {
 
     /// Wait at most `ms` for a socket of any transfer to be ready, moving no
     /// transfer: `pump` does the reading. Returns at once with nothing in
-    /// flight. The kick's wait (`kick_wait_ms`), for `async_fetch.catchUp`.
+    /// flight. The kick's wait (`kick_wait_ms`), for `AgentFetches.catchUp`.
     pub fn waitForSockets(self: *NetworkScheduler, ms: u32) void {
         const multi = self.multi orelse return;
         if (self.jobs.items.len == 0) return;
@@ -368,37 +371,3 @@ pub const NetworkScheduler = struct {
         return null;
     }
 };
-
-// =============================================================================
-// The thread's scheduler
-// =============================================================================
-
-/// The scheduler the event loop pumps. One per thread: script, and the
-/// transfers it starts, belong to the thread that runs it.
-threadlocal var thread_scheduler: ?NetworkScheduler = null;
-
-/// This thread's scheduler, made on first use. Only its list of jobs is its
-/// own, kept for the thread's lifetime; each job, its transfer and its
-/// response use the allocator the caller passes to `start`.
-pub fn threadScheduler() *NetworkScheduler {
-    if (thread_scheduler == null) thread_scheduler = NetworkScheduler.init(std.heap.smp_allocator);
-    return &thread_scheduler.?;
-}
-
-/// This thread's scheduler if one was ever made - null costs nothing to pump.
-pub fn existingThreadScheduler() ?*NetworkScheduler {
-    return if (thread_scheduler) |*scheduler| scheduler else null;
-}
-
-/// End this thread's scheduler, if it has one and nothing is left in it: its
-/// multi handle closes, and curl shuts down the connections that handle
-/// keeps. The next `threadScheduler()` makes a new one. With a transfer
-/// still in it this does nothing - whoever started the transfer would be
-/// left holding a freed job.
-pub fn endIdleThreadScheduler() void {
-    if (thread_scheduler) |*scheduler| {
-        if (scheduler.jobs.items.len != 0) return;
-        scheduler.deinit();
-        thread_scheduler = null;
-    }
-}

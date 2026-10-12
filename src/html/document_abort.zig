@@ -3,7 +3,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const document_lifecycle = @import("dom").document_lifecycle;
-const BrowsingContext = @import("html_core").BrowsingContext;
+const browser_state = @import("dom").browser_state;
 
 /// One descendant's abort task. Its wrapper is held until the callback or
 /// dropped end returns; another frame's abort listener may collect/remove it.
@@ -76,7 +76,10 @@ pub const DescendantAbort = struct {
     }
 
     fn activeDocument(self: *const @This()) ?*runtime.Instance {
-        const navigable = BrowsingContext.byId(self.navigable_id) orelse return null;
+        // The parent's Browser's list: its realm stays a readable record
+        // after it retires.
+        const navigables = browser_state.navigablesOf(self.parent_ctx) orelse return null;
+        const navigable = navigables.byId(self.navigable_id) orelse return null;
         if (navigable.orphaned or navigable.is_closed) return null;
         return @ptrCast(@alignCast(navigable.getActiveDocument() orelse return null));
     }

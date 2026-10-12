@@ -45,7 +45,6 @@ const test_parser = @import("test_parser.zig");
 const host = @import("host");
 const config = @import("config.zig");
 const wpt_server = @import("wpt_server.zig");
-const fetch = @import("fetch");
 const clock = @import("clock");
 /// The JavaScript engine, for one operation: abortRunningScript at a run's
 /// ceiling (script_deadline.zig), when the engine has it.
@@ -89,9 +88,6 @@ pub const WptBrowser = struct {
     testharnessreport_js: ?[]const u8,
     /// Number of tests run
     tests_run: usize,
-    /// Path to WPT's certificate authority, held because the fetch layer
-    /// borrows it rather than copying. Null if the checkout has no certs.
-    ca_bundle_path: ?[]const u8,
     /// testdriver.js's automation backend (the WebDriver remote end), whose
     /// natives the vendor file wires into each test realm.
     test_driver: *test_driver.TestDriver,
@@ -104,6 +100,13 @@ pub const WptBrowser = struct {
         const self = try allocator.create(WptBrowser);
         errdefer allocator.destroy(self);
 
+        // Trust WPT's certificate authority, so `.https.` tests can be fetched
+        // from :8443 at all. `wpt serve` signs its leaf certificate with a CA
+        // it generates itself; nothing in the system trust store knows it.
+        // The Browser's network context copies the path.
+        const ca = try wptCertificateAuthority(allocator, wpt_root);
+        defer if (ca) |path| allocator.free(path);
+
         // Create the underlying browser (manages V8 isolate)
         const browser_instance = try Browser.init(allocator, .{
             .log_performance = true,
@@ -111,6 +114,7 @@ pub const WptBrowser = struct {
             // linear PCM and WebM (VP8/VP9, Vorbis/Opus), which it really
             // reads (host_media.zig). Crane itself builds in no decoder.
             .media_backend = host_media.backend,
+            .ca_bundle_path = ca,
         });
         errdefer browser_instance.deinit();
 
@@ -124,7 +128,6 @@ pub const WptBrowser = struct {
             .testharness_js = null,
             .testharnessreport_js = null,
             .tests_run = 0,
-            .ca_bundle_path = null,
             .test_driver = driver,
         };
         if (comptime engine.capabilities.script_abort != .unsupported) try self.script_deadline.start();
@@ -138,11 +141,6 @@ pub const WptBrowser = struct {
         test_driver.registerForFrames(self.test_driver);
         errdefer test_driver.unregisterForFrames();
 
-        // Trust WPT's certificate authority, so `.https.` tests can be fetched
-        // from :8443 at all. `wpt serve` signs its leaf certificate with a CA
-        // it generates itself; nothing in the system trust store knows it.
-        try self.trustWptCertificateAuthority();
-
         // Pre-load testharness.js for efficiency
         self.testharness_js = self.loadWptScript("resources/testharness.js") catch null;
         self.testharnessreport_js = self.loadWptScript("resources/testharnessreport.js") catch null;
@@ -150,24 +148,21 @@ pub const WptBrowser = struct {
         return self;
     }
 
-    /// Point the fetch layer at WPT's own certificate authority.
+    /// WPT's own certificate authority, for the Browser to trust: its path
+    /// (OWNED), or null if the checkout has none.
     ///
     /// Only adds a CA; it does not relax verification. A `.https.` test served
     /// with a certificate this CA did not sign should still fail, because that
     /// is a real defect in the server, not in the test.
-    fn trustWptCertificateAuthority(self: *WptBrowser) !void {
-        const ca = try std.fs.path.join(self.allocator, &.{ self.wpt_root, "tools/certs/cacert.pem" });
-        errdefer self.allocator.free(ca);
-
+    fn wptCertificateAuthority(allocator: std.mem.Allocator, wpt_root: []const u8) !?[]u8 {
+        const ca = try std.fs.path.join(allocator, &.{ wpt_root, "tools/certs/cacert.pem" });
         host.cwd().access(host.io(), ca, .{}) catch |err| {
             // Not fatal: a run that touches no `.https.` test never needs it.
             log.warn("no WPT certificate authority at {s} ({}); .https. tests will fail to connect", .{ ca, err });
-            self.allocator.free(ca);
-            return;
+            allocator.free(ca);
+            return null;
         };
-
-        self.ca_bundle_path = ca;
-        fetch.network.setDefaultCertOptions(.{ .ca_bundle_path = ca });
+        return ca;
     }
 
     /// Cleanup
@@ -180,12 +175,6 @@ pub const WptBrowser = struct {
         // engine is still up.
         test_driver.unregisterForFrames();
         self.test_driver.destroy();
-
-        if (self.ca_bundle_path) |ca| {
-            // Drop the borrowed path before freeing it.
-            fetch.network.setDefaultCertOptions(.{});
-            self.allocator.free(ca);
-        }
 
         if (self.testharness_js) |js| {
             self.allocator.free(js);

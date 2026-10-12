@@ -3176,7 +3176,7 @@ fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instan
     };
     request.initiator_type = .script;
     // The fetch owns the request from here, even when it fails to start.
-    self.fetch = AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), self.client()) catch
+    self.fetch = AsyncFetch.start(allocator, request, .{}, dom.agent_fetches.of(document.ctx), self.client()) catch
         return abandonStart(self);
     engine.keepPlatformObjectAlive(element);
     return true;

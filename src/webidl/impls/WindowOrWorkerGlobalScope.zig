@@ -601,7 +601,7 @@ const FetchCall = struct {
         };
         request.body = .{ .body = body };
         // The fetch owns the request from here, and frees it on failure.
-        self.in_flight = fetch.algorithms.AsyncFetch.startStreaming(self.allocator, request, .{}, fetch.network.scheduler.threadScheduler(), self.client()) catch
+        self.in_flight = fetch.algorithms.AsyncFetch.startStreaming(self.allocator, request, .{}, @import("dom").agent_fetches.of(self.ctx), self.client()) catch
             return self.startFailed();
     }
 
@@ -940,7 +940,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             return p.take();
         };
     } else {
-        call.in_flight = fetch.algorithms.AsyncFetch.startStreaming(allocator, fetched_request, .{}, fetch.network.scheduler.threadScheduler(), call.client()) catch {
+        call.in_flight = fetch.algorithms.AsyncFetch.startStreaming(allocator, fetched_request, .{}, @import("dom").agent_fetches.of(instance.ctx), call.client()) catch {
             // The fetch owned the request, and freed it.
             call.releaseKeepalive();
             allocator.destroy(call);

@@ -63,10 +63,11 @@ const Trial = struct {
         request.csp_violation_reporter = .{ .context = &reports, .report = Reports.report };
         try testing.expect(request.prohibits_mixed_security_contexts);
         const group = dom.global_settings.fetchGroupOf(global) orelse return error.NoFetchGroup;
-        const before = fetch.algorithms.async_fetch.inFlight();
+        const fetches = &browser.agent_host.fetches;
+        const before = fetches.inFlight();
         owned = false; // send takes the request even when it rejects.
         try testing.expectEqual(self.accepted, try dom.keepalive_fetch.send(global, request, .{ .load = self.load }));
-        try testing.expectEqual(before + @as(usize, @intFromBool(self.dispatched)), fetch.algorithms.async_fetch.inFlight());
+        try testing.expectEqual(before + @as(usize, @intFromBool(self.dispatched)), fetches.inFlight());
         try testing.expectEqual(@as(u64, if (self.dispatched and self.load == .fetch) 4 else 0), group.inflight_keepalive_bytes);
         try testing.expectEqual(self.reports, reports.count);
         if (self.reports != 0) try testing.expectEqualStrings("http://192.0.2.1:65533/beacon", reports.url[0..reports.length]);

@@ -115,6 +115,7 @@ pub const window = core.window;
 
 // Re-export commonly used window types
 pub const BrowsingContext = core.BrowsingContext;
+pub const Navigables = core.Navigables;
 pub const BrowsingContextGroup = core.BrowsingContextGroup;
 pub const WindowProxy = core.WindowProxy;
 pub const Origin = core.Origin;

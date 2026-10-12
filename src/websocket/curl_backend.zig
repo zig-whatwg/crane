@@ -35,6 +35,7 @@ const std = @import("std");
 const fetch = @import("fetch");
 const curl = fetch.network.curl_ffi;
 const cookiestore = @import("cookiestore");
+const kit_curl = @import("kit_curl_share");
 const log = std.log.scoped(.websocket);
 
 /// Which subprotocol a handshake response selects, or whether it fails the
@@ -147,6 +148,16 @@ pub const CurlWebSocket = struct {
     /// The value of the handshake's `Origin` header, if one is to be sent.
     origin: ?[]const u8 = null,
 
+    /// The handshake's `User-Agent`: the client's Browser's user agent
+    /// string (its network context's, BORROWED for the connection's life).
+    /// HTTP-network-or-cache fetch step 8.15 appends it to the request the
+    /// handshake sends. Null: none (a backend no Browser made).
+    user_agent: ?[]const u8 = null,
+
+    /// The proxy the handshake goes through: the client's Browser's for the
+    /// URL (BORROWED, as the user agent). Null: the system's.
+    proxy: ?fetch.network.ProxyConfig = null,
+
     const Self = @This();
 
     /// Options for WebSocket initialization.
@@ -157,8 +168,13 @@ pub const CurlWebSocket = struct {
         /// The user agent's cookie jar, borrowed for the connection's life.
         cookie_jar: ?*cookiestore.CookieJar = null,
 
-        /// TLS trust; null means fetch's defaults.
+        /// TLS trust; null means the network context's (below), or the
+        /// system's with none.
         cert_options: ?fetch.network.CertVerifyOptions = null,
+
+        /// The network context of the client's Browser (borrowed for the
+        /// connection's life): what its handshake trusts.
+        network: ?*fetch.network.NetworkContext = null,
 
         /// The serialized origin of the client, sent as `Origin`. Fetch
         /// appends it to every request whose mode is "websocket" (Fetch,
@@ -209,8 +225,10 @@ pub const CurlWebSocket = struct {
             .url = url_copy,
             .protocols = protocols_copy,
             .cookie_jar = options.cookie_jar,
-            .cert_options = options.cert_options orelse fetch.network.defaultCertOptions(),
+            .cert_options = options.cert_options orelse if (options.network) |network| network.certOptions() else .{},
             .origin = origin_copy,
+            .user_agent = if (options.network) |network| network.userAgent() else null,
+            .proxy = if (options.network) |network| network.proxyFor(url) else null,
         };
 
         return self;
@@ -302,8 +320,10 @@ pub const CurlWebSocket = struct {
             return error.CurlSetoptFailed;
         }
 
-        // TLS trust, as fetch applies it (network/curl_backend.zig).
-        try self.applyCertOptions(handle);
+        // The Browser's network options - TLS verification and trust, its
+        // proxy, its `User-Agent` (HTTP-network-or-cache fetch 8.15) -
+        // applied by the platform's kit, as for every fetch.
+        try self.applyNetworkOptions(handle);
 
         // Request headers: the ones WebSockets § 2.2 adds that libcurl does
         // not. Upgrade, Connection, Sec-WebSocket-Key and
@@ -471,18 +491,23 @@ pub const CurlWebSocket = struct {
         return std.mem.span(h.value);
     }
 
-    /// Verify the peer and its host name, against the configured CA bundle
-    /// when there is one and the system's store otherwise.
-    fn applyCertOptions(self: *Self, handle: *curl.CURL) !void {
+    /// The handshake's network options: the peer and its host name verified
+    /// against the configured CA bundle when there is one and the system's
+    /// store otherwise; the Browser's proxy and user agent string.
+    fn applyNetworkOptions(self: *Self, handle: *curl.CURL) !void {
         const options = self.cert_options;
-        _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYPEER, @as(c_long, if (options.verify_peer) 1 else 0));
-        _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYHOST, @as(c_long, if (options.verify_host) 2 else 0));
-        if (options.ca_bundle_path) |ca_path| {
-            const ca_z = try self.allocator.dupeZ(u8, ca_path);
-            defer self.allocator.free(ca_z);
-            // libcurl copies string options, so the copy can go at once.
-            _ = curl.easy_setopt(handle, curl.CURLOPT_CAINFO, ca_z.ptr);
-        }
+        try kit_curl.options.apply(handle, self.allocator, .{
+            .user_agent = self.user_agent,
+            .proxy = if (self.proxy) |proxy| .{
+                .url = proxy.url,
+                .username = proxy.username,
+                .password = proxy.password,
+                .no_proxy = proxy.no_proxy,
+            } else null,
+            .verify_peer = options.verify_peer,
+            .verify_host = options.verify_host,
+            .ca_bundle_path = options.ca_bundle_path,
+        });
     }
 
     /// Hand the socket as much of one frame as it will take, without waiting.
@@ -669,19 +694,20 @@ test "selectSubprotocol - the server's choice is the subprotocol in use" {
     try std.testing.expectEqualStrings("chat", (try selectSubprotocol("echo,chat", " chat ")).?);
 }
 
-test "CurlWebSocket - a wss handshake trusts what fetch trusts" {
-    // The embedder registers the certificate authorities it trusts through
-    // fetch's default cert options - the WPT runner adds the WPT CA that way -
-    // and a WebSocket handshake is a fetch (WebSockets § 2.2 step 11). A
-    // backend that set no TLS options at all verified wss:// against the
-    // system store only, so every `?wss` variant failed to open.
+test "CurlWebSocket - a wss handshake trusts what its Browser trusts" {
+    // The embedder gives a Browser the certificate authorities it trusts -
+    // the WPT runner adds the WPT CA that way - and a WebSocket handshake is
+    // a fetch (WebSockets § 2.2 step 11), made with its client's Browser's
+    // network context. A backend that set no TLS options at all verified
+    // wss:// against the system store only, so every `?wss` variant failed
+    // to open.
     const allocator = std.testing.allocator;
 
-    const saved = fetch.network.defaultCertOptions();
-    defer fetch.network.setDefaultCertOptions(saved);
-    fetch.network.setDefaultCertOptions(.{ .ca_bundle_path = "/wpt/tools/certs/cacert.pem" });
+    var network = fetch.network.NetworkContext.init(allocator);
+    defer network.deinit();
+    try network.configure(.{ .ca_bundle_path = "/wpt/tools/certs/cacert.pem" });
 
-    var ws = try CurlWebSocket.init(allocator, "wss://web-platform.test:8666/echo", null);
+    var ws = try CurlWebSocket.initWithOptions(allocator, "wss://web-platform.test:8666/echo", .{ .network = &network });
     defer ws.deinit();
 
     try std.testing.expectEqualStrings("/wpt/tools/certs/cacert.pem", ws.cert_options.ca_bundle_path.?);

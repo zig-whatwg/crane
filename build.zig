@@ -989,6 +989,12 @@ const ModuleConfig = struct {
 const PlatformBinding = struct {
     facade: *std.Build.Module,
     options: *std.Build.Module,
+    /// kit/curl's connection share (src/platform/kit/curl/share.zig), which
+    /// `fetch` imports for a Browser's network context until transfers move
+    /// behind the platform's port. A module of its own that imports nothing:
+    /// a graph whose `fetch` is compiled beside the old platform root (tests/
+    /// platform/retained_old_platform.zig) must not reach the facade's files.
+    kit_curl_share: *std.Build.Module,
 };
 
 const PlatformBindingOptions = struct {
@@ -1052,7 +1058,14 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit[0].addImport("memory", options.memory);
     // kit/browser_state keeps a Browser's stores in kit/memory_store.
     kit[6].addImport("kit_memory_store", kit[2]);
-    return .{ .facade = facade, .options = options_mod };
+    // kit/curl's connection share, its own module (see PlatformBinding).
+    const kit_curl_share = b.createModule(.{
+        .root_source_file = b.path("src/platform/kit/curl/share.zig"),
+        .target = target,
+        .link_libc = true,
+    });
+    kit[3].addImport("kit_curl_share", kit_curl_share);
+    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share };
 }
 
 /// A module of a graph: registered by name when the graph is public, private
@@ -1914,6 +1927,9 @@ pub fn build(b: *std.Build) void {
         // the curl linkage comes from, so the test root needs nothing else.
         const websocket_imports = [_]std.Build.Module.Import{
             .{ .name = "websocket", .module = testing_graph.websocket },
+            // A Browser's network context, which a connection is made with
+            // (tests/websocket/websocket_proxy_test.zig).
+            .{ .name = "fetch", .module = testing_graph.fetch },
         };
         addTestFilesFromDir(b, test_step, "tests/websocket", target, &websocket_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add websocket test files: {}\n", .{err});
@@ -5536,6 +5552,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     const platform_mod = platform_binding.facade;
     dom_mod.addImport("platform", platform_mod);
+    // A Browser's network context keeps its connection share in kit/curl,
+    // and fetch's transfers and WebSocket's handshakes take the Browser's
+    // network options (proxy, TLS, user agent) from it.
+    fetch_mod.addImport("kit_curl_share", platform_binding.kit_curl_share);
+    websocket_mod.addImport("kit_curl_share", platform_binding.kit_curl_share);
     const platform_options_mod = platform_binding.options;
 
     // HTML Core module (WHATWG HTML Standard) - Interface-free subset

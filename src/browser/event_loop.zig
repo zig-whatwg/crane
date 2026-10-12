@@ -42,8 +42,8 @@ const TimerManager = runtime.native_timer.NativeTimerManager;
 const Task = runtime.EventLoopTask;
 const Microtask = runtime.EventLoopMicrotask;
 
-/// The fetches in flight on this thread - `fetch()`'s, run on the event loop.
-const async_fetch = @import("fetch").algorithms.async_fetch;
+/// An agent's fetches on its event loop (on its host: AgentHost.fetches).
+const AgentFetches = @import("fetch").algorithms.AgentFetches;
 
 pub const EventLoop = struct {
     /// The agent whose event loop this is.
@@ -106,6 +106,11 @@ pub const EventLoop = struct {
     /// collector took, freed here between tasks, a slice at a time. Null for
     /// a loop whose agent has none.
     deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
+
+    /// The agent's fetches (its host's: AgentHost.fetches), which this loop
+    /// pumps each turn - every fetch the agent's realms started, and no
+    /// other agent's. Null for a loop whose agent has none.
+    fetches: ?*AgentFetches = null,
 
     const Self = @This();
 
@@ -272,7 +277,9 @@ pub const EventLoop = struct {
         // queues its task for the next turn. The wait below is sliced at 1ms
         // (native_timer.zig), and a fetch in flight is pending work, so the
         // loop never sleeps through a response.
-        if (async_fetch.pump()) did_work = true;
+        if (self.fetches) |fetches| {
+            if (fetches.pump()) did_work = true;
+        }
 
         const now = monotonicNs();
         self.noteWork(work_start, now);
@@ -439,7 +446,7 @@ pub const EventLoop = struct {
         // A window waiting for an idle period: one will start.
         if (self.idle_requests.items.len > 0) return true;
         // A fetch in flight will queue a task when it ends.
-        if (async_fetch.inFlight() > 0) return true;
+        if (self.fetches) |fetches| if (fetches.inFlight() > 0) return true;
         if (self.timer_manager) |mgr| {
             if (mgr.getActiveTimerCount() > 0) return true;
         }

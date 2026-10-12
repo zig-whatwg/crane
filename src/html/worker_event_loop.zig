@@ -42,8 +42,8 @@ const TimerManager = runtime.native_timer.NativeTimerManager;
 const Task = runtime.EventLoopTask;
 const Microtask = runtime.EventLoopMicrotask;
 
-/// The fetches in flight on this thread - `fetch()`'s, run on the event loop.
-const async_fetch = @import("fetch").algorithms.async_fetch;
+/// An agent's fetches on its event loop (on its host: AgentHost.fetches).
+const AgentFetches = @import("fetch").algorithms.AgentFetches;
 
 const log = std.log.scoped(.worker_event_loop);
 
@@ -59,6 +59,9 @@ pub const WorkerEventLoop = struct {
     /// AgentOptions.deferred_teardown), set with `agent`: the nodes whose
     /// wrappers the collector took, freed here between tasks, a slice a turn.
     deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
+    /// The worker agent's fetches (its AgentHost's), set with `agent`: every
+    /// fetch the worker's realm started, pumped here each turn.
+    fetches: ?*AgentFetches = null,
     /// The worker's inbox (the link's worker_sink). A reference.
     sink: *runtime.TaskSink,
     timers: *TimerManager,
@@ -190,8 +193,10 @@ pub const WorkerEventLoop = struct {
             }
         }
 
-        // 4. This thread's fetches.
-        if (async_fetch.pump()) did_work = true;
+        // 4. The worker agent's fetches.
+        if (self.fetches) |fetches| {
+            if (fetches.pump()) did_work = true;
+        }
 
         // 5. Nothing queued: wait for a post, the next timer, or - with work
         // in flight that will not post - a slice.
@@ -217,7 +222,7 @@ pub const WorkerEventLoop = struct {
         if (self.deferred_teardown) |queue| if (!queue.isEmpty()) return 0;
         var bound: ?u64 = null;
         if (self.timers.getNextTimerDeadline()) |ms| bound = ms *| std.time.ns_per_ms;
-        const busy = async_fetch.inFlight() > 0 or
+        const busy = (if (self.fetches) |fetches| fetches.inFlight() > 0 else false) or
             (if (self.agent) |agent| engine.hasPendingEngineWork(agent) else false);
         if (busy) bound = @min(bound orelse busy_slice_ns, busy_slice_ns);
         return bound;

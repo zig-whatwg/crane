@@ -323,10 +323,11 @@ pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for appVersion
 /// Per HTML Standard: Returns version info.
 pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    // The Chrome/WebKit compatibility mode's: the user agent string without
-    // its leading "Mozilla/".
-    return runtime.DOMString.initInterned(@import("fetch").internal.user_agent.app_version);
+    // The Chrome/WebKit compatibility mode's, from this's relevant settings
+    // object's environment default `User-Agent` value: its Browser's.
+    const network = @import("dom").browser_state.networkOf(instance.ctx) orelse
+        return runtime.DOMString.initInterned(@import("fetch").internal.user_agent.app_version);
+    return runtime.DOMString.initDupe(instance.ctx.allocator, network.appVersion());
 }
 
 /// Getter for platform
@@ -358,11 +359,13 @@ pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for userAgent
-/// Per HTML Standard: the default `User-Agent` value - Fetch's, the one
-/// fetch() sends (fetch.internal.user_agent), so the two always agree.
+/// Per HTML Standard: this's relevant settings object's environment default
+/// `User-Agent` value - its Browser's (fetch.network.NetworkContext), the
+/// one its fetches send, so the two always agree.
 pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return runtime.DOMString.initInterned(@import("fetch").internal.user_agent.default_user_agent);
+    const network = @import("dom").browser_state.networkOf(instance.ctx) orelse
+        return runtime.DOMString.initInterned(@import("fetch").internal.user_agent.default_user_agent);
+    return runtime.DOMString.initDupe(instance.ctx.allocator, network.userAgent());
 }
 
 /// Getter for vendor

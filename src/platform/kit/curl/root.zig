@@ -12,6 +12,11 @@
 const std = @import("std");
 const platform = @import("platform");
 
+/// A Browser's connection share (fetch.network.NetworkContext's): curl's
+/// connection and DNS caches with locks of their own - a module of its own
+/// (`kit_curl_share`), which `fetch` imports.
+pub const share = @import("kit_curl_share");
+
 const Port = struct {
     allocator: std.mem.Allocator,
     /// Bumped by every wake; a wait sleeps only while it is unchanged.

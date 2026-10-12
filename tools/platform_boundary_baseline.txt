@@ -112,7 +112,7 @@ src/fetch/network/curl_backend.zig clock.@import 1
 src/fetch/network/curl_backend.zig clock.sleep 1
 src/fetch/network/curl_backend.zig curl-wrapper.curl_error.mapCurlError 2
 src/fetch/network/curl_backend.zig curl-wrapper.curl_options.mbedtls 1
-src/fetch/network/curl_backend.zig curl.CURL 6
+src/fetch/network/curl_backend.zig curl.CURL 4
 src/fetch/network/curl_backend.zig curl.CURLE_COULDNT_CONNECT 1
 src/fetch/network/curl_backend.zig curl.CURLE_OK 4
 src/fetch/network/curl_backend.zig curl.CURLE_RECV_ERROR 2
@@ -132,7 +132,6 @@ src/fetch/network/curl_backend.zig curl.CURLINFO_STARTTRANSFER_TIME 2
 src/fetch/network/curl_backend.zig curl.CURLINFO_TLS_SSL_PTR 1
 src/fetch/network/curl_backend.zig curl.CURLINFO_TOTAL_TIME 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_ACCEPT_ENCODING 1
-src/fetch/network/curl_backend.zig curl.CURLOPT_CAINFO 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_CONNECTTIMEOUT_MS 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_COPYPOSTFIELDS 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_CUSTOMREQUEST 1
@@ -145,15 +144,10 @@ src/fetch/network/curl_backend.zig curl.CURLOPT_HTTP_VERSION 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_MAXREDIRS 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_NOBODY 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_NOPROGRESS 1
-src/fetch/network/curl_backend.zig curl.CURLOPT_NOPROXY 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_POSTFIELDSIZE 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_PREREQDATA 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_PREREQFUNCTION 1
-src/fetch/network/curl_backend.zig curl.CURLOPT_PROXY 1
-src/fetch/network/curl_backend.zig curl.CURLOPT_PROXYUSERPWD 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_SHARE 1
-src/fetch/network/curl_backend.zig curl.CURLOPT_SSL_VERIFYHOST 1
-src/fetch/network/curl_backend.zig curl.CURLOPT_SSL_VERIFYPEER 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_TIMEOUT_MS 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_URL 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_VERBOSE 1
@@ -161,10 +155,6 @@ src/fetch/network/curl_backend.zig curl.CURLOPT_WRITEDATA 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_WRITEFUNCTION 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_XFERINFODATA 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_XFERINFOFUNCTION 1
-src/fetch/network/curl_backend.zig curl.CURLSH 2
-src/fetch/network/curl_backend.zig curl.CURLSHOPT_LOCKFUNC 1
-src/fetch/network/curl_backend.zig curl.CURLSHOPT_SHARE 2
-src/fetch/network/curl_backend.zig curl.CURLSHOPT_UNLOCKFUNC 1
 src/fetch/network/curl_backend.zig curl.CURLSSLBACKEND_MBEDTLS 1
 src/fetch/network/curl_backend.zig curl.CURL_ERROR_SIZE 1
 src/fetch/network/curl_backend.zig curl.CURL_GLOBAL_DEFAULT 1
@@ -173,8 +163,6 @@ src/fetch/network/curl_backend.zig curl.CURL_HTTP_VERSION_1_1 2
 src/fetch/network/curl_backend.zig curl.CURL_HTTP_VERSION_2TLS 1
 src/fetch/network/curl_backend.zig curl.CURL_HTTP_VERSION_2_0 2
 src/fetch/network/curl_backend.zig curl.CURL_HTTP_VERSION_3 3
-src/fetch/network/curl_backend.zig curl.CURL_LOCK_DATA_CONNECT 1
-src/fetch/network/curl_backend.zig curl.CURL_LOCK_DATA_DNS 1
 src/fetch/network/curl_backend.zig curl.CURL_PREREQFUNC_ABORT 2
 src/fetch/network/curl_backend.zig curl.CURL_PREREQFUNC_OK 1
 src/fetch/network/curl_backend.zig curl.CURLcode 6
@@ -391,8 +379,6 @@ src/fetch/network/root.zig curl-wrapper.curl_backend.globalInit 1
 src/fetch/network/scheduler.zig clock.@import 1
 src/fetch/network/scheduler.zig clock.monotonicNanos 2
 src/fetch/network/scheduler.zig curl-wrapper.curl_backend.Transfer 1
-src/fetch/network/scheduler.zig curl-wrapper.curl_backend.getGlobalShare 1
-src/fetch/network/scheduler.zig curl-wrapper.curl_backend.globalInit 1
 src/fetch/network/scheduler.zig curl.CURL 1
 src/fetch/network/scheduler.zig curl.CURLE_OK 1
 src/fetch/network/scheduler.zig curl.CURLINFO_REQUEST_SIZE 1
@@ -833,11 +819,8 @@ src/websocket/curl_backend.zig curl.CURLINFO_RESPONSE_CODE 1
 src/websocket/curl_backend.zig curl.CURLM 1
 src/websocket/curl_backend.zig curl.CURLMSG_DONE 1
 src/websocket/curl_backend.zig curl.CURLM_OK 2
-src/websocket/curl_backend.zig curl.CURLOPT_CAINFO 1
 src/websocket/curl_backend.zig curl.CURLOPT_CONNECT_ONLY 1
 src/websocket/curl_backend.zig curl.CURLOPT_HTTPHEADER 1
-src/websocket/curl_backend.zig curl.CURLOPT_SSL_VERIFYHOST 1
-src/websocket/curl_backend.zig curl.CURLOPT_SSL_VERIFYPEER 1
 src/websocket/curl_backend.zig curl.CURLOPT_URL 1
 src/websocket/curl_backend.zig curl.CURLWS_BINARY 1
 src/websocket/curl_backend.zig curl.CURLWS_CLOSE 1

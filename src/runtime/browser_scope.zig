@@ -69,6 +69,9 @@ pub const BrowserScope = struct {
         event_targets,
         /// StaticRange's boundary points.
         static_ranges,
+        /// html.window.Navigables: every browsing context of the Browser,
+        /// read by every navigable lookup (dom.browser_state).
+        navigables,
         /// HTMLOptionElement's and HTMLTextAreaElement's state, kept by value.
         option_states,
         textarea_states,

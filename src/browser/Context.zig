@@ -138,7 +138,8 @@ const AnimationFrameDocument = struct {
     realm: runtime.Context,
 
     fn current(self: AnimationFrameDocument) bool {
-        const navigable = html_mod.window.BrowsingContext.byId(self.navigable_id) orelse return false;
+        const navigables = dom_mod.browser_state.navigablesOf(self.realm) orelse return false;
+        const navigable = navigables.byId(self.navigable_id) orelse return false;
         if (navigable.is_closed or navigable.orphaned) return false;
         if (navigable.active_window != @as(?*anyopaque, @ptrCast(self.window)) or
             navigable.active_document != @as(?*anyopaque, @ptrCast(self.document))) return false;
@@ -194,7 +195,8 @@ fn collectAnimationFrameDocuments(
     allocator: std.mem.Allocator,
     seed: runtime.Context,
 ) error{OutOfMemory}!std.ArrayListUnmanaged(AnimationFrameDocument) {
-    const contexts = html_mod.window.BrowsingContext.liveContexts();
+    const navigables = dom_mod.browser_state.navigablesOf(seed) orelse return .empty;
+    const contexts = navigables.contexts();
     var documents: std.ArrayListUnmanaged(AnimationFrameDocument) = .empty;
     errdefer documents.deinit(allocator);
     try documents.ensureTotalCapacity(allocator, contexts.len);
@@ -222,13 +224,13 @@ fn collectAnimationFrameDocuments(
         });
     }
     // No script runs while sorting, so the live navigable tree is stable.
-    std.mem.sort(AnimationFrameDocument, documents.items, {}, animationFrameDocumentLessThan);
+    std.mem.sort(AnimationFrameDocument, documents.items, @as(*const html_mod.Navigables, navigables), animationFrameDocumentLessThan);
     return documents;
 }
 
-fn animationFrameDocumentLessThan(_: void, a: AnimationFrameDocument, b: AnimationFrameDocument) bool {
-    var left = html_mod.window.BrowsingContext.byId(a.navigable_id) orelse return false;
-    var right = html_mod.window.BrowsingContext.byId(b.navigable_id) orelse return false;
+fn animationFrameDocumentLessThan(navigables: *const html_mod.Navigables, a: AnimationFrameDocument, b: AnimationFrameDocument) bool {
+    var left = navigables.byId(a.navigable_id) orelse return false;
+    var right = navigables.byId(b.navigable_id) orelse return false;
     var left_depth: usize = 0;
     var right_depth: usize = 0;
     var left_root = left;
@@ -408,8 +410,12 @@ test "frame cancellation reaches pending and running maps without canceling a co
 test "callable removed Window is terminal but a live navigable awaiting its document is deferred" {
     const allocator = std.testing.allocator;
     var dummy_engine: u32 = 0;
+    // The realm's Browser, whose list its navigable is on.
+    var scope = runtime.BrowserScope.init(allocator);
+    defer scope.deinit();
     var realm = try runtime.ContextData.init(allocator, .{ .engine_ctx = &dummy_engine });
     defer realm.deinit();
+    realm.browser_scope = &scope;
     // No engine operation reaches the fake context. These objects are only
     // read as runtime identities, and no slab-generation check is needed.
     var window: runtime.Instance = undefined;
@@ -417,7 +423,7 @@ test "callable removed Window is terminal but a live navigable awaiting its docu
     defer record.deinit();
     realm.setRealm(record);
     defer realm.clearRealm();
-    const navigable = try html_mod.window.BrowsingContext.init(allocator);
+    const navigable = try html_mod.window.BrowsingContext.init(allocator, try scope.table(.navigables, html_mod.Navigables));
     defer navigable.deinit();
     navigable.active_window = &window;
     try std.testing.expectEqual(AnimationFrameDisposition.deferred, documentDispositionForAnimationFrame(&realm));
@@ -434,9 +440,12 @@ test "callable removed Window is terminal but a live navigable awaiting its docu
 
 test "frame document collection reserve failure leaves callback owners untouched" {
     const allocator = std.testing.allocator;
+    var scope = runtime.BrowserScope.init(allocator);
+    defer scope.deinit();
     var realm = try runtime.ContextData.init(allocator, .{});
     defer realm.deinit();
-    const navigable = try html_mod.window.BrowsingContext.init(allocator);
+    realm.browser_scope = &scope;
+    const navigable = try html_mod.window.BrowsingContext.init(allocator, try scope.table(.navigables, html_mod.Navigables));
     defer navigable.deinit();
     var state: AnimationFrameState = .{};
     defer state.pending.deinit(allocator);
@@ -472,9 +481,12 @@ test "frame document identities reject replacement and slab reuse of the same ad
             const allocator = std.testing.allocator;
             var slab_value = runtime.SlabAllocator.init(allocator);
             defer slab_value.deinit();
+            var scope = runtime.BrowserScope.init(allocator);
+            defer scope.deinit();
             var dummy_engine: u32 = 0;
             var realm = try runtime.ContextData.init(allocator, .{ .engine_ctx = &dummy_engine });
             defer realm.deinit();
+            realm.browser_scope = &scope;
             const vtable: runtime.VTable = .{ .name = "Window", .deinit = null, .methods_ptr = &dummy_engine };
             const slab = &slab_value;
             const window = try slab.alloc(&vtable);
@@ -491,7 +503,7 @@ test "frame document identities reject replacement and slab reuse of the same ad
             defer record.deinit();
             realm.setRealm(record);
             defer realm.clearRealm();
-            const navigable = try html_mod.window.BrowsingContext.init(allocator);
+            const navigable = try html_mod.window.BrowsingContext.init(allocator, try scope.table(.navigables, html_mod.Navigables));
             defer navigable.deinit();
             navigable.active_window = window;
             navigable.active_document = original;
@@ -595,6 +607,14 @@ fn realmWindow(realm: runtime.Context) ?*runtime.Instance {
     const record = realm.getRealm() orelse return null;
     const global = record.global_object orelse return null;
     return @ptrCast(@alignCast(global));
+}
+
+/// The browsing context whose active window is `window`, `realm`'s global,
+/// on the list of `realm`'s Browser - asked of the realm, which stays a
+/// readable record after it retires, never of a Window that may be gone.
+fn realmNavigable(realm: runtime.Context, window: *runtime.Instance) ?*html_mod.BrowsingContext {
+    const navigables = dom_mod.browser_state.navigablesOf(realm) orelse return null;
+    return navigables.ofWindow(@ptrCast(window));
 }
 
 /// HTML "report an exception" for the Window `host`, with the error
@@ -1473,7 +1493,7 @@ pub const Context = struct {
         } else |err| log.debug("__internal is not on the global: {}", .{err});
         const replaced = previous orelse return;
         if (replaced == document) return;
-        const navigable = html_mod.window.BrowsingContext.ofWindow(window) orelse return;
+        const navigable = dom_mod.browser_state.browsingContextOf(window) orelse return;
         const history = navigable.getTop().joint_history orelse return;
         history.forgetDocument(@ptrCast(replaced));
         if (history.currentEntry(navigable.id)) |entry| history.setDocumentOfState(entry.document_state, @ptrCast(document));
@@ -1714,7 +1734,11 @@ pub const Context = struct {
         // `NavigationFailed`. The WPT runner prints whatever comes back here,
         // and one catch-all name made a DNS failure, a refused connection, a
         // TLS error and a missing file read identically in the journal.
-        var result = try navigation.fetchUrl(self.allocator, self.url, .{ .cookie_jar = self.cookie_jar });
+        var result = try navigation.fetchUrl(self.allocator, self.url, .{
+            .cookie_jar = self.cookie_jar,
+            // The Browser's network: its connections and TLS options.
+            .network = if (self.browser_scope) |scope| scope.of(fetch.network.NetworkContext) catch null else null,
+        });
         defer result.deinit();
 
         // HTML "create and initialize a Document object": Navigation
@@ -1845,7 +1869,7 @@ pub const Context = struct {
     /// window's originAgentCluster and its agent cluster read back.
     fn obtainAgentCluster(self: *Context, url: []const u8, header: ?[]const u8) void {
         const window = self.window_instance orelse return;
-        const navigable = html_mod.window.BrowsingContext.ofWindow(window) orelse return;
+        const navigable = dom_mod.browser_state.browsingContextOf(window) orelse return;
         const keys = dom_mod.agent_cluster_keys;
         const origin = fetch.internal.origins.serializedOriginOf(self.allocator, url) catch return;
         defer self.allocator.free(origin);
@@ -2311,7 +2335,7 @@ fn animationFrameRealmIsTerminal(realm: runtime.Context) bool {
     if (!realm.hasEngine()) return true;
     const window = realmWindow(realm) orelse return true;
     if (instance_lifecycle.isCleanupStarted(window)) return true;
-    const navigable = html_mod.window.BrowsingContext.ofWindow(window) orelse return true;
+    const navigable = realmNavigable(realm, window) orelse return true;
     if (navigable.is_closed or navigable.orphaned) return true;
     if (navigable.active_document) |ptr| {
         const document: *runtime.Instance = @ptrCast(@alignCast(ptr));
@@ -2328,7 +2352,7 @@ fn animationFrameTargetReplaced(entry: AnimationFrameEntry) bool {
     if (entry.target_document_generation == runtime.SlabAllocator.dead_generation) return true;
     if (runtime.SlabAllocator.generationOf(target) != entry.target_document_generation) return true;
     const window = realmWindow(entry.realm) orelse return true;
-    const navigable = html_mod.window.BrowsingContext.ofWindow(window) orelse return true;
+    const navigable = realmNavigable(entry.realm, window) orelse return true;
     // A temporarily unassigned active document is deferred. A different
     // document is a permanent replacement of this entry's target map.
     const active = navigable.active_document orelse return false;
@@ -2340,7 +2364,7 @@ fn animationFrameTargetReplaced(entry: AnimationFrameEntry) bool {
 fn documentDispositionForAnimationFrame(realm: runtime.Context) AnimationFrameDisposition {
     if (animationFrameRealmIsTerminal(realm)) return .terminal;
     const window = realmWindow(realm) orelse return .terminal;
-    const navigable = html_mod.window.BrowsingContext.ofWindow(window) orelse return .terminal;
+    const navigable = realmNavigable(realm, window) orelse return .terminal;
     const document: *runtime.Instance = @ptrCast(@alignCast(navigable.active_document orelse return .deferred));
     if (!dom_mod.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document))) return .deferred;
     if ((interfaces.Document.get_visibilityState(document) catch return .deferred) == ._hidden_) return .deferred;
@@ -2437,7 +2461,7 @@ fn requestAnimationFrame(realm: runtime.Context, callback: runtime.JSValue) u32 
         return handle;
     }
     const window = realmWindow(realm) orelse unreachable;
-    const navigable = html_mod.window.BrowsingContext.ofWindow(window) orelse unreachable;
+    const navigable = realmNavigable(realm, window) orelse unreachable;
     const target: ?*runtime.Instance = if (navigable.active_document) |document| @ptrCast(@alignCast(document)) else null;
     state.pending.append(allocator, .{
         .handle = handle,

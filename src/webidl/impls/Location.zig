@@ -806,7 +806,7 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
     if (dom.document_lifecycle.isUnloading(document)) return;
     // Step 12: "If navigable's allowed to perform a navigation or history
     // update returns blocked, then ... return."
-    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window))) |navigable| {
+    if (dom.browser_state.browsingContextOf(window)) |navigable| {
         if (!navigable.allowedToNavigateOrUpdateHistory()) return;
     }
     const allocator = window.ctx.allocator;
@@ -1081,7 +1081,7 @@ fn topLevelFragmentNavigation(
     params: dom.top_level_navigation.Params,
 ) !void {
     const allocator = window.ctx.allocator;
-    const bc = html_core.window.BrowsingContext.ofWindow(@ptrCast(window));
+    const bc = dom.browser_state.browsingContextOf(window);
     // Steps 2-3: "Let destinationNavigationAPIState be navigable's active
     // session history entry's navigation API state. If navigationAPIState is
     // not null, then set destinationNavigationAPIState to navigationAPIState."
@@ -1109,7 +1109,7 @@ fn topLevelFragmentNavigation(
     // replacing the current one in the traversable's history, with the
     // destination's navigation API state and a null classic history API
     // state.
-    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window))) |b| {
+    if (dom.browser_state.browsingContextOf(window)) |b| {
         if (b.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
             const api_state = destination_state.clone(allocator) catch null;
             history.commitSameDocument(b.id, url, .null, if (handling == .push) .push else .replace, api_state) catch {};
@@ -1123,7 +1123,7 @@ fn topLevelFragmentNavigation(
     // Step 15, "update document for history step application" 6.4.2:
     // "Update the navigation API entries for a same-document navigation
     // given navigation, historyEntry, and historyHandling."
-    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) != null) {
+    if (dom.browser_state.browsingContextOf(window) != null) {
         dom.navigation_api.sameDocumentNavigation(window, if (handling == .push) .push else .replace);
     }
 

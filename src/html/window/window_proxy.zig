@@ -25,6 +25,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const BrowsingContext = @import("browsing_context.zig").BrowsingContext;
+const Navigables = @import("browsing_context.zig").Navigables;
 
 /// Origin representation for security checks
 /// Per URL Standard and HTML Standard
@@ -354,8 +355,10 @@ test "Origin - opaque origins" {
 
 test "WindowProxy - same origin access" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     var proxy = WindowProxy.init(allocator, ctx);
@@ -371,8 +374,10 @@ test "WindowProxy - same origin access" {
 
 test "WindowProxy - cross origin access restrictions" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     var proxy = WindowProxy.init(allocator, ctx);
@@ -400,8 +405,10 @@ test "WindowProxy - cross origin access restrictions" {
 
 test "WindowProxy - cross origin allowed properties" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     var proxy = WindowProxy.init(allocator, ctx);
@@ -427,8 +434,10 @@ test "WindowProxy - cross origin allowed properties" {
 
 test "WindowProxy - getClosed" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     const proxy = WindowProxy.init(allocator, ctx);
@@ -442,8 +451,10 @@ test "WindowProxy - getClosed" {
 
 test "WindowProxy - getLength" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent = try BrowsingContext.initTopLevel(allocator);
+    const parent = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent.deinit();
 
     const proxy = WindowProxy.init(allocator, parent);
