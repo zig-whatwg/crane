@@ -1415,12 +1415,24 @@ pub fn get_clientInformation(instance: *runtime.Instance) anyerror!*runtime.Inst
     return get_navigator(instance);
 }
 
-/// Getter for originAgentCluster
-/// Per spec: Returns true if this window is in an origin-keyed agent cluster.
+/// HTML 7.1.2 originAgentCluster: "return the surrounding agent's agent
+/// cluster's is origin-keyed". The surrounding agent is this window's
+/// whenever script can reach this getter: a window it reaches is same
+/// origin-domain with it, and so in its agent cluster.
+///
+/// The cluster is origin-keyed when "obtain a similar-origin window agent"
+/// keyed it by the document's origin: the origin is opaque, the group is
+/// cross-origin isolated, or the group's historical agent cluster key map
+/// says so - as the navigation that created a document of this origin in
+/// this window's browsing context group recorded it (dom.agent_cluster_keys).
 pub fn get_originAgentCluster(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    // Default: not origin-keyed
-    return false;
+    const internal = getInternal(instance) orelse return false;
+    return @import("dom").agent_cluster_keys.isOriginKeyed(
+        runtime.BrowserScope.ofInstance(instance),
+        internal.browsing_context.virtual_group_id,
+        effectiveOrigin(instance, internal),
+        settingsCrossOriginIsolated(instance),
+    );
 }
 
 /// Getter for ondeviceorientation
