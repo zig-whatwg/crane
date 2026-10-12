@@ -7,6 +7,7 @@
 //! validation for cookie scoping.
 
 const std = @import("std");
+const public_suffix = @import("public_suffix");
 
 /// Domain matching per RFC 6265bis Section 5.1.3
 /// https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.1.3
@@ -21,34 +22,27 @@ const std = @import("std");
 ///      domain string is a %x2E (".") character
 ///    - The string is a host name (not an IP address)
 pub fn domainMatches(domain: []const u8, cookie_domain: []const u8) bool {
-    // Remove any leading dots for comparison
-    const clean_domain = if (domain.len > 0 and domain[0] == '.')
-        domain[1..]
-    else
-        domain;
-
-    const clean_cookie_domain = if (cookie_domain.len > 0 and cookie_domain[0] == '.')
-        cookie_domain[1..]
-    else
-        cookie_domain;
-
-    // Case-insensitive comparison
-    // Condition 1: Exact match
-    if (std.ascii.eqlIgnoreCase(clean_domain, clean_cookie_domain)) {
+    // 5.1.3 takes canonicalized hosts. Parsing the Domain attribute already
+    // stripped its ONE leading dot (5.6.3); stripping another would accept
+    // Domain=..example.com. Gecko CookieParser::FixDomain likewise strips
+    // one dot before CookieCommons::IsSubdomainOf compares the host.
+    if (domain.len == 0 or cookie_domain.len == 0) return false;
+    // Condition 1: exact match.
+    if (std.ascii.eqlIgnoreCase(domain, cookie_domain)) {
         return true;
     }
 
     // Condition 2: cookie_domain is a suffix of domain
-    if (clean_domain.len > clean_cookie_domain.len) {
+    if (domain.len > cookie_domain.len) {
         // Check if it ends with the cookie domain
-        const suffix_start = clean_domain.len - clean_cookie_domain.len;
-        const suffix = clean_domain[suffix_start..];
+        const suffix_start = domain.len - cookie_domain.len;
+        const suffix = domain[suffix_start..];
 
-        if (std.ascii.eqlIgnoreCase(suffix, clean_cookie_domain)) {
+        if (std.ascii.eqlIgnoreCase(suffix, cookie_domain)) {
             // Check that the character before is a dot
-            if (suffix_start > 0 and clean_domain[suffix_start - 1] == '.') {
+            if (suffix_start > 0 and domain[suffix_start - 1] == '.') {
                 // Don't match if domain is an IP address
-                if (!isIpAddress(clean_domain)) {
+                if (!isIpAddress(domain)) {
                     return true;
                 }
             }
@@ -127,30 +121,16 @@ pub fn getDefaultPath(uri_path: []const u8) []const u8 {
     return "/";
 }
 
-/// Check if a domain is a public suffix
-/// Uses simple heuristics for common TLDs.
-/// For production use with full PSL support, integrate with url/public_suffix.zig
-pub fn isPublicSuffix(_: std.mem.Allocator, domain: []const u8) !bool {
-    // Common public suffixes
-    const public_suffixes = [_][]const u8{
-        "com",   "org",    "net",   "edu",   "gov",   "mil",    "co.uk",  "org.uk",
-        "ac.uk", "gov.uk", "co.jp", "ne.jp", "or.jp", "com.au", "net.au", "org.au",
-        "co.nz", "com.br", "io",    "dev",   "app",   "uk",     "de",     "fr",
-        "jp",    "cn",     "ru",    "nl",    "it",    "es",     "ca",     "au",
-        "in",    "ch",     "se",    "no",    "fi",    "dk",     "be",     "at",
-        "pl",    "cz",     "pt",    "ie",    "nz",    "il",     "za",     "sg",
-        "hk",    "tw",     "kr",    "mx",    "ar",    "cl",     "co",
-    };
-
-    const lower = domain;
-
-    for (public_suffixes) |suffix| {
-        if (std.ascii.eqlIgnoreCase(lower, suffix)) {
-            return true;
-        }
-    }
-
-    return false;
+/// RFC 6265bis 5.7 step 9: reject cookie domains on the full URL PSL,
+/// including its private suffixes, wildcards and exceptions. Canonical
+/// IP literals have no public suffix.
+pub fn isPublicSuffix(allocator: std.mem.Allocator, domain: []const u8) !bool {
+    if (domain.len == 0 or isIpAddress(domain)) return false;
+    const lower = try std.ascii.allocLowerString(allocator, domain);
+    defer allocator.free(lower);
+    const suffix = (try public_suffix.getPublicSuffix(allocator, .{ .domain = lower })) orelse return false;
+    defer allocator.free(suffix);
+    return std.mem.eql(u8, lower, suffix);
 }
 
 /// Check if a domain is a registrable domain suffix of another
@@ -187,7 +167,7 @@ pub fn isRegistrableDomainSuffixOrEqual(
 
 /// Simple check if a string looks like an IP address
 /// (IPv4 dotted decimal or IPv6)
-fn isIpAddress(s: []const u8) bool {
+pub fn isIpAddress(s: []const u8) bool {
     if (s.len == 0) return false;
 
     // IPv6 in brackets
@@ -258,9 +238,9 @@ test "domainMatches - no match" {
     try std.testing.expect(!domainMatches("notexample.com", "example.com")); // not a true suffix
 }
 
-test "domainMatches - with leading dot" {
-    try std.testing.expect(domainMatches("www.example.com", ".example.com"));
-    try std.testing.expect(domainMatches("example.com", ".example.com"));
+test "domainMatches - does not strip an extra leading dot" {
+    try std.testing.expect(!domainMatches("www.example.com", ".example.com"));
+    try std.testing.expect(!domainMatches("example.com", ".example.com"));
 }
 
 test "domainMatches - IP addresses don't domain-match" {

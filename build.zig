@@ -2032,6 +2032,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
+            .{ .name = "public_suffix", .module = testing_graph.cookiestore.import_table.get("public_suffix").? },
             .{ .name = "impls", .module = testing_graph.impls },
             .{ .name = "interfaces", .module = testing_graph.interfaces },
             .{ .name = "runtime", .module = testing_graph.runtime },
@@ -4850,6 +4851,14 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
 
+    // Cookies share URL's PSL without depending on the URL/WebIDL facade.
+    const public_suffix_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/public_suffix.zig"),
+        .target = target,
+    });
+    public_suffix_mod.addImport("host", url_internal_host_mod);
+    cookiestore_mod.addImport("public_suffix", public_suffix_mod);
+
     const url_internal_path_mod = b.createModule(.{
         .root_source_file = b.path("src/url/internal/path.zig"),
         .target = target,
@@ -5087,6 +5096,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .root_source_file = b.path("src/url/root.zig"),
         .target = target,
     });
+    url_mod.addImport("public_suffix", public_suffix_mod);
     url_mod.addImport("infra", infra_mod);
     url_mod.addImport("webidl", webidl_mod);
     url_mod.addImport("encoding", encoding_mod);
