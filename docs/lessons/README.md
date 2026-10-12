@@ -273,7 +273,7 @@ A lane brief now carries the lessons chosen for its batch.
 ### Spec Compliance
 - [MIME parameters compare string contents](spec-compliance-mime-parameters-compare-string-contents.md) - Check collection equality before using it for specification strings, and test parsing independently of its callers.
 - [Preserve quotes until MIME parsing](spec-compliance-preserve-quotes-until-mime-parsing.md) - Header splitting preserves the quoted representation that later MIME parsing consumes; test the composed algorithms and allocation failures.
-- [Blob type is not a MIME parser](spec-compliance-blob-type-is-not-a-mime-parser.md) - Split WPT results by API and browser before changing shared-looking type handling; Blob normalization and Fetch MIME extraction are different contracts.
+- [Blob type is not a MIME parser](spec-compliance-blob-type-is-not-a-mime-parser.md) - Split WPT results by API, browser and body state; non-null Fetch bodies use raw Content-Type, while null bodies use MIME extraction.
 - [Check broken sniffing arithmetic against an engine](spec-compliance-check-broken-sniffing-arithmetic-against-an-engine.md) - Verify frame arithmetic against real byte vectors and an existing browser when the specification is inconsistent.
 - [Check the failing subtest before following WPT](spec-compliance-check-the-failing-subtest-before-following-wpt.md) - A file's aggregate score does not prove consensus for an assertion; inspect browser subtests and the actual engine algorithm.
 - [IDNA validity errors are fatal after normalization](spec-compliance-idna-validity-is-fatal-after-normalization.md) - Validate normalized Unicode status, domain-wide Bidi and ContextJ; an output string alone is not success.
