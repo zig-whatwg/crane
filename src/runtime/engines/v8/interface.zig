@@ -1651,12 +1651,6 @@ pub fn V8Interface(comptime Interface: type) type {
     return struct {
         const Self = @This();
 
-        /// The iterator prototype template for an isolate without template
-        /// storage (see iteratorPrototypeTemplate): isolate-scoped, no context.
-        var iterator_template_cache: ?*v8.FunctionTemplate = null;
-        var iterator_template_cache_isolate: ?*v8.Isolate = null;
-        var iterator_template_cache_generation: u64 = 0;
-
         /// All methods in this interface
         const all_methods = methods;
 
@@ -2476,7 +2470,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Still cache it for future use within this session
             if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
-                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc) catch null) |storage| {
                     storage.put(interface_name, template) catch {};
                 }
             }
@@ -2496,7 +2490,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // The isolate's own template storage: templates live with their
                 // isolate.
                 if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
-                    if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                    if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc) catch null) |storage| {
                         if (storage.get(interface_name)) |cached| {
                             return cached;
                         }
@@ -2567,7 +2561,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Cache the template for callback interfaces too
                 if (!template_registry.snapshot_mode) {
                     if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
-                        if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                        if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc) catch null) |storage| {
                             storage.put(interface_name, template) catch {};
                         }
                     }
@@ -2937,7 +2931,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Cache the template in the isolate's own storage (cleaned up
             // with the isolate).
             if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
-                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc) catch null) |storage| {
                     storage.put(interface_name, template) catch {};
                 }
             }
@@ -7201,41 +7195,24 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// The isolate's template for this interface's iterator prototype
-        /// (borrowed). Kept in the isolate's template storage beside the
-        /// interface templates, or - for an isolate without one, as
-        /// createTemplateCached does - in a per-interface static for the
-        /// isolate and cache generation. A template holds no context.
+        /// (borrowed), kept in the isolate's template storage beside the
+        /// interface templates - made for an isolate that has none yet, as the
+        /// template registry's is - for the isolate's life. A template holds
+        /// no context. It was kept in a per-interface static for an isolate
+        /// without storage, and the storage itself was thrown away whenever
+        /// ANY agent ended (template_registry's process-wide generation): the
+        /// realm's next iterator then had a new prototype.
         fn iteratorPrototypeTemplate(isolate: *v8.Isolate) ?*v8.FunctionTemplate {
             const isolate_templates = @import("isolate_templates.zig");
-            const isolate_alloc = @import("isolate_allocator.zig");
             // Not an interface name (it has a space), so it cannot collide with one.
             const key = interface_name ++ " Iterator";
-            const storage: ?*isolate_templates.IsolateTemplates = if (isolate_alloc.getIsolateAllocator(isolate)) |alloc|
-                isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null
-            else
-                null;
-            if (storage) |store| {
-                if (store.get(key)) |template| return template;
-            } else if (iterator_template_cache) |cached| {
-                if (iterator_template_cache_isolate == isolate and
-                    iterator_template_cache_generation == template_registry.cache_generation)
-                {
-                    return cached;
-                }
-            }
+            const storage = isolate_templates.storageFor(isolate) orelse return null;
+            if (storage.get(key)) |template| return template;
             const template = v8.v8_FunctionTemplate_New(isolate, null, null) orelse return null;
-            if (storage) |store| {
-                store.put(key, template) catch {
-                    v8.v8_FunctionTemplate_Dispose(template);
-                    return null;
-                };
-            } else {
-                // A template of another isolate or generation is dropped, not
-                // disposed: its isolate may be gone.
-                iterator_template_cache = template;
-                iterator_template_cache_isolate = isolate;
-                iterator_template_cache_generation = template_registry.cache_generation;
-            }
+            storage.put(key, template) catch {
+                v8.v8_FunctionTemplate_Dispose(template);
+                return null;
+            };
             return template;
         }
 
@@ -7866,6 +7843,15 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const v8_object: *v8.Object = @ptrCast(@alignCast(@constCast(raw_ptr)));
                     info.setReturnValue(@ptrCast(v8_object));
+                    // setReturnValue reads the handle into a Local; the
+                    // impl handed the iterator over (an owned Global, as
+                    // every value an impl returns is the binding's). Kept,
+                    // it was a strong root: the iterator, its reader and
+                    // its stream lived to the agent's end - one per
+                    // `for await` (instances B2's measurement).
+                    if (ReturnPayload == runtime.JSValue) {
+                        if (result == .handle) v8.v8_Global_Dispose(@ptrCast(v8_object));
+                    }
                 } else if (fn_info.params.len == 2) {
                     // call_values(instance, options) - has options
                     // Parse options from JavaScript argument
@@ -7935,6 +7921,15 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const v8_object: *v8.Object = @ptrCast(@alignCast(@constCast(raw_ptr)));
                     info.setReturnValue(@ptrCast(v8_object));
+                    // setReturnValue reads the handle into a Local; the
+                    // impl handed the iterator over (an owned Global, as
+                    // every value an impl returns is the binding's). Kept,
+                    // it was a strong root: the iterator, its reader and
+                    // its stream lived to the agent's end - one per
+                    // `for await` (instances B2's measurement).
+                    if (ReturnPayload == runtime.JSValue) {
+                        if (result == .handle) v8.v8_Global_Dispose(@ptrCast(v8_object));
+                    }
                 } else {
                     @compileError("Unexpected call_values signature");
                 }

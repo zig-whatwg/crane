@@ -152,12 +152,9 @@ pub const cleanupTemplateStorage = isolate_templates.cleanupTemplateStorage;
 /// Isolate allocator (per-isolate memory management)
 pub const isolate_allocator = @import("isolate_allocator.zig");
 
-/// Isolate lifecycle manager (central cleanup registry)
+/// Isolate lifecycle: an isolate's teardown steps, a constant table
 pub const isolate_lifecycle = @import("isolate_lifecycle.zig");
-pub const registerCleanup = isolate_lifecycle.registerCleanup;
-pub const registerCleanupDefault = isolate_lifecycle.registerCleanupDefault;
 pub const cleanupAll = isolate_lifecycle.cleanupAll;
-pub const registerBuiltinHandlers = isolate_lifecycle.registerBuiltinHandlers;
 
 /// RAII Handle Wrappers for V8 memory safety
 pub const handles = @import("handles.zig");

@@ -301,13 +301,9 @@ pub fn deinit() void {
         state.is_tearing_down = true;
 
         // Phase: Static Registries (cleanup before context-specific resources)
-        // (The Intl objects' state is the agent's: protocol_agents.endAgent
-        // frees it.)
+        // (The Intl objects' and ObservableArrays' states are the agent's:
+        // protocol_agents.endAgent frees them.)
         coordinator.cleanupPhase(.static_registries);
-
-        // Clean up ObservableArray static registry
-        // This is a safety net for states not cleaned up via V8 GC weak callbacks
-        @import("observable_array.zig").cleanupAll();
 
         // Deinit all owned runtime contexts
         // Note: The order doesn't matter for cleanup because we skip onObjectFreed
