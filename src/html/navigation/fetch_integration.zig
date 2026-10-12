@@ -482,6 +482,8 @@ pub fn resultFromResponse(
         "referrer-policy",
         // HTML "create and initialize a Document object" step 17.
         "refresh",
+        // Its step 7.1: the document's requestsOAC (dom.agent_cluster_keys).
+        "origin-agent-cluster",
     };
     for (security_headers) |header_name| {
         // Each header's values combined (Fetch "get" a header list value), as

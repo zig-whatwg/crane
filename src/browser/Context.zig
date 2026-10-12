@@ -1808,6 +1808,11 @@ pub const Context = struct {
         // a new one for a response from no network. It is the document's
         // before any of its script runs.
         if (result.takePolicyContainer()) |container| dom_mod.policy_containers.set(document, container);
+        // Step 7: requestsOAC, then "obtain a similar-origin window agent" -
+        // the keying of the document's agent cluster, decided once for its
+        // origin in the page's browsing context group. Before any of its
+        // script runs.
+        self.obtainAgentCluster(result.final_url, result.origin_agent_cluster);
         try self.parseLoadDocument(made, markup, html_options);
         // A load the page's own script started has replaced it.
         if (self.document_instance != document) return;
@@ -1818,6 +1823,35 @@ pub const Context = struct {
         if (kind == .text or kind == .media) {
             dom_mod.document_internals.setContentType(document, computed) catch {};
         }
+    }
+
+    /// HTML "create and initialize a Document object" step 7 for the page's
+    /// new document, made from the response to a fetch of `url` whose
+    /// `Origin-Agent-Cluster` header list value is `header`:
+    ///
+    /// "1. Let oacHeader be the result of getting a structured field value
+    /// given `Origin-Agent-Cluster` and "item" from navigationParams's
+    /// response's header list. 2. Let requestsOAC be true if oacHeader is not
+    /// null and oacHeader[0] is the boolean true; otherwise false. 3. If
+    /// navigationParams's reserved environment is a non-secure context, then
+    /// set requestsOAC to false. 4. Let agent be the result of obtaining a
+    /// similar-origin window agent given navigationParams's origin,
+    /// browsingContext's group, and requestsOAC."
+    ///
+    /// A top-level navigation's reserved environment's top-level creation URL
+    /// is its own URL. Crane's page keeps one Window for every load, so the
+    /// agent is not made here: what is recorded is the keying of the
+    /// document's origin in the group (dom.agent_cluster_keys), which the
+    /// window's originAgentCluster and its agent cluster read back.
+    fn obtainAgentCluster(self: *Context, url: []const u8, header: ?[]const u8) void {
+        const window = self.window_instance orelse return;
+        const navigable = html_mod.window.BrowsingContext.ofWindow(window) orelse return;
+        const keys = dom_mod.agent_cluster_keys;
+        const origin = fetch.internal.origins.serializedOriginOf(self.allocator, url) catch return;
+        defer self.allocator.free(origin);
+        const requests_oac = keys.requestsOAC(self.allocator, header, keys.isSecureTopLevelCreationUrl(self.allocator, url));
+        const isolated = if (dom_mod.global_settings.of(window)) |settings| settings.cross_origin_isolated(window) else false;
+        _ = keys.obtain(runtime.BrowserScope.ofInstance(window), navigable.virtual_group_id, origin, requests_oac, isolated);
     }
 
     // ============================================================================
