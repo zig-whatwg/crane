@@ -222,7 +222,8 @@ pub const CookieJar = struct {
             if (cookieMatches(cookie, options)) {
                 // 4. Set the last-access-time of each cookie to now.
                 cookie.touch();
-                const cloned = try cookie.clone(self.allocator);
+                var cloned = try cookie.clone(self.allocator);
+                errdefer cloned.deinit();
                 try result.append(self.allocator, cloned);
             }
         }

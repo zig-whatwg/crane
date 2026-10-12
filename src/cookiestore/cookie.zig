@@ -148,8 +148,10 @@ pub const Cookie = struct {
         value: []const u8,
     ) !Self {
         const now = clock.wallMillis();
+        const owned_name = try allocator.dupe(u8, name);
+        errdefer allocator.free(owned_name);
         return Self{
-            .name = try allocator.dupe(u8, name),
+            .name = owned_name,
             .value = try allocator.dupe(u8, value),
             .creation_time = now,
             .last_access_time = now,
@@ -178,30 +180,26 @@ pub const Cookie = struct {
 
     /// Clone the cookie
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
-        const cookie = Self{
-            .name = try allocator.dupe(u8, self.name),
-            .value = try allocator.dupe(u8, self.value),
-            .domain = if (self.domain) |d| try allocator.dupe(u8, d) else null,
-            .path = if (std.mem.eql(u8, self.path, "/")) "/" else try allocator.dupe(u8, self.path),
-            .expiry_time = self.expiry_time,
-            .creation_time = self.creation_time,
-            .last_access_time = self.last_access_time,
-            .secure = self.secure,
-            .http_only = self.http_only,
-            .same_site = self.same_site,
-            .host_only = self.host_only,
-            .has_path = self.has_path,
-            .partition_key = if (self.partition_key) |pk| try pk.clone(allocator) else null,
-            .allocator = allocator,
-        };
+        var cookie = self;
+        cookie.allocator = allocator;
+        cookie.name = try allocator.dupe(u8, self.name);
+        errdefer allocator.free(cookie.name);
+        cookie.value = try allocator.dupe(u8, self.value);
+        errdefer allocator.free(cookie.value);
+        cookie.domain = if (self.domain) |domain| try allocator.dupe(u8, domain) else null;
+        errdefer if (cookie.domain) |domain| allocator.free(domain);
+        cookie.path = if (std.mem.eql(u8, self.path, "/")) "/" else try allocator.dupe(u8, self.path);
+        errdefer if (!std.mem.eql(u8, cookie.path, "/")) allocator.free(cookie.path);
+        cookie.partition_key = if (self.partition_key) |pk| try pk.clone(allocator) else null;
         return cookie;
     }
 
     /// Set the domain attribute
     pub fn setDomain(self: *Self, domain: []const u8) !void {
         if (self.allocator) |alloc| {
+            const owned = try alloc.dupe(u8, domain);
             if (self.domain) |d| alloc.free(d);
-            self.domain = try alloc.dupe(u8, domain);
+            self.domain = owned;
             self.host_only = false;
         }
     }
@@ -217,23 +215,25 @@ pub const Cookie = struct {
                 self.path = "/";
                 return;
             }
-            // Free old path if it was allocated (not the default "/")
+            // Allocate first: on failure the old path must remain valid.
+            const owned = try alloc.dupe(u8, path);
             if (!std.mem.eql(u8, self.path, "/")) {
                 alloc.free(self.path);
             }
-            self.path = try alloc.dupe(u8, path);
+            self.path = owned;
         }
     }
 
     /// Set the partition key
     pub fn setPartitionKey(self: *Self, partition_key: PartitionKey) !void {
         if (self.allocator) |alloc| {
+            const owned = try partition_key.clone(alloc);
             if (self.partition_key) |*pk| {
                 if (pk.allocator != null) {
                     pk.deinit();
                 }
             }
-            self.partition_key = try partition_key.clone(alloc);
+            self.partition_key = owned;
         }
     }
 
