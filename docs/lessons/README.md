@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A union result is owned as its active member is](architecture-a-union-result-is-owned-as-its-active-member.md) - An ownership rule keyed on a type is wrong for a union: ask the value which member it holds, and keep the safe default for every member you cannot prove fresh.
 - [Free a parser buffer on one cleanup path](architecture-free-a-parser-buffer-on-one-cleanup-path.md) - Use one deferred cleanup for temporary storage, and test failure at the final allocation as well as success.
 - [Find an object's Browser from its address, not from its context](architecture-find-an-objects-browser-from-its-address-not-its-context.md) - An owner you can only reach through a context dies with the context; put the owner where the object's memory is - an allocation block aligned to its size names its allocator for free.
 - [A traced edge keeps an object from the collector, not from its realm's end](architecture-a-traced-edge-keeps-an-object-from-the-collector-not-from-its-realm-s-end.md) - A traced edge is a reason for the collector to keep an object, not a guarantee that it lives: if the object can come from another realm, its realm's end frees it - read it through a generation check everywhere, and find out by ending that realm in a test.
@@ -271,6 +272,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Every native callback owns what `info` hands it - a dispatcher written beside interface.zig repeats its leaks](architecture-every-native-callback-owns-what-info-hands-it.md) - Run each callback's statement 10,000 times under `gc_bench --c-alloc` and read `global_handle_bytes`; a dispatcher that bypasses interface.zig's release predicates must be measured on its own.
 
 ### Spec Compliance
+- [A union's sequence member is decided by @@iterator, not IsArray](spec-compliance-a-union-s-sequence-member-is-decided-by-iterator-not-isarray.md) - Never route a union by the JavaScript type you expect callers to pass - follow 3.2.25's steps, and test with a non-Array iterable and a Proxy that logs its traps.
 - [Node intersection excludes boundary contact](spec-compliance-node-intersection-excludes-boundary-contact.md) - Test both equal-boundary edges and collapsed interior points.
 - [A frame navigation sees only the response headers its fetch copied](spec-compliance-a-frame-navigation-sees-only-the-headers-its-fetch-copied.md) - A header a frame or popup navigation reads must be on fetch_integration's copy list - a missing one reads as "not sent", silently.
 - [MIME parameters compare string contents](spec-compliance-mime-parameters-compare-string-contents.md) - Check collection equality before using it for specification strings, and test parsing independently of its callers.

@@ -64,14 +64,14 @@ const Record = struct {
 };
 
 /// ECMAScript GetIteratorFromMethod(obj, method). OWNED record.
-fn getIteratorFromMethod(entered: Entered, object: *ffi.Value, method: *ffi.Value, kind: engine.IteratorKind, allocator: Allocator) Error!*Record {
+fn getIteratorFromMethod(at: anytype, object: *ffi.Value, method: *ffi.Value, kind: engine.IteratorKind, allocator: Allocator) Error!*Record {
     // 1. Let iterator be ? Call(method, obj).
-    const iterator = try support.call(entered, method, object, &.{});
+    const iterator = try support.call(at, method, object, &.{});
     errdefer ffi.v8_Global_Dispose(iterator);
     // 2. If iterator is not an Object, throw a TypeError exception.
     if (!ffi.v8_Value_IsObject(iterator)) return error.TypeError;
     // 3. Let nextMethod be ? Get(iterator, "next").
-    const next_method = try support.get(entered, iterator, "next");
+    const next_method = try support.get(at, iterator, "next");
     errdefer ffi.v8_Global_Dispose(next_method);
     // 4. Let iteratorRecord be the Iterator Record { [[Iterator]]: iterator,
     //    [[NextMethod]]: nextMethod, [[Done]]: false }.
@@ -84,7 +84,7 @@ fn getIteratorFromMethod(entered: Entered, object: *ffi.Value, method: *ffi.Valu
 /// ECMAScript IteratorNext(iteratorRecord): the result object. For an async
 /// iterator, the result as [[NextMethod]] returned it (a promise), for the
 /// caller to await and then check. OWNED.
-fn iteratorNextValue(entered: Entered, record: *Record) Error!*ffi.Value {
+fn iteratorNextValue(at: anytype, record: *Record) Error!*ffi.Value {
     // 1. Let result be Completion(Call(iteratorRecord.[[NextMethod]],
     //    iteratorRecord.[[Iterator]])). Call throws a TypeError for a
     //    [[NextMethod]] that is not callable.
@@ -94,7 +94,7 @@ fn iteratorNextValue(entered: Entered, record: *Record) Error!*ffi.Value {
     }
     // 3. If result is a throw completion, then set iteratorRecord.[[Done]]
     //    to true, and return ? result.
-    const result = support.call(entered, record.next_method, record.iterator, &.{}) catch |err| {
+    const result = support.call(at, record.next_method, record.iterator, &.{}) catch |err| {
         record.done = true;
         return err;
     };
@@ -112,20 +112,20 @@ fn iteratorNextValue(entered: Entered, record: *Record) Error!*ffi.Value {
 
 /// ECMAScript IteratorStepValue(iteratorRecord): the next value (OWNED), or
 /// null for DONE.
-fn stepValue(entered: Entered, record: *Record) Error!?*ffi.Value {
+fn stepValue(at: anytype, record: *Record) Error!?*ffi.Value {
     // IteratorStep(iteratorRecord):
     // 1. Let result be ? IteratorNext(iteratorRecord).
-    const result = try iteratorNextValue(entered, record);
+    const result = try iteratorNextValue(at, record);
     defer ffi.v8_Global_Dispose(result);
     // 2. Let done be Completion(IteratorComplete(result)):
     //    ToBoolean(? Get(iterResult, "done")).
     // 3. If done is a throw completion, set iteratorRecord.[[Done]] to true.
     // 4. Set done to ? done.
-    const done_value = support.get(entered, result, "done") catch |err| {
+    const done_value = support.get(at, result, "done") catch |err| {
         record.done = true;
         return err;
     };
-    const done = support.toBoolean(entered, done_value);
+    const done = support.toBoolean(at, done_value);
     ffi.v8_Global_Dispose(done_value);
     // 5. If done is true, then set iteratorRecord.[[Done]] to true, and
     //    return DONE.
@@ -138,7 +138,7 @@ fn stepValue(entered: Entered, record: *Record) Error!?*ffi.Value {
     //    "value").
     // 4. If value is a throw completion, set iteratorRecord.[[Done]] to true.
     // 5. Return ? value.
-    return support.get(entered, result, "value") catch |err| {
+    return support.get(at, result, "value") catch |err| {
         record.done = true;
         return err;
     };
@@ -454,17 +454,19 @@ fn sequenceMethod(entered: Entered, object: *ffi.Value) Error!?*ffi.Value {
 
 /// WebIDL "create a sequence from an iterable" (3.2.21.1), item by item:
 /// `each` is given every item. Stops at the first error, without closing
-/// the iterator, as the spec's conversion does.
-fn createSequence(entered: Entered, object: *ffi.Value, method: *ffi.Value, allocator: Allocator, context: anytype, comptime each: fn (@TypeOf(context), *ffi.Value) Error!void) Error!void {
+/// the iterator, as the spec's conversion does. `at` is where it runs:
+/// an Entered realm, or anything else with an `isolate` and a `context()`
+/// (the binding's own conversions, conversions.zig, run in the caller's).
+pub fn createSequence(at: anytype, object: *ffi.Value, method: *ffi.Value, allocator: Allocator, context: anytype, comptime each: fn (@TypeOf(context), *ffi.Value) Error!void) Error!void {
     // 1. Let iteratorRecord be ? GetIteratorFromMethod(iterable, method).
-    const record = try getIteratorFromMethod(entered, object, method, .sync, allocator);
+    const record = try getIteratorFromMethod(at, object, method, .sync, allocator);
     defer record.release();
     // 2. Initialize i to be 0.
     // 3. Repeat
     while (true) {
         // 1. Let next be ? IteratorStepValue(iteratorRecord).
         // 2. If next is done, then return the sequence.
-        const next = (try stepValue(entered, record)) orelse return;
+        const next = (try stepValue(at, record)) orelse return;
         // 3. Initialize S_i to the result of converting next to an IDL value
         //    of type T (`each` takes `next`).
         // 4. Set i to i + 1.

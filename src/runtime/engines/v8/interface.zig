@@ -1142,24 +1142,41 @@ fn constructorIntegerConversion(comptime Interface: type, comptime index: usize)
     return .modulo;
 }
 
+/// WebIDL ByteString (3.2.11): the arguments of `fn_name` - bit i for
+/// argument i, bit 0 for an attribute setter's value - whose code units above
+/// 0xFF are a TypeError. ByteString and USVString are both `[]const u8`, so
+/// codegen writes the table (`byte_string_arguments` in a generated
+/// interface) from the IDL; an interface without one answers 0.
+pub fn byteStringMask(comptime Interface: type, comptime fn_name: []const u8) u32 {
+    if (!@hasDecl(Interface, "byte_string_arguments")) return 0;
+    inline for (Interface.byte_string_arguments) |entry| {
+        if (comptime std.mem.eql(u8, entry[0], fn_name)) return entry[1];
+    }
+    return 0;
+}
+
 /// Per-argument conversion steps codegen's tables add to an operation's
-/// arguments: the restricted float check and the integer branch.
+/// arguments: the restricted float check, the ByteString check and the
+/// integer branch.
 pub const ArgModes = struct {
     restricted: u32 = 0,
+    byte_string: u32 = 0,
     enforce_range: u32 = 0,
     clamp: u32 = 0,
 };
 
-/// One argument's: whether it is a restricted float, and its ConvertToInt
-/// branch.
+/// One argument's: whether it is a restricted float or a ByteString, and its
+/// ConvertToInt branch.
 const ArgMode = struct {
     restricted: bool = false,
+    byte_string: bool = false,
     integer: conv.IntegerConversion = .modulo,
 };
 
 fn argModesOf(comptime Interface: type, comptime fn_name: []const u8) ArgModes {
     return .{
         .restricted = restrictedFloatMask(Interface, fn_name),
+        .byte_string = byteStringMask(Interface, fn_name),
         .enforce_range = integerConversionMask(Interface, fn_name, .enforce_range),
         .clamp = integerConversionMask(Interface, fn_name, .clamp),
     };
@@ -1168,6 +1185,7 @@ fn argModesOf(comptime Interface: type, comptime fn_name: []const u8) ArgModes {
 fn argMode(comptime modes: ArgModes, comptime index: usize) ArgMode {
     return .{
         .restricted = restrictedBit(modes.restricted, index),
+        .byte_string = restrictedBit(modes.byte_string, index),
         .integer = if (restrictedBit(modes.enforce_range, index)) .enforce_range else if (restrictedBit(modes.clamp, index)) .clamp else .modulo,
     };
 }
@@ -2961,6 +2979,15 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Check if a type is an optional callback type (like EventHandler = ?*const fn(...))
         /// A value of one holds the function's Global<Value>* (conversions.zig), so a
         /// getter returning one needs special handling for return value conversion.
+        /// A union the getter converts through conv.toV8Value - a tagged
+        /// one, other than the string and `any` types, which are unions in
+        /// Zig but values of their own here.
+        fn isUnionResult(comptime T: type) bool {
+            const info = @typeInfo(T);
+            if (info != .@"union" or info.@"union".tag_type == null) return false;
+            return T != runtime.DOMString and T != runtime.JSValue;
+        }
+
         fn isOptionalCallbackType(comptime T: type) bool {
             const type_info = @typeInfo(T);
             if (type_info != .optional) return false;
@@ -3692,6 +3719,19 @@ pub fn V8Interface(comptime Interface: type) type {
                         } else if (comptime PayloadType == ?runtime.JSValue) {
                             if (result == null or result.? != .instance) v8.v8_Global_Dispose(v8_value);
                             if (result) |value| freeOwnedString(cleanup_allocator, value);
+                        } else if (comptime isUnionResult(PayloadType)) {
+                            // A union (CSSNumberish, LineAndPositionSetting):
+                            // its active member's conversion, and so that
+                            // member's ownership - a number or string made
+                            // here is released, a wrapper or an `any`
+                            // member's handle (ImageData.data's, the
+                            // ImageData's own) is kept (conv.unionValueIsOwned).
+                            if (conv.unionValueIsOwned(PayloadType, result)) v8.v8_Global_Dispose(v8_value);
+                        } else if (comptime @typeInfo(PayloadType) == .optional and isUnionResult(@typeInfo(PayloadType).optional.child)) {
+                            // A nullable union: null as below, a member as above.
+                            if (result) |member| {
+                                if (conv.unionValueIsOwned(@typeInfo(PayloadType).optional.child, member)) v8.v8_Global_Dispose(v8_value);
+                            } else v8.v8_Global_Dispose(v8_value);
                         } else if (comptime @typeInfo(PayloadType) == .optional) {
                             // Any other optional: a null result's value is made
                             // here, fresh - `v8.v8_Null(isolate_inner)` in the
@@ -4189,8 +4229,10 @@ pub fn V8Interface(comptime Interface: type) type {
 
         /// Convert one argument, then - for a restricted `double` or `float`
         /// (`restricted_floats`) - apply that conversion's last step: NaN and
-        /// the infinities are a TypeError. The check is part of this
-        /// argument's own conversion, so no later argument is converted first.
+        /// the infinities are a TypeError; for a ByteString
+        /// (`byte_string_arguments`), a code unit above 0xFF is. The check is
+        /// part of this argument's own conversion, so no later argument is
+        /// converted first.
         fn convertArg(
             comptime T: type,
             comptime mode: ArgMode,
@@ -4202,6 +4244,12 @@ pub fn V8Interface(comptime Interface: type) type {
             const value = try convertArgReleasingAs(T, mode.integer, allocator, isolate, context, arg);
             if (comptime mode.restricted) {
                 conv.requireFinite(T, value) catch |err| {
+                    freeConvertedArg(T, allocator, value);
+                    return err;
+                };
+            }
+            if (comptime mode.byte_string) {
+                conv.requireByteString(T, value) catch |err| {
                     freeConvertedArg(T, allocator, value);
                     return err;
                 };
@@ -4781,12 +4829,19 @@ pub fn V8Interface(comptime Interface: type) type {
                 return conv.enumToV8String(ReturnType, isolate, result);
             }
 
-            // Handle union types (e.g., ReadableStreamReader)
+            // A union (FormData.get's (File or USVString), getReader's
+            // reader): its active member's conversion, and so that member's
+            // ownership (`conv.unionValueIsOwned`) - a String made for a
+            // string member is released once set, a wrapper is the cache's.
+            // `owned` was left false for every union, so FormData.get kept
+            // the String of every string entry it returned.
             if (type_info == .@"union") {
-                // Use the generic toV8Value conversion which handles unions
-                return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
+                const converted = conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
+                    owned.* = true;
                     return v8.v8_Undefined(isolate);
                 };
+                owned.* = conv.unionValueIsOwned(ReturnType, result);
+                return converted;
             }
 
             // Handle Promise(T) types - extract the handle and return the V8 Promise
@@ -8193,6 +8248,14 @@ pub fn V8Interface(comptime Interface: type) type {
                     // setter steps run.
                     if (comptime restrictedFloatMask(Interface, setter_name_param) & 1 != 0) {
                         conv.requireFinite(ValueType, zig_value) catch |err| {
+                            conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
+                            return;
+                        };
+                    }
+                    // A ByteString (`byte_string_arguments`): a code unit
+                    // above 0xFF is a TypeError, before the setter steps run.
+                    if (comptime byteStringMask(Interface, setter_name_param) & 1 != 0) {
+                        conv.requireByteString(ValueType, zig_value) catch |err| {
                             conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
                             return;
                         };

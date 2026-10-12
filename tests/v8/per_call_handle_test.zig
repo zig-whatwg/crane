@@ -301,3 +301,31 @@ test "an observable array's traps release what they are given and make" {
     try page.expectNoHandleLeftBy("try { Object.keys(" ++ sheets ++ "); } catch (err) {}");
     try page.expectNoHandleLeftBy("try { Object.getOwnPropertyDescriptor(" ++ sheets ++ ", 'length'); } catch (err) {}");
 }
+
+test "an operation returning a union releases the string its member made" {
+    const page = try Page.open();
+    defer page.close();
+    // FormData.get returns FormDataEntryValue? = (File or USVString)?: the
+    // union went to conv.toV8Value with `owned` left false, so the String
+    // made for a USVString member was kept - 16-32 B per call (Codex row
+    // 19, Q13). A File member is its wrapper, the wrapper cache's.
+    const form = "(globalThis.form ||= (() => { const f = new FormData(); f.append('a', 'b'); f.append('f', new Blob(['x'])); return f; })())";
+    try page.expectNoHandleLeftBy(form ++ ".get('a')");
+    try page.expectNoHandleLeftBy(form ++ ".get('f')");
+    try page.expectNoHandleLeftBy(form ++ ".get('missing')");
+}
+
+test "an attribute getter returning a union keeps the handle its interface or any member refers to" {
+    const page = try Page.open();
+    defer page.close();
+    // ImageData.data is ImageDataArray = (Uint8ClampedArray or
+    // Float16Array): JSValue members, the ImageData's own handle lent
+    // (`borrow`). The getter must not release it - a released one would be
+    // freed under the ImageData - nor make one per read. Every union getter
+    // with a string or number member (CSSNumberish, VTTCue.line, ...) is
+    // still a stub today; conv.unionValueIsOwned decides those once they are
+    // implemented.
+    const image = "(globalThis.image ||= new ImageData(2, 2))";
+    try page.expectNoHandleLeftBy(image ++ ".data");
+    try page.run("(() => { for (let k = 0; k < 64; k++) if (image.data !== image.data || image.data.length !== 16) return 'changed'; return 'ok'; })()");
+}

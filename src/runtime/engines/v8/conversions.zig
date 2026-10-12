@@ -34,6 +34,9 @@ const pointer_tag = @import("pointer_tag.zig");
 const DebugAssertions = pointer_tag.DebugAssertions;
 const global_handles = @import("global_handles.zig");
 const value_operations = @import("value_operations.zig");
+const protocol_engine = @import("engine");
+const protocol_support = @import("protocol_support.zig");
+const protocol_conversions = @import("protocol_conversions.zig");
 
 /// What a callback-interface argument's wrapper is allocated from: a
 /// general-purpose allocator, since the binding makes and frees one per call
@@ -416,6 +419,43 @@ pub fn requireFinite(comptime T: type, value: T) ConversionError!void {
     }
 }
 
+/// WebIDL 3.2.11 step 2 for a value already converted as a string: "If the
+/// value of any element of x is greater than 255, then throw a TypeError." The
+/// string conversion ByteString shares with USVString (both `[]const u8`)
+/// keeps every code unit above 0xFF as such in its WTF-8 - a lone surrogate
+/// becomes U+FFFD, above 0xFF too - so the check reads the converted bytes
+/// (`codeUnitsFitInByte`). `value` is a string, its nullable form, an
+/// optional argument (`webidl.Opt`), or a sequence of them. The binding calls
+/// this where codegen marked a value a ByteString (`byte_string_arguments`,
+/// `byte_string_members`).
+pub fn requireByteString(comptime T: type, value: T) ConversionError!void {
+    switch (@typeInfo(T)) {
+        .optional => |o| if (value) |v| try requireByteString(o.child, v),
+        .pointer => |ptr| if (comptime ptr.size == .slice) {
+            if (comptime ptr.child == u8) {
+                if (!codeUnitsFitInByte(value)) return ConversionError.TypeError;
+            } else {
+                for (value) |v| try requireByteString(ptr.child, v);
+            }
+        },
+        .@"struct" => if (comptime @hasField(T, "was_passed") and @hasField(T, "value")) {
+            if (value.was_passed) try requireByteString(@FieldType(T, "value"), value.value);
+        },
+        else => {},
+    }
+}
+
+/// Whether dictionary `T` lists member `name` in `byte_string_members`.
+fn isByteStringMember(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        if (!@hasDecl(T, "byte_string_members")) return false;
+        for (T.byte_string_members) |member| {
+            if (std.mem.eql(u8, member, name)) return true;
+        }
+        return false;
+    }
+}
+
 /// Whether dictionary `T` lists member `name` in `any_members`.
 fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
     comptime {
@@ -652,146 +692,301 @@ pub fn fromV8Record(
     return rec;
 }
 
-/// Convert V8 value to HeadersInit union
-/// HeadersInit = (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
+/// Where the binding's conversions run, for the iteration steps the protocol
+/// shares (`protocol_conversions.createSequence`): the caller's isolate and
+/// context, nothing entered here.
+const ConversionSite = struct {
+    isolate: *v8.Isolate,
+    ctx: *v8.Context,
+
+    pub fn context(self: ConversionSite) *v8.Context {
+        return self.ctx;
+    }
+};
+
+/// A protocol error from the iteration steps as a conversion's: what script
+/// threw stays pending, "throw a TypeError" is TypeError, and anything else
+/// (the engine failing with nothing thrown) is a TypeError for the binding to
+/// throw.
+fn conversionErrorOf(err: anyerror) ConversionError {
+    return switch (err) {
+        error.ExceptionPending => ConversionError.ExceptionPending,
+        error.OutOfMemory => ConversionError.OutOfMemory,
+        else => ConversionError.TypeError,
+    };
+}
+
+/// ToString(V)'s code units as WTF-8 (an unpaired surrogate keeps its
+/// three-byte form): what V8's WriteUtf8 writes. OWNED; "" is the static
+/// empty slice. A Symbol is ToString's TypeError; what a toString() throws
+/// is left pending.
+fn toStringBytes(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ConversionError![]u8 {
+    if (v8.v8_Value_IsSymbol(value)) return ConversionError.TypeError;
+    const result = v8.v8_Value_ToString_Safe(value, context);
+    defer v8.v8_FreeToStringResult(result);
+    if (result.exception) |exception| {
+        v8.v8_Isolate_ThrowException(isolate, exception);
+        return ConversionError.ExceptionPending;
+    }
+    const string = result.value orelse return ConversionError.TypeError;
+    const length = v8.v8_String_Utf8Length(string);
+    if (length < 0) return ConversionError.StringError;
+    if (length == 0) return @constCast(&[_]u8{});
+    const buffer = try allocator.alloc(u8, @intCast(length));
+    errdefer allocator.free(buffer);
+    if (v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length)) != length) return ConversionError.StringError;
+    return buffer;
+}
+
+/// Whether every code unit WTF-8 `bytes` encodes is at most 0xFF: no byte is
+/// a lead byte of a longer form. U+0080..U+00FF are C2 or C3 and one
+/// continuation byte; U+0100 and above, a surrogate included, start at C4.
+pub fn codeUnitsFitInByte(bytes: []const u8) bool {
+    for (bytes) |byte| {
+        if (byte >= 0xC4) return false;
+    }
+    return true;
+}
+
+/// WebIDL 3.2.11, converting V to ByteString:
+///
+/// 1. Let x be ? ToString(V).
+/// 2. If the value of any element of x is greater than 255, then throw a
+///    TypeError.
+/// 3. Return an IDL ByteString value whose length is the length of x, and
+///    where the value of each element is the value of the corresponding
+///    element of x.
+///
+/// Step 3's code units are held as UTF-8, as every Crane string is (each one
+/// above 0x7F as its two-byte form), not as one byte each: the impls read a
+/// ByteString as text. OWNED, as the `[]const u8` conversion's result is
+/// (`interface.freeConvertedArg`).
+pub fn fromV8ByteString(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ConversionError![]const u8 {
+    // 1.
+    const x = try toStringBytes(allocator, isolate, context, value);
+    // 2.
+    if (!codeUnitsFitInByte(x)) {
+        if (x.len > 0) allocator.free(x);
+        return ConversionError.TypeError;
+    }
+    // 3.
+    return x;
+}
+
+/// ECMAScript GetMethod(V, %Symbol.iterator%) for an Object V: the method
+/// (OWNED), or null when it is undefined or null. Not callable is a
+/// TypeError; a getter's throw is left pending.
+fn iteratorMethodOf(isolate: *v8.Isolate, context: *v8.Context, object: *v8.Value) ConversionError!?*v8.Value {
+    const at: ConversionSite = .{ .isolate = isolate, .ctx = context };
+    return protocol_support.getSymbolMethod(at, object, .iterator) catch |err| conversionErrorOf(err);
+}
+
+/// WebIDL 3.2.21.1 "create a sequence from an iterable" - `object` and its
+/// @@iterator `method` (BORROWED) - each item converted by `convertItem`, in
+/// turn: the item's conversion runs before the next IteratorStepValue, so
+/// what it observes interleaves with the iterator as the spec says.
+///
+/// Each item's handle is released by the rule fromV8Sequence applies to an
+/// element (`releaseElementHandle`). On failure the items converted so far
+/// are freed (`interface.freeConvertedArg`), and the iterator is not closed:
+/// the spec's conversion does not close it. The result is allocated at its
+/// exact length, as `interface.freeConvertedArg` frees a sequence.
+fn sequenceFromIterable(
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    object: *v8.Value,
+    method: *v8.Value,
+    comptime convertItem: fn (std.mem.Allocator, *v8.Isolate, *v8.Context, *v8.Value) ConversionError!T,
+) ConversionError![]T {
+    var items: std.ArrayListUnmanaged(T) = .empty;
+    errdefer {
+        for (items.items) |item| interface_mod.freeConvertedArg(T, allocator, item);
+        items.deinit(allocator);
+    }
+    var failure: ?ConversionError = null;
+
+    const Collect = struct {
+        items: *std.ArrayListUnmanaged(T),
+        failure: *?ConversionError,
+        allocator: std.mem.Allocator,
+        isolate: *v8.Isolate,
+        context: *v8.Context,
+
+        fn item(self: @This(), next: *v8.Value) protocol_engine.Error!void {
+            // 3. Initialize S_i to the result of converting next to an IDL
+            //    value of type T.
+            const converted = convertItem(self.allocator, self.isolate, self.context, next) catch |err| {
+                if (comptime interface_mod.argHandleIsCopied(T) or interface_mod.argumentHandleIsKeptInValue(T)) v8.v8_Value_Dispose(next);
+                self.failure.* = err;
+                return error.OperationFailed;
+            };
+            releaseElementHandle(T, converted, next);
+            self.items.append(self.allocator, converted) catch {
+                interface_mod.freeConvertedArg(T, self.allocator, converted);
+                self.failure.* = ConversionError.OutOfMemory;
+                return error.OutOfMemory;
+            };
+        }
+    };
+
+    const at: ConversionSite = .{ .isolate = isolate, .ctx = context };
+    protocol_conversions.createSequence(at, object, method, allocator, Collect{
+        .items = &items,
+        .failure = &failure,
+        .allocator = allocator,
+        .isolate = isolate,
+        .context = context,
+    }, Collect.item) catch |err| return failure orelse conversionErrorOf(err);
+    return items.toOwnedSlice(allocator);
+}
+
+/// `fromV8Value` as a conversion `sequenceFromIterable` can call per item.
+fn ItemConversion(comptime T: type) type {
+    return struct {
+        fn convert(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ConversionError!T {
+            return fromV8Value(T, allocator, isolate, context, value);
+        }
+    };
+}
+
+/// WebIDL 3.2.21 step 4 for a sequence type `S` (a slice): "create a
+/// sequence from V and method", `method` V's @@iterator (BORROWED). An Array
+/// is read index by index (`fromV8Sequence`), as before: what its own
+/// iterator yields, unless script replaced Array.prototype[@@iterator]. Blink
+/// takes the same fast path for anything IsArray()
+/// (NativeValueTraits<IDLSequence<T>>::NativeValue,
+/// bindings/core/v8/native_value_traits_impl.h, crbug.com/715122). Any other
+/// iterable - a Map, a Set, a generator, a platform object's iterator - is
+/// iterated.
+fn sequenceFromMethod(comptime S: type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value, method: *v8.Value) ConversionError!S {
+    const Elem = @typeInfo(S).pointer.child;
+    if (v8.v8_Value_IsArray(value)) return fromV8Sequence(Elem, allocator, isolate, context, @ptrCast(value));
+    return sequenceFromIterable(Elem, allocator, isolate, context, value, method, ItemConversion(Elem).convert);
+}
+
+/// WebIDL 3.2.21, converting V to sequence<ByteString> - HeadersInit's
+/// inner sequence: an Object (1) whose @@iterator (2) is not undefined (3),
+/// created from it (4). OWNED.
+fn byteStringSequenceFrom(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ConversionError![]const runtime.ByteString {
+    // 1. If V is not an Object, throw a TypeError.
+    if (!v8.v8_Value_IsObject(value)) return ConversionError.TypeError;
+    // 2. Let method be ? GetMethod(V, %Symbol.iterator%).
+    // 3. If method is undefined, throw a TypeError.
+    const method = (try iteratorMethodOf(isolate, context, value)) orelse return ConversionError.TypeError;
+    defer v8.v8_Value_Dispose(method);
+    // 4. Return the result of creating a sequence from V and method.
+    return sequenceFromIterable(runtime.ByteString, allocator, isolate, context, value, method, fromV8ByteString);
+}
+
+/// The record arm's entry type, as codegen emits HeadersInit.
+const HeadersRecordEntry = std.meta.Elem(@FieldType(typedefs.HeadersInit, "byte_string_byte_string_record"));
+
+/// WebIDL 3.2.23, converting the Object O to record<ByteString, ByteString>
+/// - HeadersInit's record arm. Every key and value is converted as it is
+/// reached, so a key that is no ByteString throws before its Get, and a
+/// value that is none before the next key's [[GetOwnProperty]]
+/// (fetch/api/headers/headers-record.any.js). OWNED: an exact-length slice
+/// of entries whose strings are the conversion's.
+fn byteStringRecordFrom(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, object: *v8.Value) ConversionError![]const HeadersRecordEntry {
+    // 1. If O is not an Object, throw a TypeError (the union took only an
+    //    Object here).
+    // 2. Let result be a new empty instance of record<ByteString, ByteString>.
+    var result: std.ArrayListUnmanaged(HeadersRecordEntry) = .empty;
+    errdefer {
+        for (result.items) |entry| interface_mod.freeConvertedArg(HeadersRecordEntry, allocator, entry);
+        result.deinit(allocator);
+    }
+
+    // 3. Let keys be ? O.[[OwnPropertyKeys]]().
+    var threw = false;
+    const own_keys = v8.v8_Object_OwnPropertyKeysCatching(context, object, &threw);
+    if (threw) return rethrowCaught(isolate, own_keys);
+    const keys: *v8.Array = @ptrCast(own_keys orelse return ConversionError.TypeError);
+    defer v8.v8_Global_Dispose(@ptrCast(keys));
+
+    // 4. For each key of keys:
+    const count = v8.v8_Array_Length(keys);
+    var i: u32 = 0;
+    while (i < count) : (i += 1) {
+        const key = v8.v8_Array_Get(context, keys, i) orelse return ConversionError.TypeError;
+        defer v8.v8_Value_Dispose(key);
+        // 1. Let desc be ? O.[[GetOwnProperty]](key).
+        var enumerable = false;
+        const thrown = v8.v8_Object_IsOwnEnumerableCatching(context, object, key, &enumerable, &threw);
+        if (threw) return rethrowCaught(isolate, thrown);
+        // 2. If desc is not undefined and desc.[[Enumerable]] is true:
+        if (!enumerable) continue;
+        //    1. Let typedKey be key converted to an IDL value of type K - a
+        //       Symbol is ToString's TypeError.
+        const typed_key = try fromV8ByteString(allocator, isolate, context, key);
+        errdefer interface_mod.freeConvertedArg(runtime.ByteString, allocator, typed_key);
+        //    2. Let value be ? Get(O, key).
+        const item = v8.v8_Object_GetByKeyCatching(context, object, key, &threw);
+        if (threw) return rethrowCaught(isolate, item);
+        const item_value = item orelse return ConversionError.TypeError;
+        defer v8.v8_Value_Dispose(item_value);
+        //    3. Let typedValue be value converted to an IDL value of type V.
+        const typed_value = try fromV8ByteString(allocator, isolate, context, item_value);
+        errdefer interface_mod.freeConvertedArg(runtime.ByteString, allocator, typed_value);
+        //    4. Set result[typedKey] to typedValue. Two keys of O never give
+        //       one ByteString: a ByteString is the key's own code units.
+        try result.append(allocator, .{ .key = typed_key, .value = typed_value });
+    }
+    // 5. Return result.
+    return result.toOwnedSlice(allocator);
+}
+
+/// Make pending a value a Catching call caught (OWNED, taken); a null one -
+/// a terminating isolate - leaves nothing to throw.
+fn rethrowCaught(isolate: *v8.Isolate, thrown: ?*v8.Value) ConversionError {
+    if (thrown) |value| {
+        defer v8.v8_Value_Dispose(value);
+        v8.v8_Isolate_ThrowException(isolate, value);
+    }
+    return ConversionError.ExceptionPending;
+}
+
+/// WebIDL 3.2.25, converting V to HeadersInit = (sequence<sequence<ByteString>>
+/// or record<ByteString, ByteString>). Neither member is nullable,
+/// undefined, a dictionary, an interface, a buffer source, a callback or
+/// `object`, so steps 1-10 take nothing, and the union has no string,
+/// numeric or boolean member for a primitive (steps 12-18):
+///
+/// - Step 11.2: an Object whose @@iterator is not undefined is the sequence
+///   member, created from that method - an Array, a Map, a generator, and a
+///   Headers object (its pair iterator yields [name, value] arrays).
+/// - Step 11.5: any other Object is the record member.
+/// - Step 19: anything else - null, a string, a number - is a TypeError.
+///
+/// (This tested IsArray instead of @@iterator, so `new Headers(headers)`,
+/// `new Request(url, {headers})` and `fetch(url, {headers})` given a Headers
+/// object read it as a record of its own enumerable properties - none - and
+/// dropped every header; and it read every string as UTF-8 text, with no
+/// TypeError for a code unit above 0xFF.)
+///
+/// Ownership: both arms are exact-length slices of strings this conversion
+/// allocated, freed with the argument (`interface.freeConvertedArg`).
 fn convertHeadersInit(
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
     context: *v8.Context,
     value: *v8.Value,
 ) ConversionError!typedefs.HeadersInit {
-    _ = isolate; // Used only for potential future error reporting
-
-    // Check if it's an array (sequence<sequence<ByteString>>)
-    // Format: [["key1", "value1"], ["key2", "value2"]]
-    if (v8.v8_Value_IsArray(value)) {
-        const array = @as(*v8.Array, @ptrCast(value));
-        const length = v8.v8_Array_Length(array);
-
-        // Allocate array of inner sequences (each inner sequence is []const ByteString)
-        const outer_seq = try allocator.alloc([]const runtime.ByteString, length);
-        errdefer allocator.free(outer_seq);
-
-        for (0..length) |i| {
-            const elem = v8.v8_Array_Get(context, array, @intCast(i)) orelse {
-                // Empty inner sequence
-                outer_seq[i] = &.{};
-                continue;
-            };
-            // Every handle read here is owned and released once read: a pair
-            // array is a page object, and one leaked per header kept the page.
-            defer v8.v8_Value_Dispose(elem);
-
-            // Each element should be an array of [key, value]
-            if (!v8.v8_Value_IsArray(elem)) {
-                outer_seq[i] = &.{};
-                continue;
-            }
-
-            const pair_array = @as(*v8.Array, @ptrCast(elem));
-            const pair_len = v8.v8_Array_Length(pair_array);
-
-            // Allocate inner sequence
-            const inner_seq = try allocator.alloc(runtime.ByteString, pair_len);
-            errdefer allocator.free(inner_seq);
-
-            for (0..pair_len) |j| {
-                const item = v8.v8_Array_Get(context, pair_array, @intCast(j));
-                if (item) |it| {
-                    defer v8.v8_Value_Dispose(it);
-                    if (v8.v8_Value_IsSymbol_Local(@ptrCast(it))) {
-                        return ConversionError.TypeError;
-                    }
-                    const str = v8.v8_Value_ToString(it, context);
-                    if (str) |s| {
-                        defer v8.v8_String_Dispose(s);
-                        const len = v8.v8_String_Utf8Length(s);
-                        if (len > 0) {
-                            const buf = try allocator.alloc(u8, @intCast(len));
-                            _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
-                            inner_seq[j] = buf;
-                            continue;
-                        } else if (len == 0) {
-                            inner_seq[j] = "";
-                            continue;
-                        }
-                    }
-                }
-                inner_seq[j] = ""; // Fallback for failed ToString
-            }
-
-            outer_seq[i] = inner_seq;
-        }
-
-        return .{ .sequence_byte_string_sequence = outer_seq };
+    // Steps 11 and 19: only an Object can be either member.
+    if (!v8.v8_Value_IsObject(value)) return ConversionError.TypeError;
+    // 11.2. If types includes a sequence type, then
+    //    1. Let method be ? GetMethod(V, %Symbol.iterator%).
+    //    2. If method is not undefined, return the result of creating a
+    //       sequence of that type from V and method.
+    if (try iteratorMethodOf(isolate, context, value)) |method| {
+        defer v8.v8_Value_Dispose(method);
+        return .{ .sequence_byte_string_sequence = try sequenceFromIterable([]const runtime.ByteString, allocator, isolate, context, value, method, byteStringSequenceFrom) };
     }
-
-    // Check if it's an object (record<ByteString, ByteString>)
-    // Format: { "key1": "value1", "key2": "value2" }
-    if (v8.v8_Value_IsObject(value)) {
-        const obj = @as(*v8.Object, @ptrCast(value));
-
-        // Get OWN property names only (not inherited)
-        const prop_names = v8.v8_Object_GetOwnPropertyNames(context, obj) orelse {
-            // Empty record
-            return .{ .byte_string_byte_string_record = &.{} };
-        };
-        defer v8.v8_Array_Dispose(prop_names);
-
-        const prop_count = v8.v8_Array_Length(prop_names);
-        // Get the entry type from the typedef's union field
-        const RecordSlice = @TypeOf(@as(typedefs.HeadersInit, undefined).byte_string_byte_string_record);
-        const RecordEntry = std.meta.Elem(RecordSlice);
-        const entries = try allocator.alloc(RecordEntry, prop_count);
-        errdefer allocator.free(entries);
-
-        var valid_count: usize = 0;
-        for (0..prop_count) |i| {
-            const prop_name_val = v8.v8_Array_Get(context, prop_names, @intCast(i)) orelse continue;
-            defer v8.v8_Value_Dispose(prop_name_val);
-
-            // Get property name as string
-            const prop_name_str = v8.v8_Value_ToString(prop_name_val, context) orelse continue;
-            defer v8.v8_String_Dispose(prop_name_str);
-            const name_len = v8.v8_String_Utf8Length(prop_name_str);
-            if (name_len <= 0) continue;
-
-            const name_buf = try allocator.alloc(u8, @intCast(name_len));
-            errdefer allocator.free(name_buf);
-            _ = v8.v8_String_WriteUtf8(prop_name_str, name_buf.ptr, @intCast(name_len));
-
-            // Get property value
-            const prop_val = v8.v8_Object_Get(obj, context, @ptrCast(prop_name_val)) orelse continue;
-            defer v8.v8_Value_Dispose(prop_val);
-
-            var val_str: runtime.ByteString = "";
-            if (!v8.v8_Value_IsSymbol_Local(@ptrCast(prop_val))) {
-                const str = v8.v8_Value_ToString(prop_val, context);
-                if (str) |s| {
-                    defer v8.v8_String_Dispose(s);
-                    const len = v8.v8_String_Utf8Length(s);
-                    if (len > 0) {
-                        const buf = try allocator.alloc(u8, @intCast(len));
-                        _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
-                        val_str = buf;
-                    } else {
-                        val_str = "";
-                    }
-                }
-            }
-
-            entries[valid_count] = .{
-                .key = name_buf,
-                .value = val_str,
-            };
-            valid_count += 1;
-        }
-
-        return .{ .byte_string_byte_string_record = entries[0..valid_count] };
-    }
-
-    // Fallback - return empty record for unsupported types
-    return .{ .byte_string_byte_string_record = &.{} };
+    // 11.5. If types includes a record type, then return the result of
+    //       converting V to that record type.
+    return .{ .byte_string_byte_string_record = try byteStringRecordFrom(allocator, isolate, context, value) };
 }
 
 const buffer_sources = @import("webidl").buffer_sources;
@@ -1264,12 +1459,15 @@ pub fn fromV8Value(
             return buffer;
         }
 
-        // Generic sequence handling - value must be an array
-        if (!v8.v8_Value_IsArray(value)) {
-            return ConversionError.TypeError;
-        }
-        const array = @as(*v8.Array, @ptrCast(value));
-        return try fromV8Sequence(ElemType, allocator, isolate, context, array);
+        // WebIDL 3.2.21, converting V to sequence<T>:
+        // 1. If V is not an Object, throw a TypeError.
+        if (!v8.v8_Value_IsObject(value)) return ConversionError.TypeError;
+        // 2. Let method be ? GetMethod(V, %Symbol.iterator%).
+        // 3. If method is undefined, throw a TypeError.
+        const method = (try iteratorMethodOf(isolate, context, value)) orelse return ConversionError.TypeError;
+        defer v8.v8_Value_Dispose(method);
+        // 4. Return the result of creating a sequence from V and method.
+        return try sequenceFromMethod(T, allocator, isolate, context, value, method);
     }
 
     // Handle DOMString specially (it's a union type but should be treated as a string)
@@ -1547,6 +1745,33 @@ pub fn fromV8Value(
             }
         }
 
+        // WebIDL 3.2.25 step 11.2, for a union with a sequence member: an
+        // Object that no earlier step took - step 5, a platform object
+        // implementing a member interface; steps 6-9, the buffer sources
+        // above; step 10, a callable given a callback function member, below
+        // - is that sequence when its @@iterator is not undefined: an Array,
+        // and every other iterable. This tested IsArray, so a Map, a Set, a
+        // generator or an iterable platform object went to the dictionary
+        // member, or to none; and an Array went to no member at all in a
+        // union without a sequence member, where step 11.4 gives it to the
+        // dictionary member and step 15 to the string one.
+        if (comptime sequence_idx != null) {
+            if (v8.v8_Value_IsObject(value) and !(function_idx != null and v8.v8_Value_IsFunction(value))) {
+                // Step 5.1.
+                if (comptime instance_idx != null) {
+                    if (platformObjectArm(T, allocator, isolate, context, value)) |arm| return arm;
+                }
+                // 11.2.1. Let method be ? GetMethod(V, %Symbol.iterator%).
+                // 11.2.2. If method is not undefined, return the result of
+                //         creating a sequence of that type from V and method.
+                if (try iteratorMethodOf(isolate, context, value)) |method| {
+                    defer v8.v8_Value_Dispose(method);
+                    const idx = comptime sequence_idx.?;
+                    return @unionInit(T, fields[idx].name, try sequenceFromMethod(fields[idx].type, allocator, isolate, context, value, method));
+                }
+            }
+        }
+
         // Runtime dispatch based on V8 value type
         // Check function FIRST since functions are also objects in JavaScript.
         // WebIDL §3.2.24 step 11: a callable goes to a callback function arm
@@ -1571,12 +1796,6 @@ pub fn fromV8Value(
                     const ptr_value: usize = @intFromPtr(value);
                     return @unionInit(T, fields[idx].name, @ptrFromInt(ptr_value));
                 }
-            }
-        } else if (v8.v8_Value_IsArray(value)) {
-            if (sequence_idx) |idx| {
-                const FieldType = fields[idx].type;
-                const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
-                return @unionInit(T, fields[idx].name, converted);
             }
         } else if (v8.v8_Value_IsString(value)) {
             if (string_idx) |idx| {
@@ -1676,9 +1895,9 @@ pub fn fromV8Value(
         // a union with interface arms; this is the rest:
         // FontFace(family, (CSSOMString or BufferSource) source, ...) given
         // an object with a toString was a TypeError. A union with a sequence
-        // arm is left as it was: step 11.2 would take an iterable object as a
-        // sequence before step 15, and this path takes only an Array.
-        if (comptime sequence_idx == null and instance_idx == null) {
+        // arm reaches here only with an Object that has no @@iterator: step
+        // 11.2 above took every iterable one.
+        if (comptime instance_idx == null) {
             if (v8.v8_Value_IsObject(value)) {
                 if (string_idx) |idx| {
                     return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
@@ -2054,6 +2273,9 @@ pub fn fromV8Value(
                 // infinities are a TypeError, as part of this member's
                 // conversion - before the next member is read.
                 if (comptime isRestrictedMember(T, field.name)) try requireFinite(field.type, @field(result, field.name));
+                // A ByteString member (`byte_string_members`, RequestInit's
+                // method): a code unit above 0xFF is a TypeError, likewise.
+                if (comptime isByteStringMember(T, field.name)) try requireByteString(field.type, @field(result, field.name));
             } else {
                 // Get returns an empty handle only when it THREW (an absent
                 // member reads as undefined, handled above): WebIDL § 3.2.18
@@ -2493,6 +2715,27 @@ fn dictionaryMemberValueIsOwned(comptime T: type) bool {
 /// binding's to release: a dictionary's object is made for the call.
 pub fn dictionaryValueIsOwned(comptime T: type) bool {
     return isDictionaryValue(T);
+}
+
+/// Whether toV8Value(T, ..., value) of a union `T` is a Global made for the
+/// call: toV8Value converts the ACTIVE member as a value of its own type, so
+/// the member decides - by the rule a dictionary member's value follows
+/// (`dictionaryMemberValueIsOwned`: a string, number, boolean or enum, a
+/// dictionary, a sequence), a nested union by its own active member. Anything
+/// else - an interface member's wrapper (the wrapper cache's), an `any` or
+/// `object` member's handle, an `*anyopaque` member - stays kept, the
+/// conservative answer.
+pub fn unionValueIsOwned(comptime T: type, value: T) bool {
+    const info = @typeInfo(T).@"union";
+    if (comptime info.tag_type == null) return false;
+    switch (value) {
+        inline else => |payload| {
+            const Member = @TypeOf(payload);
+            if (comptime Member == runtime.JSValue or Member == runtime.DOMString) return dictionaryMemberValueIsOwned(Member);
+            if (comptime @typeInfo(Member) == .@"union") return unionValueIsOwned(Member, payload);
+            return dictionaryMemberValueIsOwned(Member);
+        },
+    }
 }
 
 pub fn toV8Value(
