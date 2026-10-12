@@ -83,8 +83,8 @@ test "processSetCookieHeaders - parsed cookies are not leaked" {
     };
     try processSetCookieHeaders(allocator, &jar, &headers, "/", from_https);
 
-    // The three named cookies land; "not-a-cookie" and "=nothing" are one
-    // nameless cookie (the second replaces the first); an empty pair and a
-    // control byte are failures.
+    // The three named cookies and the no-`=` nameless cookie land (Q5).
+    // "=nothing" is rejected, so the earlier nameless cookie remains;
+    // an empty pair and a control byte are failures too.
     try std.testing.expectEqual(@as(usize, 4), jar.count());
 }
