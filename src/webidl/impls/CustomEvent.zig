@@ -163,7 +163,7 @@ pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMStr
 
     // Step 2: Initialize this with type, bubbles, and cancelable - Event's
     // own initEvent steps (their step 1 is this one, and holds).
-    try EventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
+    try interfaces.Event.call_initEvent(instance, @"type", bubbles, cancelable);
 
     // Step 3: Set this's detail attribute to detail (`optional any detail =
     // null`).

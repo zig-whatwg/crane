@@ -480,12 +480,11 @@ pub const StubLayoutBackend = struct {
     fn getRenderedTextImpl(_: *anyopaque, element: *runtime.Instance, allocator: Allocator) ?[]const u8 {
         // Fallback: return textContent (not spec-compliant but usable)
         // A real implementation would check display:none, collapse whitespace, etc.
-        const NodeImpl = @import("impls").Node;
-        if (NodeImpl.getInternalState(element)) |_| {
-            // Get text content via the tree traversal
-            return NodeImpl.getTextContentInternal(element, allocator) catch null;
-        }
-        return null;
+        // textContent through Node's generated interface, which answers
+        // InvalidStateError for an instance with no Node state.
+        var text = (@import("interfaces").Node.get_textContent(element) catch return null) orelse return null;
+        defer text.deinit(element.ctx.allocator);
+        return allocator.dupe(u8, text.asSlice()) catch null;
     }
 
     fn isElementRenderedImpl(_: *anyopaque, _: *runtime.Instance) bool {

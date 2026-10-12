@@ -245,7 +245,7 @@ pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(dictionar
     // Step 4.1: "If options["precommitHandler"] exists ... if this's
     // cancelable attribute is initialized to false, then throw an
     // "InvalidStateError" DOMException."
-    if (opts.precommitHandler != null and !(try EventImpl.get_cancelable(instance))) return error.InvalidStateError;
+    if (opts.precommitHandler != null and !(try interfaces.Event.get_cancelable(instance))) return error.InvalidStateError;
     // Steps 4.2-9.
     try dom.navigation_api.intercept(instance, .{
         .precommit_handler = if (opts.precommitHandler) |h| @ptrCast(h) else null,
@@ -275,10 +275,10 @@ pub fn sharedChecks(instance: *runtime.Instance) !void {
     if (!relevantDocumentFullyActive(instance)) return error.InvalidStateError;
     // Step 2: "If event's isTrusted attribute was initialized to false, then
     // throw a "SecurityError" DOMException."
-    if (!(try EventImpl.get_isTrusted(instance))) return error.SecurityError;
+    if (!(try interfaces.Event.get_isTrusted(instance))) return error.SecurityError;
     // Step 3: "If event's canceled flag is set, then throw an
     // "InvalidStateError" DOMException."
-    if (try EventImpl.get_defaultPrevented(instance)) return error.InvalidStateError;
+    if (try interfaces.Event.get_defaultPrevented(instance)) return error.InvalidStateError;
 }
 
 fn relevantDocumentFullyActive(instance: *runtime.Instance) bool {
