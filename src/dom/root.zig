@@ -128,6 +128,8 @@ pub const reporting = @import("reporting.zig");
 pub const trusted_types = @import("trusted_types.zig");
 pub const fetch_objects = @import("fetch_objects.zig");
 pub const blob_bytes = @import("blob_bytes.zig");
+/// A CharacterData node's data, read in place by the tree's own algorithms.
+pub const character_data = @import("character_data.zig");
 pub const geometry_storage = @import("geometry_storage.zig");
 pub const names = @import("names.zig");
 pub const element_attributes = @import("element_attributes.zig");

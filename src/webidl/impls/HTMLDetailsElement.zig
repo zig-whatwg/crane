@@ -23,7 +23,6 @@ const HTMLDetailsElement = interfaces.HTMLDetailsElement;
 // Ancestors: a details element IS an HTMLElement, an Element, a Node and an
 // EventTarget, and reaches their state through their impls.
 const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
 const EventTargetImpl = @import("EventTarget.zig");
 
 // The hooks the element installs its steps into: the attribute change steps
@@ -162,13 +161,13 @@ fn insertionStepsCallback(node: *NodeBase) void {
 /// `element`'s name attribute (in no namespace), when present and not the
 /// empty string. BORROWED: the attribute's value.
 fn groupName(element: *runtime.Instance) ?[]const u8 {
-    const name = (ElementImpl.call_getAttributeNS(element, null, runtime.DOMString.initInterned("name")) catch null) orelse return null;
+    const name = (interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("name")) catch null) orelse return null;
     const slice = name.asSlice();
     return if (slice.len == 0) null else slice;
 }
 
 fn hasOpen(element: *runtime.Instance) bool {
-    return ElementImpl.call_hasAttributeNS(element, null, runtime.DOMString.initInterned("open")) catch false;
+    return interfaces.Element.call_hasAttributeNS(element, null, runtime.DOMString.initInterned("open")) catch false;
 }
 
 fn removeOpen(element: *runtime.Instance) void {
@@ -180,11 +179,11 @@ fn removeOpen(element: *runtime.Instance) void {
 /// The next node after `node` in tree order within `root`'s tree, or null
 /// past the last.
 fn nextInTree(node: *runtime.Instance, root: *runtime.Instance) ?*runtime.Instance {
-    if (NodeImpl.getFirstChild(node)) |child| return child;
+    if (interfaces.Node.get_firstChild(node) catch null) |child| return child;
     var current = node;
     while (current != root) {
-        if (NodeImpl.getNextSibling(current)) |sibling| return sibling;
-        current = NodeImpl.getParent(current) orelse return null;
+        if (interfaces.Node.get_nextSibling(current) catch null) |sibling| return sibling;
+        current = (interfaces.Node.get_parentNode(current) catch null) orelse return null;
     }
     return null;
 }
@@ -195,7 +194,7 @@ fn nextInTree(node: *runtime.Instance, root: *runtime.Instance) ?*runtime.Instan
 /// string and equals `element`'s. Null when `element` is in no group (no
 /// name, or the empty one) or no other member is open.
 fn openGroupMember(element: *runtime.Instance, name: []const u8) ?*runtime.Instance {
-    const root = NodeImpl.call_getRootNode(element, webidl.Opt(dictionaries.GetRootNodeOptions).notPassed()) catch return null;
+    const root = interfaces.Node.call_getRootNode(element, webidl.Opt(dictionaries.GetRootNodeOptions).notPassed()) catch return null;
     var node: ?*runtime.Instance = root;
     while (node) |current| : (node = nextInTree(current, root)) {
         if (current == element) continue;

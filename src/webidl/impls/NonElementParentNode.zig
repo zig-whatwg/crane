@@ -17,7 +17,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 
 // Import impl modules for accessing internal state
-const NodeImpl = @import("Node.zig");
 const ElementImpl = @import("Element.zig");
 
 pub const State = interfaces.NonElementParentNode.State;
@@ -76,11 +75,11 @@ pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMSt
 /// Recursively search for element by ID in tree order
 fn findElementById(node: *runtime.Instance, target_id: []const u8) ?*runtime.Instance {
     // Check children in tree order
-    var child = NodeImpl.getFirstChild(node);
+    var child = interfaces.Node.get_firstChild(node) catch null;
     while (child) |c| {
         // Check if this child is an element with matching ID
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = interfaces.Node.get_nodeType(c) catch 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             // Get element's id
             if (ElementImpl.getInternal(c)) |elem_internal| {
                 const elem_id = elem_internal.id.asSlice();
@@ -95,7 +94,7 @@ fn findElementById(node: *runtime.Instance, target_id: []const u8) ?*runtime.Ins
             return found;
         }
 
-        child = NodeImpl.getNextSibling(c);
+        child = interfaces.Node.get_nextSibling(c) catch null;
     }
 
     return null;

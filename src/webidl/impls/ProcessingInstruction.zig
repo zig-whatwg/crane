@@ -18,9 +18,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const ProcessingInstruction = interfaces.ProcessingInstruction;
 
-// Import related impls
-const CharacterDataImpl = @import("CharacterData.zig");
-const NodeImpl = @import("Node.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = ProcessingInstruction.State;
@@ -173,16 +170,14 @@ pub fn createProcessingInstruction(
     target: []const u8,
     data: []const u8,
 ) !*runtime.Instance {
-    const instance = try ProcessingInstruction.init(allocator, ctx);
+    // The data is CharacterData's construction argument.
+    const instance = try ProcessingInstruction.initWith(allocator, ctx, .{ .data = data });
     errdefer ProcessingInstruction.deinit(instance);
 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Set the target
     internal.target = try allocator.dupe(u8, target);
-
-    // Set the data via CharacterData
-    try CharacterDataImpl.setData(instance, data);
 
     return instance;
 }

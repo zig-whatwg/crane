@@ -240,10 +240,10 @@ test "File - basic constructor" {
     const last_modified = try get_lastModified(file_instance);
     try std.testing.expectEqual(@as(i64, 1700000000000), last_modified);
 
-    const size = try BlobImpl.get_size(file_instance);
+    const size = try interfaces.Blob.get_size(file_instance);
     try std.testing.expectEqual(@as(u64, 13), size);
 
-    const type_str = try BlobImpl.get_type(file_instance);
+    const type_str = try interfaces.Blob.get_type(file_instance);
     try std.testing.expectEqualStrings("text/plain", type_str.asSlice());
 }
 

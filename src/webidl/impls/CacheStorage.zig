@@ -205,7 +205,7 @@ pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, op
             const name = name_dom.asSlice();
             if (internal.caches.get(name)) |cache_instance| {
                 // Delegate to Cache.match
-                return CacheImpl.call_match(cache_instance, request, webidl.Opt(dictionaries.CacheQueryOptions).passed(options.value.base));
+                return interfaces.Cache.call_match(cache_instance, request, webidl.Opt(dictionaries.CacheQueryOptions).passed(options.value.base));
             }
             // Cache not found - return NotImplemented for "no match"
             return error.NotImplemented;
@@ -224,7 +224,7 @@ pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, op
             webidl.Opt(dictionaries.CacheQueryOptions).notPassed();
 
         // Try to match - if NotImplemented, means no match in this cache
-        const result = CacheImpl.call_match(cache_instance, request, base_options) catch |err| {
+        const result = interfaces.Cache.call_match(cache_instance, request, base_options) catch |err| {
             if (err == error.NotImplemented) {
                 continue; // No match, try next cache
             }
