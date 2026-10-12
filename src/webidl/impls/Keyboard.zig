@@ -25,7 +25,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
-const BrowsingContext = @import("html_core").window.BrowsingContext;
 const Keyboard = interfaces.Keyboard;
 const log = std.log.scoped(.keyboard);
 
@@ -167,7 +166,8 @@ pub fn call_getLayoutMap(instance: *runtime.Instance) anyerror!runtime.JSValue {
 fn inActiveTopLevelBrowsingContext(instance: *runtime.Instance) bool {
     const record = instance.ctx.getRealm() orelse return false;
     const window = record.global_object orelse return false;
-    const bc = BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return false;
+    const bc = navigables.ofWindow(window) orelse return false;
     return bc.isTopLevel();
 }
 

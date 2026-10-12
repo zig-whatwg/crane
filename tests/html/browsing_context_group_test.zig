@@ -7,10 +7,13 @@
 const std = @import("std");
 const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
+const Navigables = html_core.window.Navigables;
 
 test "an auxiliary browsing context joins its opener's top-level group" {
     const allocator = std.testing.allocator;
-    const page = try BrowsingContext.initTopLevel(allocator);
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
+    const page = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer page.deinit();
     const frame = try BrowsingContext.initChild(allocator, page);
     defer frame.deinit();
@@ -31,7 +34,9 @@ test "an auxiliary browsing context joins its opener's top-level group" {
 
 test "a top-level traversable made with noopener begins a group of its own" {
     const allocator = std.testing.allocator;
-    const page = try BrowsingContext.initTopLevel(allocator);
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
+    const page = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer page.deinit();
     const first = try BrowsingContext.initAuxiliary(allocator, page, false);
     defer first.deinit();

@@ -268,10 +268,10 @@ pub const InternalState = struct {
     /// in-flight keepalive bytes (dom.keepalive_fetch). Plain data.
     fetch_group: @import("dom").document_fetches.FetchGroup = .{},
 
-    pub fn init(allocator: Allocator) !InternalState {
+    pub fn init(allocator: Allocator, navigables: *html_core.Navigables) !InternalState {
         return .{
             .allocator = allocator,
-            .browsing_context = try BrowsingContext.initTopLevel(allocator),
+            .browsing_context = try BrowsingContext.initTopLevel(allocator, navigables),
             .stub_ui_backend = StubUIBackend.init(.{}),
             .stub_timing_backend = StubFrameTimingBackend.init(),
             .ui_backend = undefined, // Set by caller after init
@@ -499,7 +499,10 @@ pub fn init(
     // Initialize Window's own internal state
     const state = instance.getState(StateType);
     const internal = try runtime.arenaOf(instance).create(InternalState);
-    internal.* = try InternalState.init(allocator);
+    // The Window's own top-level context, on its Browser's list - until a
+    // navigable it is shown in replaces it (replaceBrowsingContext).
+    const navigables = @import("dom").browser_state.navigablesOf(ctx) orelse return error.NoBrowserScope;
+    internal.* = try InternalState.init(allocator, navigables);
     internal.ui_backend = internal.stub_ui_backend.backend();
     state.own._internal = internal;
 

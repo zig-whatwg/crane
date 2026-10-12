@@ -10,11 +10,14 @@
 const std = @import("std");
 const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
+const Navigables = html_core.window.Navigables;
 
 const second: u64 = std.time.ns_per_s;
 
 test "the first 200 navigations or history updates in a window are allowed, the next is blocked" {
-    const bc = try BrowsingContext.initTopLevel(std.testing.allocator);
+    var navigables = Navigables.init(std.testing.allocator);
+    defer navigables.deinit();
+    const bc = try BrowsingContext.initTopLevel(std.testing.allocator, &navigables);
     defer bc.deinit();
     const start: u64 = 5 * second;
     var i: usize = 0;
@@ -26,7 +29,9 @@ test "the first 200 navigations or history updates in a window are allowed, the 
 }
 
 test "the limit resets once the window has passed" {
-    const bc = try BrowsingContext.initTopLevel(std.testing.allocator);
+    var navigables = Navigables.init(std.testing.allocator);
+    defer navigables.deinit();
+    const bc = try BrowsingContext.initTopLevel(std.testing.allocator, &navigables);
     defer bc.deinit();
     const start: u64 = 1;
     var i: usize = 0;
@@ -40,7 +45,9 @@ test "the limit resets once the window has passed" {
 
 test "each navigable has its own limit" {
     const allocator = std.testing.allocator;
-    const top = try BrowsingContext.initTopLevel(allocator);
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
+    const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer top.deinit();
     const child = try BrowsingContext.initChild(allocator, top);
     defer child.deinit();

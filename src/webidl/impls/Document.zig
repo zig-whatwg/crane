@@ -825,7 +825,7 @@ fn renderBlockingTime(document: *runtime.Instance) f64 {
 /// has exactly one owner": engine code must not use script's getters).
 fn isFullyActive(object: *runtime.Instance) bool {
     if (object.stateAs(interfaces.Window.State) != null) {
-        const navigable = html_core.window.BrowsingContext.ofWindow(@ptrCast(object)) orelse return false;
+        const navigable = @import("dom").browser_state.browsingContextOf(object) orelse return false;
         if (navigable.is_closed) return false;
         const active = navigable.active_document orelse return true;
         return isActiveDocumentFullyActive(@ptrCast(@alignCast(active)));
@@ -833,7 +833,7 @@ fn isFullyActive(object: *runtime.Instance) bool {
     const internal = getInternal(object) orelse return false;
     if (internal.destroyed) return false;
     const window = internal.default_view orelse return false;
-    const navigable = html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    const navigable = @import("dom").browser_state.browsingContextOf(window) orelse return false;
     if (navigable.is_closed) return false;
     const active = navigable.active_document orelse return true;
     return active == @as(*anyopaque, @ptrCast(object));
@@ -4710,7 +4710,7 @@ fn refreshComesDue(data: ?*anyopaque) void {
 /// sets the sandboxed automatic features browsing context flag.
 fn automaticFeaturesSandboxed(document: *runtime.Instance) bool {
     const window = (get_defaultView(document) catch null) orelse return false;
-    const browsing_context = html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    const browsing_context = @import("dom").browser_state.browsingContextOf(window) orelse return false;
     return !browsing_context.allowsScripts();
 }
 

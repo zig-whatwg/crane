@@ -27,7 +27,9 @@
 //! const window = @import("html/window/root.zig");
 //!
 //! // Create a top-level browsing context
-//! const ctx = try window.BrowsingContext.initTopLevel(allocator);
+//! var navigables = window.Navigables.init(allocator);
+//! defer navigables.deinit();
+//! const ctx = try window.BrowsingContext.initTopLevel(allocator, &navigables);
 //! defer ctx.deinit();
 //!
 //! // Create UI backend for prompts
@@ -47,6 +49,7 @@ const std = @import("std");
 // Browsing Context (§7.1)
 pub const browsing_context = @import("browsing_context.zig");
 pub const BrowsingContext = browsing_context.BrowsingContext;
+pub const Navigables = browsing_context.Navigables;
 pub const BrowsingContextGroup = browsing_context.BrowsingContextGroup;
 pub const SandboxFlags = browsing_context.SandboxFlags;
 

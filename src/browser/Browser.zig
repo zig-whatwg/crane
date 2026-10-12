@@ -330,8 +330,9 @@ pub const Browser = struct {
 
             // Every Window is gone now, so the browsing contexts their
             // containers retired while a Window might still read them
-            // (BrowsingContext.discard) can finally be freed.
-            @import("html").window.browsing_context.BrowsingContext.freeRetired();
+            // (BrowsingContext.discard) can finally be freed - this
+            // Browser's, never another's.
+            if (@import("dom").browser_state.existingNavigablesIn(self.scope)) |navigables| navigables.freeRetired();
         }
 
         // The Browser's scope: every realm and every worker thread is gone.

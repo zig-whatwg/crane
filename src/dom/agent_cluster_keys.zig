@@ -35,7 +35,8 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const fetch = @import("fetch");
-const BrowsingContext = @import("html_core").BrowsingContext;
+const Navigables = @import("html_core").Navigables;
+const browser_state = @import("browser_state.zig");
 
 /// Every live browsing context group's historical agent cluster key map: by
 /// group id, whether each origin's agent cluster key is the origin (true) or
@@ -89,11 +90,11 @@ pub const HistoricalKeys = struct {
         return origins.get(origin);
     }
 
-    /// Forget the map of every group but `keep` that has ended: one for which
-    /// `isLive` is false. "The historical agent cluster key map only ever
-    /// gains entries over the lifetime of the browsing context group" - and
-    /// goes with it.
-    pub fn forgetEndedGroups(self: *HistoricalKeys, keep: u64, isLive: *const fn (group: u64) bool) void {
+    /// Forget the map of every group but `keep` that has ended: one none of
+    /// whose browsing contexts is on `navigables`, the Browser's list. "The
+    /// historical agent cluster key map only ever gains entries over the
+    /// lifetime of the browsing context group" - and goes with it.
+    pub fn forgetEndedGroups(self: *HistoricalKeys, keep: u64, navigables: *const Navigables) void {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Collected, then removed: the map is not changed under its iterator.
@@ -102,7 +103,7 @@ pub const HistoricalKeys = struct {
             var count: usize = 0;
             var groups = self.groups.keyIterator();
             while (groups.next()) |group| {
-                if (group.* == keep or isLive(group.*)) continue;
+                if (group.* == keep or isGroupLive(navigables, group.*)) continue;
                 ended[count] = group.*;
                 count += 1;
                 if (count == ended.len) break;
@@ -166,7 +167,9 @@ pub fn obtain(scope: ?*runtime.BrowserScope, group: u64, origin: []const u8, req
     if (cross_origin_isolated) return true;
     const browser = scope orelse return requests_oac;
     const keys = browser.of(HistoricalKeys) catch return requests_oac;
-    keys.forgetEndedGroups(group, &isGroupLive);
+    // A Browser that has made no browsing context yet can tell no group has
+    // ended.
+    if (browser_state.existingNavigablesIn(browser)) |navigables| keys.forgetEndedGroups(group, navigables);
     return keys.obtain(group, origin, requests_oac);
 }
 
@@ -186,10 +189,10 @@ pub fn isOriginKeyed(scope: ?*runtime.BrowserScope, group: u64, origin: []const 
 /// A group is live while one of its browsing contexts is - a closed or
 /// orphaned one included: a Window can still read its keying. Asked on the
 /// window agent's thread, which makes and frees every browsing context of
-/// the Browser; a thread with none answers that every group is live, so
-/// nothing is forgotten from a thread that cannot tell.
-fn isGroupLive(group: u64) bool {
-    const contexts = BrowsingContext.liveContexts();
+/// the Browser; a list with none answers that every group is live, so
+/// nothing is forgotten by a Browser that cannot tell.
+fn isGroupLive(navigables: *const Navigables, group: u64) bool {
+    const contexts = navigables.contexts();
     if (contexts.len == 0) return true;
     for (contexts) |context| {
         if (context.virtual_group_id == group) return true;

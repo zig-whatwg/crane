@@ -44,7 +44,6 @@ const fetch = @import("fetch");
 const css = @import("css");
 const dom = @import("dom");
 const stylesheet_blocking = @import("html_core").stylesheet_blocking;
-const BrowsingContext = @import("html_core").BrowsingContext;
 
 const AsyncFetch = fetch.algorithms.AsyncFetch;
 
@@ -257,7 +256,8 @@ pub fn blockingMayHaveEnded(document: *runtime.Instance) void {
         if (parent_pin != null and !realm.hasEngine()) return;
         if (runtime.SlabAllocator.generationOf(document) != generation) return;
         if (!child.realm.hasEngine() or runtime.SlabAllocator.generationOf(child.document) != child.generation) continue;
-        const navigable = BrowsingContext.byId(child.navigable_id) orelse continue;
+        const navigables = dom.browser_state.navigablesOf(realm) orelse return;
+        const navigable = navigables.byId(child.navigable_id) orelse continue;
         if (navigable.orphaned or navigable.is_closed or navigable.getActiveDocument() != @as(?*anyopaque, @ptrCast(child.document))) continue;
         const window = (interfaces.Document.get_defaultView(child.document) catch null) orelse continue;
         const container = dom.navigable_container.of(window) orelse continue;

@@ -188,10 +188,8 @@ src/html/style_sheet_loading.zig loads 1 TL R decl:30a96afe84f33aff
 src/html/style_sheet_loading.zig next_id 1 TL I/engine decl:e78eed1e4659a6b5
 src/html/web_locks/lock_managers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/html/web_locks/lock_objects.zig implementation 1 G P-res decl:9c737e7125e9c3d4
-src/html/window/browsing_context.zig live 1 TL I/engine decl:4eb3c63ce8391a0c
 src/html/window/browsing_context.zig next_context_id 1 G I/engine decl:e78eed1e4659a6b5
 src/html/window/browsing_context.zig next_group_id 1 G I/engine decl:e78eed1e4659a6b5
-src/html/window/browsing_context.zig retired 1 G I/engine decl:4eb3c63ce8391a0c
 src/html/worker_host.zig hosts 1 TL I/engine decl:edd1a75261d8d8dd
 src/html/worker_host.zig live_contexts 1 TL I/engine decl:edd1a75261d8d8dd
 src/intl/v8_bridge/c_api.zig global_allocator 1 G P-res decl:0b9204adbe527b7e
@@ -262,7 +260,7 @@ src/runtime/engines/v8/v8_wrapper.cpp g_isolate_allocators 1 C++G I/engine decl:
 src/runtime/engines/v8/v8_wrapper.cpp g_live_context_globals 1 C++G D decl:dad6fa01c70ae637
 src/runtime/engines/v8/v8_wrapper.cpp g_live_globals 1 C++G D decl:bf0bdb5ea0460e73
 src/runtime/engines/v8/v8_wrapper.cpp g_live_object_globals 1 C++G D decl:34843aa9f062abbd
-src/runtime/engines/v8/v8_wrapper.cpp g_live_string_globals 1 C++G D decl:41acbea1a92a0ba7
+src/runtime/engines/v8/v8_wrapper.cpp g_live_string_globals 1 C++G D decl:6bbee0ae99b748c9
 src/runtime/engines/v8/v8_wrapper.cpp g_live_weak_callback_data 1 C++G D decl:c98787b630a24b36
 src/runtime/engines/v8/v8_wrapper.cpp g_module_resolve_callback 1 C++G I/engine decl:61cd5a7b5a217bea
 src/runtime/engines/v8/v8_wrapper.cpp g_next_context_id 1 C++G P-const decl:0803d1d05cc3a079

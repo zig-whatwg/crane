@@ -32,7 +32,7 @@ const max_windows = 256;
 
 /// `window`'s browsing context, when it is some live context's active window.
 fn browsingContextOf(window: *Instance) ?*BrowsingContext {
-    return BrowsingContext.ofWindow(@ptrCast(window));
+    return dom.browser_state.browsingContextOf(window);
 }
 
 fn activeWindowOf(context: *BrowsingContext) ?*Instance {
@@ -107,7 +107,8 @@ pub fn hasTransientActivation(window: *Instance) bool {
 /// The Window of `realm`: the active window of the browsing context whose
 /// window lives in it.
 pub fn windowOfRealm(realm: runtime.Context) ?*Instance {
-    for (BrowsingContext.liveContexts()) |context| {
+    const navigables = dom.browser_state.navigablesOf(realm) orelse return null;
+    for (navigables.contexts()) |context| {
         if (context.orphaned) continue;
         const window = activeWindowOf(context) orelse continue;
         if (window.ctx == realm) return window;

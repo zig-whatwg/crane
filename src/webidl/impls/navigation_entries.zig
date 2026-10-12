@@ -37,7 +37,7 @@ pub const Scope = struct {
 /// engine code asking about a frame must not use the getters script uses).
 pub fn scopeOf(window: *runtime.Instance, generation: u64) ?Scope {
     if (runtime.SlabAllocator.generationOf(window) != generation) return null;
-    const navigable = BrowsingContext.ofWindow(@ptrCast(window)) orelse return null;
+    const navigable = @import("dom").browser_state.browsingContextOf(window) orelse return null;
     const active = navigable.getActiveDocument() orelse return null;
     const document: *runtime.Instance = @ptrCast(@alignCast(active));
     const history = navigable.ensureHistoryEntries(&history_documents.infoOf) catch return null;

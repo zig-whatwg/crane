@@ -3105,7 +3105,7 @@ fn downloadHyperlink(subject: *runtime.Instance, user_involvement: dom_module.na
     // Step 2: "If subject's node document's active sandboxing flag set has
     // the sandboxed downloads browsing context flag set, then return." The
     // document's flags are its navigable's (as for scripts and forms).
-    if (html_core.BrowsingContext.ofWindow(@ptrCast(window))) |bc| {
+    if (@import("dom").browser_state.browsingContextOf(window)) |bc| {
         if (bc.sandbox_flags) |flags| if (!flags.allow_downloads) return;
     }
     // Steps 3-4: "Let urlString be the result of encoding-parsing-and-
@@ -3805,7 +3805,7 @@ fn replaceRealm(integration: *IFrameIntegration) bool {
 /// holds the window. The host's own page is unloaded but not destroyed,
 /// stated: the host owns it, and it is the host's to take down.
 fn definitelyCloseTraversable(window: *runtime.Instance) bool {
-    const bc = html_core.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return false;
     if (bc.parent != null) return false;
     // Null for the host's page.
     const integration = integrationOfBrowsingContext(bc);

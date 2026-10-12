@@ -30,6 +30,7 @@ const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const History = interfaces.History;
 const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
+const Navigables = html_core.window.Navigables;
 const joint_history = html_core.navigation.joint_history;
 const navigate_steps = html_core.navigation.navigate_steps;
 const basic_parser = @import("basic_parser");
@@ -286,6 +287,8 @@ fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
     // fire it again.
     const id = bc.id;
     const top_id = bc.getTop().id;
+    // The Browser's list, asked again after script ran: `bc` may be freed.
+    const navigables = bc.navigables orelse return;
     {
         var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
         defer tree.deinit(bc.allocator);
@@ -294,8 +297,8 @@ fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
     }
     // The handlers ran script: the navigable - or its traversable, which
     // owns `history` - may be gone.
-    if (BrowsingContext.byId(id) != bc or bc.orphaned or bc.is_closed) return;
-    if (BrowsingContext.byId(top_id) == null) return;
+    if (navigables.byId(id) != bc or bc.orphaned or bc.is_closed) return;
+    if (navigables.byId(top_id) == null) return;
     const current = history.entryById(entry_id) orelse return;
     // A reload's previousEntry is the entry it reloads.
     @import("dom").navigables.traverseNavigable(@ptrCast(bc), current.id, current.url, current.resource, current.id);
@@ -303,14 +306,14 @@ fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
 
 /// dom.history_traversal: reload `window`'s navigable.
 fn reloadWindow(window: *runtime.Instance) void {
-    const bc = BrowsingContext.ofWindow(@ptrCast(window)) orelse return;
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     reloadNavigable(window, bc);
 }
 
 /// dom.history_traversal: queue a traversal of `window`'s traversable to
 /// `step` (the navigation API's "perform a navigation API traversal").
 fn traverseWindowToStep(window: *runtime.Instance, step: u32) void {
-    const bc = BrowsingContext.ofWindow(@ptrCast(window)) orelse return;
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
     queueTraversal(internal, bc.getTop(), .{ .step = step }, false);
@@ -320,7 +323,7 @@ fn traverseWindowToStep(window: *runtime.Instance, step: u32) void {
 /// `step` - an intercepted traverse navigate event's commit - without firing
 /// the navigate event again.
 fn resumeTraversalOfWindow(window: *runtime.Instance, step: u32) void {
-    const bc = BrowsingContext.ofWindow(@ptrCast(window)) orelse return;
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
     queueTraversal(internal, bc.getTop(), .{ .step = step }, true);
@@ -526,6 +529,9 @@ const Target = union(enum) {
 
 /// A traversal waiting on the traversable's session history traversal queue.
 const Traversal = struct {
+    /// The traversable's Browser's list, which outlives every task of its
+    /// loop: the traversable is looked up by id on it.
+    navigables: *Navigables,
     top_id: u64,
     target: Target,
     allocator: Allocator,
@@ -538,8 +544,9 @@ const Traversal = struct {
 /// step `target` names.
 fn queueTraversal(internal: *InternalState, top: *BrowsingContext, target: Target, resumed: bool) void {
     const window = internal.window orelse return;
+    const navigables = top.navigables orelse return;
     const task = internal.allocator.create(Traversal) catch return;
-    task.* = .{ .top_id = top.id, .target = target, .allocator = internal.allocator, .resumed = resumed };
+    task.* = .{ .navigables = navigables, .top_id = top.id, .target = target, .allocator = internal.allocator, .resumed = resumed };
     const loop = window.ctx.getOptionalEventLoop() orelse return runTraversal(task);
     loop.queueTask(.{ .callback = &runTraversal, .context = task, .drop = &dropTraversal });
 }
@@ -576,7 +583,8 @@ fn runTraversal(context: ?*anyopaque) void {
     const allocator = task.allocator;
     defer allocator.destroy(task);
 
-    const top = BrowsingContext.byId(task.top_id) orelse return;
+    const navigables = task.navigables;
+    const top = navigables.byId(task.top_id) orelse return;
     var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
     defer tree.deinit(allocator);
     top.collectDescendants(allocator, &tree) catch return;
@@ -652,7 +660,7 @@ fn runTraversal(context: ?*anyopaque) void {
     if (beforeUnloadCanceled(skipped.items, allocator)) return;
     // The handlers ran script: the traversable - and its history - may be
     // gone.
-    if (BrowsingContext.byId(task.top_id) != top) return;
+    if (navigables.byId(task.top_id) != top) return;
 
     // Step 20: the traversable's current session history step.
     history.current_step = target;
@@ -661,9 +669,9 @@ fn runTraversal(context: ?*anyopaque) void {
         // Looked up again for each change: an earlier change's script may
         // have removed the navigable (a discarded one is closed) - or its
         // traversable.
-        const navigable = BrowsingContext.byId(change.navigable) orelse continue;
+        const navigable = navigables.byId(change.navigable) orelse continue;
         if (navigable.orphaned or navigable.is_closed) continue;
-        if (BrowsingContext.byId(task.top_id) != top) return;
+        if (navigables.byId(task.top_id) != top) return;
         // Step 12.7: a navigable other than the traversable whose entry
         // changes within its origin fires a traverse navigate event (not
         // cancelable).
@@ -673,8 +681,8 @@ fn runTraversal(context: ?*anyopaque) void {
             }
             // The event's listeners ran script: the traversable - and the
             // history it owns - may be gone, the navigable too.
-            if (BrowsingContext.byId(task.top_id) != top) return;
-            if (BrowsingContext.byId(change.navigable) != navigable or navigable.orphaned or navigable.is_closed) continue;
+            if (navigables.byId(task.top_id) != top) return;
+            if (navigables.byId(change.navigable) != navigable or navigable.orphaned or navigable.is_closed) continue;
         }
         const entry = history.entryById(change.target_entry) orelse continue;
         if (change.same_document) {

@@ -13,10 +13,13 @@
 const std = @import("std");
 const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
+const Navigables = html_core.window.Navigables;
 
 test "a context freed while its parent lives leaves the parent's children" {
     const allocator = std.testing.allocator;
-    const top = try BrowsingContext.initTopLevel(allocator);
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
+    const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer top.deinit();
     const first = try BrowsingContext.initChild(allocator, top);
     const second = try BrowsingContext.initChild(allocator, top);
@@ -30,7 +33,9 @@ test "a context freed while its parent lives leaves the parent's children" {
 
 test "a parent freed first takes its children's links to it" {
     const allocator = std.testing.allocator;
-    const top = try BrowsingContext.initTopLevel(allocator);
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
+    const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     const child = try BrowsingContext.initChild(allocator, top);
     defer child.deinit();
     const grandchild = try BrowsingContext.initChild(allocator, child);
@@ -46,7 +51,9 @@ test "a parent freed first takes its children's links to it" {
 
 test "a discarded context leaves its parent and lets go of the children it drops" {
     const allocator = std.testing.allocator;
-    const top = try BrowsingContext.initTopLevel(allocator);
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
+    const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer top.deinit();
     const child = try BrowsingContext.initChild(allocator, top);
     const grandchild = try BrowsingContext.initChild(allocator, child);
@@ -66,7 +73,9 @@ test "a discarded context leaves its parent and lets go of the children it drops
 
 test "a closed parent still loses a child that is discarded" {
     const allocator = std.testing.allocator;
-    const top = try BrowsingContext.initTopLevel(allocator);
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
+    const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer top.deinit();
     const child = try BrowsingContext.initChild(allocator, top);
 
@@ -81,7 +90,9 @@ test "a closed parent still loses a child that is discarded" {
 
 test "every live descendant, parents first, and none that has left" {
     const allocator = std.testing.allocator;
-    const top = try BrowsingContext.initTopLevel(allocator);
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
+    const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer top.deinit();
     const a = try BrowsingContext.initChild(allocator, top);
     defer a.deinit();

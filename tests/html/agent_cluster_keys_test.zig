@@ -10,6 +10,7 @@ const html_core = @import("html_core");
 
 const keys = dom.agent_cluster_keys;
 const BrowsingContext = html_core.BrowsingContext;
+const Navigables = html_core.Navigables;
 
 test "requestsOAC: only the structured Boolean true, in a secure context" {
     const a = std.testing.allocator;
@@ -42,10 +43,12 @@ test "a reserved environment is secure when its top-level creation URL is potent
 test "obtain: an origin's first document decides its keying for the group" {
     var scope = runtime.BrowserScope.init(std.testing.allocator);
     defer scope.deinit();
+    // The Browser's list, which the scope keeps and ends.
+    const navigables = try scope.table(.navigables, Navigables);
     // Two live groups: two top-level browsing contexts of their own.
-    const tab1 = try BrowsingContext.initTopLevel(std.testing.allocator);
+    const tab1 = try BrowsingContext.initTopLevel(std.testing.allocator, navigables);
     defer tab1.deinit();
-    const tab2 = try BrowsingContext.initTopLevel(std.testing.allocator);
+    const tab2 = try BrowsingContext.initTopLevel(std.testing.allocator, navigables);
     defer tab2.deinit();
     const g1 = tab1.virtual_group_id;
     const g2 = tab2.virtual_group_id;
@@ -75,7 +78,9 @@ test "obtain: an origin's first document decides its keying for the group" {
 test "obtain: an opaque origin and a cross-origin isolated group are origin-keyed, and record nothing" {
     var scope = runtime.BrowserScope.init(std.testing.allocator);
     defer scope.deinit();
-    const tab = try BrowsingContext.initTopLevel(std.testing.allocator);
+    // The Browser's list, which the scope keeps and ends.
+    const navigables = try scope.table(.navigables, Navigables);
+    const tab = try BrowsingContext.initTopLevel(std.testing.allocator, navigables);
     defer tab.deinit();
     const g = tab.virtual_group_id;
     try std.testing.expect(keys.obtain(&scope, g, "null", false, false));
@@ -94,13 +99,15 @@ test "obtain: an opaque origin and a cross-origin isolated group are origin-keye
 test "a group's map goes once none of its browsing contexts is live" {
     var scope = runtime.BrowserScope.init(std.testing.allocator);
     defer scope.deinit();
-    const tab1 = try BrowsingContext.initTopLevel(std.testing.allocator);
+    // The Browser's list, which the scope keeps and ends.
+    const navigables = try scope.table(.navigables, Navigables);
+    const tab1 = try BrowsingContext.initTopLevel(std.testing.allocator, navigables);
     const g1 = tab1.virtual_group_id;
     // A frame of the group, and a popup its page opened, keep it alive after
     // the tab's own context goes.
     const frame = try BrowsingContext.initChild(std.testing.allocator, tab1);
     const popup = try BrowsingContext.initAuxiliary(std.testing.allocator, tab1, true);
-    const tab2 = try BrowsingContext.initTopLevel(std.testing.allocator);
+    const tab2 = try BrowsingContext.initTopLevel(std.testing.allocator, navigables);
     defer tab2.deinit();
     const g2 = tab2.virtual_group_id;
     const origin = "https://web-platform.test:8443";

@@ -51,7 +51,6 @@ fn exerciseDescendantAbort() !void {
     const browser_mod = @import("browser");
     const dom = @import("dom");
     const interfaces = @import("interfaces");
-    const BrowsingContext = @import("html_core").BrowsingContext;
     const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
@@ -62,7 +61,7 @@ fn exerciseDescendantAbort() !void {
     const frame = (try interfaces.Document.call_getElementById(parent, runtime.DOMString.initInterned("child"))) orelse return error.TestUnexpectedResult;
     const child = (try interfaces.HTMLIFrameElement.get_contentDocument(frame)) orelse return error.TestUnexpectedResult;
     const window = (try interfaces.Document.get_defaultView(child)) orelse return error.TestUnexpectedResult;
-    const navigable = BrowsingContext.ofWindow(@ptrCast(window)) orelse return error.TestUnexpectedResult;
+    const navigable = dom.browser_state.browsingContextOf(window) orelse return error.TestUnexpectedResult;
     try page.runScript(
         \\const childDocument = document.getElementById('child').contentDocument;
         \\childDocument.open();
