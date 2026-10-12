@@ -279,6 +279,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A shared, mutable spec object is a reference-counted record its sharers hold](architecture-a-shared-mutable-spec-object-is-a-refcounted-record.md) - Shared and mutable in the spec means one reference-counted record held by every sharer: copies diverge on the first mutation, and a walk to the creator breaks when the mutation comes from the other side or the creator is gone.
 
 ### Spec Compliance
+- [An unrestricted cookie default is not explicit None](spec-compliance-an-unrestricted-cookie-default-is-not-explicit-none.md) - Preserve the parsed Default/None distinction when applying browser policy.
 - [A reflected attribute is set and removed by DOM's algorithms, not by setAttribute](spec-compliance-a-reflected-attribute-is-set-and-removed-by-dom-s.md) - "Set / delete the content attribute" are DOM's set-an-attribute-value and remove-by-namespace-and-local-name: an algorithm calls the algorithm, never setAttribute or removeAttribute.
 - [A label limit must not discard the public suffix](spec-compliance-domain-limits-must-not-drop-the-public-suffix.md) - Match the rightmost labels without truncating the hostname's security boundary.
 - [document.domain is a two-sided opt-in](spec-compliance-document-domain-is-a-two-sided-opt-in.md) - An unchanged document.domain getter does not mean unchanged access: setting it is an explicit opt-in, and both origins must opt in.
