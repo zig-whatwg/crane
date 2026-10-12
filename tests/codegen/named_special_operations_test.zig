@@ -45,7 +45,7 @@ fn table(output: []const u8, name: []const u8) ![]const u8 {
 test "a named deleter is a method, like a named getter and setter" {
     var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
     defer buffer.deinit();
-    try writer.writeMetadata(&buffer.writer, "Storage", null, null, true, &.{}, &.{}, &.{}, &ops, &ops, &.{}, false, false, false, null, &.{}, null, &ops);
+    try writer.writeMetadata(&buffer.writer, "Storage", null, null, true, &.{}, &.{}, &.{}, &ops, &ops, &.{}, false, false, false, null, &.{}, null, &ops, null);
     const output = buffer.written();
 
     const methods = try table(output, "methods");
@@ -62,7 +62,7 @@ test "a named deleter a parent declares is inherited, not own" {
     var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
     defer buffer.deinit();
     // The child declares only `clear`; the parent's operations come in `all_operations`.
-    try writer.writeMetadata(&buffer.writer, "Child", null, "Storage", true, &.{}, &.{}, &.{}, &ops, ops[4..5], &.{}, false, false, false, null, &.{}, null, ops[4..5]);
+    try writer.writeMetadata(&buffer.writer, "Child", null, "Storage", true, &.{}, &.{}, &.{}, &ops, ops[4..5], &.{}, false, false, false, null, &.{}, null, ops[4..5], null);
     const output = buffer.written();
     const inherited = try table(output, "inherited_methods");
     try testing.expect(std.mem.indexOf(u8, inherited, "\"removeItem\"") != null);

@@ -67,6 +67,16 @@ pub const HTMLOptionsCollection = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_item" },
+            .indexed_setter = .{ .function = "call_setter", .implemented = @hasDecl(HTMLOptionsCollectionImpl, "call_setter") },
+            .named_getter = .{ .function = "call_namedItem" },
+            .legacy_unenumerable_named_properties = true,
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -147,11 +157,15 @@ pub const HTMLOptionsCollection = struct {
 
     /// Extended attributes: [CEReactions]
     pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
+        if (comptime @hasDecl(HTMLOptionsCollectionImpl, "call_setter")) {
+            // [CEReactions] - Trigger Custom Element lifecycle callbacks
+            const ce_scope = runtime.CEReactions.begin(instance);
+            defer runtime.CEReactions.end(ce_scope);
 
-        return try HTMLOptionsCollectionImpl.call_setter(instance, index, option);
+            return try HTMLOptionsCollectionImpl.call_setter(instance, index, option);
+        } else {
+            return error.NotImplemented;
+        }
     }
 
     /// Extended attributes: [CEReactions]
@@ -184,4 +198,8 @@ pub const HTMLOptionsCollection = struct {
     };
 
     pub const call_item = HTMLCollection.call_item;
+
+    pub const call_namedItem = HTMLCollection.call_namedItem;
+
+    pub const getSupportedPropertyNames = HTMLCollection.getSupportedPropertyNames;
 };

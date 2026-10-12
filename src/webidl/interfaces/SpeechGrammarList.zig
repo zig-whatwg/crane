@@ -59,6 +59,13 @@ pub const SpeechGrammarList = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_item" },
+        };
     };
 
     pub const State = runtime.FlattenedState(

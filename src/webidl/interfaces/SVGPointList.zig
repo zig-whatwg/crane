@@ -68,6 +68,14 @@ pub const SVGPointList = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_getItem" },
+            .indexed_setter = .{ .function = "call_setter", .implemented = @hasDecl(SVGPointListImpl, "call_setter") },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -134,6 +142,14 @@ pub const SVGPointList = struct {
         return try SVGPointListImpl.get_numberOfItems(instance);
     }
 
+    pub fn call_setter(instance: *runtime.Instance, index: u32, newItem: *runtime.Instance) anyerror!void {
+        if (comptime @hasDecl(SVGPointListImpl, "call_setter")) {
+            return try SVGPointListImpl.call_setter(instance, index, newItem);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
     pub fn call_removeItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         return try SVGPointListImpl.call_removeItem(instance, index);
     }
@@ -156,10 +172,6 @@ pub const SVGPointList = struct {
 
     pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         return try SVGPointListImpl.call_getItem(instance, index);
-    }
-
-    pub fn call_setter(instance: *runtime.Instance, index: u32, newItem: *runtime.Instance) anyerror!void {
-        return try SVGPointListImpl.call_setter(instance, index, newItem);
     }
 
     pub fn call_replaceItem(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
