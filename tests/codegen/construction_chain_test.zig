@@ -42,7 +42,12 @@ const Generated = struct {
 
     /// The generated file of interface `name`; the caller frees it.
     fn file(self: *Generated, name: []const u8) ![]u8 {
-        const path = try std.fmt.allocPrint(testing.allocator, "{s}/interfaces/{s}.zig", .{ self.root, name });
+        return self.fileIn("interfaces", name);
+    }
+
+    /// The generated file `name` in `dir` (interfaces, impls_tmp); the caller frees it.
+    fn fileIn(self: *Generated, dir: []const u8, name: []const u8) ![]u8 {
+        const path = try std.fmt.allocPrint(testing.allocator, "{s}/{s}/{s}.zig", .{ self.root, dir, name });
         defer testing.allocator.free(path);
         return std.Io.Dir.cwd().readFileAlloc(testing.io, path, testing.allocator, .limited(1024 * 1024));
     }
@@ -200,4 +205,21 @@ test "a mixin has no lifecycle and no vtable: it is never instantiated" {
     const leaf = try out.file("Leaf");
     defer testing.allocator.free(leaf);
     try testing.expect(!contains(leaf, "SharedImpl.init"));
+}
+
+test "an impl stub constructs through the chain: no init or deinit of its own" {
+    var out = try Generated.init();
+    defer out.deinit();
+    const stub = try out.fileIn("impls_tmp", "Leaf");
+    defer testing.allocator.free(stub);
+
+    // A stub that made its instance itself (`runtime.Instance.init`) left every
+    // ancestor's state unmade: 492 impls of types with a parent were copied
+    // from it. Without init and deinit the generated chain runs the parent's.
+    try testing.expect(!contains(stub, "pub fn init("));
+    try testing.expect(!contains(stub, "pub fn deinit("));
+    try testing.expect(!contains(stub, "runtime.Instance.init"));
+    // Where its own steps go, when it has any.
+    try testing.expect(contains(stub, "initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void"));
+    try testing.expect(contains(stub, "deinitOwn(instance: *runtime.Instance) void"));
 }

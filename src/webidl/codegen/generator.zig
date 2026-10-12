@@ -1205,27 +1205,17 @@ fn generateImplFile(
     try w.writeAll("/// - Cached computations, buffers, etc.\n");
     try w.writeAll("pub const InternalState = struct {};\n\n");
 
-    // Init and deinit functions - delegate to runtime.Instance
-    try w.writeAll("/// Initialize instance (creates the instance)\n");
-    try w.writeAll("pub fn init(\n");
-    try w.writeAll("    allocator: std.mem.Allocator,\n");
-    try w.writeAll("    comptime StateType: type,\n");
-    try w.writeAll("    vtable: *const runtime.VTable,\n");
-    try w.writeAll("    ctx: runtime.Context,\n");
-    try w.writeAll(") !*runtime.Instance {\n");
-    try w.writeAll("    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);\n");
-    try w.writeAll("    // TODO: Initialize your instance state here if needed\n");
-    try w.writeAll("    return instance;\n");
-    try w.writeAll("}\n\n");
-
-    try w.writeAll("/// Deinitialize instance - clean up owned resources only\n");
-    try w.writeAll("/// NOTE: Do NOT call runtime.Instance.deinit() here - the GC integration\n");
-    try w.writeAll("/// layer (gc_integration.onObjectFreed) handles freeing the slab after\n");
-    try w.writeAll("/// calling this deinit function. Calling it here causes double-free.\n");
-    try w.writeAll("pub fn deinit(instance: *runtime.Instance) void {\n");
-    try w.writeAll("    _ = instance;\n");
-    try w.writeAll("    // TODO: Clean up your instance's owned resources here (strings, arrays, etc.)\n");
-    try w.writeAll("}\n\n");
+    // Construction and destruction are the generated interface's chain
+    // (writer.writeLifecycleFunctions): no init or deinit here. A stub that
+    // made its instance itself left every ancestor's state unmade.
+    try w.writeAll("// Construction and destruction: the generated interface's chain runs the\n");
+    try w.writeAll("// parent interface's steps. For state of this interface's own, define\n");
+    try w.writeAll("//\n");
+    try w.writeAll("//   pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void\n");
+    try w.writeAll("//   pub fn deinitOwn(instance: *runtime.Instance) void\n");
+    try w.writeAll("//\n");
+    try w.writeAll("// (run after and before the parent's), and list what it is given at\n");
+    try w.writeAll("// construction in `pub const construction_args = .{\"name\"};`.\n\n");
 
     // Collect ONLY own members (not inherited)
     // Impl files should only implement their interface's own operations
@@ -2164,8 +2154,8 @@ test "generateInterface includes lifecycle functions" {
     // Should have init and deinit
     try testing.expect(std.mem.indexOf(u8, content, "pub fn init(") != null);
     try testing.expect(std.mem.indexOf(u8, content, "pub fn deinit(") != null);
-    // init() should delegate to TestInterfaceImpl with State and vtable
-    try testing.expect(std.mem.indexOf(u8, content, "TestInterfaceImpl.init(allocator, State, &vtable, ctx)") != null);
+    // init() runs the construction chain with State and vtable
+    try testing.expect(std.mem.indexOf(u8, content, "return initChain(allocator, State, &vtable, ctx, .{});") != null);
 }
 
 /// Check if an IDL type references a callback (to determine if we need to import callbacks module)
