@@ -1,7 +1,7 @@
 //! Image decoding through the platform protocol (decisions 19 and 19a;
 //! docs/platform-protocol.md 6.10.5): `platform.decodeImage` turns one
 //! complete resource's bytes into straight-alpha RGBA8, behind the
-//! `image_decoding` capability. The testing platform decodes PNG and BMP in
+//! `image_decoding` capability. The testing platform decodes PNG, BMP and GIF in
 //! Zig, so these run against it; a platform without the capability takes
 //! the unsupported path (every image is broken).
 //!
@@ -282,7 +282,8 @@ test "image decoding: a type the platform does not decode is unsupported, whatev
     defer testing.allocator.free(bytes);
     // The MIME type Crane determined decides (MIME Sniffing's image rules run
     // above the protocol); the platform does not sniff.
-    try testing.expectError(error.UnsupportedFormat, decode("image/gif", bytes));
+    // (SVG: a document to render, not a raster format the decoders read.)
+    try testing.expectError(error.UnsupportedFormat, decode("image/svg+xml", bytes));
     try testing.expectError(error.UnsupportedFormat, decode("text/html", bytes));
     try testing.expectError(error.UnsupportedFormat, decode("", bytes));
 }
