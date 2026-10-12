@@ -535,13 +535,10 @@ pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         NodeType.ATTRIBUTE_NODE => interfaces.Attr.get_name(instance) catch runtime.DOMString.initEmpty(),
         NodeType.TEXT_NODE => runtime.DOMString.initInterned("#text"),
         NodeType.CDATA_SECTION_NODE => runtime.DOMString.initInterned("#cdata-section"),
-        NodeType.PROCESSING_INSTRUCTION_NODE => blk: {
-            // For ProcessingInstruction: its target
-            if (internal.local_name) |name| {
-                break :blk name;
-            }
-            break :blk runtime.DOMString.initEmpty();
-        },
+        // ProcessingInstruction: its target - ProcessingInstruction's, read
+        // through its IDL member as Element's tagName is above (Node's
+        // local_name is never set for one, so nodeName came back "").
+        NodeType.PROCESSING_INSTRUCTION_NODE => interfaces.ProcessingInstruction.get_target(instance) catch runtime.DOMString.initEmpty(),
         NodeType.COMMENT_NODE => runtime.DOMString.initInterned("#comment"),
         NodeType.DOCUMENT_NODE => runtime.DOMString.initInterned("#document"),
         NodeType.DOCUMENT_TYPE_NODE => blk: {
