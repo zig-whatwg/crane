@@ -1493,6 +1493,13 @@ pub const SpecialBinding = struct {
     named_deleter: ?[]const u8 = null,
     legacy_override_built_ins: bool = false,
     legacy_unenumerable_named_properties: bool = false,
+    /// [[OwnPropertyKeys]] (3.9.6) step 3 lists the visible named
+    /// properties (webidl.SpecialOperations.named_properties_in_own_keys).
+    /// The default is the spec's; false only where codegen records that
+    /// every browser leaves them out (HTMLFormElement). Named lookup is the
+    /// same either way: it asks the supported property names, never the key
+    /// list.
+    named_properties_in_own_keys: bool = true,
     /// The named getter and setter stand in for CSSOM's camel-cased
     /// attributes (webidl.SpecialOperations.crane_css_properties).
     crane_css_properties: bool = false,
@@ -1544,6 +1551,7 @@ pub fn specialBinding(comptime Interface: type) SpecialBinding {
                 binding.named_deleter = boundSpecialOperation(Interface, ops.named_deleter, .name);
                 binding.legacy_override_built_ins = ops.legacy_override_built_ins;
                 binding.legacy_unenumerable_named_properties = ops.legacy_unenumerable_named_properties;
+                binding.named_properties_in_own_keys = ops.named_properties_in_own_keys;
                 binding.crane_css_properties = ops.crane_css_properties;
             }
         }
@@ -6947,7 +6955,11 @@ pub fn V8Interface(comptime Interface: type) type {
         /// supported property indices in ascending order (V8 lists the
         /// indexed interceptor's after; the legacy platform object proxy puts
         /// them first), then step 3's supported property names that are
-        /// visible, in their order. Own properties (steps 4-5) are V8's.
+        /// visible, in their order - unless the interface is one whose names
+        /// every browser leaves out (special.named_properties_in_own_keys
+        /// false: HTMLFormElement), when the list stops at step 2 and named
+        /// lookup, which asks the supported property names itself, is
+        /// unchanged. Own properties (steps 4-5) are V8's.
         fn namedPropertyEnumerator(info: *const v8.PropertyCallbackInfo) callconv(.c) void {
             if (comptime !has_named_getter) return;
 
@@ -6964,7 +6976,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             };
 
-            const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
+            // Step 3's names, unless the interface leaves them out: then none
+            // is even made.
+            const names: []runtime.DOMString = if (comptime !special.named_properties_in_own_keys) &.{} else Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 defer v8.v8_Array_Dispose(empty_arr);
                 info.setReturnValue(@ptrCast(empty_arr));

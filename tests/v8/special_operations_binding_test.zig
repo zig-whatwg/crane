@@ -14,7 +14,11 @@
 //!   index as a name (Blink's bind_gen forwards the same way);
 //! - the named property visibility algorithm (3.9.7) on a read: an own
 //!   property of O hides a named property, under [LegacyOverrideBuiltIns]
-//!   too, which skips only the prototype chain (step 3).
+//!   too, which skips only the prototype chain (step 3);
+//! - [[OwnPropertyKeys]] (3.9.6) lists the visible named properties unless
+//!   codegen records the browsers' exception (HTMLFormElement,
+//!   Meta.special_operations.named_properties_in_own_keys), which keeps
+//!   named lookup.
 //!
 //! Values are made the way the binding makes them: by script, in a Window
 //! realm. Storage, which needs a Browser's storage shed, is
@@ -27,7 +31,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
+const webidl = @import("webidl");
 const specialBinding = @import("v8").interface_mod.specialBinding;
+const SpecialBinding = @import("v8").interface_mod.SpecialBinding;
 
 fn eqlOpt(a: ?[]const u8, b: ?[]const u8) bool {
     if (a == null or b == null) return a == null and b == null;
@@ -75,6 +81,19 @@ comptime {
     std.debug.assert(!@hasDecl(interfaces.Node.Meta, "special_operations"));
     const none = specialBinding(interfaces.Node);
     std.debug.assert(none.indexed_getter == null and none.named_getter == null);
+    // [[OwnPropertyKeys]] step 3 lists the visible named properties: the
+    // default, in the table and in the binding, and every interface's but
+    // the browsers' exception, HTMLFormElement (whatwg/html#1731).
+    std.debug.assert((webidl.SpecialOperations{}).named_properties_in_own_keys);
+    std.debug.assert((SpecialBinding{}).named_properties_in_own_keys);
+    std.debug.assert(specialBinding(interfaces.Storage).named_properties_in_own_keys);
+    std.debug.assert(specialBinding(interfaces.NamedNodeMap).named_properties_in_own_keys);
+    std.debug.assert(specialBinding(interfaces.DOMStringMap).named_properties_in_own_keys);
+    std.debug.assert(specialBinding(interfaces.HTMLCollection).named_properties_in_own_keys);
+    std.debug.assert(specialBinding(interfaces.HTMLFormControlsCollection).named_properties_in_own_keys);
+    std.debug.assert(specialBinding(interfaces.HTMLOptionsCollection).named_properties_in_own_keys);
+    std.debug.assert(specialBinding(interfaces.Document).named_properties_in_own_keys);
+    std.debug.assert(!interfaces.HTMLFormElement.Meta.special_operations.named_properties_in_own_keys);
 }
 
 const WindowHost = struct {
@@ -324,8 +343,24 @@ test "an own property hides a named property; the prototype chain does not, with
     );
 }
 
+test "the default: a named getter's names are in [[OwnPropertyKeys]] (3.9.6 step 3)" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { doc, body } = html();
+        \\  body.setAttribute('data-x', '1');
+        \\  check('dataset', Object.getOwnPropertyNames(body.dataset).join(), 'x');
+        \\  check('attributes', Object.getOwnPropertyNames(body.attributes).join(), '0,data-x');
+        \\  const a = doc.createElement('a');
+        \\  a.id = 'n';
+        \\  body.appendChild(a);
+        \\  check('children', Object.getOwnPropertyNames(body.children).join(), '0,n');
+    );
+}
+
 /// HTMLFormElement's named getter is its impl's to implement (Codex row 23);
-/// until it does, the binding installs none and this has nothing to test.
+/// until it does, the binding installs none and these two have nothing to
+/// test.
 const form_named_getter_bound = specialBinding(interfaces.HTMLFormElement).named_getter != null;
 
 test "[LegacyOverrideBuiltIns]: an own property hides a named property (visibility step 2), the prototype chain does not (step 3)" {
@@ -351,5 +386,37 @@ test "[LegacyOverrideBuiltIns]: an own property hides a named property (visibili
         \\  check('still the expando', form.fixed, 6);
         \\  const submit = add('submit');
         \\  check('over the prototype chain', form.submit, submit);
+    );
+}
+
+test "HTMLFormElement: no names in [[OwnPropertyKeys]], as in every browser - and named lookup unchanged" {
+    if (!form_named_getter_bound) return error.SkipZigTest;
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { doc, body } = html();
+        \\  const form = doc.createElement('form');
+        \\  body.appendChild(form);
+        \\  const alpha = doc.createElement('input');
+        \\  alpha.name = 'alpha';
+        \\  form.appendChild(alpha);
+        \\  const beta = doc.createElement('input');
+        \\  beta.id = 'beta';
+        \\  form.appendChild(beta);
+        \\  form.expando = 1;
+        \\  check('getOwnPropertyNames', Object.getOwnPropertyNames(form).join(), '0,1,expando');
+        \\  check('Reflect.ownKeys', Reflect.ownKeys(form).filter(k => typeof k === 'string').join(), '0,1,expando');
+        \\  check('Object.keys', Object.keys(form).join(), '0,1,expando');
+        \\  const seen = [];
+        \\  for (const k in form) if (k === 'alpha' || k === 'beta') seen.push(k);
+        \\  check('for-in', seen.join(), '');
+        \\  check('alpha', form.alpha, alpha);
+        \\  check('beta', form.beta, beta);
+        \\  check('in', 'alpha' in form, true);
+        \\  check('hasOwnProperty', Object.prototype.hasOwnProperty.call(form, 'alpha'), true);
+        \\  const desc = Object.getOwnPropertyDescriptor(form, 'alpha');
+        \\  check('descriptor value', desc && desc.value, alpha);
+        \\  check('descriptor enumerable', desc && desc.enumerable, false);
+        \\  check('descriptor configurable', desc && desc.configurable, true);
     );
 }
