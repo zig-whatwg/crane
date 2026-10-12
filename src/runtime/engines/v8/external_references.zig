@@ -282,6 +282,9 @@ pub fn registerAllExternalReferences() void {
     // Register context manager callbacks
     const context_manager = @import("context_manager.zig");
     context_manager.registerExternalReferences();
+    // The cross-origin access check and interceptors on the Window and
+    // Location templates (cross_origin.zig).
+    @import("cross_origin.zig").registerExternalReferences();
 
     // Register the legacy factory functions (Image, Audio, Option)
     @import("legacy_factory_functions.zig").registerExternalReferences();

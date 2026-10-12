@@ -33,13 +33,9 @@ const WindowRealmState = struct {
     /// The agent - the isolate - and whether making the realm entered it.
     isolate: *ffi.Isolate,
     entered_isolate: bool,
-    /// The realm's origin, serialized (owned); null for an opaque one. Kept,
-    /// with the predicate below, for the WindowProxy and Location cross-origin
-    /// checks - which V8 does not run yet: no access-check callback is
-    /// installed, and those checks are still the impls' (Window.get_document,
-    /// with the accessor Window).
-    origin: ?[]u8,
-    /// HTML IsPlatformObjectSameOrigin, as the host supplied it.
+    /// HTML IsPlatformObjectSameOrigin, as the host supplied it: asked by the
+    /// access checks on this realm's WindowProxy and Locations
+    /// (cross_origin.zig) on every access from another realm.
     is_platform_object_same_origin: ?*const fn (host: ?*anyopaque, current: Context, object: *engine.Instance) bool,
     host: ?*anyopaque,
     /// A later realm was built around this one's WindowProxy (a navigation
@@ -228,18 +224,14 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
             ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template);
         break :blk made orelse return error.OperationFailed;
     };
-    // A frame's realm (one with a parent) takes its parent's security token:
-    // V8 lets script reach another context's global proxy only with the same
-    // token, and the WindowProxy's cross-origin checks are the host's.
-    const parent_context: ?*ffi.Context = if (options.parent) |parent| contextOf(parent) orelse return error.OperationFailed else null;
-    if (parent_context) |pc| {
-        // Owned, and copied by SetSecurityToken. By default the token is the
-        // parent's global object, so a kept handle would keep the page alive.
-        if (ffi.v8_Context_GetSecurityToken(pc)) |token| {
-            defer ffi.v8_Value_Dispose(token);
-            ffi.v8_Context_SetSecurityToken(context, token);
-        }
-    }
+    // Every realm keeps its own security token - V8's default, its global
+    // object - frames included [cross_origin_objects]. V8 then asks the
+    // access check (cross_origin.zig) on every access to this realm's
+    // WindowProxy from another realm, and the check asks the host's
+    // IsPlatformObjectSameOrigin each time. A shared token would let V8 skip
+    // the check - an answer kept across document.domain changes - as a
+    // frame once took its parent's.
+    if (options.parent) |parent| _ = contextOf(parent) orelse return error.OperationFailed;
     // [code_generation_checks]: eval and Function in it reach the agent's
     // host, when the host checks them.
     @import("protocol_agents.zig").restrictCodeGenerationFromStrings(isolate, context);
@@ -304,14 +296,12 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     state.* = .{
         .isolate = isolate,
         .entered_isolate = entered_isolate,
-        .origin = if (options.origin) |o| allocator.dupe(u8, o) catch return error.OutOfMemory else null,
         .is_platform_object_same_origin = options.is_platform_object_same_origin,
         .host = options.host,
         .parent = options.parent,
         .window = window,
         .allocator = allocator,
     };
-    errdefer if (state.origin) |o| allocator.free(o);
     const parent_state: ?*WindowRealmState = if (options.parent) |parent| window_realms.get(parent) else null;
     if (parent_state) |ps| ps.children.append(std.heap.c_allocator, realm) catch return error.OutOfMemory;
     errdefer if (parent_state) |ps| removeChild(ps, realm);
@@ -463,6 +453,32 @@ fn windowTemplate(isolate: *ffi.Isolate) *ffi.FunctionTemplate {
         null,
     );
     return template;
+}
+
+/// What the access checks ask for `realm`'s WindowProxy and Locations: the
+/// host's IsPlatformObjectSameOrigin and its host. Null for a realm made
+/// without one (it is reached as a same-origin one is) or not made here.
+pub const SameOriginCheck = struct {
+    is_platform_object_same_origin: *const fn (host: ?*anyopaque, current: Context, object: *engine.Instance) bool,
+    host: ?*anyopaque,
+};
+
+pub fn sameOriginCheckOf(realm: Context) ?SameOriginCheck {
+    const state = window_realms.get(realm) orelse return null;
+    return .{
+        .is_platform_object_same_origin = state.is_platform_object_same_origin orelse return null,
+        .host = state.host,
+    };
+}
+
+/// `window`'s WindowProxy - its realm's global proxy - as an owned handle
+/// (v8_Object_Dispose), when `window` is the Window behind it; null for a
+/// Window whose proxy went on to a later realm, or one not made here.
+pub fn windowProxyOf(window: *engine.Instance) ?*ffi.Object {
+    const state = window_realms.get(window.ctx) orelse return null;
+    if (state.window != window or state.window_proxy_handed_on) return null;
+    const context = contextOf(window.ctx) orelse return null;
+    return ffi.v8_Context_Global(context);
 }
 
 /// Bind `window` as `global`'s platform object, and give the global what a
@@ -752,7 +768,6 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
     const state = if (window_realms.fetchRemove(realm)) |kv| kv.value else null;
     const detached: ?*Detached = if (state) |s| s.detached else null;
     defer if (state) |s| {
-        if (s.origin) |o| s.allocator.free(o);
         if (s.retired_global) |g| ffi.v8_Global_Dispose(g);
         s.allocator.destroy(s);
     };

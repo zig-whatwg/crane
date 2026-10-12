@@ -14,6 +14,7 @@
 #include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
 #include <v8-profiler.h>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -2254,13 +2255,11 @@ size_t v8_Isolate_GetGlobalHandleBytes(Isolate* isolate) {
 static constexpr int kCraneContextIdIndex = 1;
 static std::atomic<uintptr_t> g_next_context_id{1};
 
-void* v8_Context_GetRawAddress(Global<Context>* context_handle) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Context> ctx = context_handle->Get(isolate);
+/// `ctx`'s Crane id (v8_Context_GetRawAddress), given it on first use.
+static void* CraneContextIdOf(Local<Context> ctx) {
     if (g_snapshot_mode) return *reinterpret_cast<void**>(*ctx);
-    // Only Crane writes embedder data, and only this slot, so a slot within
-    // the array's length is ours.
+    // Only Crane writes embedder data at this index, so a slot within the
+    // array's length is ours.
     if (ctx->GetNumberOfEmbedderDataFields() > static_cast<uint32_t>(kCraneContextIdIndex)) {
         if (void* id = ctx->GetAlignedPointerFromEmbedderData(kCraneContextIdIndex)) return id;
     }
@@ -2269,6 +2268,12 @@ void* v8_Context_GetRawAddress(Global<Context>* context_handle) {
     void* id = reinterpret_cast<void*>(g_next_context_id.fetch_add(1, std::memory_order_relaxed) << 3);
     ctx->SetAlignedPointerInEmbedderData(kCraneContextIdIndex, id);
     return id;
+}
+
+void* v8_Context_GetRawAddress(Global<Context>* context_handle) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    return CraneContextIdOf(context_handle->Get(isolate));
 }
 
 void v8_Isolate_ThrowException(Isolate* isolate, Global<Value>* exception) {
@@ -5894,11 +5899,42 @@ void v8_ObjectTemplate_SetAccessor(
 // Getter: receives no arguments, returns value via info.GetReturnValue()
 // Setter: receives new value as info[0], sets it on the object
 // Per WebIDL spec, getter functions must have name "get <propname>" and setter "set <propname>"
+void v8_ObjectTemplate_SetAccessorPropertyChecked(
+    Global<ObjectTemplate>* tpl,
+    Global<String>* name,
+    FunctionCallback getter,
+    FunctionCallback setter,
+    bool getter_accepts_any_receiver,
+    bool setter_accepts_any_receiver,
+    int attributes
+);
+
 void v8_ObjectTemplate_SetAccessorProperty(
     Global<ObjectTemplate>* tpl,
     Global<String>* name,
     FunctionCallback getter,
     FunctionCallback setter
+) {
+    v8_ObjectTemplate_SetAccessorPropertyChecked(tpl, name, getter, setter, true, true, PropertyAttribute::None);
+}
+
+/// v8_ObjectTemplate_SetAccessorProperty, and for each of the two functions
+/// whether it accepts any receiver (FunctionTemplate::SetAcceptAnyReceiver).
+/// One that does not runs WebIDL's "perform a security check" (HTML 7.2.1.1)
+/// before its callback: V8 asks the receiver's access check
+/// (IsPlatformObjectSameOrigin) for a WindowProxy or Location of another
+/// realm, and a failed check throws (the isolate's failed-access-check
+/// callback: a SecurityError) [cross_origin_objects]. `attributes` are the
+/// property's (PropertyAttribute): DontDelete for a [LegacyUnforgeable]
+/// attribute on an instance template.
+void v8_ObjectTemplate_SetAccessorPropertyChecked(
+    Global<ObjectTemplate>* tpl,
+    Global<String>* name,
+    FunctionCallback getter,
+    FunctionCallback setter,
+    bool getter_accepts_any_receiver,
+    bool setter_accepts_any_receiver,
+    int attributes
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -5927,6 +5963,7 @@ void v8_ObjectTemplate_SetAccessorProperty(
 
     // Per WebIDL spec, getter.length should be 0
     getter_tpl->SetLength(0);
+    getter_tpl->SetAcceptAnyReceiver(getter_accepts_any_receiver);
 
     // Create FunctionTemplate for setter (if provided)
     Local<FunctionTemplate> setter_tpl;
@@ -5946,6 +5983,7 @@ void v8_ObjectTemplate_SetAccessorProperty(
 
         // Per WebIDL spec, setter.length should be 1
         setter_tpl->SetLength(1);
+        setter_tpl->SetAcceptAnyReceiver(setter_accepts_any_receiver);
     }
     
     // Set as accessor property with proper attributes
@@ -5954,7 +5992,7 @@ void v8_ObjectTemplate_SetAccessorProperty(
         key.As<Name>(),
         getter_tpl,
         setter ? setter_tpl : Local<FunctionTemplate>(),
-        PropertyAttribute::None
+        static_cast<PropertyAttribute>(attributes)
     );
 }
 
@@ -6519,12 +6557,37 @@ bool v8_Object_DefineProperty(Global<Object>* object, Global<Context>* context, 
 // Set an accessor property (getter/setter) on an existing V8 Object
 // This is used to make Window properties own properties of the global object
 // so that Object.getOwnPropertyDescriptor(window, "name") returns { get: [Function], set: [Function] }
+bool v8_Object_SetAccessorPropertyChecked(
+    Global<Object>* object,
+    Global<Context>* context,
+    Global<String>* name,
+    FunctionCallback getter,
+    FunctionCallback setter,
+    bool getter_accepts_any_receiver,
+    bool setter_accepts_any_receiver
+);
+
 bool v8_Object_SetAccessorProperty(
     Global<Object>* object,
     Global<Context>* context,
     Global<String>* name,
     FunctionCallback getter,
     FunctionCallback setter
+) {
+    return v8_Object_SetAccessorPropertyChecked(object, context, name, getter, setter, true, true);
+}
+
+/// v8_Object_SetAccessorProperty with v8_ObjectTemplate_SetAccessorPropertyChecked's
+/// receiver flags: a function that does not accept any receiver runs WebIDL's
+/// security check first [cross_origin_objects].
+bool v8_Object_SetAccessorPropertyChecked(
+    Global<Object>* object,
+    Global<Context>* context,
+    Global<String>* name,
+    FunctionCallback getter,
+    FunctionCallback setter,
+    bool getter_accepts_any_receiver,
+    bool setter_accepts_any_receiver
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
@@ -6550,6 +6613,7 @@ bool v8_Object_SetAccessorProperty(
         getter_tpl->SetClassName(getter_name_str);
         // Per WebIDL spec, getter.length should be 0
         getter_tpl->SetLength(0);
+        getter_tpl->SetAcceptAnyReceiver(getter_accepts_any_receiver);
         getter_func = getter_tpl->GetFunction(ctx).ToLocalChecked();
     }
 
@@ -6564,6 +6628,7 @@ bool v8_Object_SetAccessorProperty(
         setter_tpl->SetClassName(setter_name_str);
         // Per WebIDL spec, setter.length should be 1
         setter_tpl->SetLength(1);
+        setter_tpl->SetAcceptAnyReceiver(setter_accepts_any_receiver);
         setter_func = setter_tpl->GetFunction(ctx).ToLocalChecked();
     }
     
@@ -13013,3 +13078,641 @@ int v8_MatchesPatternAttribute(Isolate* isolate, PatternMatcher* matcher, const 
 
 } // extern "C"
 // ---- end lane: cxsupport ----
+// ---- lane: xorigin2 (HTML 7.2.1 cross-origin objects) ----
+// ============================================================================
+// Cross-origin objects [cross_origin_objects]: the WindowProxy's and
+// Location's cross-origin internal methods (HTML 7.2.3, 7.2.4), on V8's
+// access checks - Blink's design (V8Window / V8Location's cross-origin
+// interceptors, BindingSecurity::ShouldAllowAccessTo; design only).
+//
+// Every Window realm keeps its own security token, so V8 runs the access
+// check below on every access to a WindowProxy from another realm, and - as
+// a Location's template has one too - on every access to a Location. The
+// check answers IsPlatformObjectSameOrigin (7.2.1.3.3): the same realm at
+// once, any other through the adapter's Zig half (cross_origin.zig), which
+// asks the host each time - never a kept answer, since a document's domain
+// changes at any time. A failed check hands the access to the interceptors
+// here, which run the cross-origin steps: CrossOriginGet / CrossOriginSet
+// (7.2.1.3.5-6), [[GetOwnProperty]] through CrossOriginGetOwnPropertyHelper
+// and CrossOriginPropertyFallback (7.2.1.3.2, 7.2.1.3.4), and
+// CrossOriginOwnPropertyKeys (7.2.1.3.7). What V8 does not hand to an
+// interceptor - [[Delete]], [[DefineOwnProperty]], [[SetPrototypeOf]],
+// [[PreventExtensions]], and a call whose function does not accept any
+// receiver (WebIDL's "perform a security check") - reaches the isolate's
+// failed-access-check callback, which throws a SecurityError.
+// [[GetPrototypeOf]] answers null and [[IsExtensible]] true by V8's own
+// access-check paths.
+// ============================================================================
+
+extern "C" {
+
+/// One entry of CrossOriginProperties (7.2.1.3.1): the member's name and
+/// the binding's own steps for it - an operation's callback, or an
+/// attribute's getter ([[NeedsGetter]]) and setter ([[NeedsSetter]]).
+struct CrossOriginMember {
+    const char* name;
+    size_t name_len;
+    FunctionCallback method;
+    FunctionCallback getter;
+    FunctionCallback setter;
+    int length;
+};
+
+/// The adapter's Zig half (cross_origin.zig).
+struct CrossOriginDispatch {
+    /// IsPlatformObjectSameOrigin(O) for a current realm that is not O's:
+    /// the current realm's Crane id (v8_Context_GetRawAddress) and the
+    /// platform object (a Window or a Location).
+    bool (*same_origin)(Isolate* isolate, void* current_realm, void* object);
+    /// Throw a SecurityError DOMException in the current realm.
+    void (*throw_security_error)(Isolate* isolate);
+    /// The WindowProxy of W's document-tree child navigable `index`, as the
+    /// Window's indexed getter answers it into `info`; kNo when there is none.
+    Intercepted (*child_at)(uint32_t index, const PropertyCallbackInfo<Value>* info);
+    /// The number of W's document-tree child navigables.
+    uint32_t (*child_count)(void* window);
+    /// The active WindowProxy of W's named object `name` when `name` is in
+    /// W's document-tree child navigable target name property set, OWNED
+    /// (disposed here); null otherwise.
+    Global<Value>* (*child_named)(Isolate* isolate, void* window, const char* name, size_t name_len);
+    const CrossOriginMember* window_members;
+    size_t window_member_count;
+    const CrossOriginMember* location_members;
+    size_t location_member_count;
+};
+
+} // extern "C"
+
+namespace {
+
+// process-wide: the adapter's one dispatch table (cross_origin.zig), the same for every agent; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
+const CrossOriginDispatch* g_cross_origin = nullptr;
+
+/// Which object an interceptor serves: its handler configuration's data.
+constexpr int32_t kCrossOriginWindow = 0;
+constexpr int32_t kCrossOriginLocation = 1;
+
+/// The embedder data slot of a context that holds its cross-origin
+/// functions (a Map); index 1 is the context's Crane id.
+constexpr int kCrossOriginFunctionsIndex = 2;
+
+int32_t CrossOriginKindOf(Local<Value> data) {
+    if (!data.IsEmpty() && data->IsInt32()) return data.As<Int32>()->Value();
+    return kCrossOriginWindow;
+}
+
+void ThrowCrossOriginSecurityError(Isolate* isolate) {
+    const CrossOriginDispatch* dispatch = g_cross_origin;
+    if (dispatch && dispatch->throw_security_error) {
+        dispatch->throw_security_error(isolate);
+        if (isolate->HasPendingException()) return;
+    }
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8Literal(isolate, "SecurityError: blocked a cross-origin access")));
+}
+
+/// The platform object behind a WindowProxy or Location (internal field 0),
+/// or null - a Window freed with its page, a severed global.
+void* CrossOriginPlatformObject(Isolate* isolate, Local<Object> object) {
+    if (object->InternalFieldCount() < 1) return nullptr;
+    return object->GetAlignedPointerFromInternalField(isolate, 0);
+}
+
+/// IsPlatformObjectSameOrigin (7.2.1.3.3) as V8's access check: whether the
+/// current realm, `accessing_context`, may use `accessed_object` as an
+/// ordinary object.
+bool CrossOriginAccessCheck(Local<Context> accessing_context, Local<Object> accessed_object, Local<Value> data) {
+    (void)data;
+    Isolate* isolate = accessing_context->GetIsolate();
+    // A platform object of the current realm itself: same origin-domain by
+    // definition. V8 never asks this for a global proxy of the accessing
+    // context, but asks it on every access to a Location.
+    Local<Context> creation;
+    if (accessed_object->GetCreationContext(isolate).ToLocal(&creation) && creation == accessing_context) return true;
+    const CrossOriginDispatch* dispatch = g_cross_origin;
+    // No host to ask (an engine no host started): every realm reaches every
+    // other, as before access checks existed.
+    if (!dispatch || !dispatch->same_origin) return true;
+    void* object = CrossOriginPlatformObject(isolate, accessed_object);
+    // Nothing behind it to compare - its Window went with its page: the
+    // ordinary methods, which find no Window, as before.
+    if (!object) return true;
+    return dispatch->same_origin(isolate, CraneContextIdOf(accessing_context), object);
+}
+
+/// The isolate's failed-access-check callback: what V8 does not hand to an
+/// interceptor throws a SecurityError in the current realm. For [[Delete]],
+/// [[DefineOwnProperty]] and a security-checked call that is the spec's
+/// answer. [[SetPrototypeOf]] and [[PreventExtensions]] reach this callback
+/// too: there the spec answers false (a TypeError from Object.* and false from
+/// Reflect.*), and V8 gives the callback no way to tell the operations apart.
+/// So Crane throws a SecurityError there, as Chrome does on the same V8. That
+/// is a deviation from the spec, which Firefox and Safari follow.
+void CrossOriginFailedAccessCheck(Local<Object> target, AccessType type, Local<Value> data) {
+    (void)type;
+    (void)data;
+    ThrowCrossOriginSecurityError(target->GetIsolate());
+}
+
+/// `kind`'s CrossOriginProperties entry named `name`, if any.
+const CrossOriginMember* FindCrossOriginMember(Isolate* isolate, int32_t kind, Local<Name> name, size_t* index_out) {
+    const CrossOriginDispatch* dispatch = g_cross_origin;
+    if (!dispatch || !name->IsString()) return nullptr;
+    const CrossOriginMember* members = kind == kCrossOriginLocation ? dispatch->location_members : dispatch->window_members;
+    size_t count = kind == kCrossOriginLocation ? dispatch->location_member_count : dispatch->window_member_count;
+    Local<String> string = name.As<String>();
+    if (string->Length() > 32) return nullptr;
+    char buffer[64];
+    int written = string->WriteUtf8(isolate, buffer, sizeof(buffer) - 1, nullptr, String::NO_NULL_TERMINATION);
+    if (written < 0) return nullptr;
+    for (size_t i = 0; i < count; i++) {
+        if (members[i].name_len == static_cast<size_t>(written) && std::memcmp(members[i].name, buffer, members[i].name_len) == 0) {
+            if (index_out) *index_out = i;
+            return &members[i];
+        }
+    }
+    return nullptr;
+}
+
+/// CrossOriginPropertyFallback (7.2.1.3.2) step 1's keys: "then",
+/// %Symbol.toStringTag%, %Symbol.hasInstance%, %Symbol.isConcatSpreadable%.
+bool IsCrossOriginFallbackKey(Isolate* isolate, Local<Name> name) {
+    if (name->IsString()) {
+        return name.As<String>()->StringEquals(String::NewFromUtf8Literal(isolate, "then"));
+    }
+    if (!name->IsSymbol()) return false;
+    return name->StrictEquals(Symbol::GetToStringTag(isolate)) ||
+           name->StrictEquals(Symbol::GetHasInstance(isolate)) ||
+           name->StrictEquals(Symbol::GetIsConcatSpreadable(isolate));
+}
+
+/// Which of a member's functions: its operation, its getter, its setter.
+enum class CrossOriginFunctionKind : char { kMethod = 'm', kGetter = 'g', kSetter = 's' };
+
+/// CrossOriginGetOwnPropertyHelper (7.2.1.3.4) steps 1 and 2.1.1-2.1.6 for
+/// one function of a member: "an anonymous built-in function, created in
+/// the current realm, that performs the same steps as" the member on O -
+/// made once per (current realm, O's realm, member, function) and kept in
+/// the current realm (its [[CrossOriginPropertyDescriptorMap]] entries,
+/// keyed by realm pair: the functions, never an access decision). The map
+/// lives with the current realm; its keys are numbers and strings, so it
+/// keeps nothing of O's realm alive.
+MaybeLocal<Function> CrossOriginFunction(
+    Isolate* isolate,
+    Local<Context> current,
+    Local<Object> holder,
+    int32_t kind,
+    size_t member_index,
+    const CrossOriginMember& member,
+    CrossOriginFunctionKind which
+) {
+    FunctionCallback callback = which == CrossOriginFunctionKind::kMethod ? member.method
+        : which == CrossOriginFunctionKind::kGetter ? member.getter : member.setter;
+    if (!callback) return MaybeLocal<Function>();
+    Local<Context> object_realm;
+    if (!holder->GetCreationContext(isolate).ToLocal(&object_realm)) object_realm = current;
+    char key_text[96];
+    snprintf(key_text, sizeof(key_text), "%llu:%d:%zu:%c",
+        static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(CraneContextIdOf(object_realm))),
+        static_cast<int>(kind), member_index, static_cast<char>(which));
+    Local<String> key;
+    if (!String::NewFromUtf8(isolate, key_text).ToLocal(&key)) return MaybeLocal<Function>();
+
+    Local<Map> map;
+    if (current->GetNumberOfEmbedderDataFields() > static_cast<uint32_t>(kCrossOriginFunctionsIndex)) {
+        Local<Value> slot = current->GetEmbedderData(kCrossOriginFunctionsIndex);
+        if (!slot.IsEmpty() && slot->IsMap()) map = slot.As<Map>();
+    }
+    if (map.IsEmpty()) {
+        map = Map::New(isolate);
+        current->SetEmbedderData(kCrossOriginFunctionsIndex, map);
+    }
+    Local<Value> found;
+    if (map->Get(current, key).ToLocal(&found) && found->IsFunction()) return found.As<Function>();
+
+    int length = which == CrossOriginFunctionKind::kMethod ? member.length
+        : which == CrossOriginFunctionKind::kGetter ? 0 : 1;
+    Local<Function> function;
+    if (!Function::New(current, callback, Local<Value>(), length, ConstructorBehavior::kThrow).ToLocal(&function)) {
+        return MaybeLocal<Function>();
+    }
+    // WebIDL's names: the operation's identifier, "get <name>", "set <name>".
+    std::string name;
+    if (which == CrossOriginFunctionKind::kGetter) name = "get ";
+    if (which == CrossOriginFunctionKind::kSetter) name = "set ";
+    name.append(member.name, member.name_len);
+    Local<String> name_string;
+    if (String::NewFromUtf8(isolate, name.data(), NewStringType::kNormal, static_cast<int>(name.size())).ToLocal(&name_string)) {
+        function->SetName(name_string);
+    }
+    if (map->Set(current, key, function).IsEmpty()) return MaybeLocal<Function>();
+    return function;
+}
+
+/// A property descriptor object for V8's descriptor interceptor: no
+/// [[Prototype]], so ToPropertyDescriptor reads only its own fields, not a
+/// `get` or `value` script put on Object.prototype.
+Local<Object> NewCrossOriginDescriptor(Isolate* isolate) {
+    return Object::New(isolate, Null(isolate), nullptr, nullptr, 0);
+}
+
+void SetDescriptorField(Isolate* isolate, Local<Context> context, Local<Object> desc, const char* key, Local<Value> value) {
+    Local<String> key_string = String::NewFromUtf8(isolate, key, NewStringType::kInternalized).ToLocalChecked();
+    (void)desc->CreateDataProperty(context, key_string, value);
+}
+
+Local<Object> DataDescriptor(Isolate* isolate, Local<Context> context, Local<Value> value, bool enumerable) {
+    Local<Object> desc = NewCrossOriginDescriptor(isolate);
+    SetDescriptorField(isolate, context, desc, "value", value);
+    SetDescriptorField(isolate, context, desc, "writable", False(isolate));
+    SetDescriptorField(isolate, context, desc, "enumerable", Boolean::New(isolate, enumerable));
+    SetDescriptorField(isolate, context, desc, "configurable", True(isolate));
+    return desc;
+}
+
+/// W's named child navigable `name` (7.2.3.5 step 6), as a WindowProxy.
+bool CrossOriginNamedChild(Isolate* isolate, Local<Object> holder, Local<Name> name, Local<Value>* out) {
+    const CrossOriginDispatch* dispatch = g_cross_origin;
+    if (!dispatch || !dispatch->child_named || !name->IsString()) return false;
+    void* window = CrossOriginPlatformObject(isolate, holder);
+    if (!window) return false;
+    String::Utf8Value text(isolate, name);
+    if (!*text) return false;
+    Global<Value>* child = dispatch->child_named(isolate, window, *text, static_cast<size_t>(text.length()));
+    if (!child) return false;
+    *out = child->Get(isolate);
+    v8_Global_Dispose(child);
+    return true;
+}
+
+// --- named interceptors ---
+
+/// [[Get]] (7.2.3.7 step 4, 7.2.4.7 step 2): CrossOriginGet.
+Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    int32_t kind = CrossOriginKindOf(info.Data());
+    Local<Context> current = isolate->GetCurrentContext();
+    Local<Object> holder = info.HolderV2();
+    size_t index = 0;
+    if (const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, &index)) {
+        // CrossOriginGet step 3: a data descriptor's [[Value]] - an
+        // operation's function.
+        if (member->method) {
+            Local<Function> function;
+            if (CrossOriginFunction(isolate, current, holder, kind, index, *member, CrossOriginFunctionKind::kMethod).ToLocal(&function)) {
+                info.GetReturnValue().Set(function);
+            }
+            return Intercepted::kYes;
+        }
+        // Step 6: no getter (Location's href) - a SecurityError.
+        if (!member->getter) {
+            ThrowCrossOriginSecurityError(isolate);
+            return Intercepted::kYes;
+        }
+        // Step 7: Call(getter, Receiver).
+        Local<Function> getter;
+        if (!CrossOriginFunction(isolate, current, holder, kind, index, *member, CrossOriginFunctionKind::kGetter).ToLocal(&getter)) {
+            return Intercepted::kYes;
+        }
+        Local<Value> result;
+        if (getter->Call(current, info.This(), 0, nullptr).ToLocal(&result)) info.GetReturnValue().Set(result);
+        return Intercepted::kYes;
+    }
+    // 7.2.3.5 step 6: a named child navigable.
+    if (kind == kCrossOriginWindow) {
+        Local<Value> child;
+        if (CrossOriginNamedChild(isolate, holder, name, &child)) {
+            info.GetReturnValue().Set(child);
+            return Intercepted::kYes;
+        }
+    }
+    // CrossOriginPropertyFallback: undefined for the four keys, else a
+    // SecurityError.
+    if (IsCrossOriginFallbackKey(isolate, name)) {
+        info.GetReturnValue().SetUndefined();
+        return Intercepted::kYes;
+    }
+    ThrowCrossOriginSecurityError(isolate);
+    return Intercepted::kYes;
+}
+
+/// [[Set]] (7.2.3.8 step 4, 7.2.4.8 step 2): CrossOriginSet - the setter of
+/// a member that has one, called on the receiver; a SecurityError for
+/// anything else (expandos included).
+Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+    Isolate* isolate = info.GetIsolate();
+    int32_t kind = CrossOriginKindOf(info.Data());
+    Local<Context> current = isolate->GetCurrentContext();
+    size_t index = 0;
+    const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, &index);
+    if (!member || !member->setter) {
+        ThrowCrossOriginSecurityError(isolate);
+        return Intercepted::kYes;
+    }
+    Local<Function> setter;
+    if (!CrossOriginFunction(isolate, current, info.HolderV2(), kind, index, *member, CrossOriginFunctionKind::kSetter).ToLocal(&setter)) {
+        return Intercepted::kYes;
+    }
+    Local<Value> argv[1] = {value};
+    (void)setter->Call(current, info.This(), 1, argv);
+    return Intercepted::kYes;
+}
+
+/// [[GetOwnProperty]] as attributes, for [[HasProperty]] and
+/// hasOwnProperty: every cross-origin property is non-enumerable, a data
+/// one read-only; anything else a SecurityError.
+Intercepted CrossOriginNamedQuery(Local<Name> name, const PropertyCallbackInfo<Integer>& info) {
+    Isolate* isolate = info.GetIsolate();
+    int32_t kind = CrossOriginKindOf(info.Data());
+    if (const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, nullptr)) {
+        int attributes = PropertyAttribute::DontEnum;
+        if (member->method) attributes |= PropertyAttribute::ReadOnly;
+        info.GetReturnValue().Set(attributes);
+        return Intercepted::kYes;
+    }
+    Local<Value> child;
+    if ((kind == kCrossOriginWindow && CrossOriginNamedChild(isolate, info.HolderV2(), name, &child)) || IsCrossOriginFallbackKey(isolate, name)) {
+        info.GetReturnValue().Set(static_cast<int>(PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly));
+        return Intercepted::kYes;
+    }
+    ThrowCrossOriginSecurityError(isolate);
+    return Intercepted::kYes;
+}
+
+/// [[GetOwnProperty]] (7.2.3.5 steps 4-7, 7.2.4.5 steps 2-4).
+Intercepted CrossOriginNamedDescriptor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    int32_t kind = CrossOriginKindOf(info.Data());
+    Local<Context> current = isolate->GetCurrentContext();
+    Local<Object> holder = info.HolderV2();
+    size_t index = 0;
+    if (const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, &index)) {
+        if (member->method) {
+            // Step 2.1.4: { [[Value]]: the function, [[Enumerable]]: false,
+            // [[Writable]]: false, [[Configurable]]: true }.
+            Local<Function> function;
+            if (!CrossOriginFunction(isolate, current, holder, kind, index, *member, CrossOriginFunctionKind::kMethod).ToLocal(&function)) {
+                return Intercepted::kYes;
+            }
+            info.GetReturnValue().Set(DataDescriptor(isolate, current, function, false));
+            return Intercepted::kYes;
+        }
+        // Step 2.1.5: { [[Get]], [[Set]], [[Enumerable]]: false,
+        // [[Configurable]]: true }, each function or undefined.
+        Local<Value> getter = Undefined(isolate);
+        Local<Value> setter = Undefined(isolate);
+        Local<Function> function;
+        if (member->getter) {
+            if (!CrossOriginFunction(isolate, current, holder, kind, index, *member, CrossOriginFunctionKind::kGetter).ToLocal(&function)) return Intercepted::kYes;
+            getter = function;
+        }
+        if (member->setter) {
+            if (!CrossOriginFunction(isolate, current, holder, kind, index, *member, CrossOriginFunctionKind::kSetter).ToLocal(&function)) return Intercepted::kYes;
+            setter = function;
+        }
+        Local<Object> desc = NewCrossOriginDescriptor(isolate);
+        SetDescriptorField(isolate, current, desc, "get", getter);
+        SetDescriptorField(isolate, current, desc, "set", setter);
+        SetDescriptorField(isolate, current, desc, "enumerable", False(isolate));
+        SetDescriptorField(isolate, current, desc, "configurable", True(isolate));
+        info.GetReturnValue().Set(desc);
+        return Intercepted::kYes;
+    }
+    if (kind == kCrossOriginWindow) {
+        Local<Value> child;
+        if (CrossOriginNamedChild(isolate, holder, name, &child)) {
+            info.GetReturnValue().Set(DataDescriptor(isolate, current, child, false));
+            return Intercepted::kYes;
+        }
+    }
+    if (IsCrossOriginFallbackKey(isolate, name)) {
+        info.GetReturnValue().Set(DataDescriptor(isolate, current, Undefined(isolate), false));
+        return Intercepted::kYes;
+    }
+    ThrowCrossOriginSecurityError(isolate);
+    return Intercepted::kYes;
+}
+
+/// [[Delete]] (7.2.3.9 step 3, 7.2.4.9 step 2): a SecurityError.
+Intercepted CrossOriginNamedDeleter(Local<Name> name, const PropertyCallbackInfo<Boolean>& info) {
+    (void)name;
+    ThrowCrossOriginSecurityError(info.GetIsolate());
+    return Intercepted::kYes;
+}
+
+/// [[DefineOwnProperty]] (7.2.3.6 step 3, 7.2.4.6 step 2): a SecurityError.
+Intercepted CrossOriginNamedDefiner(Local<Name> name, const PropertyDescriptor& desc, const PropertyCallbackInfo<void>& info) {
+    (void)name;
+    (void)desc;
+    ThrowCrossOriginSecurityError(info.GetIsolate());
+    return Intercepted::kYes;
+}
+
+/// CrossOriginOwnPropertyKeys (7.2.1.3.7): CrossOriginProperties' names,
+/// then "then" and the three symbols. Named child navigables are not listed
+/// ([[HideFromKeys]]); the indices are the indexed enumerator's.
+void CrossOriginNamedEnumerator(const PropertyCallbackInfo<Array>& info) {
+    Isolate* isolate = info.GetIsolate();
+    const CrossOriginDispatch* dispatch = g_cross_origin;
+    int32_t kind = CrossOriginKindOf(info.Data());
+    std::vector<Local<Value>> keys;
+    if (dispatch) {
+        const CrossOriginMember* members = kind == kCrossOriginLocation ? dispatch->location_members : dispatch->window_members;
+        size_t count = kind == kCrossOriginLocation ? dispatch->location_member_count : dispatch->window_member_count;
+        for (size_t i = 0; i < count; i++) {
+            Local<String> key;
+            if (String::NewFromUtf8(isolate, members[i].name, NewStringType::kInternalized, static_cast<int>(members[i].name_len)).ToLocal(&key)) keys.push_back(key);
+        }
+    }
+    keys.push_back(String::NewFromUtf8Literal(isolate, "then", NewStringType::kInternalized));
+    keys.push_back(Symbol::GetToStringTag(isolate));
+    keys.push_back(Symbol::GetHasInstance(isolate));
+    keys.push_back(Symbol::GetIsConcatSpreadable(isolate));
+    info.GetReturnValue().Set(Array::New(isolate, keys.data(), keys.size()));
+}
+
+// --- indexed interceptors ---
+
+/// [[Get]] of an array index (7.2.3.5 step 2, through CrossOriginGet): a
+/// child navigable's WindowProxy, else a SecurityError. A Location has no
+/// cross-origin indexed property.
+Intercepted CrossOriginIndexedGetter(uint32_t index, const PropertyCallbackInfo<Value>& info) {
+    const CrossOriginDispatch* dispatch = g_cross_origin;
+    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
+        if (dispatch->child_at(index, &info) == Intercepted::kYes) return Intercepted::kYes;
+        if (info.GetIsolate()->HasPendingException()) return Intercepted::kYes;
+    }
+    ThrowCrossOriginSecurityError(info.GetIsolate());
+    return Intercepted::kYes;
+}
+
+/// [[GetOwnProperty]] of an array index (7.2.3.5 step 2): { [[Value]]: the
+/// WindowProxy, [[Writable]]: false, [[Enumerable]]: true,
+/// [[Configurable]]: true }, else a SecurityError.
+Intercepted CrossOriginIndexedDescriptor(uint32_t index, const PropertyCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    const CrossOriginDispatch* dispatch = g_cross_origin;
+    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
+        if (dispatch->child_at(index, &info) == Intercepted::kYes) {
+            Local<Value> child = info.GetReturnValue().Get();
+            info.GetReturnValue().Set(DataDescriptor(isolate, isolate->GetCurrentContext(), child, true));
+            return Intercepted::kYes;
+        }
+        if (isolate->HasPendingException()) return Intercepted::kYes;
+    }
+    ThrowCrossOriginSecurityError(isolate);
+    return Intercepted::kYes;
+}
+
+Intercepted CrossOriginIndexedQuery(uint32_t index, const PropertyCallbackInfo<Integer>& info) {
+    Isolate* isolate = info.GetIsolate();
+    const CrossOriginDispatch* dispatch = g_cross_origin;
+    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
+        void* window = CrossOriginPlatformObject(isolate, info.HolderV2());
+        if (window && index < dispatch->child_count(window)) {
+            info.GetReturnValue().Set(static_cast<int>(PropertyAttribute::ReadOnly));
+            return Intercepted::kYes;
+        }
+    }
+    ThrowCrossOriginSecurityError(isolate);
+    return Intercepted::kYes;
+}
+
+/// [[Set]] of an array index: CrossOriginSet finds no setter - a
+/// SecurityError, as are [[Delete]] and [[DefineOwnProperty]].
+Intercepted CrossOriginIndexedSetter(uint32_t index, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+    (void)index;
+    (void)value;
+    ThrowCrossOriginSecurityError(info.GetIsolate());
+    return Intercepted::kYes;
+}
+
+Intercepted CrossOriginIndexedDeleter(uint32_t index, const PropertyCallbackInfo<Boolean>& info) {
+    (void)index;
+    ThrowCrossOriginSecurityError(info.GetIsolate());
+    return Intercepted::kYes;
+}
+
+Intercepted CrossOriginIndexedDefiner(uint32_t index, const PropertyDescriptor& desc, const PropertyCallbackInfo<void>& info) {
+    (void)index;
+    (void)desc;
+    ThrowCrossOriginSecurityError(info.GetIsolate());
+    return Intercepted::kYes;
+}
+
+/// [[OwnPropertyKeys]] step 3 (7.2.3.10): the range 0 to the number of W's
+/// document-tree child navigables. A Location has none.
+void CrossOriginIndexedEnumerator(const PropertyCallbackInfo<Array>& info) {
+    Isolate* isolate = info.GetIsolate();
+    const CrossOriginDispatch* dispatch = g_cross_origin;
+    uint32_t count = 0;
+    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
+        if (void* window = CrossOriginPlatformObject(isolate, info.HolderV2())) count = dispatch->child_count(window);
+    }
+    Local<Context> context = isolate->GetCurrentContext();
+    Local<Array> keys = Array::New(isolate, static_cast<int>(count));
+    for (uint32_t i = 0; i < count; i++) {
+        (void)keys->Set(context, i, Integer::NewFromUnsigned(isolate, i));
+    }
+    info.GetReturnValue().Set(keys);
+}
+
+} // namespace
+
+extern "C" {
+
+/// The adapter's Zig half, once, at process start (engine.initializeEngine),
+/// before any agent's thread runs.
+void v8_SetCrossOriginDispatch(const CrossOriginDispatch* dispatch) {
+    g_cross_origin = dispatch;
+}
+
+/// Give `tpl`'s instances the cross-origin access check and interceptors:
+/// kind 0 a Window global template (the WindowProxy), 1 Location's instance
+/// template. Before the template is instantiated - and in the snapshot
+/// generator too, since a restored context's templates come from the
+/// snapshot (the callbacks are external references:
+/// v8_CrossOrigin_ExternalReferences).
+void v8_ObjectTemplate_SetCrossOriginAccessCheck(Global<ObjectTemplate>* tpl, int kind) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    Local<Value> data = Integer::New(isolate, kind);
+    local_tpl->SetAccessCheckCallbackAndHandler(
+        CrossOriginAccessCheck,
+        NamedPropertyHandlerConfiguration(
+            CrossOriginNamedGetter,
+            CrossOriginNamedSetter,
+            CrossOriginNamedQuery,
+            CrossOriginNamedDeleter,
+            CrossOriginNamedEnumerator,
+            CrossOriginNamedDefiner,
+            CrossOriginNamedDescriptor,
+            data),
+        IndexedPropertyHandlerConfiguration(
+            CrossOriginIndexedGetter,
+            CrossOriginIndexedSetter,
+            CrossOriginIndexedQuery,
+            CrossOriginIndexedDeleter,
+            CrossOriginIndexedEnumerator,
+            CrossOriginIndexedDefiner,
+            CrossOriginIndexedDescriptor,
+            data));
+}
+
+/// The isolate's failed-access-check callback: a SecurityError
+/// (CrossOriginFailedAccessCheck).
+void v8_Isolate_SetCrossOriginFailedAccessCheck(Isolate* isolate) {
+    isolate->SetFailedAccessCheckCallbackFunction(CrossOriginFailedAccessCheck);
+}
+
+/// HTML 7.2.4 "Location object setup" steps 3-4 on Location's instance
+/// template: `valueOf` is %Object.prototype.valueOf% of the instance's realm
+/// and %Symbol.toPrimitive% is undefined, each { [[Writable]]: false,
+/// [[Enumerable]]: false, [[Configurable]]: false } - own properties, as its
+/// [LegacyUnforgeable] members are.
+void v8_ObjectTemplate_SetLocationValueOfAndToPrimitive(Global<ObjectTemplate>* tpl) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    PropertyAttribute attributes = static_cast<PropertyAttribute>(PropertyAttribute::ReadOnly | PropertyAttribute::DontEnum | PropertyAttribute::DontDelete);
+    local_tpl->SetIntrinsicDataProperty(String::NewFromUtf8Literal(isolate, "valueOf", NewStringType::kInternalized), Intrinsic::kObjProto_valueOf, attributes);
+    local_tpl->Set(Symbol::GetToPrimitive(isolate), Undefined(isolate), attributes);
+}
+
+/// Whether `tpl`'s functions accept any receiver: false makes V8 run the
+/// receiver's access check before the callback (WebIDL "perform a security
+/// check", HTML 7.2.1.1).
+void v8_FunctionTemplate_SetAcceptAnyReceiver(Global<FunctionTemplate>* tpl, bool value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    tpl->Get(isolate)->SetAcceptAnyReceiver(value);
+}
+
+/// The callbacks v8_ObjectTemplate_SetCrossOriginAccessCheck puts in a
+/// template, for the snapshot's external references, in a fixed order.
+/// Writes at most `capacity` and answers how many there are.
+size_t v8_CrossOrigin_ExternalReferences(uintptr_t* out, size_t capacity) {
+    const uintptr_t refs[] = {
+        reinterpret_cast<uintptr_t>(&CrossOriginAccessCheck),
+        reinterpret_cast<uintptr_t>(&CrossOriginNamedGetter),
+        reinterpret_cast<uintptr_t>(&CrossOriginNamedSetter),
+        reinterpret_cast<uintptr_t>(&CrossOriginNamedQuery),
+        reinterpret_cast<uintptr_t>(&CrossOriginNamedDeleter),
+        reinterpret_cast<uintptr_t>(&CrossOriginNamedEnumerator),
+        reinterpret_cast<uintptr_t>(&CrossOriginNamedDefiner),
+        reinterpret_cast<uintptr_t>(&CrossOriginNamedDescriptor),
+        reinterpret_cast<uintptr_t>(&CrossOriginIndexedGetter),
+        reinterpret_cast<uintptr_t>(&CrossOriginIndexedSetter),
+        reinterpret_cast<uintptr_t>(&CrossOriginIndexedQuery),
+        reinterpret_cast<uintptr_t>(&CrossOriginIndexedDeleter),
+        reinterpret_cast<uintptr_t>(&CrossOriginIndexedEnumerator),
+        reinterpret_cast<uintptr_t>(&CrossOriginIndexedDefiner),
+        reinterpret_cast<uintptr_t>(&CrossOriginIndexedDescriptor),
+    };
+    size_t count = sizeof(refs) / sizeof(refs[0]);
+    for (size_t i = 0; i < count && i < capacity; i++) out[i] = refs[i];
+    return count;
+}
+
+} // extern "C"
+// ---- end lane: xorigin2 ----

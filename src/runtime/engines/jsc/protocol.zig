@@ -64,6 +64,11 @@ pub const capabilities: engine.Capabilities = .{
     // `super()` from a custom element class cannot reach the host: custom
     // element construction is unavailable until the C API offers it.
     .html_constructor = .unsupported,
+    // No access-check API and no WindowProxy apart from the global
+    // (reuse_window_proxy). Emulation is possible through JSClassDefinition
+    // callbacks (getProperty, setProperty, deleteProperty, getPropertyNames,
+    // hasProperty) except for [[GetPrototypeOf]], which no callback reaches.
+    .cross_origin_objects = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

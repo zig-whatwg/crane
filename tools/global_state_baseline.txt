@@ -231,6 +231,7 @@ src/runtime/engines/v8/snapshot_loader.zig tracked_snapshot_data 1 G P-res decl:
 src/runtime/engines/v8/template_registry.zig snapshot_mode 1 G P-res decl:4b877655cb3bb361
 src/runtime/engines/v8/v8_wrapper.cpp armedWeakData.map 1 C++G I/engine decl:436722ef9df2ec5c
 src/runtime/engines/v8/v8_wrapper.cpp detachedWeakData.set 1 C++G I/engine decl:56259946dc967121
+src/runtime/engines/v8/v8_wrapper.cpp g_cross_origin 1 C++G P-res decl:fb62e680e25793cf
 src/runtime/engines/v8/v8_wrapper.cpp g_first_pass_depth 1 C++TL P-res decl:746e7217153a7bc3
 src/runtime/engines/v8/v8_wrapper.cpp g_in_context_new 1 C++TL C decl:17788f3524420f43
 src/runtime/engines/v8/v8_wrapper.cpp g_live_context_globals 1 C++G D decl:dad6fa01c70ae637

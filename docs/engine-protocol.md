@@ -196,8 +196,11 @@ the caller's.
   created in.
 - **Frames:** `createWindowRealm` with `parent` set makes a navigable's realm
   under its parent's - an iframe's, or a popup's under its opener's. It
-  shares the parent's engine-level access (V8's security token; the
-  WindowProxy's cross-origin checks stay the host's), is entered only for
+  does not share engine-level access with its parent: every access from
+  another realm to its WindowProxy or a Location asks
+  `WindowRealmOptions.is_platform_object_same_origin` (HTML
+  IsPlatformObjectSameOrigin), never a cached answer
+  [cross_origin_objects]. It is entered only for
   the calls that run in it (it is made while the parent's script runs), and
   ends before its parent does if it has not already. A parentless realm is
   the agent's entered realm for its life. A realm whose WindowProxy went on
@@ -254,6 +257,7 @@ capability the branch compiles out.
 | `script_abort` | native (TerminateExecution) | unsupported - no public way to end a running script (JSContextGroupSetExecutionTimeLimit is SPI) | a script that never returns holds its agent's thread; the host's bound is outside the process (the WPT runner's stall watchdog) |
 | `code_generation_checks` | native (ModifyCodeGenerationFromStringsCallback, AllowWasmCodeGenerationCallback) | unsupported - no hook before eval, the Function constructor or WebAssembly compilation compiles | the HostHooks below are never called: eval, Function and WebAssembly compile unchecked - CSP's 'unsafe-eval' / 'wasm-unsafe-eval' and Trusted Types' eval sink go unenforced (security-relevant) |
 | `html_constructor` | native (the construct callback's FunctionCallbackInfo::NewTarget) | unsupported - a JSObjectCallAsConstructorCallback is handed no NewTarget, so `super()` from a custom element class cannot reach the host | `HostHooks.htmlConstructor` is never called: HTMLElement and the other [HTMLConstructor] interfaces construct as their own constructors do, so custom element construction - `new MyElement()`, createElement of a defined name, an upgrade - is unavailable on iOS until JavaScriptCore's C API offers NewTarget |
+| `cross_origin_objects` | native (ObjectTemplate::SetAccessCheckCallbackAndHandler on the Window global and Location templates, a security token per realm, FunctionTemplate::SetAcceptAnyReceiver for WebIDL's security check) | unsupported - no access-check API and no WindowProxy apart from the global; JSClassDefinition callbacks could emulate it except for [[GetPrototypeOf]] | the engine runs no cross-origin check: Window's `document` getter keeps the host's own check, and every other property of another realm's WindowProxy or Location is reached as a same-origin one would be (security-relevant) |
 
 Flip a JavaScriptCore capability when an iOS release makes the API public.
 Structured serialization has no JSC API and is not a capability: the JSC

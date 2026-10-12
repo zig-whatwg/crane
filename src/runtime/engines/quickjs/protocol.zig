@@ -43,6 +43,9 @@ pub const capabilities: engine.Capabilities = .{
     // No engine linked. Linked, it can be native: a JS_CFUNC_constructor
     // function receives new.target as this_val.
     .html_constructor = .unsupported,
+    // No engine linked. Linked, it could be emulated with exotic class
+    // methods (JSClassExoticMethods) except for [[GetPrototypeOf]].
+    .cross_origin_objects = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

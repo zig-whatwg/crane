@@ -77,6 +77,10 @@ pub const V8Interface = interface_mod.V8Interface;
 /// V8 Context Manager - Maps V8 contexts to runtime contexts
 pub const context_manager = @import("context_manager.zig");
 
+/// HTML 7.2.1 cross-origin objects: CrossOriginProperties and the access
+/// checks' Zig half [cross_origin_objects].
+pub const cross_origin = @import("cross_origin.zig");
+
 /// Main bindings entry point
 /// NOTE: Commented out because bindings.zig requires 'namespaces' module
 ///       which is only available in REPL context, not root module

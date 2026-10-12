@@ -984,7 +984,16 @@ pub fn get_self(instance: *runtime.Instance) anyerror!typedefs.WindowProxy {
 pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // CRITICAL: Cross-origin security check per HTML spec §7.2.3.1
+    // [cross_origin_objects]: the engine runs HTML 7.2.1's checks itself -
+    // a cross-origin `w.document` fails its access check, and WebIDL's
+    // "perform a security check" refuses the getter a cross-origin `this` -
+    // so the getter's steps are only "return this's associated Document".
+    if (comptime engine.capabilities.cross_origin_objects != .unsupported) {
+        return internal.document orelse error.NotImplemented;
+    }
+
+    // The declared fallback, for an engine that runs no cross-origin checks.
+    // Cross-origin security check per HTML spec §7.2.3.1
     // "document" is NOT a cross-origin accessible property of Window.
     // If the accessor (current context) is cross-origin with this Window,
     // we must throw SecurityError.
