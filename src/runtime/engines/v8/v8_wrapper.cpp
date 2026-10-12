@@ -98,6 +98,7 @@ static void forgetStringHandle(Global<T>* handle);
 // each worker's), so the map is reached only under realmTagLock(); a dispose
 // on a thread with nothing tagged skips the lock (`realmTagCount`).
 static std::unordered_map<const void*, uintptr_t>& realmTaggedHandles() {
+    // process-wide: handles tagged with the realm whose API stored them, by handle - every dispose untags (untagRealmHandle), and a dispose names only its Global; under realmTagLock(), held for one insert, erase or scan, never across a call into V8.
     static std::unordered_map<const void*, uintptr_t> map;
     return map;
 }
@@ -378,6 +379,13 @@ struct WeakCallbackData {
 // (docs/instances.md) arms, releases and collects its own isolates' handles
 // here, so every access holds `weakDataLock()`. A record and its handle belong
 // to one isolate, used by one thread; the lock only keeps the containers whole.
+//
+// They stay the process's (instances B2 moved the rest of the adapter's
+// per-isolate state into each isolate's record, kIsolateDataSlot): a release
+// is reached from every delete site of a Global - fifty-odd `v8_*_Dispose`
+// functions and resetGlobalHandle, most handed nothing but the handle - and V8
+// cannot say which isolate a Global<T> is of, so the only key a release has is
+// the handle itself.
 static std::mutex& weakDataLock() {
     // process-wide: guards armedWeakData() and detachedWeakData(), which every isolate of the process shares; held for a find, an insert or an erase, never across a call into Zig or script.
     static std::mutex lock;
@@ -385,6 +393,7 @@ static std::mutex& weakDataLock() {
 }
 
 static std::unordered_map<const void*, WeakCallbackData*>& armedWeakData() {
+    // process-wide: every isolate's armed weak records, by their Global - a release (fifty-odd delete sites) has only the handle, and V8 cannot say which isolate a handle is of; under weakDataLock(), held for one find, insert or erase, never across a call into Zig or script.
     static std::unordered_map<const void*, WeakCallbackData*> map;
     return map;
 }
@@ -394,6 +403,7 @@ static std::unordered_map<const void*, WeakCallbackData*>& armedWeakData() {
 /// callback frees them. Held here so the count is a real live count and a record
 /// whose callback never fires is still reachable.
 static std::unordered_set<WeakCallbackData*>& detachedWeakData() {
+    // process-wide: the records a release detached from their Global while V8 still had their callback queued - entered by the same handle-only releases as armedWeakData(); under weakDataLock(); v8_Isolate_Dispose frees its own isolate's.
     static std::unordered_set<WeakCallbackData*> set;
     return set;
 }
