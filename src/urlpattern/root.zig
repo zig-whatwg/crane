@@ -37,6 +37,7 @@ pub const parser = @import("parser.zig");
 pub const pcre2_ffi = @import("pcre2_ffi.zig");
 pub const regex_generator = @import("regex_generator.zig");
 pub const pattern_string = @import("pattern_string.zig");
+pub const process_init = @import("process_init.zig");
 
 // Middle layer - canonicalization and construction (Agent 2)
 pub const canonicalize = @import("canonicalize.zig");

@@ -120,7 +120,7 @@ pub const pathname_options = Options{
 };
 
 /// Encoding callback type
-pub const EncodingCallback = *const fn (allocator: Allocator, input: []const u8) Allocator.Error![]u8;
+pub const EncodingCallback = *const fn (allocator: Allocator, input: []const u8) @import("canonicalize.zig").CanonicalizationError![]u8;
 
 /// Identity encoding (no transformation)
 pub fn identityEncoding(allocator: Allocator, input: []const u8) Allocator.Error![]u8 {

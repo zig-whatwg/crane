@@ -301,19 +301,10 @@ test "URLPattern.create - named parameter without regex constraint" {
 // ============================================================================
 
 test "URLPattern.create - relative pathname only" {
-    const allocator = testing.allocator;
-
-    var pattern = try URLPattern.create(allocator, .{
+    // Create step 2.2: relative strings require a base (WPT vectors 216-217).
+    try testing.expectError(error.InvalidPattern, URLPattern.create(testing.allocator, .{
         .string = "/users/:id/posts/:postId",
-    }, .{});
-    defer pattern.deinit(allocator);
-
-    // Protocol should default to wildcard for relative patterns
-    try testing.expectEqualStrings("*", pattern.protocol.pattern_string);
-    // Pathname should be set
-    try testing.expect(pattern.pathname.pattern_string.len > 0);
-    // Should have group names for named parameters
-    try testing.expect(pattern.pathname.group_names.len >= 2);
+    }, .{}));
 }
 
 test "URLPattern.create - pathname starting with /" {
@@ -557,8 +548,8 @@ test "URLPattern.create - empty pathname" {
     }, .{});
     defer pattern.deinit(allocator);
 
-    // For special schemes, pathname defaults to "/"
-    try testing.expectEqualStrings("/", pattern.pathname.pattern_string);
+    // Create step 5 defaults an absent init component to a wildcard.
+    try testing.expectEqualStrings("*", pattern.pathname.pattern_string);
 }
 
 test "URLPattern.create - IPv6 hostname (escaped colons)" {
