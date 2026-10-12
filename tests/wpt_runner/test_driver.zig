@@ -53,6 +53,7 @@ const user_input = html.user_input;
 const focus = html.focus;
 const Weak = user_input.Weak;
 const BrowsingContext = html_core.window.BrowsingContext;
+const browser_state = @import("dom").browser_state;
 const log = std.log.scoped(.test_driver);
 
 /// The vendor file, served for /resources/testdriver-vendor.js.
@@ -304,7 +305,7 @@ const Command = struct {
     fn windowOpen(self: *Command) bool {
         const weak = self.window orelse return true;
         const window = weak.get() orelse return false;
-        const context = BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+        const context = browser_state.browsingContextOf(window) orelse return false;
         return !context.is_closed;
     }
 
@@ -659,7 +660,7 @@ const Command = struct {
     /// inclusive descendant navigables.
     fn setSystemVisibility(self: *Command, state: VisibilityState) ?Failure {
         const window = (self.target_window orelse return noSuchWindow()).get() orelse return noSuchWindow();
-        const context = BrowsingContext.ofWindow(@ptrCast(window)) orelse return noSuchWindow();
+        const context = browser_state.browsingContextOf(window) orelse return noSuchWindow();
         var navigables: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
         defer navigables.deinit(self.driver.allocator);
         context.getTop().collectDescendants(self.driver.allocator, &navigables) catch return outOfMemory();
@@ -694,12 +695,18 @@ const Command = struct {
     fn resolveCookies(self: *Command) void {
         // Step 1: the current browsing context no longer open: no such window.
         const window = (self.target_window orelse return self.reject(noSuchWindow())).get() orelse return self.reject(noSuchWindow());
-        const context = BrowsingContext.ofWindow(@ptrCast(window)) orelse return self.reject(noSuchWindow());
+        const context = browser_state.browsingContextOf(window) orelse return self.reject(noSuchWindow());
         if (context.is_closed) return self.reject(noSuchWindow());
-        const document = (interfaces.Window.get_document(window) catch null) orelse return self.reject(noSuchWindow());
+        // "The current browsing context's active document": the browsing
+        // context's, not Window.document's - that getter is script's, and
+        // checks its accessor's origin against the window's, so it refused a
+        // cross-origin popup's document to the remote end.
+        const document: *Instance = @ptrCast(@alignCast(context.getActiveDocument() orelse return self.reject(noSuchWindow())));
         const url = interfaces.Document.get_URL(document) catch return self.reject(outOfMemory());
         defer document.ctx.allocator.free(url);
-        const jar = context.cookie_jar orelse {
+        // The user agent's store as this context reaches it: a frame's is its
+        // top-level context's (`cookie_jar` is set on top-level contexts only).
+        const jar = context.cookieJar() orelse {
             // No store: a document no cookie can be associated with.
             return switch (self.kind) {
                 .get_cookies => self.resolveCookieList(&.{}),
@@ -829,7 +836,7 @@ fn knownElement(weak_in: ?Weak) ?*Instance {
     if (!(interfaces.Node.get_isConnected(element) catch false)) return null;
     const document = nodeDocumentOf(element) orelse return null;
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
-    if (BrowsingContext.ofWindow(@ptrCast(window)) == null) return null;
+    if (browser_state.browsingContextOf(window) == null) return null;
     return element;
 }
 
@@ -867,7 +874,8 @@ fn nativeSteps(comptime native: Native) runtime.BuiltinSteps {
 /// The window of `realm`: the active window of the browsing context whose
 /// window is in it.
 fn windowOfRealm(realm: runtime.Context) ?*Instance {
-    for (BrowsingContext.liveContexts()) |context| {
+    const navigables = browser_state.navigablesOf(realm) orelse return null;
+    for (navigables.contexts()) |context| {
         if (context.orphaned) continue;
         const window_ptr = context.getActiveWindow() orelse continue;
         const window: *Instance = @ptrCast(@alignCast(window_ptr));

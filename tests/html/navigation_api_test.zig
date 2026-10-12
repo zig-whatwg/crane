@@ -8,6 +8,7 @@ const testing = std.testing;
 
 const html = @import("html");
 const BrowsingContext = html.window.BrowsingContext;
+const Navigables = html.window.Navigables;
 const WindowProxy = html.window.WindowProxy;
 const Origin = html.window.Origin;
 
@@ -17,8 +18,10 @@ const Origin = html.window.Origin;
 
 test "Window - closed property reflects browsing context state" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     const proxy = WindowProxy.init(allocator, ctx);
@@ -35,8 +38,10 @@ test "Window - closed property reflects browsing context state" {
 
 test "Window - length property reflects child frame count" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent = try BrowsingContext.initTopLevel(allocator);
+    const parent = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent.deinit();
 
     const proxy = WindowProxy.init(allocator, parent);
@@ -57,8 +62,10 @@ test "Window - length property reflects child frame count" {
 
 test "Window - top returns topmost browsing context" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const top = try BrowsingContext.initTopLevel(allocator);
+    const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer top.deinit();
 
     // For top-level context, top === self
@@ -78,8 +85,10 @@ test "Window - top returns topmost browsing context" {
 
 test "BrowsingContext - top level context is its own top" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     try testing.expect(ctx.isTopLevel());
@@ -88,8 +97,10 @@ test "BrowsingContext - top level context is its own top" {
 
 test "BrowsingContext - child context has correct hierarchy" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent = try BrowsingContext.initTopLevel(allocator);
+    const parent = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent.deinit();
 
     const child = try BrowsingContext.initChild(allocator, parent);
@@ -102,8 +113,10 @@ test "BrowsingContext - child context has correct hierarchy" {
 
 test "BrowsingContext - nested child chain has correct top" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const top = try BrowsingContext.initTopLevel(allocator);
+    const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer top.deinit();
 
     const child = try BrowsingContext.initChild(allocator, top);
@@ -118,8 +131,10 @@ test "BrowsingContext - nested child chain has correct top" {
 
 test "BrowsingContext - getChildCount tracks children" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent = try BrowsingContext.initTopLevel(allocator);
+    const parent = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent.deinit();
 
     try testing.expectEqual(@as(u32, 0), parent.getChildCount());
@@ -135,8 +150,10 @@ test "BrowsingContext - getChildCount tracks children" {
 
 test "BrowsingContext - getChildByIndex returns correct child" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent = try BrowsingContext.initTopLevel(allocator);
+    const parent = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent.deinit();
 
     const child1 = try BrowsingContext.initChild(allocator, parent);
@@ -155,8 +172,10 @@ test "BrowsingContext - getChildByIndex returns correct child" {
 
 test "BrowsingContext - close marks context as closed" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     try testing.expect(!ctx.is_closed);
@@ -168,8 +187,10 @@ test "BrowsingContext - close marks context as closed" {
 
 test "BrowsingContext - auxiliary context with opener" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const opener = try BrowsingContext.initTopLevel(allocator);
+    const opener = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer opener.deinit();
 
     const aux = try BrowsingContext.initAuxiliary(allocator, opener, true);
@@ -181,8 +202,10 @@ test "BrowsingContext - auxiliary context with opener" {
 
 test "BrowsingContext - disown removes opener" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const opener = try BrowsingContext.initTopLevel(allocator);
+    const opener = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer opener.deinit();
 
     const aux = try BrowsingContext.initAuxiliary(allocator, opener, false);
@@ -201,8 +224,10 @@ test "BrowsingContext - disown removes opener" {
 
 test "BrowsingContext - default allows all" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     try testing.expect(ctx.allowsScripts());
@@ -214,8 +239,10 @@ test "BrowsingContext - default allows all" {
 
 test "BrowsingContext - sandbox flags can restrict" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     // Restrictive flags (all false) means all features are restricted
@@ -235,8 +262,10 @@ test "BrowsingContext - sandbox flags can restrict" {
 
 test "BrowsingContext - clearSandboxFlags restores access" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     // Set restrictive flags (scripts not allowed)
@@ -258,8 +287,10 @@ test "BrowsingContext - clearSandboxFlags restores access" {
 
 test "BrowsingContext - setTargetName and findByTargetName" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     try ctx.setTargetName("myframe");
@@ -275,8 +306,10 @@ test "BrowsingContext - setTargetName and findByTargetName" {
 
 test "BrowsingContext - findByTargetName searches children" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent = try BrowsingContext.initTopLevel(allocator);
+    const parent = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent.deinit();
 
     const child = try BrowsingContext.initChild(allocator, parent);
@@ -294,8 +327,10 @@ test "BrowsingContext - findByTargetName searches children" {
 
 test "WindowProxy - cross-origin access to location is allowed" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     var proxy = WindowProxy.init(allocator, ctx);
@@ -348,11 +383,13 @@ test "WindowProxy - localStorage is NOT cross-origin accessible" {
 
 test "BrowsingContext - contexts have virtual group IDs" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx1 = try BrowsingContext.initTopLevel(allocator);
+    const ctx1 = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx1.deinit();
 
-    const ctx2 = try BrowsingContext.initTopLevel(allocator);
+    const ctx2 = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx2.deinit();
 
     // Each context has a virtual_group_id
@@ -363,11 +400,13 @@ test "BrowsingContext - contexts have virtual group IDs" {
 
 test "BrowsingContext - script-closable: a top-level traversable made by web content, or with one entry" {
     const allocator = testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
     // HTML "script-closable": a top-level traversable whose "is created by
     // web content" is true, or whose session history entries' size is 1. The
     // host's traversable has its initial entry only.
-    const opener = try BrowsingContext.initTopLevel(allocator);
+    const opener = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer opener.deinit();
     try testing.expect(!opener.is_created_by_web_content);
     try testing.expect(opener.isScriptClosable());

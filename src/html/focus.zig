@@ -5,8 +5,8 @@
 //! A document's focused area is Document's state, designated through the
 //! hook Document installs (dom.focused_area) and read only through
 //! `focusedAreaOf`, which applies the focus fixup rule. Elements are reached
-//! through their interfaces; the navigables through html_core's browsing
-//! contexts.
+//! through their interfaces; the navigables through their Browser's list of
+//! browsing contexts (dom.browser_state).
 //!
 //! Stated deviations:
 //!   * "Being rendered" has no layout to answer it: an element is taken to be
@@ -29,11 +29,9 @@ const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const dom = @import("dom");
-const html_core = @import("html_core");
 const form_associated = @import("form_associated.zig");
 
 const Instance = runtime.Instance;
-const BrowsingContext = html_core.window.BrowsingContext;
 const log = std.log.scoped(.focus);
 
 /// The focusing steps' focus trigger.
@@ -71,7 +69,9 @@ fn containerOf(document: *Instance) ?*Instance {
 
 /// The active document of `container`'s content navigable, or null.
 fn contentDocumentOf(container: *Instance) ?*Instance {
-    for (BrowsingContext.liveContexts()) |context| {
+    // The container's Browser's list, which its content navigable is on.
+    const navigables = dom.browser_state.navigablesOf(container.ctx) orelse return null;
+    for (navigables.contexts()) |context| {
         if (context.orphaned) continue;
         const owner = context.container orelse continue;
         if (@as(*Instance, @ptrCast(@alignCast(owner))) != container) continue;

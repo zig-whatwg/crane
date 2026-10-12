@@ -5,6 +5,7 @@
 const std = @import("std");
 const html = @import("html");
 const BrowsingContext = html.window.BrowsingContext;
+const Navigables = html.window.Navigables;
 const WindowProxy = html.window.WindowProxy;
 const Origin = html.window.Origin;
 const WindowProxyError = html.window.WindowProxyError;
@@ -45,8 +46,10 @@ test "Origin - null port handling" {
 
 test "WindowProxy - init and basic properties" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     const proxy = WindowProxy.init(allocator, ctx);
@@ -58,8 +61,10 @@ test "WindowProxy - init and basic properties" {
 
 test "WindowProxy - same origin access allows everything" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     var proxy = WindowProxy.init(allocator, ctx);
@@ -77,8 +82,10 @@ test "WindowProxy - same origin access allows everything" {
 
 test "WindowProxy - cross origin blocks restricted properties" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     var proxy = WindowProxy.init(allocator, ctx);
@@ -109,8 +116,10 @@ test "WindowProxy - cross origin blocks restricted properties" {
 
 test "WindowProxy - cross origin allows safe properties" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     var proxy = WindowProxy.init(allocator, ctx);
@@ -136,8 +145,10 @@ test "WindowProxy - cross origin allows safe properties" {
 
 test "WindowProxy - getClosed reflects browsing context state" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     const proxy = WindowProxy.init(allocator, ctx);
@@ -151,8 +162,10 @@ test "WindowProxy - getClosed reflects browsing context state" {
 
 test "WindowProxy - getLength reflects child count" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent = try BrowsingContext.initTopLevel(allocator);
+    const parent = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent.deinit();
 
     const proxy = WindowProxy.init(allocator, parent);
@@ -195,8 +208,10 @@ test "WindowProxy - isCrossOriginAllowedProperty" {
 
 test "WindowProxy - getWindow returns self" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     const proxy = WindowProxy.init(allocator, ctx);
@@ -207,8 +222,10 @@ test "WindowProxy - getWindow returns self" {
 
 test "WindowProxy - different scheme is cross-origin" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     var proxy = WindowProxy.init(allocator, ctx);
@@ -226,8 +243,10 @@ test "WindowProxy - different scheme is cross-origin" {
 
 test "WindowProxy - different port is cross-origin" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     var proxy = WindowProxy.init(allocator, ctx);

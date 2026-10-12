@@ -18,11 +18,15 @@ fn exercise() !void {
     defer runtime.deinitializeRuntime();
     interfaces.process_hooks.startHooksForTest();
     try engine.initializeEngine(.{});
+    // The agent's host, whose fetches a report upload would start on.
+    var agent_host = @import("html_core").agent_host.AgentHost.init(allocator);
+    defer agent_host.deinit();
     const agent = try engine.createAgent(.{
         .can_block = false,
         .from_snapshot = false,
         .allocator = allocator,
         .hooks = &.{},
+        .host = &agent_host,
     });
     defer engine.destroyAgent(agent);
     const realm = try engine.createWindowRealm(&.{
@@ -35,8 +39,7 @@ fn exercise() !void {
     defer {
         engine.destroyWindowRealm(realm, .global_detached);
         // Clean even the red run's unexpected upload after its client retires.
-        _ = fetch.algorithms.async_fetch.sweep();
-        fetch.network.scheduler.endIdleThreadScheduler();
+        _ = agent_host.fetches.sweep();
     }
     try std.testing.expect(realm.hasEngine());
     try std.testing.expect(realm.getOptionalEventLoop() == null);
@@ -54,7 +57,7 @@ fn exercise() !void {
         .csp = "style-src 'none'; report-uri data:application/csp-report,ignored",
     });
     defer container.deinit();
-    const before = fetch.algorithms.async_fetch.inFlight();
+    const before = agent_host.fetches.inFlight();
     dom.csp_violations.reportViolation(global, &.{
         .policy = &container.csp_list.policies.items[0],
         .effective_directive = "style-src-attr",
@@ -63,7 +66,7 @@ fn exercise() !void {
     const observed = try engine.evaluateClassicScript(realm, .{ .utf8 = "violations === 1" }, "csp3-no-loop-event.js", null, .{ .report = report });
     defer observed.release();
     try std.testing.expect(engine.toBoolean(realm, observed.value));
-    try std.testing.expectEqual(before, fetch.algorithms.async_fetch.inFlight());
+    try std.testing.expectEqual(before, agent_host.fetches.inFlight());
 }
 
 test "CSP violation without an event loop fires its event without starting AsyncFetch" {

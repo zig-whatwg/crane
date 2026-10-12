@@ -23,6 +23,8 @@ const v8 = @import("ffi.zig");
 const Context = runtime.Context;
 const JSValue = runtime.JSValue;
 const EngineError = runtime.EngineError;
+/// The agent records, where each agent's registry lives.
+const protocol_agents = @import("protocol_agents.zig");
 
 /// Internal state for an ObservableArray exotic object
 /// This is stored in a registry keyed by the Proxy object
@@ -42,9 +44,9 @@ pub const ObservableArrayState = struct {
     /// Used to clear weak callback during cleanup
     proxy: ?*v8.Object = null,
 
-    /// The isolate the proxy and target are of: only its own agent's end
-    /// (`cleanupAll`, on its thread) frees this state.
-    isolate: ?*v8.Isolate = null,
+    /// The agent's registry this state is in (null for an isolate
+    /// createAgent did not make, whose states only the collector frees).
+    registry: ?*Registry = null,
 
     /// Callback for when an indexed value is set
     on_set_indexed_value: ?*const fn (index: usize, value: JSValue) void = null,
@@ -65,96 +67,64 @@ pub const ObservableArrayState = struct {
     }
 };
 
-/// Registry mapping Proxy objects to their internal state
-/// Uses the V8 Object pointer as the key
+/// One agent's live ObservableArray states (instances B2): kept on its agent
+/// record (protocol_agents.observableArraysOf), made by its first array, and
+/// freed by its end (`destroy`) - whichever kind of agent it is - before its
+/// isolate's last collections. Read and written on the agent's own thread
+/// only, where V8 also runs the arrays' weak callbacks: no lock.
 ///
-/// Every thread that runs script reaches it (a Browser's and each worker's,
-/// docs/instances.md), so the map is reached only under `mutex`. A state is
-/// read and freed only on its isolate's thread; the lock keeps the map whole.
-const Registry = struct {
-    /// Protects `map`; held for one map operation or one scan, never across
-    /// a call into V8.
-    mutex: std.Io.Mutex = .init,
-    map: std.AutoHashMapUnmanaged(usize, *ObservableArrayState) = .empty,
+/// It was one map for the process, under a mutex every thread took - and
+/// every collected array's weak callback scanned the whole map, every
+/// agent's entries, to find its own; only a thread's host agent's end freed
+/// what was left (context_manager.deinit), so a worker agent's arrays waited
+/// for the collector.
+pub const Registry = struct {
+    allocator: std.mem.Allocator,
+    states: std.AutoHashMapUnmanaged(*ObservableArrayState, void) = .empty,
 
-    fn lock(self: *Registry) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+    pub fn create(allocator: std.mem.Allocator) !*Registry {
+        const self = try allocator.create(Registry);
+        self.* = .{ .allocator = allocator };
+        return self;
     }
 
-    fn unlock(self: *Registry) void {
-        std.Io.Threaded.mutexUnlock(&self.mutex);
+    /// The agent's end: every state still alive is freed, its proxy's weak
+    /// handle disarmed first so that no collection reaches a freed state.
+    /// The agent's isolate is entered.
+    pub fn destroy(self: *Registry) void {
+        var states = self.states.keyIterator();
+        while (states.next()) |state| {
+            if (state.*.proxy) |proxy| v8.v8_Global_ClearWeak(@ptrCast(proxy));
+        }
+        states = self.states.keyIterator();
+        while (states.next()) |state| {
+            state.*.deinit();
+            state.*.allocator.destroy(state.*);
+        }
+        self.states.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+
+    /// How many of the agent's arrays are alive.
+    pub fn count(self: *const Registry) usize {
+        return self.states.count();
     }
 };
-var state_registry: Registry = .{};
+
+/// How many ObservableArrays of the agent whose isolate this is are alive;
+/// 0 for an isolate createAgent did not make. On the agent's thread.
+pub fn liveCount(isolate: *v8.Isolate) usize {
+    const registry = protocol_agents.observableArraysOf(isolate) orelse return 0;
+    return registry.count();
+}
 
 /// V8 weak callback for GC-driven cleanup of ObservableArrayState
 /// Called when the V8 Proxy object is garbage collected
 fn weakCallback(data: ?*anyopaque, _: usize) callconv(.c) void {
     const state: *ObservableArrayState = @ptrCast(@alignCast(data orelse return));
-
-    // Remove from registry using the proxy pointer stored in state
-    {
-        state_registry.lock();
-        defer state_registry.unlock();
-        // Find and remove this state from the registry
-        var key_to_remove: ?usize = null;
-        var iter = state_registry.map.iterator();
-        while (iter.next()) |entry| {
-            if (entry.value_ptr.* == state) {
-                key_to_remove = entry.key_ptr.*;
-                break;
-            }
-        }
-        if (key_to_remove) |key| {
-            _ = state_registry.map.remove(key);
-        }
-    }
-
-    // Clean up the state
+    if (state.registry) |registry| _ = registry.states.remove(state);
     state.deinit();
     state.allocator.destroy(state);
-}
-
-/// Clean up the current agent's ObservableArrayState entries
-/// Called during an agent's context teardown (context_manager.deinit, with the
-/// agent's isolate entered) to ensure no leaks. Only that isolate's: it used
-/// to free every agent's, and a worker on a thread of its own ends as its
-/// thread's host agent while the page's arrays live on.
-pub fn cleanupAll() void {
-    const current = v8.v8_Isolate_GetCurrent();
-    var mine: std.ArrayListUnmanaged(*ObservableArrayState) = .empty;
-    defer mine.deinit(std.heap.page_allocator);
-    {
-        state_registry.lock();
-        defer state_registry.unlock();
-        var keys: std.ArrayListUnmanaged(usize) = .empty;
-        defer keys.deinit(std.heap.page_allocator);
-        var iter = state_registry.map.iterator();
-        while (iter.next()) |entry| {
-            if (entry.value_ptr.*.isolate != current) continue;
-            keys.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
-        }
-        // Room first: a state taken out must be freed.
-        mine.ensureTotalCapacity(std.heap.page_allocator, keys.items.len) catch return;
-        for (keys.items) |key| {
-            const kv = state_registry.map.fetchRemove(key) orelse continue;
-            mine.appendAssumeCapacity(kv.value);
-        }
-    }
-
-    // PHASE 1: Clear all weak callbacks first to prevent them from firing
-    // during cleanup. This avoids double-free when GC runs during teardown.
-    for (mine.items) |state| {
-        if (state.proxy) |proxy| {
-            v8.v8_Global_ClearWeak(@ptrCast(proxy));
-        }
-    }
-
-    // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
-    for (mine.items) |state| {
-        state.deinit();
-        state.allocator.destroy(state);
-    }
 }
 
 /// Create a new ObservableArray exotic object
@@ -191,13 +161,11 @@ pub fn create(ctx: Context) !JSValue {
 
     // Store proxy pointer in state for cleanup
     state.proxy = @ptrCast(proxy);
-    state.isolate = isolate;
 
-    // Register the state with the proxy's address
-    {
-        state_registry.lock();
-        defer state_registry.unlock();
-        try state_registry.map.put(std.heap.page_allocator, @intFromPtr(proxy), state);
+    // The agent's: its end frees what the collector has not.
+    if (protocol_agents.observableArraysOf(isolate)) |registry| {
+        try registry.states.put(registry.allocator, state, {});
+        state.registry = registry;
     }
 
     // Set up V8 weak callback for GC-driven cleanup
@@ -214,8 +182,8 @@ pub fn create(ctx: Context) !JSValue {
 
 /// The Engine table's `createObservableArray` (WebIDL "create an observable
 /// array exotic object" in `realm`). The object is the engine's: the weak
-/// callback frees its state when script can no longer reach it, and
-/// `cleanupAll` frees what is left when the agent's contexts are torn down.
+/// callback frees its state when script can no longer reach it, and the
+/// agent's end frees what is left (`Registry.destroy`).
 pub fn createObservableArray(realm: Context) EngineError!JSValue {
     return create(realm) catch |err| switch (err) {
         error.OutOfMemory => EngineError.OutOfMemory,
@@ -639,34 +607,4 @@ fn getPrototypeOfTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const array_proto = v8.v8_Object_Get(@ptrCast(array_ctor), context, @ptrCast(prototype_str)) orelse return;
 
     returnOwned(info, array_proto);
-}
-
-/// Get the internal state for an ObservableArray proxy
-pub fn getState(proxy: JSValue) ?*ObservableArrayState {
-    const handle_ptr = switch (proxy) {
-        .handle => |h| h.ptr,
-        else => return null,
-    };
-    const ptr = @intFromPtr(handle_ptr);
-    state_registry.lock();
-    defer state_registry.unlock();
-    return state_registry.map.get(ptr);
-}
-
-/// Clean up an ObservableArray and its state
-pub fn destroy(proxy: JSValue, allocator: std.mem.Allocator) void {
-    const handle_ptr = switch (proxy) {
-        .handle => |h| h.ptr,
-        else => return,
-    };
-    const ptr = @intFromPtr(handle_ptr);
-    const removed = blk: {
-        state_registry.lock();
-        defer state_registry.unlock();
-        break :blk state_registry.map.fetchRemove(ptr);
-    };
-    if (removed) |entry| {
-        entry.value.deinit();
-        allocator.destroy(entry.value);
-    }
 }

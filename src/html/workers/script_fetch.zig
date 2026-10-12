@@ -73,6 +73,10 @@ pub const WorkerScriptFetchOptions = struct {
     /// settings reach - its Browser's (BORROWED). A blob: script's blob is
     /// obtained there; null: a blob URL is a network error.
     blob_url_store: ?*anyopaque = null,
+    /// The network context of the outside settings' Browser (BORROWED): the
+    /// connections and TLS options the script's fetch uses. Null: the
+    /// defaults.
+    network: ?*fetch.network.NetworkContext = null,
     /// Credentials mode
     credentials: CredentialsMode = .same_origin,
     /// Whether this is for importScripts (stricter rules apply)
@@ -367,6 +371,8 @@ fn fetchHttpWorkerScript(
     }
     // Its violations are its client's (CSP 2.4.2).
     internal_request.csp_violation_reporter = options.csp_violation_reporter;
+    // Its client's Browser's network.
+    internal_request.network = options.network;
 
     // Set credentials mode
     internal_request.credentials_mode = switch (options.credentials) {

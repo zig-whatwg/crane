@@ -302,6 +302,8 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         // A blob: script's blob is in the outside settings' Browser's blob
         // URL store.
         .blob_url_store = @ptrCast(dom.browser_state.blobURLStoreOf(ctx)),
+        // The outside settings' Browser's network.
+        .network = dom.browser_state.networkOf(ctx),
         // The outside settings' policy container: its CSP decides whether
         // the script may be fetched at all.
         .policy_container = worker_host.creatorPolicyContainer(ctx),

@@ -117,7 +117,7 @@ pub fn parseClosePayload(payload: []const u8) error{ProtocolError}!ClosePayload 
 
 /// Room for a handshake key: a host (a domain is at most 253 bytes; a
 /// bracketed IPv6 address is shorter) and ":65535".
-pub const max_host_key = 300;
+pub const max_host_key = @import("fetch").network.network_context.max_host_key;
 
 /// The remote endpoint of a serialized ws: or wss: URL, as "host:port", for
 /// RFC 6455 § 4.1 step 2. The URL serializer leaves out a default port, so the
@@ -146,56 +146,12 @@ pub fn hostKey(buffer: *[max_host_key]u8, url: []const u8) ?[]const u8 {
     return std.fmt.bufPrint(buffer, "{s}:{s}", .{ authority, default_port }) catch null;
 }
 
-/// RFC 6455 § 4.1 step 2, which WebSockets § 2.1 keeps: "If the client already
-/// has a WebSocket connection to the remote host ... identified by /host/ and
-/// port /port/ pair ..., the client MUST wait until that connection has been
-/// established or for that connection to have failed. There MUST be no more
-/// than one connection in a CONNECTING state."
-///
-/// One holder per key: the connection whose handshake is in flight. Every
-/// other connection to that host and port waits, handshake unstarted, until
-/// the holder releases - websockets/constructor/014.html times two sockets to a
-/// server that stalls each handshake for two seconds. When the handshake
-/// blocked the whole event loop the rule held by accident.
-pub const HandshakeGate = struct {
-    entries: std.ArrayListUnmanaged(Entry) = .empty,
-
-    const Entry = struct {
-        key: [max_host_key]u8,
-        len: usize,
-        holder: *const anyopaque,
-    };
-
-    /// Take `key` for `holder`, or report that someone else holds it.
-    pub fn tryAcquire(self: *HandshakeGate, allocator: std.mem.Allocator, key: []const u8, holder: *const anyopaque) !bool {
-        for (self.entries.items) |e| {
-            if (std.mem.eql(u8, e.key[0..e.len], key)) return e.holder == holder;
-        }
-        var entry: Entry = .{ .key = undefined, .len = key.len, .holder = holder };
-        @memcpy(entry.key[0..key.len], key);
-        try self.entries.append(allocator, entry);
-        return true;
-    }
-
-    /// Let go of whatever `holder` holds.
-    pub fn release(self: *HandshakeGate, holder: *const anyopaque) void {
-        var i: usize = 0;
-        while (i < self.entries.items.len) {
-            if (self.entries.items[i].holder == holder) {
-                _ = self.entries.swapRemove(i);
-            } else i += 1;
-        }
-    }
-
-    pub fn deinit(self: *HandshakeGate, allocator: std.mem.Allocator) void {
-        self.entries.deinit(allocator);
-        self.* = .{};
-    }
-};
-
-/// The client's gate. Threadlocal: the page and its workers run on this
-/// thread, and together they are the one client RFC 6455 speaks of.
-threadlocal var handshake_gate: HandshakeGate = .{};
+/// RFC 6455 § 4.1 step 2's gate - one handshake in CONNECTING state per host
+/// and port - is the client's: its Browser's network context's
+/// (fetch.network.NetworkContext.tryAcquireConnecting), which the page and its
+/// workers, each on its own thread, all reach. A connection with no network
+/// context (a unit test's) is held up by none.
+pub const HandshakeGate = @import("fetch").network.network_context.ConnectingGate;
 
 /// A frame queued for the socket.
 const OutgoingFrame = struct {
@@ -335,7 +291,12 @@ pub const WebSocketConnection = struct {
     /// to the same host and port is CONNECTING; see `HandshakeGate`.
     handshake_started: bool = false,
 
-    /// Whether this connection holds its host's place in `handshake_gate`.
+    /// The network context of the client's Browser, from `startConnect`: its
+    /// CONNECTING gate. BORROWED: the Browser outlives its connections.
+    network: ?*@import("fetch").network.NetworkContext = null,
+
+    /// Whether this connection holds its host's place in its network
+    /// context's CONNECTING gate.
     gate_held: bool = false,
 
     const Self = @This();
@@ -427,6 +388,9 @@ pub const WebSocketConnection = struct {
         /// for the connection's life): the handshake sends and stores
         /// cookies through it.
         cookie_jar: ?*@import("cookiestore").CookieJar = null,
+        /// The network context of the client's Browser (borrowed for the
+        /// connection's life): its TLS options and CONNECTING gate.
+        network: ?*@import("fetch").network.NetworkContext = null,
     };
 
     /// Establish the WebSocket connection, waiting for it. For callers with
@@ -455,8 +419,10 @@ pub const WebSocketConnection = struct {
             .protocols = options.protocols,
             .origin = options.origin,
             .cookie_jar = options.cookie_jar,
+            .network = options.network,
         });
         self.backend = backend;
+        self.network = options.network;
 
         try self.beginHandshakeIfFree();
     }
@@ -468,14 +434,14 @@ pub const WebSocketConnection = struct {
         const backend = self.backend orelse return error.NotConnected;
 
         var buffer: [max_host_key]u8 = undefined;
-        if (hostKey(&buffer, self.url)) |key| {
-            const free = handshake_gate.tryAcquire(std.heap.page_allocator, key, self) catch |err| {
+        if (self.network) |network| if (hostKey(&buffer, self.url)) |key| {
+            const free = network.tryAcquireConnecting(key, self) catch |err| {
                 self.fail();
                 return err;
             };
             if (!free) return;
             self.gate_held = true;
-        }
+        };
 
         self.handshake_started = true;
         backend.startConnect() catch |err| {
@@ -486,7 +452,7 @@ pub const WebSocketConnection = struct {
 
     fn releaseGate(self: *Self) void {
         if (!self.gate_held) return;
-        handshake_gate.release(self);
+        if (self.network) |network| network.releaseConnecting(self);
         self.gate_held = false;
     }
 

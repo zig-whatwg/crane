@@ -107,6 +107,34 @@ pub const BrowserConfig = struct {
     /// it through the Browser's scope (html.media_runtime.forRealm). The
     /// default, no_decoder, makes canPlayType answer "" for every type.
     media_backend: media_backend_mod.MediaBackend = media_backend_mod.no_decoder,
+    /// A certificate authority bundle this Browser trusts besides the
+    /// system's (PEM; the WPT runner's tools/certs/cacert.pem). Copied.
+    ca_bundle_path: ?[]const u8 = null,
+    /// The Browser's user agent string: the `User-Agent` its requests send
+    /// and navigator.userAgent in its windows and workers (Fetch's
+    /// "environment default `User-Agent` value"). Null: Crane's default
+    /// (fetch.internal.user_agent). Copied.
+    user_agent: ?[]const u8 = null,
+    /// Where its requests go - WebDriver's proxy configuration. Explicit
+    /// proxies only (docs/instances.md): a PAC file and auto-detection make
+    /// `init` fail with error.NotSupported. Copied.
+    proxy: Proxy = .system,
+    /// WebDriver's acceptInsecureCerts: TLS certificates are not verified.
+    accept_insecure_certs: bool = false,
+
+    pub const Proxy = union(enum) {
+        /// The process's proxy settings (curl reads http_proxy, https_proxy
+        /// and no_proxy from the environment). The default.
+        system,
+        /// No proxy.
+        direct,
+        /// A proxy per scheme and the hosts that bypass it.
+        manual: @import("fetch").network.NetworkContext.Proxy.Manual,
+        /// A proxy auto-config file's URL: not supported.
+        pac: []const u8,
+        /// Proxy auto-detection (WPAD): not supported.
+        autodetect,
+    };
 };
 
 /// Browser instance managing a single V8 isolate
@@ -159,14 +187,12 @@ pub const Browser = struct {
         // is the process's, started once before any Browser (process.zig). A
         // host that has not started it gets it started here, for the
         // process's life.
+        // Explicit proxies only (docs/instances.md, the user's decision).
+        switch (config.proxy) {
+            .pac, .autodetect => return error.NotSupported,
+            else => {},
+        }
         Process.ensureStarted(.{ .snapshot_path = config.snapshot_path }) catch return error.V8InitFailed;
-
-        // The network's process-wide state - curl, and the connection pool
-        // every fetch shares - held for this Browser's life (`deinit`). It
-        // stays here until curl's global init is split from the pool, which
-        // must close with the last Browser (process.zig).
-        try @import("fetch").network.globalInit();
-        errdefer @import("fetch").network.globalCleanup();
 
         // The platform objects of this Browser, and their side tables, come
         // from its own scope (made below, before its first realm), never from
@@ -223,14 +249,18 @@ pub const Browser = struct {
         errdefer allocator.destroy(event_loop);
         event_loop.* = try EventLoop.init(agent, allocator);
         // The agent's deferred teardown queue, which the loop runs between
-        // tasks.
+        // tasks, and its fetches, which the loop pumps.
         event_loop.deferred_teardown = &agent_host.deferred_teardown;
+        event_loop.fetches = &agent_host.fetches;
 
         // The Browser's scope, which its realms carry.
         const scope = try allocator.create(runtime.BrowserScope);
         errdefer allocator.destroy(scope);
         scope.* = runtime.BrowserScope.init(allocator);
         errdefer scope.deinit();
+        // The Browser's platform state (docs/platform-protocol.md section 3),
+        // which its realms' per-Browser platform operations take.
+        try @import("html").platform_state.create(scope);
         // The host's media backend, which every realm of this Browser reads
         // (html.media_runtime.MediaHost), set before any realm exists.
         (try scope.of(@import("html").media_runtime.MediaHost)).backend = config.media_backend;
@@ -240,6 +270,19 @@ pub const Browser = struct {
         // go before the jar they hear.)
         const cookie_jar = try scope.of(cookiestore.CookieJar);
         (try scope.of(@import("dom").cookie_change_listeners.CookieChangeListeners)).hearJar(cookie_jar);
+        // The Browser's network: its connections, its TLS options, its
+        // WebSocket gate - every request of its realms carries it.
+        try (try scope.of(@import("fetch").network.NetworkContext)).configure(.{
+            .ca_bundle_path = config.ca_bundle_path,
+            .user_agent = config.user_agent,
+            .proxy = switch (config.proxy) {
+                .system => .system,
+                .direct => .direct,
+                .manual => |manual| .{ .manual = manual },
+                .pac, .autodetect => unreachable, // refused by init
+            },
+            .accept_insecure_certs = config.accept_insecure_certs,
+        });
 
         // Allocate browser struct
         const browser = try allocator.create(Browser);
@@ -289,7 +332,7 @@ pub const Browser = struct {
         }
         // The page's fetches still in flight release what they hold - a
         // promise, and through it the realm - while the isolate lives.
-        _ = @import("fetch").algorithms.async_fetch.sweep();
+        _ = self.agent_host.fetches.sweep();
 
         // Flush and cleanup storage
         self.storage.flush() catch {};
@@ -330,25 +373,21 @@ pub const Browser = struct {
 
             // Every Window is gone now, so the browsing contexts their
             // containers retired while a Window might still read them
-            // (BrowsingContext.discard) can finally be freed.
-            @import("html").window.browsing_context.BrowsingContext.freeRetired();
+            // (BrowsingContext.discard) can finally be freed - this
+            // Browser's, never another's.
+            if (@import("dom").browser_state.existingNavigablesIn(self.scope)) |navigables| navigables.freeRetired();
         }
 
-        // The Browser's scope: every realm and every worker thread is gone.
-        // Its side tables end (what their entries still hold of the engine
-        // is released without it), then its slab and arena - every platform
-        // object of this Browser, and none of another's.
+        // The Browser's scope: every realm and every worker thread is gone,
+        // and every agent's fetches with its host. Its supplements end - its
+        // network context closes its connections (each HTTP/2 one with a
+        // GOAWAY), its own and no other Browser's - then its side tables
+        // (what their entries still hold of the engine is released without
+        // it), then its slab and arena - every platform object of this
+        // Browser, and none of another's. Its platform state ends first.
+        @import("html").platform_state.destroy(self.scope);
         self.scope.deinit();
         self.allocator.destroy(self.scope);
-
-        // The network ends with the last Browser, once nothing that could
-        // hold a transfer is left: the thread's scheduler closes, and so does
-        // the connection pool, where curl shuts each connection down - an
-        // HTTP/2 one with a GOAWAY. A connection only closed by the process
-        // exiting ends with a bare FIN, and WPT's h2 server (:9000) spins a
-        // thread forever on each of those.
-        @import("fetch").network.scheduler.endIdleThreadScheduler();
-        @import("fetch").network.globalCleanup();
 
         self.initialized = false;
         self.allocator.destroy(self);
@@ -394,7 +433,7 @@ pub const Browser = struct {
             self.current_context = null;
             // Fetch's "terminate a fetch group" for the page that ended, now
             // rather than at the next turn's pump.
-            _ = @import("fetch").algorithms.async_fetch.sweep();
+            _ = self.agent_host.fetches.sweep();
 
             // Drain all pending timer close callbacks first
             // When timers are cancelled in Context.deinit(), libuv schedules close callbacks.

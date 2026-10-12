@@ -24,6 +24,7 @@ const log = std.log.scoped(.iframe);
 const Allocator = std.mem.Allocator;
 const browsing_context = @import("browsing_context.zig");
 const BrowsingContext = browsing_context.BrowsingContext;
+const Navigables = browsing_context.Navigables;
 const SandboxFlags = browsing_context.SandboxFlags;
 const WindowProxy = @import("window_proxy.zig").WindowProxy;
 const Origin = @import("window_proxy.zig").Origin;
@@ -1701,9 +1702,11 @@ test "IFrameIntegration - init creates uninitialized state" {
 
 test "IFrameIntegration - a pending policy container is taken by the commit, or released with the integration" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
     const PolicyContainer = @import("fetch").internal.PolicyContainer;
 
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent_ctx.deinit();
 
     // Set, then taken - what a commit does: the document owns it.
@@ -1733,8 +1736,10 @@ test "IFrameIntegration - a pending policy container is taken by the commit, or 
 
 test "IFrameIntegration - insertion creates browsing context" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent_ctx.deinit();
 
     var integration = IFrameIntegration.init(allocator);
@@ -1757,8 +1762,10 @@ test "IFrameIntegration - insertion creates browsing context" {
 
 test "IFrameIntegration - removal discards browsing context" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent_ctx.deinit();
 
     var integration = IFrameIntegration.init(allocator);
@@ -1776,8 +1783,10 @@ test "IFrameIntegration - removal discards browsing context" {
 
 test "IFrameIntegration - setSrc triggers navigation" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent_ctx.deinit();
 
     var integration = IFrameIntegration.init(allocator);
@@ -1793,8 +1802,10 @@ test "IFrameIntegration - setSrc triggers navigation" {
 
 test "IFrameIntegration - setSrcdoc" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent_ctx.deinit();
 
     var integration = IFrameIntegration.init(allocator);
@@ -1809,8 +1820,10 @@ test "IFrameIntegration - setSrcdoc" {
 
 test "IFrameIntegration - setName updates browsing context" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent_ctx.deinit();
 
     var integration = IFrameIntegration.init(allocator);
@@ -1837,8 +1850,10 @@ test "IFrameIntegration - getContentWindow returns null when uninitialized" {
 
 test "IFrameIntegration - getContentWindow returns proxy when initialized" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent_ctx.deinit();
 
     var integration = IFrameIntegration.init(allocator);
@@ -1851,8 +1866,10 @@ test "IFrameIntegration - getContentWindow returns proxy when initialized" {
 
 test "IFrameIntegration - contentDocument access same-origin" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent_ctx.deinit();
 
     var integration = IFrameIntegration.init(allocator);
@@ -1895,8 +1912,10 @@ test "IFrameIntegration - parseOriginFromURL" {
 
 test "IFrameIntegration - about:blank inherits origin" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent_ctx.deinit();
 
     var integration = IFrameIntegration.init(allocator);
@@ -1977,8 +1996,10 @@ test "IFrameIntegration - clearSandbox removes restrictions" {
 
 test "IFrameIntegration - sandbox applied to browsing context" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent_ctx.deinit();
 
     var integration = IFrameIntegration.init(allocator);

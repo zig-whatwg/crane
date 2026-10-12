@@ -165,6 +165,7 @@ pub const window = @import("window/root.zig");
 
 // Re-export commonly used window types
 pub const BrowsingContext = window.BrowsingContext;
+pub const Navigables = window.Navigables;
 pub const BrowsingContextGroup = window.BrowsingContextGroup;
 pub const SandboxFlags = window.SandboxFlags;
 pub const WindowProxy = window.WindowProxy;

@@ -31,7 +31,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const engine = @import("engine");
-const fetch = @import("fetch");
 
 const WorkerLink = @import("worker_link.zig").WorkerLink;
 const WorkerEventLoop = @import("worker_event_loop.zig").WorkerEventLoop;
@@ -127,25 +126,19 @@ pub const WorkerThread = struct {
         // e. The loop's end, now that nothing can run in it.
         if (loop_made) {
             self.loop.agent = null;
+            self.loop.fetches = null;
             self.loop.deinit();
         }
+        // f. The host, and with it the agent's own state - its fetches'
+        // scheduler included (AgentHost.fetches): nothing of the worker is
+        // left on the thread.
         self.host.free(self.host.data);
-        // f. What this thread kept for itself.
-        endThreadState();
         // g. The worker's end, to its owner.
         self.postEnded();
         link.markEnded();
         const allocator = self.allocator;
         allocator.destroy(self);
         link.release();
-    }
-
-    /// Per-thread state of the runtime and the network that a worker's
-    /// thread made, ended with it - otherwise each worker thread leaks it at
-    /// its exit.
-    fn endThreadState() void {
-        _ = fetch.algorithms.async_fetch.sweep();
-        fetch.network.scheduler.endIdleThreadScheduler();
     }
 
     /// Post the worker's end to its owner's loop, carrying a link reference.

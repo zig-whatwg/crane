@@ -425,6 +425,9 @@ fn pump(token: *PollToken, instance: *runtime.Instance) bool {
                 .protocols = internal.requested_protocols,
                 .origin = origin,
                 .cookie_jar = clientCookieJar(instance),
+                // The client's Browser's network: its TLS options, and the
+                // CONNECTING gate its windows and workers share.
+                .network = @import("dom").browser_state.networkOf(instance.ctx),
             }) catch |err| {
                 log.debug("handshake to {s} failed to start: {s}", .{ internal.url_string, @errorName(err) });
             };

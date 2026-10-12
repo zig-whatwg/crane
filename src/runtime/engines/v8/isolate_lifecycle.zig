@@ -1,143 +1,53 @@
-//! V8 Isolate Lifecycle Manager
+//! V8 Isolate Lifecycle: what the adapter keeps per isolate (and, for a
+//! thread's host agent, per thread), and the order an agent's end releases it
+//! in (protocol_agents.endAgent).
 //!
-//! Central cleanup registry for V8-dependent modules. Ensures consistent cleanup
-//! of all global/thread-local state when an isolate is disposed.
-//!
-//! ## Problem Solved
-//!
-//! Before this module, cleanup responsibilities were scattered:
-//! - template_registry.clear() in Browser.deinit()
-//! - namespace.clearGlobalContext() in template_registry.clear()
-//!
-//! When developers add new V8-dependent state, they might forget cleanup code.
-//! This module centralizes cleanup and provides debug-mode validation.
+//! The steps are a constant table, known when the program is compiled (design
+//! 4.6 and B9: what is the same for every agent is never installed at run
+//! time). They were a registry of 32 optional slots, written by
+//! `registerBuiltinHandlers` - from initializeEngine, and from any createAgent
+//! that found the table empty, on whichever Browser or worker thread made it -
+//! and read by every agent's end on every thread, with no lock.
 //!
 //! ## Usage
 //!
 //! ```zig
-//! const lifecycle = @import("isolate_lifecycle.zig");
-//!
-//! // Register cleanup functions during module initialization
-//! lifecycle.registerCleanup("my_module", myCleanupFn);
-//!
-//! // Before disposing isolate
-//! lifecycle.cleanupAll(isolate, allocator);
-//! ```
-//!
-//! ## Architecture
-//!
-//! ```
-//! IsolateLifecycleManager
-//!     ├── Cleanup Registry (callbacks for each module)
-//!     ├── Debug Validators (check state is null after cleanup)
-//!     └── Cleanup Orchestration (call in correct order)
+//! // Before disposing an isolate (protocol_agents.endAgent)
+//! isolate_lifecycle.cleanupAll(isolate, allocator);
 //! ```
 
 const std = @import("std");
 const v8 = @import("ffi.zig");
 const builtin = @import("builtin");
 
-/// Maximum number of cleanup handlers that can be registered
-const MAX_HANDLERS = 32;
-
-/// Cleanup handler function signature
+/// Cleanup step signature
 /// Arguments:
-///   - isolate: V8 isolate being disposed (may be null for global cleanup)
+///   - isolate: V8 isolate being disposed
 ///   - allocator: Allocator for any necessary deallocation
-pub const CleanupFn = *const fn (?*v8.Isolate, std.mem.Allocator) void;
+pub const CleanupFn = *const fn (*v8.Isolate, std.mem.Allocator) void;
 
 /// Debug validator function signature
 /// Returns true if state is clean, false if cleanup was incomplete
 pub const ValidatorFn = *const fn () bool;
 
-/// Registered cleanup handler
-const CleanupHandler = struct {
+/// One step of an isolate's teardown.
+pub const Handler = struct {
     name: []const u8,
     cleanup: CleanupFn,
-    validator: ?ValidatorFn,
-    priority: u8, // Lower priority = called earlier
+    validator: ?ValidatorFn = null,
 };
 
-/// Global cleanup registry
-var handlers: [MAX_HANDLERS]?CleanupHandler = [_]?CleanupHandler{null} ** MAX_HANDLERS;
-var handler_count: usize = 0;
-var initialized: bool = false;
-
-/// Priority levels for cleanup ordering
-/// Lower numbers run first (matching dependency order)
-pub const Priority = struct {
-    /// DOM state depends on everything else
-    pub const dom_state: u8 = 10;
-    /// Wrapper cache depends on isolate templates
-    pub const wrapper_cache: u8 = 20;
-    /// Templates depend on isolate
-    pub const templates: u8 = 30;
-    /// Engine callbacks
-    pub const engine: u8 = 40;
-    /// Namespace context
-    pub const namespace: u8 = 50;
-    /// Default priority
-    pub const default: u8 = 100;
+/// The steps, in the order they run: what depends on a thing ends before it.
+/// The thread's context manager (its realms' wrapper caches) first, then the
+/// isolate's templates - the registry's among them - then its allocator,
+/// which their storage was allocated with.
+pub const handlers = [_]Handler{
+    .{ .name = "context_manager", .cleanup = cleanupContextManager },
+    .{ .name = "isolate_templates", .cleanup = cleanupIsolateTemplates, .validator = validateTemplateRegistry },
+    .{ .name = "isolate_allocator", .cleanup = cleanupIsolateAllocator },
 };
 
-/// Initialize the lifecycle manager
-fn ensureInitialized() void {
-    if (!initialized) {
-        initialized = true;
-    }
-}
-
-/// Register a cleanup handler
-///
-/// Handlers are called in priority order (lowest first) during cleanupAll().
-///
-/// Arguments:
-///   - name: Module name for debugging
-///   - cleanup: Cleanup function to call
-///   - validator: Optional validator to verify cleanup (debug mode only)
-///   - priority: Order in which to call (lower = earlier)
-///
-/// Returns: error if registry is full
-pub fn registerCleanup(
-    name: []const u8,
-    cleanup: CleanupFn,
-    validator: ?ValidatorFn,
-    priority: u8,
-) !void {
-    ensureInitialized();
-
-    // Check for duplicate registration
-    for (handlers[0..handler_count]) |handler| {
-        if (handler) |h| {
-            if (std.mem.eql(u8, h.name, name)) {
-                // Already registered, update it
-                return;
-            }
-        }
-    }
-
-    if (handler_count >= MAX_HANDLERS) {
-        return error.RegistryFull;
-    }
-
-    handlers[handler_count] = .{
-        .name = name,
-        .cleanup = cleanup,
-        .validator = validator,
-        .priority = priority,
-    };
-    handler_count += 1;
-}
-
-/// Register with default priority
-pub fn registerCleanupDefault(
-    name: []const u8,
-    cleanup: CleanupFn,
-) !void {
-    try registerCleanup(name, cleanup, null, Priority.default);
-}
-
-/// Clean up all registered handlers in priority order
+/// Run every step, in order.
 ///
 /// This function MUST be called BEFORE disposing the V8 isolate.
 ///
@@ -145,208 +55,44 @@ pub fn registerCleanupDefault(
 ///   - isolate: V8 isolate being disposed
 ///   - allocator: Allocator for cleanup operations
 pub fn cleanupAll(isolate: *v8.Isolate, allocator: std.mem.Allocator) void {
-    // Sort handlers by priority (simple insertion sort - few handlers)
-    var sorted: [MAX_HANDLERS]?CleanupHandler = handlers;
-    for (0..handler_count) |i| {
-        for (i + 1..handler_count) |j| {
-            if (sorted[i]) |hi| {
-                if (sorted[j]) |hj| {
-                    if (hj.priority < hi.priority) {
-                        sorted[i] = hj;
-                        sorted[j] = hi;
-                    }
-                }
-            }
-        }
-    }
-
-    // Call cleanup in priority order
-    for (sorted[0..handler_count]) |handler| {
-        if (handler) |h| {
-            h.cleanup(isolate, allocator);
-        }
-    }
+    inline for (handlers) |handler| handler.cleanup(isolate, allocator);
 
     // In debug mode, validate all cleanup was successful
     if (builtin.mode == .Debug) {
-        validateCleanup();
-    }
-}
-
-/// Validate all cleanup was successful (debug mode)
-///
-/// Checks each validator and logs warnings for incomplete cleanup.
-fn validateCleanup() void {
-    for (handlers[0..handler_count]) |handler| {
-        if (handler) |h| {
-            if (h.validator) |validate| {
-                if (!validate()) {
-                    std.log.warn(
-                        "Cleanup validation failed for: {s}",
-                        .{h.name},
-                    );
-                    // In debug mode, we could add @panic here to catch issues early
-                    if (builtin.mode == .Debug) {
-                        // Uncomment to make validation failures fatal:
-                        // @panic("Cleanup validation failed");
-                    }
-                }
+        inline for (handlers) |handler| {
+            if (handler.validator) |validate| {
+                if (!validate()) std.log.warn("Cleanup validation failed for: {s}", .{handler.name});
             }
         }
     }
 }
 
-/// Clear all registered handlers (for testing)
-pub fn clearRegistry() void {
-    for (&handlers) |*h| {
-        h.* = null;
-    }
-    handler_count = 0;
-}
-
-/// Get the number of registered handlers
-pub fn getHandlerCount() usize {
-    return handler_count;
-}
-
 // ============================================================================
-// Built-in Cleanup Handlers
+// The steps
 // ============================================================================
 
-/// Cleanup handler for isolate templates (slot 1)
-fn cleanupIsolateTemplates(isolate: ?*v8.Isolate, allocator: std.mem.Allocator) void {
-    if (isolate) |iso| {
-        const isolate_templates = @import("isolate_templates.zig");
-        isolate_templates.cleanupTemplateStorage(iso, allocator);
-    }
+/// The isolate's template storage (slot 1), its registered templates
+/// disposed: this isolate's only - no other isolate's storage is reachable
+/// from it.
+fn cleanupIsolateTemplates(isolate: *v8.Isolate, allocator: std.mem.Allocator) void {
+    const isolate_templates = @import("isolate_templates.zig");
+    isolate_templates.cleanupTemplateStorage(isolate, allocator);
 }
 
-/// Cleanup handler for template registry
-fn cleanupTemplateRegistry(isolate: ?*v8.Isolate, _: std.mem.Allocator) void {
-    const template_registry = @import("template_registry.zig");
-    if (isolate) |iso| {
-        // Scope the disposal to THIS isolate. The isolate was already being passed
-        // here and discarded; with the registry now holding entries for more than
-        // one isolate, clear() would dispose a live worker isolate's
-        // FunctionTemplates alongside the ones actually being torn down.
-        template_registry.clearForIsolate(iso);
-        return;
-    }
-    // No isolate named: this is full teardown, so the process-wide C++ caches and
-    // global Zig state that clear() also resets do need to go.
-    template_registry.clear();
-}
-
-/// Validator for template registry
+/// The current isolate's registry is empty once its storage has ended.
 fn validateTemplateRegistry() bool {
     const template_registry = @import("template_registry.zig");
-    // After clear(), template_count should be 0
     return template_registry.getTemplate("Document") == null;
 }
 
-/// Cleanup handler for isolate allocator (slot 0)
-fn cleanupIsolateAllocator(isolate: ?*v8.Isolate, _: std.mem.Allocator) void {
-    if (isolate) |iso| {
-        const isolate_allocator = @import("isolate_allocator.zig");
-        isolate_allocator.deinitIsolateAllocator(iso);
-    }
+/// The isolate's allocator (slot 0)
+fn cleanupIsolateAllocator(isolate: *v8.Isolate, _: std.mem.Allocator) void {
+    const isolate_allocator = @import("isolate_allocator.zig");
+    isolate_allocator.deinitIsolateAllocator(isolate);
 }
 
-/// Cleanup handler for context manager
-fn cleanupContextManager(_: ?*v8.Isolate, _: std.mem.Allocator) void {
+/// The thread's context manager
+fn cleanupContextManager(_: *v8.Isolate, _: std.mem.Allocator) void {
     const context_manager = @import("context_manager.zig");
     context_manager.deinit();
-}
-
-/// Whether `registerBuiltinHandlers` has run. Read by every createAgent; the
-/// table is written once, while the engine starts (protocol_agents
-/// initializeEngine), before any Browser or worker thread exists.
-pub fn builtinHandlersRegistered() bool {
-    for (handlers[0..handler_count]) |handler| {
-        if (handler) |h| {
-            if (std.mem.eql(u8, h.name, "context_manager")) return true;
-        }
-    }
-    return false;
-}
-
-/// Register all built-in cleanup handlers
-///
-/// Call this once during engine initialization.
-pub fn registerBuiltinHandlers() !void {
-    try registerCleanup(
-        "isolate_templates",
-        cleanupIsolateTemplates,
-        null,
-        Priority.templates,
-    );
-
-    try registerCleanup(
-        "template_registry",
-        cleanupTemplateRegistry,
-        validateTemplateRegistry,
-        Priority.templates + 1,
-    );
-
-    try registerCleanup(
-        "isolate_allocator",
-        cleanupIsolateAllocator,
-        null,
-        Priority.default + 10, // Run near the end
-    );
-
-    try registerCleanup(
-        "context_manager",
-        cleanupContextManager,
-        null,
-        Priority.wrapper_cache,
-    );
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "IsolateLifecycle - register and clear" {
-    const testing = std.testing;
-
-    clearRegistry();
-    try testing.expectEqual(@as(usize, 0), getHandlerCount());
-
-    try registerCleanupDefault("test_module", struct {
-        fn cleanup(_: ?*v8.Isolate, _: std.mem.Allocator) void {}
-    }.cleanup);
-
-    try testing.expectEqual(@as(usize, 1), getHandlerCount());
-
-    clearRegistry();
-    try testing.expectEqual(@as(usize, 0), getHandlerCount());
-}
-
-test "IsolateLifecycle - priority ordering" {
-    const testing = std.testing;
-
-    clearRegistry();
-
-    // Register in reverse priority order
-    try registerCleanup("high", struct {
-        fn cleanup(_: ?*v8.Isolate, _: std.mem.Allocator) void {}
-    }.cleanup, null, 100);
-
-    try registerCleanup("low", struct {
-        fn cleanup(_: ?*v8.Isolate, _: std.mem.Allocator) void {}
-    }.cleanup, null, 10);
-
-    try registerCleanup("medium", struct {
-        fn cleanup(_: ?*v8.Isolate, _: std.mem.Allocator) void {}
-    }.cleanup, null, 50);
-
-    try testing.expectEqual(@as(usize, 3), getHandlerCount());
-
-    clearRegistry();
-}
-
-test "IsolateLifecycle module compiles" {
-    const testing = std.testing;
-    testing.refAllDecls(@This());
 }

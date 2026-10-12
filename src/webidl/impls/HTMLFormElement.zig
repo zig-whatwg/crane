@@ -1310,11 +1310,10 @@ fn cancelLastPlannedNavigation(form: *runtime.Instance) void {
 /// it when the plan runs) or a document with no navigable. Only identifies
 /// the navigable; the plan's task still chooses it (navigateSteps).
 fn targetNavigableId(document: ?*runtime.Instance, target: []const u8) u64 {
-    const BrowsingContext = @import("html_core").BrowsingContext;
     const doc = document orelse return 0;
     if (std.ascii.eqlIgnoreCase(target, "_blank")) return 0;
     const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return 0;
-    const own = BrowsingContext.ofWindow(@ptrCast(window)) orelse return 0;
+    const own = @import("dom").browser_state.browsingContextOf(window) orelse return 0;
     if (target.len == 0 or std.ascii.eqlIgnoreCase(target, "_self")) return own.id;
     if (std.ascii.eqlIgnoreCase(target, "_parent")) return (own.parent orelse own).id;
     if (std.ascii.eqlIgnoreCase(target, "_top")) {
@@ -1327,7 +1326,7 @@ fn targetNavigableId(document: ?*runtime.Instance, target: []const u8) u64 {
         return top.id;
     }
     const named = @import("dom").navigables.findByName(doc, target) orelse return 0;
-    const browsing_context = BrowsingContext.ofWindow(@ptrCast(named)) orelse return 0;
+    const browsing_context = @import("dom").browser_state.browsingContextOf(named) orelse return 0;
     return browsing_context.id;
 }
 

@@ -115,6 +115,7 @@ pub const window = core.window;
 
 // Re-export commonly used window types
 pub const BrowsingContext = core.BrowsingContext;
+pub const Navigables = core.Navigables;
 pub const BrowsingContextGroup = core.BrowsingContextGroup;
 pub const WindowProxy = core.WindowProxy;
 pub const Origin = core.Origin;
@@ -221,6 +222,10 @@ pub const hyperlink_auditing = @import("hyperlink_auditing.zig");
 pub const style_sheet_loading = @import("style_sheet_loading.zig");
 // Media owner tasks, events and incremental resource fetching.
 pub const media_runtime = @import("media/runtime.zig");
+
+/// A Browser's platform state: its BrowserPlatform (docs/platform-protocol.md
+/// section 3).
+pub const platform_state = @import("platform_state.zig");
 
 /// What an object or embed element represents, and its fetch, events and
 /// child navigable (HTML 4.8.6, 4.8.7).

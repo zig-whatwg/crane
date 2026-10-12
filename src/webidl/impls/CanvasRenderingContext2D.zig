@@ -10,6 +10,8 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const CanvasRenderingContext2D = interfaces.CanvasRenderingContext2D;
 const engine = @import("engine");
+const dom = @import("dom");
+const same_object = @import("same_object.zig");
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;
@@ -20,10 +22,17 @@ pub const ImplError = error{
     NotImplemented,
 };
 
+/// A canvas bitmap larger than this many pixels (Blink's limit, 2^28: 1 GiB
+/// of RGBA8) gets no pixels: it is 0 x 0, so nothing is drawn on it and it
+/// reads back as transparent black.
+const max_bitmap_pixels: u64 = 1 << 28;
+
 /// Internal state for CanvasRenderingContext2D
 /// Contains private data for canvas rendering:
 /// - line_dash: Current line dash pattern (sequence of f64)
 /// - line_dash_offset: Offset for line dash pattern
+/// - bitmap: the output bitmap (HTML 4.12.5.1.2), which its canvas shares
+/// - canvas: the canvas attribute's element
 pub const InternalState = struct {
     /// Current line dash pattern - stored as owned slice
     line_dash: []f64 = &[_]f64{},
@@ -31,12 +40,29 @@ pub const InternalState = struct {
     line_dash_offset: f64 = 0,
     /// Allocator used for this state
     allocator: std.mem.Allocator = undefined,
+    /// The output bitmap: premultiplied RGBA8 with its origin-clean flag.
+    bitmap: dom.image_sources.OutputBitmap = .{ .allocator = std.heap.page_allocator },
+    /// The canvas this context was made for (the 2D context creation
+    /// algorithm step 3), kept for as long as the context's wrapper lives:
+    /// `context.canvas` keeps answering it (Blink's
+    /// CanvasRenderingContext::Trace visits host_).
+    canvas: ?same_object.Link = null,
+    canvas_edge: same_object.Traced = .{ .slot = .{ .name = "canvas" } },
+
+    /// Reset the rendering context to its default state - the drawing state
+    /// this context models: the line dash.
+    fn reset(self: *InternalState) void {
+        if (self.line_dash.len > 0) self.allocator.free(self.line_dash);
+        self.line_dash = &[_]f64{};
+        self.line_dash_offset = 0;
+    }
 
     pub fn deinit(self: *InternalState) void {
         if (self.line_dash.len > 0) {
             self.allocator.free(self.line_dash);
             self.line_dash = &[_]f64{};
         }
+        self.bitmap.deinit();
     }
 };
 
@@ -55,6 +81,7 @@ fn getOrCreateInternal(instance: *runtime.Instance) !*InternalState {
     const internal = try allocator.create(InternalState);
     internal.* = .{
         .allocator = allocator,
+        .bitmap = .{ .allocator = allocator },
     };
     try Registry.set(instance, internal);
     return internal;
@@ -76,16 +103,57 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up internal state if it exists
     if (Registry.get(instance)) |internal| {
+        // The edge to the canvas goes with this context; the canvas itself
+        // is not touched (the collector may have freed it first).
+        internal.canvas_edge.release(instance);
         internal.deinit();
         internal.allocator.destroy(internal);
     }
     Registry.remove(instance);
 }
 
-/// Getter for canvas
+/// The hooks this type owns: its output bitmap and the creation and
+/// resizing steps its canvas runs (dom.image_sources).
+pub fn installHooks() void {
+    dom.image_sources.installContext2D(outputBitmap, attachContext, setBitmapDimensions);
+}
+
+fn outputBitmap(instance: *runtime.Instance) ?*dom.image_sources.OutputBitmap {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.bitmap;
+}
+
+/// The 2D context creation algorithm, steps 3 and 5, for `canvas`.
+fn attachContext(instance: *runtime.Instance, canvas: *runtime.Instance, width: u32, height: u32) anyerror!void {
+    const internal = try getOrCreateInternal(instance);
+    // 3. "Initialize context's canvas attribute to point to target."
+    internal.canvas = same_object.Link.to(canvas);
+    internal.canvas_edge.hold(instance, canvas);
+    // 5. "Set bitmap dimensions to the numeric values of target's width and
+    //    height content attributes."
+    try setBitmapDimensions(instance, width, height);
+}
+
+/// "Set bitmap dimensions", steps 1 and 2 (steps 4 and 5 set the canvas's
+/// attributes only when they differ from `width` and `height`, which they
+/// never do here: both come from them).
+fn setBitmapDimensions(instance: *runtime.Instance, width: u32, height: u32) anyerror!void {
+    const internal = try getOrCreateInternal(instance);
+    // 1. Reset the rendering context to its default state.
+    internal.reset();
+    // 2. Resize the output bitmap to the new width and height (transparent
+    //    black).
+    if (@as(u64, width) * height > max_bitmap_pixels) return internal.bitmap.resize(0, 0);
+    try internal.bitmap.resize(width, height);
+}
+
+/// Getter for canvas: "the value it was initialized to when the object was
+/// created".
 pub fn get_canvas(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const canvas = internal.canvas orelse return error.InvalidStateError;
+    if (!canvas.isLive()) return error.InvalidStateError;
+    return canvas.instance;
 }
 
 /// Getter for strokeStyle

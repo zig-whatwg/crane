@@ -26,9 +26,15 @@ pub const AgentHost = struct {
     /// the owner's thread); 0 when none is known. Read by
     /// html.agent_clusters.agentClusterOf.
     agent_cluster: u64 = 0,
+    /// The agent's fetches on its event loop - its network scheduler and
+    /// every fetch in flight (fetch.algorithms.AgentFetches): pumped by the
+    /// agent's loop, on its thread only; reached from a realm through its
+    /// agent (dom.agent_fetches). Its realms' ends swept what they left.
+    fetches: @import("fetch").algorithms.AgentFetches,
 
     pub fn init(allocator: std.mem.Allocator) AgentHost {
         return .{
+            .fetches = @import("fetch").algorithms.AgentFetches.init(allocator),
             .indexeddb_cleanup = dom.indexeddb.CleanupList.init(allocator),
             .event_sources = @import("eventsource").Registry(*anyopaque, *anyopaque).init(allocator),
             .media_elements = @import("media/root.zig").Registry(*anyopaque, *anyopaque).init(allocator),
@@ -49,5 +55,8 @@ pub const AgentHost = struct {
         self.custom_elements.deinit();
         self.embedded_contents.deinit();
         self.hyperlink_pings.deinit();
+        // After the agent's end: the scheduler's multi handle closes, which
+        // touches no engine.
+        self.fetches.deinit();
     }
 };

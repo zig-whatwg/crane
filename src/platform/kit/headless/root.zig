@@ -105,6 +105,12 @@ pub fn layoutBox(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNo
     return null;
 }
 
+/// No layout box: CSSOM View's zero sizes.
+pub fn replacedElementBox(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNode, element: *const platform.ReplacedElementFacts) ?platform.BoxMetrics {
+    _ = .{ browser, document, node, element };
+    return null;
+}
+
 pub fn clientRects(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNode, allocator: std.mem.Allocator) Error![]platform.Rect {
     _ = .{ browser, document, node };
     return allocator.alloc(platform.Rect, 0);
@@ -256,6 +262,12 @@ pub fn mediaVideoSize(decoder: *platform.MediaDecoder, seconds: f64, size: *plat
 
 pub fn closeMediaDecoder(decoder: *platform.MediaDecoder) void {
     _ = decoder;
+}
+
+/// No image decodes: every image is broken (HTML "update the image data").
+pub fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes, limits: platform.ImageLimits) platform.ImageError!platform.DecodedImage {
+    _ = .{ allocator, mime, bytes, limits };
+    return error.NotSupported;
 }
 
 /// supported false.

@@ -268,10 +268,10 @@ pub const InternalState = struct {
     /// in-flight keepalive bytes (dom.keepalive_fetch). Plain data.
     fetch_group: @import("dom").document_fetches.FetchGroup = .{},
 
-    pub fn init(allocator: Allocator) !InternalState {
+    pub fn init(allocator: Allocator, navigables: *html_core.Navigables) !InternalState {
         return .{
             .allocator = allocator,
-            .browsing_context = try BrowsingContext.initTopLevel(allocator),
+            .browsing_context = try BrowsingContext.initTopLevel(allocator, navigables),
             .stub_ui_backend = StubUIBackend.init(.{}),
             .stub_timing_backend = StubFrameTimingBackend.init(),
             .ui_backend = undefined, // Set by caller after init
@@ -489,7 +489,10 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // Initialize Window's own internal state
     const state = instance.getState(State);
     const internal = try runtime.arenaOf(instance).create(InternalState);
-    internal.* = try InternalState.init(allocator);
+    // The Window's own top-level context, on its Browser's list - until a
+    // navigable it is shown in replaces it (replaceBrowsingContext).
+    const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return error.NoBrowserScope;
+    internal.* = try InternalState.init(allocator, navigables);
     internal.ui_backend = internal.stub_ui_backend.backend();
     state.own._internal = internal;
 }
@@ -1019,16 +1022,7 @@ fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
     // 2. "If A and B are both tuple origins, run these substeps:"
     const a_domain = originDomainOf(a, a_internal, 0);
     const b_domain = originDomainOf(b, b_internal, 0);
-    // 2.1. "If A and B's schemes are identical, and their domains are
-    // identical and non-null, then return true."
-    if (a_domain != null and b_domain != null) {
-        return std.mem.eql(u8, schemeOf(a_origin), schemeOf(b_origin)) and std.mem.eql(u8, a_domain.?, b_domain.?);
-    }
-    // 2.2. "Otherwise, if A and B are same origin and their domains are
-    // identical and null, then return true."
-    if (a_domain == null and b_domain == null) return std.mem.eql(u8, a_origin, b_origin);
-    // 3. "Return false."
-    return false;
+    return @import("html").origin_domain.sameOriginDomainValues(a_origin, a_domain, b_origin, b_domain);
 }
 
 /// The domain of the origin of `window`'s document, or null. A document
@@ -1060,11 +1054,6 @@ fn documentInheritsCreatorOrigin(document: *runtime.Instance) bool {
     // The getter clones into the document's context allocator.
     defer document.ctx.allocator.free(url);
     return url.len == 0 or inheritsCreatorOrigin(url);
-}
-
-/// The scheme of a tuple origin's serialization.
-fn schemeOf(serialized: []const u8) []const u8 {
-    return serialized[0 .. std.mem.indexOf(u8, serialized, "://") orelse serialized.len];
 }
 
 /// Getter for name - The window's target name
@@ -1346,7 +1335,7 @@ pub fn get_parent(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
 /// Getter for frameElement
 /// Per spec: Returns the Element in which this window is nested, if any.
 pub fn get_frameElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
     // Steps 1-4: "Let current be this's node navigable. If current is null,
     // then return null. Let container be current's container. If container is
@@ -1358,8 +1347,7 @@ pub fn get_frameElement(instance: *runtime.Instance) anyerror!?*runtime.Instance
     // null." The current settings object is this getter's, the window's own.
     const container_document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return null;
     const container_window = (interfaces.Document.get_defaultView(container_document) catch null) orelse return null;
-    const container_internal = getInternal(container_window) orelse return null;
-    if (!std.mem.eql(u8, effectiveOrigin(container_window, container_internal), effectiveOrigin(instance, internal))) return null;
+    if (!sameOriginDomain(container_window, instance)) return null;
 
     // Step 6: "Return container."
     return container;

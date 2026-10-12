@@ -1,10 +1,12 @@
-//! Async XHR can start on a native host's event loop without a script engine.
-//! Its owner stays alive when the fetch's callable-realm check rejects it.
+//! Async XHR can start on a native host's event loop in a realm with no
+//! script engine context - its agent's fetches are the host's (AgentHost.
+//! fetches), as a Browser's or a worker's are. Its owner stays alive when the
+//! fetch's callable-realm check rejects it.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const async_fetch = @import("fetch").algorithms.async_fetch;
-const scheduler = @import("fetch").network.scheduler;
+const engine = @import("engine");
+const AgentHost = @import("html_core").agent_host.AgentHost;
 
 /// Collect native deliveries without executing script. A queued payload keeps
 /// its independent hold until this host drops it during ordinary teardown.
@@ -68,7 +70,20 @@ fn check(scenario: Scenario) !void {
             interfaces.process_hooks.startHooksForTest();
             runtime.initializeRuntime(allocator);
             defer runtime.deinitializeRuntime();
-            defer scheduler.endIdleThreadScheduler();
+            // The native host's agent: its fetches are what the XHR starts
+            // on. The realm has no engine context of its own.
+            try engine.initializeEngine(.{});
+            var agent_host = AgentHost.init(allocator);
+            defer agent_host.deinit();
+            const agent = try engine.createAgent(.{
+                .can_block = false,
+                .from_snapshot = false,
+                .allocator = allocator,
+                .hooks = &.{},
+                .host = &agent_host,
+            });
+            defer engine.destroyAgent(agent);
+            const fetches = &agent_host.fetches;
             const timers = try runtime.native_timer.NativeTimerManager.init(allocator);
             defer timers.deinit();
             var loop: CollectingLoop = .{ .allocator = allocator };
@@ -80,18 +95,19 @@ fn check(scenario: Scenario) !void {
                 loop.deinit();
                 context.deinit();
             }
+            context.agent = agent;
             try std.testing.expect(!context.hasEngine());
             const request = try interfaces.XMLHttpRequest.call_constructor(&context);
             defer interfaces.XMLHttpRequest.deinit(request);
-            const before = async_fetch.inFlight();
+            const before = fetches.inFlight();
             try interfaces.XMLHttpRequest.call_open(request, "GET", "http://127.0.0.1:65533/pending");
             try interfaces.XMLHttpRequest.call_send(request, .{ .was_passed = false, .value = undefined });
-            try std.testing.expectEqual(before + 1, async_fetch.inFlight());
+            try std.testing.expectEqual(before + 1, fetches.inFlight());
             switch (self.scenario) {
-                .sweep => try std.testing.expect(async_fetch.sweep()),
+                .sweep => try std.testing.expect(fetches.sweep()),
                 .discard => @import("dom").document_fetches.abortAll(&context),
             }
-            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(before, fetches.inFlight());
             // A still-live native XHR can be opened again after its fetch
             // is swept or discarded. This follows a freed PendingFetch on
             // a path that confuses native ownership with realm callability;

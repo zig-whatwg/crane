@@ -3,7 +3,6 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const browser_mod = @import("browser");
-const async_fetch = @import("fetch").algorithms.async_fetch;
 
 const Scenario = enum { delivery, replacement, clear_miss, dropped, allocation_failed, no_timer };
 
@@ -82,7 +81,8 @@ fn check(scenario: Scenario) !void {
             defer timer.drop();
             try std.testing.expect(realm.event_loop != null);
             realm.timer = timer.interface();
-            const before = async_fetch.inFlight();
+            const fetches = &browser.agent_host.fetches;
+            const before = fetches.inFlight();
             try page.runScript(
                 \\globalThis.events = [];
                 \\globalThis.request = new XMLHttpRequest();
@@ -91,13 +91,13 @@ fn check(scenario: Scenario) !void {
                 \\request.onloadend = () => events.push('loadend');
                 \\request.send();
             );
-            try std.testing.expectEqual(before + 1, async_fetch.inFlight());
+            try std.testing.expectEqual(before + 1, fetches.inFlight());
             // Ordinary asynchronous sends require a loop. Lose it only after
             // request startup so document cancellation uses its owned timer.
             realm.event_loop = null;
             if (self.scenario == .no_timer) realm.timer = null;
             try page.runScript("window.stop(); if (request.readyState !== 1 || events.length !== 0) throw new Error('stop delivered inline')");
-            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(before, fetches.inFlight());
             if (self.scenario == .allocation_failed or self.scenario == .no_timer) {
                 try std.testing.expect(timer.entry == null);
                 return;

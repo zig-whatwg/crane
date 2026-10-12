@@ -259,7 +259,8 @@ pub fn contentWindow(content: *Content) ?*runtime.Instance {
 pub fn contentDocument(content: *Content) ?*runtime.Instance {
     const integration = content.integration orelse return null;
     if (integration.browsing_context == null) return null;
-    return dom.navigables.contentDocument(integration, integration.container_origin);
+    const document = (interfaces.Node.get_ownerDocument(content.element) catch null) orelse return null;
+    return dom.navigables.contentDocument(integration, document);
 }
 
 /// getSVGDocument(): "1. Let document be this's content document. 2. If
@@ -736,7 +737,7 @@ fn startFetch(content: *Content, id: u64, url: []const u8) !void {
     content.fetch = record;
     // The fetch owns the request from here, even when it fails to start.
     request_owned = false;
-    record.async_fetch = AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), record.client()) catch |err| {
+    record.async_fetch = AsyncFetch.start(allocator, request, .{}, dom.agent_fetches.of(element.ctx), record.client()) catch |err| {
         content.fetch = null;
         allocator.destroy(record);
         endPending(content);
@@ -914,7 +915,7 @@ fn documentHasBrowsingContext(element: *runtime.Instance) bool {
 fn documentIsFullyActive(element: *runtime.Instance) bool {
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
-    const navigable = html_core.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    const navigable = dom.browser_state.browsingContextOf(window) orelse return false;
     return navigable.getActiveDocument() == @as(*anyopaque, @ptrCast(document));
 }
 

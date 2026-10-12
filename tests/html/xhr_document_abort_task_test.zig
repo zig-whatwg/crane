@@ -2,8 +2,6 @@
 //! document-associated task. Browser teardown must drop that task's owner.
 const std = @import("std");
 const browser_mod = @import("browser");
-const async_fetch = @import("fetch").algorithms.async_fetch;
-const network = @import("fetch").network;
 const document_fetches = @import("dom").document_fetches;
 
 const Scenario = enum { replacement, discarded, removed_during_state, removed_during_abort };
@@ -26,8 +24,10 @@ fn check(scenario: Scenario) !void {
             try browser.navigate("about:blank", .window);
             const page = browser.current_context orelse return error.TestUnexpectedResult;
             try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/start" });
-            const before = async_fetch.inFlight();
-            const scheduler = network.scheduler.threadScheduler();
+            // The window agent's fetches and their scheduler.
+            const fetches = &browser.agent_host.fetches;
+            const scheduler = &fetches.scheduler;
+            const before = fetches.inFlight();
             const transfers_before = scheduler.inFlight();
             try page.runScript(
                 \\globalThis.abortEvents = [];
@@ -39,14 +39,14 @@ fn check(scenario: Scenario) !void {
                 \\request.onloadend = () => abortEvents.push('loadend');
                 \\request.send();
             );
-            try std.testing.expectEqual(before + 1, async_fetch.inFlight());
+            try std.testing.expectEqual(before + 1, fetches.inFlight());
             try std.testing.expectEqual(transfers_before + 1, scheduler.inFlight());
             try page.runScript(
                 \\frame.contentWindow.stop();
                 \\if (request.readyState !== 1 || abortEvents.length !== 0)
                 \\  throw new Error('document abort delivered synchronously');
             );
-            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(before, fetches.inFlight());
             try std.testing.expectEqual(transfers_before, scheduler.inFlight());
             switch (self.scenario) {
                 .replacement => {
@@ -111,8 +111,10 @@ fn checkNavigation(scenario: NavigationScenario) !void {
             const page = browser.current_context orelse return error.TestUnexpectedResult;
             try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/start" });
             const document = page.document_instance orelse return error.TestUnexpectedResult;
-            const before = async_fetch.inFlight();
-            const scheduler = network.scheduler.threadScheduler();
+            // The window agent's fetches and their scheduler.
+            const fetches = &browser.agent_host.fetches;
+            const scheduler = &fetches.scheduler;
+            const before = fetches.inFlight();
             const transfers_before = scheduler.inFlight();
             try page.runScript(
                 \\globalThis.abortEvents = [];
@@ -126,33 +128,31 @@ fn checkNavigation(scenario: NavigationScenario) !void {
                 \\request.send('pending upload');
                 \\abortEvents.length = 0;
             );
-            try std.testing.expectEqual(before + 1, async_fetch.inFlight());
+            try std.testing.expectEqual(before + 1, fetches.inFlight());
             try std.testing.expectEqual(transfers_before + 1, scheduler.inFlight());
             if (self.scenario == .queued_stop) {
                 try page.runScript("window.stop(); if (request.readyState !== 1 || abortEvents.length !== 0) throw new Error('stop delivered inline')");
-                try std.testing.expectEqual(before, async_fetch.inFlight());
+                try std.testing.expectEqual(before, fetches.inFlight());
             }
             if (self.scenario == .replacement_before_abort) {
                 try page.runScript("request.open('POST', 'http://127.0.0.1:65533/replacement'); request.send('replacement upload'); abortEvents.length = 0");
-                try std.testing.expectEqual(before + 1, async_fetch.inFlight());
+                try std.testing.expectEqual(before + 1, fetches.inFlight());
             }
             // Provisional navigation preserves every XHR.
             const canceled = document_fetches.abortForNavigation(document);
             try std.testing.expect(!canceled);
             if (self.scenario != .queued_stop) {
-                try std.testing.expectEqual(before + 1, async_fetch.inFlight());
+                try std.testing.expectEqual(before + 1, fetches.inFlight());
                 try std.testing.expectEqual(transfers_before + 1, scheduler.inFlight());
                 try page.runScript("if (request.readyState !== 1 || abortEvents.length !== 0) throw new Error('provisional navigation ended request')");
                 if (self.scenario == .abandoned) {
                     // No replacement and no later stop: teardown must end
                     // the ordinary owner without any parked hold or leak.
+                    // The Browser's end sweeps its agent's fetches, and its
+                    // agent's scheduler ends with the agent: a fetch it left
+                    // would leak (std.testing.allocator fails the test).
                     browser.deinit();
                     browser_ended = true;
-                    try std.testing.expectEqual(before, async_fetch.inFlight());
-                    // Browser.deinit may destroy the old scheduler. Only
-                    // read the thread's current one if it still exists.
-                    const remaining = if (network.scheduler.existingThreadScheduler()) |current| current.inFlight() else 0;
-                    try std.testing.expectEqual(transfers_before, remaining);
                     return;
                 }
                 if (self.scenario == .active) {
@@ -164,7 +164,7 @@ fn checkNavigation(scenario: NavigationScenario) !void {
                     try page.runScript("window.stop()");
                 }
             }
-            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(before, fetches.inFlight());
             try std.testing.expectEqual(transfers_before, scheduler.inFlight());
             try page.runScript("if (request.readyState !== 1 || abortEvents.length !== 0) throw new Error('navigation delivered inline')");
             _ = try browser.runEventLoopBlocking(10);
@@ -222,8 +222,10 @@ fn checkFrameNavigation(scenario: FrameNavigationScenario) !void {
             try browser.navigate("about:blank", .window);
             const page = browser.current_context orelse return error.TestUnexpectedResult;
             try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/start" });
-            const before = async_fetch.inFlight();
-            const scheduler = network.scheduler.threadScheduler();
+            // The window agent's fetches and their scheduler.
+            const fetches = &browser.agent_host.fetches;
+            const scheduler = &fetches.scheduler;
+            const before = fetches.inFlight();
             const transfers_before = scheduler.inFlight();
             try page.runScript(
                 \\globalThis.abortEvents = [];
@@ -262,7 +264,7 @@ fn checkFrameNavigation(scenario: FrameNavigationScenario) !void {
                 \\  throw new Error('nested stop delivered inline');
             );
             const still_pending: usize = if (self.scenario == .replacement or self.scenario == .no_replacement) 1 else 0;
-            try std.testing.expectEqual(before + still_pending, async_fetch.inFlight());
+            try std.testing.expectEqual(before + still_pending, fetches.inFlight());
             try std.testing.expectEqual(transfers_before + still_pending, scheduler.inFlight());
             if (self.scenario == .no_replacement) {
                 // The navigation commits no document. One turn processes
@@ -273,15 +275,14 @@ fn checkFrameNavigation(scenario: FrameNavigationScenario) !void {
                 try page.runScript("if (request.readyState !== 1 || abortEvents.length !== 0 || frame.contentDocument !== oldDocument) throw new Error('handoff ended the active XHR owner')");
                 // No later stop/open is needed to free its normal live or
                 // queued-response owner when the host ends.
+                // The Browser's end sweeps its agent's fetches: one left
+                // would leak (std.testing.allocator fails the test).
                 browser.deinit();
                 browser_ended = true;
-                try std.testing.expectEqual(before, async_fetch.inFlight());
-                const remaining = if (network.scheduler.existingThreadScheduler()) |current| current.inFlight() else 0;
-                try std.testing.expectEqual(transfers_before, remaining);
                 return;
             }
             _ = try browser.runEventLoopBlocking(10);
-            try std.testing.expectEqual(before, async_fetch.inFlight());
+            try std.testing.expectEqual(before, fetches.inFlight());
             try std.testing.expectEqual(transfers_before, scheduler.inFlight());
             if (self.scenario == .open or self.scenario == .parent_abort) {
                 try page.runScript("if (request.readyState !== 4 || request.status !== 0 || abortEvents.join(',') !== 'state:4,abort:4,loadend:4') throw new Error('document open lost navigation abort')");

@@ -137,18 +137,6 @@ pub fn pumpPlatformTasks(isolate: *v8_ffi.Isolate) bool {
     return ran;
 }
 
-/// The fetches in flight on this thread - `fetch()`'s, run on the event loop.
-const async_fetch = @import("fetch").algorithms.async_fetch;
-
-/// The network's share of a turn: every transfer on this thread moves as far
-/// as its sockets allow, without waiting, and each fetch that ended is handed
-/// to whoever started it - who queues the task that settles it, so that runs
-/// on a later turn. Fetches whose realm has gone are ended first. Returns
-/// whether anything happened. Costs nothing when no fetch was ever started.
-pub fn pumpNetwork() bool {
-    return async_fetch.pump();
-}
-
 pub const V8EventLoop = struct {
     /// V8 isolate this event loop is bound to
     isolate: *v8_ffi.Isolate,
@@ -408,11 +396,9 @@ pub const V8EventLoop = struct {
         // Step 2b: Run the tasks V8 itself has posted to the platform.
         if (pumpPlatformTasks(self.isolate)) did_work = true;
 
-        // Step 2c: Move the fetches in flight along. A fetch that ended
-        // queues its task for the next turn. The wait below is sliced at 1ms
-        // (native_timer.zig), and a fetch in flight is pending work, so the
-        // loop never sleeps through a response.
-        if (pumpNetwork()) did_work = true;
+        // An agent's fetches are its host's (fetch.algorithms.AgentFetches,
+        // on the agent's host), pumped by the host's own event loop - the
+        // Browser's or a worker's - never by this adapter loop.
 
         // Step 3: Calculate optimal wait time
         // We want to wake up when the next timer fires OR when max_wait_ms expires
@@ -480,8 +466,6 @@ pub const V8EventLoop = struct {
     /// Check if there's pending work that should prevent idle.
     pub fn hasPendingWork(self: *Self) bool {
         if (self.tasks.items.len > 0) return true;
-        // A fetch in flight will queue a task when it ends.
-        if (async_fetch.inFlight() > 0) return true;
         if (self.timer_manager) |mgr| {
             if (mgr.getActiveTimerCount() > 0) return true;
         }

@@ -6,15 +6,18 @@
 const std = @import("std");
 const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
+const Navigables = html_core.window.Navigables;
 /// cookiestore's CookieJar, reached through the field that holds one.
 const CookieJar = std.meta.Child(std.meta.Child(@FieldType(BrowsingContext, "cookie_jar")));
 
 test "a frame reaches its top-level context's cookie jar, and a context no Browser made has none" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
     var jar = CookieJar.init(allocator);
     defer jar.deinit();
 
-    const top = try BrowsingContext.initTopLevel(allocator);
+    const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer top.deinit();
     try std.testing.expect(top.cookieJar() == null);
     top.cookie_jar = &jar;

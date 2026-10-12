@@ -272,14 +272,88 @@ pub const SandboxFlags = packed struct {
     };
 };
 
-/// A browsing context is an environment in which Document objects are presented.
-/// Per HTML Standard §7.1.
-/// Contexts discarded by their container while a Window may still point at
-/// them (`BrowsingContext.discard`); freed together by `freeRetired`.
-var retired: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+/// One Browser's browsing contexts (docs/instances.md: the Browser owns its
+/// navigables) - a side table of its scope (runtime.BrowserScope, tag
+/// `.navigables`), reached from a realm through dom.browser_state
+/// (`navigablesOf`, `browsingContextOf`). Every context carries the list it
+/// is on (`BrowsingContext.navigables`): a child and an auxiliary context
+/// join their parent's or opener's.
+///
+/// Read and written on the Browser's window agent thread only, which makes,
+/// discards and frees every browsing context of the Browser: a worker has
+/// none, and its realm never asks.
+pub const Navigables = struct {
+    allocator: Allocator,
+    /// Every browsing context not yet freed, for `ofWindow` and `byId`.
+    live: std.ArrayListUnmanaged(*BrowsingContext) = .empty,
+    /// Contexts discarded by their container while a Window may still point
+    /// at them (`BrowsingContext.discard`); freed together by `freeRetired`.
+    retired: std.ArrayListUnmanaged(*BrowsingContext) = .empty,
 
-/// Every browsing context not yet freed, for `ofWindow` and `byId`.
-threadlocal var live: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+    pub fn init(allocator: Allocator) Navigables {
+        return .{ .allocator = allocator };
+    }
+
+    /// The list's end, with its Browser's scope: the retired contexts are
+    /// freed (no Window is left to read them). A context still live outlived
+    /// its Browser - its owner never freed it - and leaves the list here, so
+    /// that its own end, if it ever comes, touches no freed list.
+    pub fn deinit(self: *Navigables) void {
+        self.freeRetired();
+        for (self.live.items) |ctx| ctx.navigables = null;
+        self.live.deinit(self.allocator);
+        self.* = .{ .allocator = self.allocator };
+    }
+
+    /// Free every retired context of this Browser. Its teardown only, after
+    /// its last Window is gone - a retired context is exactly one a Window
+    /// may still read. Another Browser's retired contexts are its own.
+    pub fn freeRetired(self: *Navigables) void {
+        // A retired context leaves `live` as it is freed: take the list first.
+        var retired = self.retired;
+        self.retired = .empty;
+        for (retired.items) |ctx| ctx.deinit();
+        retired.deinit(self.allocator);
+    }
+
+    /// The browsing context whose active window is `window`, if one is live.
+    /// A Window a navigation replaced is no browsing context's active window:
+    /// its document is not fully active.
+    pub fn ofWindow(self: *const Navigables, window: InstancePtr) ?*BrowsingContext {
+        for (self.live.items) |ctx| {
+            if (ctx.active_window == window and !ctx.orphaned) return ctx;
+        }
+        return null;
+    }
+
+    /// The live browsing context with this id, if any.
+    pub fn byId(self: *const Navigables, id: u64) ?*BrowsingContext {
+        for (self.live.items) |ctx| {
+            if (ctx.id == id) return ctx;
+        }
+        return null;
+    }
+
+    /// Every live browsing context of this Browser - its pages' top-level
+    /// ones, their frames' and their popups' - including orphaned ones,
+    /// which the caller skips. BORROWED until a context is made or freed.
+    pub fn contexts(self: *const Navigables) []const *BrowsingContext {
+        return self.live.items;
+    }
+
+    fn add(self: *Navigables, ctx: *BrowsingContext) Allocator.Error!void {
+        try self.live.append(self.allocator, ctx);
+    }
+
+    fn remove(self: *Navigables, ctx: *BrowsingContext) void {
+        for (self.live.items, 0..) |c, i| {
+            if (c == ctx) {
+                _ = self.live.swapRemove(i);
+                return;
+            }
+        }
+    }
+};
 
 /// A window's position (its left and top edges on the Web-exposed screen
 /// area) and its viewport's size, in CSS pixels; null for "not given".
@@ -296,6 +370,12 @@ pub const BrowsingContext = struct {
 
     /// Unique identifier for this browsing context
     id: u64,
+
+    /// The Browser's list this context is on (`Navigables`), from its
+    /// making until it is freed: its parent's or opener's for a child or an
+    /// auxiliary context. Null only once the list ended first (a context its
+    /// owner never freed before its Browser's end).
+    navigables: ?*Navigables,
 
     /// The opener browsing context (§7.1)
     /// The browsing context that opened this one via window.open() or similar.
@@ -415,14 +495,15 @@ pub const BrowsingContext = struct {
     pub const navigation_rate_limit: u32 = 200;
     pub const navigation_rate_window: u64 = 10 * std.time.ns_per_s;
 
-    /// Create a new browsing context
-    pub fn init(allocator: Allocator) !*BrowsingContext {
+    /// Create a new browsing context, on `navigables` - its Browser's list.
+    pub fn init(allocator: Allocator, navigables: *Navigables) !*BrowsingContext {
         const ctx = try allocator.create(BrowsingContext);
         errdefer allocator.destroy(ctx);
-        try live.append(std.heap.page_allocator, ctx);
+        try navigables.add(ctx);
         ctx.* = .{
             .allocator = allocator,
             .id = @atomicRmw(u64, &next_context_id, .Add, 1, .monotonic),
+            .navigables = navigables,
             .opener = null,
             .disowned = false,
             .is_popup = false,
@@ -440,16 +521,18 @@ pub const BrowsingContext = struct {
         return ctx;
     }
 
-    /// Create a new top-level browsing context
-    pub fn initTopLevel(allocator: Allocator) !*BrowsingContext {
-        const ctx = try init(allocator);
+    /// Create a new top-level browsing context, on `navigables`.
+    pub fn initTopLevel(allocator: Allocator, navigables: *Navigables) !*BrowsingContext {
+        const ctx = try init(allocator, navigables);
         ctx.virtual_group_id = @atomicRmw(u64, &next_group_id, .Add, 1, .monotonic);
         return ctx;
     }
 
-    /// Create a new child browsing context with the given parent
+    /// Create a new child browsing context with the given parent, on its
+    /// parent's list.
     pub fn initChild(allocator: Allocator, parent_ctx: *BrowsingContext) !*BrowsingContext {
-        const ctx = try init(allocator);
+        const ctx = try init(allocator, parent_ctx.navigables orelse return error.NoNavigables);
+        errdefer ctx.deinit();
         ctx.parent = parent_ctx;
         ctx.virtual_group_id = parent_ctx.virtual_group_id;
         try parent_ctx.children.append(parent_ctx.allocator, ctx);
@@ -467,9 +550,10 @@ pub const BrowsingContext = struct {
         return null;
     }
 
-    /// Create a new auxiliary browsing context (via window.open())
+    /// Create a new auxiliary browsing context (via window.open()), on its
+    /// opener's list.
     pub fn initAuxiliary(allocator: Allocator, opener_ctx: *BrowsingContext, is_popup_flag: bool) !*BrowsingContext {
-        const ctx = try initTopLevel(allocator);
+        const ctx = try initTopLevel(allocator, opener_ctx.navigables orelse return error.NoNavigables);
         // HTML "create a new auxiliary browsing context" step 1-2: "Let group
         // be openerBrowsingContext's top-level browsing context's group",
         // which the new context joins.
@@ -520,17 +604,11 @@ pub const BrowsingContext = struct {
         self.releaseChildren();
         if (self.active_window == null) return true;
         self.orphaned = true;
-        // On OOM, leak rather than free under a reader.
-        retired.append(std.heap.page_allocator, self) catch {};
+        // On its Browser's list, freed with the Browser's other retired
+        // contexts (`Navigables.freeRetired`). On OOM - or with the list
+        // already ended - leak rather than free under a reader.
+        if (self.navigables) |navigables| navigables.retired.append(navigables.allocator, self) catch {};
         return false;
-    }
-
-    /// Free every retired context. Browser teardown only, after the last Window
-    /// is gone - a retired context is exactly one a Window may still read.
-    pub fn freeRetired() void {
-        for (retired.items) |ctx| ctx.deinit();
-        retired.deinit(std.heap.page_allocator);
-        retired = .empty;
     }
 
     /// Deinitialize and free resources
@@ -575,39 +653,9 @@ pub const BrowsingContext = struct {
             self.allocator.destroy(history);
             self.joint_history = null;
         }
-        for (live.items, 0..) |ctx, i| {
-            if (ctx == self) {
-                _ = live.swapRemove(i);
-                break;
-            }
-        }
+        if (self.navigables) |navigables| navigables.remove(self);
 
         self.allocator.destroy(self);
-    }
-
-    /// The browsing context whose active window is `window`, if one is live.
-    /// A Window a navigation replaced is no browsing context's active window:
-    /// its document is not fully active.
-    pub fn ofWindow(window: InstancePtr) ?*BrowsingContext {
-        for (live.items) |ctx| {
-            if (ctx.active_window == window and !ctx.orphaned) return ctx;
-        }
-        return null;
-    }
-
-    /// The live browsing context with this id, if any.
-    /// Every live browsing context on this thread - a page's top-level
-    /// ones, its frames' and its popups' - including orphaned ones, which
-    /// the caller skips. BORROWED until a context is made or freed.
-    pub fn liveContexts() []const *BrowsingContext {
-        return live.items;
-    }
-
-    pub fn byId(id: u64) ?*BrowsingContext {
-        for (live.items) |ctx| {
-            if (ctx.id == id) return ctx;
-        }
-        return null;
     }
 
     /// The session history of this context's traversable navigable - its top
@@ -1018,8 +1066,10 @@ pub const BrowsingContextGroup = struct {
 
 test "BrowsingContext - init and deinit" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.init(allocator);
+    const ctx = try BrowsingContext.init(allocator, &navigables);
     defer ctx.deinit();
 
     try std.testing.expect(ctx.opener == null);
@@ -1030,8 +1080,10 @@ test "BrowsingContext - init and deinit" {
 
 test "BrowsingContext - top-level creation" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.initTopLevel(allocator);
+    const ctx = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer ctx.deinit();
 
     try std.testing.expect(ctx.isTopLevel());
@@ -1041,8 +1093,10 @@ test "BrowsingContext - top-level creation" {
 
 test "BrowsingContext - child creation" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const parent = try BrowsingContext.initTopLevel(allocator);
+    const parent = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer parent.deinit();
 
     const child = try BrowsingContext.initChild(allocator, parent);
@@ -1056,8 +1110,10 @@ test "BrowsingContext - child creation" {
 
 test "BrowsingContext - auxiliary creation" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const opener = try BrowsingContext.initTopLevel(allocator);
+    const opener = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer opener.deinit();
 
     const popup = try BrowsingContext.initAuxiliary(allocator, opener, true);
@@ -1070,8 +1126,10 @@ test "BrowsingContext - auxiliary creation" {
 
 test "BrowsingContext - getTop" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const top = try BrowsingContext.initTopLevel(allocator);
+    const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer top.deinit();
 
     const child1 = try BrowsingContext.initChild(allocator, top);
@@ -1084,8 +1142,10 @@ test "BrowsingContext - getTop" {
 
 test "BrowsingContext - target name" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.init(allocator);
+    const ctx = try BrowsingContext.init(allocator, &navigables);
     defer ctx.deinit();
 
     try ctx.setTargetName("myframe");
@@ -1094,8 +1154,10 @@ test "BrowsingContext - target name" {
 
 test "BrowsingContext - close" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.init(allocator);
+    const ctx = try BrowsingContext.init(allocator, &navigables);
     defer ctx.deinit();
 
     try std.testing.expect(!ctx.is_closed);
@@ -1106,9 +1168,11 @@ test "BrowsingContext - close" {
 
 test "BrowsingContext - disown severs opener relationship" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
     // Create opener and popup
-    const opener = try BrowsingContext.initTopLevel(allocator);
+    const opener = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer opener.deinit();
 
     const popup = try BrowsingContext.initAuxiliary(allocator, opener, true);
@@ -1128,9 +1192,11 @@ test "BrowsingContext - disown severs opener relationship" {
 
 test "BrowsingContext - auxiliary with noopener starts disowned" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
     // Create opener
-    const opener = try BrowsingContext.initTopLevel(allocator);
+    const opener = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer opener.deinit();
 
     // Simulate noopener: create auxiliary but immediately disown
@@ -1145,14 +1211,16 @@ test "BrowsingContext - auxiliary with noopener starts disowned" {
 
 test "BrowsingContextGroup - basic operations" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
     const group = try BrowsingContextGroup.init(allocator);
     defer group.deinit();
 
-    const ctx1 = try BrowsingContext.init(allocator);
+    const ctx1 = try BrowsingContext.init(allocator, &navigables);
     defer ctx1.deinit();
 
-    const ctx2 = try BrowsingContext.init(allocator);
+    const ctx2 = try BrowsingContext.init(allocator, &navigables);
     defer ctx2.deinit();
 
     try group.addContext(ctx1);
@@ -1265,8 +1333,10 @@ test "SandboxFlags - helper methods" {
 
 test "BrowsingContext - sandbox flags" {
     const allocator = std.testing.allocator;
+    var navigables = Navigables.init(allocator);
+    defer navigables.deinit();
 
-    const ctx = try BrowsingContext.init(allocator);
+    const ctx = try BrowsingContext.init(allocator, &navigables);
     defer ctx.deinit();
 
     // Not sandboxed by default

@@ -119,7 +119,7 @@ pub const InternalState = struct {
             self.allocator,
             request,
             .{},
-            fetch.network.scheduler.threadScheduler(),
+            if (self.instance) |instance| dom.agent_fetches.of(instance.ctx) else null,
             .{ .context = self, .done = fetched, .alive = alive, .gone = gone, .finished = finished },
         );
     }

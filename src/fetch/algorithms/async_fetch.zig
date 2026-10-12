@@ -1,10 +1,15 @@
 //! Fetch on the event loop.
 //!
 //! An `AsyncFetch` runs the same `FetchJob` the blocking `fetch()` does, but
-//! hands each request HTTP-network fetch sends to the thread's network
-//! scheduler and carries on as it is answered, from the event loop's network
-//! step (`pump`). Nothing waits in between: script, timers and other fetches
-//! run while the response is on its way.
+//! hands each request HTTP-network fetch sends to its agent's network
+//! scheduler and carries on as it is answered, from the agent's event loop's
+//! network step (`AgentFetches.pump`). Nothing waits in between: script,
+//! timers and other fetches run while the response is on its way.
+//!
+//! An agent's fetches are its own (`AgentFetches`, on the agent's host): the
+//! window agent's and each worker's, each on its own thread, each pumped by
+//! its own event loop - never by another agent's, and never by another
+//! Browser's.
 //!
 //! `start` hands the response on with its whole body, as bytes: the client
 //! hears nothing until the body has arrived. `startStreaming` hands it on as
@@ -30,6 +35,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const log = std.log.scoped(.async_fetch);
 const internal_request = @import("../internal/request.zig");
 const InternalRequest = internal_request.InternalRequest;
 const internal_response = @import("../internal/response.zig");
@@ -51,7 +57,9 @@ pub const Failure = body_pipe.Failure;
 pub const AsyncFetch = struct {
     allocator: Allocator,
     job: *FetchJob,
-    scheduler: *NetworkScheduler,
+    /// The agent's fetches this one is among, and whose scheduler moves its
+    /// transfers.
+    fetches: *AgentFetches,
     collect: bool,
     /// The transfer HTTP-network fetch is waiting on, or whose body is
     /// arriving.
@@ -87,16 +95,18 @@ pub const AsyncFetch = struct {
     };
 
     /// Start fetching `request`, whose ownership passes to the fetch - even
-    /// when this fails. The client hears nothing before the next `pump`, and
-    /// then hears the response with its whole body, as bytes.
+    /// when this fails - on `fetches`, the agent's whose loop will pump it
+    /// (dom.agent_fetches; null - no agent - is a network error). The client
+    /// hears nothing before the next `pump`, and then hears the response
+    /// with its whole body, as bytes.
     pub fn start(
         allocator: Allocator,
         request: *InternalRequest,
         options: FetchOptions,
-        scheduler: *NetworkScheduler,
+        fetches: ?*AgentFetches,
         client: Client,
     ) FetchError!*AsyncFetch {
-        return begin(allocator, request, options, true, scheduler, client);
+        return begin(allocator, request, options, true, fetches, client);
     }
 
     /// As `start`, but the client hears the response at its headers, with
@@ -105,10 +115,10 @@ pub const AsyncFetch = struct {
         allocator: Allocator,
         request: *InternalRequest,
         options: FetchOptions,
-        scheduler: *NetworkScheduler,
+        fetches: ?*AgentFetches,
         client: Client,
     ) FetchError!*AsyncFetch {
-        return begin(allocator, request, options, false, scheduler, client);
+        return begin(allocator, request, options, false, fetches, client);
     }
 
     fn begin(
@@ -116,9 +126,14 @@ pub const AsyncFetch = struct {
         request: *InternalRequest,
         options: FetchOptions,
         collect: bool,
-        scheduler: *NetworkScheduler,
+        agent_fetches: ?*AgentFetches,
         client: Client,
     ) FetchError!*AsyncFetch {
+        // No agent to pump it (a realm with no agent): a network error.
+        const fetches = agent_fetches orelse {
+            request.deinit();
+            return FetchError.NetworkError;
+        };
         const job = FetchJob.create(allocator, request, true, options) catch |err| {
             request.deinit();
             return err;
@@ -130,11 +145,11 @@ pub const AsyncFetch = struct {
         self.* = .{
             .allocator = allocator,
             .job = job,
-            .scheduler = scheduler,
+            .fetches = fetches,
             .collect = collect,
             .client = client,
         };
-        live.append(std.heap.smp_allocator, self) catch return FetchError.OutOfMemory;
+        fetches.live.append(fetches.allocator, self) catch return FetchError.OutOfMemory;
 
         self.advance(job.start());
         return self;
@@ -151,7 +166,7 @@ pub const AsyncFetch = struct {
     /// `failure`'s reason, if any, is the body's from here - or freed, if
     /// there is no body to fail.
     pub fn terminateWith(self: *AsyncFetch, failure: Failure) void {
-        if (self.transfer) |transfer| self.scheduler.cancel(transfer);
+        if (self.transfer) |transfer| self.fetches.scheduler.cancel(transfer);
         self.transfer = null;
         if (self.source) |source| {
             self.source = null;
@@ -163,13 +178,14 @@ pub const AsyncFetch = struct {
     }
 
     fn destroy(self: *AsyncFetch) void {
+        const live = &self.fetches.live;
         for (live.items, 0..) |f, i| {
             if (f == self) {
                 _ = live.orderedRemove(i);
                 break;
             }
         }
-        if (self.transfer) |transfer| self.scheduler.cancel(transfer);
+        if (self.transfer) |transfer| self.fetches.scheduler.cancel(transfer);
         if (self.source) |source| source.fail(.{ .kind = .network });
         if (self.outcome) |outcome| {
             var result = outcome catch null;
@@ -220,7 +236,7 @@ pub const AsyncFetch = struct {
                 },
                 .network => |needed| {
                     self.awaiting_head = true;
-                    self.transfer = self.scheduler.startStreaming(
+                    self.transfer = self.fetches.scheduler.startStreaming(
                         self.allocator,
                         needed.request,
                         .{ .context = self, .head = networkHead, .data = networkData, .end = networkEnd },
@@ -299,16 +315,16 @@ pub const AsyncFetch = struct {
     /// Every reader of the body is behind: stop reading from the socket.
     fn pauseTransfer(context: *anyopaque) void {
         const self: *AsyncFetch = @ptrCast(@alignCast(context));
-        if (self.transfer) |transfer| self.scheduler.pause(transfer);
+        if (self.transfer) |transfer| self.fetches.scheduler.pause(transfer);
     }
 
     fn unpauseTransfer(context: *anyopaque) void {
         const self: *AsyncFetch = @ptrCast(@alignCast(context));
-        if (self.transfer) |transfer| self.scheduler.unpause(transfer);
+        if (self.transfer) |transfer| self.fetches.scheduler.unpause(transfer);
     }
 
     fn cancelTransfer(self: *AsyncFetch) void {
-        if (self.transfer) |transfer| self.scheduler.cancel(transfer);
+        if (self.transfer) |transfer| self.fetches.scheduler.cancel(transfer);
         self.transfer = null;
     }
 
@@ -335,128 +351,143 @@ pub const AsyncFetch = struct {
     }
 };
 
-/// Every fetch on this thread that has not ended, oldest first.
-threadlocal var live: std.ArrayListUnmanaged(*AsyncFetch) = .empty;
+/// One agent's fetches on its event loop: the network scheduler that moves
+/// their transfers - a curl multi handle, driven by the agent's thread alone
+/// - and every fetch not yet over, oldest first. Owned by the agent's host
+/// (html AgentHost.fetches) and pumped by the agent's event loop once a
+/// turn; reached from a realm through its agent (dom.agent_fetches). A
+/// worker's are its own, on its own thread.
+pub const AgentFetches = struct {
+    allocator: Allocator,
+    scheduler: NetworkScheduler,
+    /// Every fetch of the agent that has not ended, oldest first.
+    live: std.ArrayListUnmanaged(*AsyncFetch) = .empty,
 
-/// The event loop's network step: one turn's progress for every fetch on this
-/// thread, on the thread's scheduler. Returns whether anything happened.
-pub fn pump() bool {
-    return pumpWith(network.scheduler.existingThreadScheduler());
-}
-
-/// `pump`, with the transfers on `scheduler`: fetches whose client is gone are
-/// terminated first (`sweep`); then every transfer moves as far as it can
-/// without waiting; then each fetch that has its response - on the network's
-/// answer, or with no network needed - is handed to its client, and each that
-/// is over tells its client so.
-pub fn pumpWith(scheduler: ?*NetworkScheduler) bool {
-    var progressed = sweep();
-
-    if (scheduler) |s| {
-        if (s.pump()) progressed = true;
+    pub fn init(allocator: Allocator) AgentFetches {
+        return .{ .allocator = allocator, .scheduler = NetworkScheduler.init(allocator) };
     }
 
-    // One at a time, from the front afresh: a client may start or terminate
-    // fetches from its callbacks.
-    while (true) {
-        if (nextDeliverable()) |f| {
-            var outcome = f.outcome.?;
-            f.outcome = null;
-            if (f.collect) outcome = AsyncFetch.settleCollected(outcome);
-            f.delivered = true;
-            // If it is over already, the next round tells the client so.
-            f.client.done(f.client.context, outcome);
-            progressed = true;
-            continue;
+    /// The agent's end, after its realms' (each of which swept the fetches
+    /// it left, while the agent lived): the scheduler closes its multi
+    /// handle. A fetch still here was never swept - its client outlived its
+    /// agent - and is left as it is: ending it would reach an engine that is
+    /// gone.
+    pub fn deinit(self: *AgentFetches) void {
+        if (self.live.items.len != 0) log.warn("{d} fetches outlived their agent", .{self.live.items.len});
+        self.live.deinit(self.allocator);
+        self.scheduler.deinit();
+    }
+
+    /// The event loop's network step: one turn's progress for every fetch of
+    /// the agent. Fetches whose client is gone are terminated first
+    /// (`sweep`); then every transfer moves as far as it can without
+    /// waiting; then each fetch that has its response - on the network's
+    /// answer, or with no network needed - is handed to its client, and each
+    /// that is over tells its client so. Returns whether anything happened.
+    pub fn pump(self: *AgentFetches) bool {
+        var progressed = self.sweep();
+
+        if (self.scheduler.pump()) progressed = true;
+
+        // One at a time, from the front afresh: a client may start or
+        // terminate fetches from its callbacks.
+        while (true) {
+            if (self.nextDeliverable()) |f| {
+                var outcome = f.outcome.?;
+                f.outcome = null;
+                if (f.collect) outcome = AsyncFetch.settleCollected(outcome);
+                f.delivered = true;
+                // If it is over already, the next round tells the client so.
+                f.client.done(f.client.context, outcome);
+                progressed = true;
+                continue;
+            }
+            if (self.nextOver()) |f| {
+                const client = f.client;
+                f.destroy();
+                if (client.finished) |finished| finished(client.context);
+                progressed = true;
+                continue;
+            }
+            break;
         }
-        if (nextOver()) |f| {
+        return progressed;
+    }
+
+    /// INTERIM - let the network catch up with a response that is arriving,
+    /// for at most `budget_ms`, before a deadline is judged. It emulates the
+    /// socket reads a browser's network thread makes during a long task:
+    /// Crane's networking advances only between tasks, so a response that
+    /// started arriving while script held the loop sits half-read until the
+    /// next pump - and a peer that holds the rest until its first segment is
+    /// acknowledged (Nagle; wptserve writes a header block line by line)
+    /// releases it only after that read, one round trip later.
+    /// xhr/xhr-timeout-longtask.any.js timed out when the 150 ms timer's
+    /// single network step found the header block incomplete, its rest ~1 ms
+    /// away
+    /// (docs/lessons/architecture-single-threaded-networking-must-send-the-request.md
+    /// - "read the socket before declaring a timeout"). The real fix is
+    /// networking that progresses while script runs; this goes when that
+    /// lands.
+    ///
+    /// Bounded and inert: it pumps the network and waits on its sockets -
+    /// never runs script, never dispatches an event, never past the budget -
+    /// and only while `fetch_slot`'s fetch is arriving
+    /// (`AsyncFetch.isArriving`). A response that has not started arriving
+    /// returns at once, and is judged as it always was. `fetch_slot` is the
+    /// caller's handle, which the fetch's `finished`/`gone` callbacks clear:
+    /// a pump may end and free the fetch.
+    pub fn catchUp(self: *AgentFetches, fetch_slot: *const ?*AsyncFetch, budget_ms: u32) void {
+        const deadline = clock.monotonicMillis() + budget_ms;
+        while (fetch_slot.*) |f| {
+            if (!f.isArriving()) return;
+            const now = clock.monotonicMillis();
+            if (now >= deadline) return;
+            self.scheduler.waitForSockets(@intCast(@min(deadline - now, 1)));
+            _ = self.pump();
+        }
+    }
+
+    /// Terminate every fetch whose client is gone, and tell each client so -
+    /// Fetch's "terminate a fetch group" for every group whose document went
+    /// away. `pump` does this at the start of each turn; teardown can call it
+    /// directly, right after a realm ends, so the fetches it left release
+    /// what they hold - a promise, and through it the realm - at once rather
+    /// than on the next turn. Returns whether any fetch was terminated.
+    pub fn sweep(self: *AgentFetches) bool {
+        var terminated = false;
+        var i: usize = 0;
+        while (i < self.live.items.len) {
+            const f = self.live.items[i];
+            if (f.client.alive(f.client.context)) {
+                i += 1;
+                continue;
+            }
             const client = f.client;
-            f.destroy();
-            if (client.finished) |finished| finished(client.context);
-            progressed = true;
-            continue;
+            f.terminateWith(.{ .kind = .network });
+            client.gone(client.context);
+            terminated = true;
         }
-        break;
+        return terminated;
     }
-    return progressed;
-}
 
-/// INTERIM - let the network catch up with a response that is arriving, for
-/// at most `budget_ms`, before a deadline is judged. It emulates the socket
-/// reads a browser's network thread makes during a long task: Crane's
-/// networking advances only between tasks, so a response that started
-/// arriving while script held the loop sits half-read until the next pump -
-/// and a peer that holds the rest until its first segment is acknowledged
-/// (Nagle; wptserve writes a header block line by line) releases it only
-/// after that read, one round trip later. xhr/xhr-timeout-longtask.any.js
-/// timed out when the 150 ms timer's single network step found the header
-/// block incomplete, its rest ~1 ms away
-/// (docs/lessons/architecture-single-threaded-networking-must-send-the-request.md
-/// - "read the socket before declaring a timeout"). The real fix is
-/// networking that progresses while script runs; this goes when that lands.
-///
-/// Bounded and inert: it pumps the network and waits on its sockets - never
-/// runs script, never dispatches an event, never past the budget - and only
-/// while `fetch_slot`'s fetch is arriving (`AsyncFetch.isArriving`). A
-/// response that has not started arriving returns at once, and is judged as
-/// it always was. `fetch_slot` is the caller's handle, which the fetch's
-/// `finished`/`gone` callbacks clear: a pump may end and free the fetch.
-pub fn catchUpWith(scheduler: *NetworkScheduler, fetch_slot: *const ?*AsyncFetch, budget_ms: u32) void {
-    const deadline = clock.monotonicMillis() + budget_ms;
-    while (fetch_slot.*) |f| {
-        if (!f.isArriving()) return;
-        const now = clock.monotonicMillis();
-        if (now >= deadline) return;
-        scheduler.waitForSockets(@intCast(@min(deadline - now, 1)));
-        _ = pumpWith(scheduler);
-    }
-}
-
-/// `catchUpWith` on this thread's scheduler.
-pub fn catchUp(fetch_slot: *const ?*AsyncFetch, budget_ms: u32) void {
-    const scheduler = network.scheduler.existingThreadScheduler() orelse return;
-    catchUpWith(scheduler, fetch_slot, budget_ms);
-}
-
-/// Terminate every fetch whose client is gone, and tell each client so -
-/// Fetch's "terminate a fetch group" for every group whose document went
-/// away. `pump` does this at the start of each turn; teardown can call it
-/// directly, right after a realm ends, so the fetches it left release what
-/// they hold - a promise, and through it the realm - at once rather than on
-/// the next turn. Returns whether any fetch was terminated.
-pub fn sweep() bool {
-    var terminated = false;
-    var i: usize = 0;
-    while (i < live.items.len) {
-        const f = live.items[i];
-        if (f.client.alive(f.client.context)) {
-            i += 1;
-            continue;
+    fn nextDeliverable(self: *const AgentFetches) ?*AsyncFetch {
+        for (self.live.items) |f| {
+            if (f.deliverable()) return f;
         }
-        const client = f.client;
-        f.terminateWith(.{ .kind = .network });
-        client.gone(client.context);
-        terminated = true;
+        return null;
     }
-    return terminated;
-}
 
-fn nextDeliverable() ?*AsyncFetch {
-    for (live.items) |f| {
-        if (f.deliverable()) return f;
+    fn nextOver(self: *const AgentFetches) ?*AsyncFetch {
+        for (self.live.items) |f| {
+            if (f.over()) return f;
+        }
+        return null;
     }
-    return null;
-}
 
-fn nextOver() ?*AsyncFetch {
-    for (live.items) |f| {
-        if (f.over()) return f;
+    /// The agent's fetches that have not ended. While there are any, its
+    /// event loop has work: it must keep turning, and not sleep through them.
+    pub fn inFlight(self: *const AgentFetches) usize {
+        return self.live.items.len;
     }
-    return null;
-}
-
-/// Fetches on this thread that have not ended. While there are any, the
-/// event loop has work: it must keep turning, and not sleep through them.
-pub fn inFlight() usize {
-    return live.items.len;
-}
+};

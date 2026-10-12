@@ -787,7 +787,7 @@ fn automaticFeaturesSandboxed(instance: *runtime.Instance) bool {
         if (!allows_scripts) return true;
     };
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
-    const browsing_context = @import("html_core").window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    const browsing_context = dom.browser_state.browsingContextOf(window) orelse return false;
     return !browsing_context.allowsScripts();
 }
 fn delaysLoad(document: *runtime.Instance) bool {

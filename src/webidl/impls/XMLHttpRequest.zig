@@ -991,7 +991,7 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
         allocator,
         request,
         .{},
-        fetch_mod.network.scheduler.threadScheduler(),
+        @import("dom").agent_fetches.of(instance.ctx),
         pending.client(),
     ) catch |err| {
         // The fetch owned the request, and freed it.
@@ -1469,7 +1469,7 @@ const PendingFetch = struct {
     }
 
     /// How long a timeout waits, at most, for a response that has started
-    /// arriving (`async_fetch.catchUp`).
+    /// arriving (`AgentFetches.catchUp`).
     const catch_up_budget_ms = 20;
 
     /// Step 11.11's timer: the fetch has run for this's timeout. Set the
@@ -1483,12 +1483,14 @@ const PendingFetch = struct {
         // timer race in parallel, and the fetch finished first, so give the
         // network its step before calling it a timeout - and, INTERIM, while
         // the response is arriving, the reads a network thread would have
-        // made during the long task (async_fetch.catchUp, bounded, inert).
+        // made during the long task (AgentFetches.catchUp, bounded, inert).
         // (Only while the realm lives: a sweep inside the pump would end this
         // very call.)
         if (alive(self)) {
-            _ = fetch_mod.algorithms.async_fetch.pump();
-            fetch_mod.algorithms.async_fetch.catchUp(&self.fetch, catch_up_budget_ms);
+            if (@import("dom").agent_fetches.of(self.context)) |fetches| {
+                _ = fetches.pump();
+                fetches.catchUp(&self.fetch, catch_up_budget_ms);
+            }
         }
         if (self.cancelled or self.complete) return;
         // A response in, and its body not yet all read: in time only if the

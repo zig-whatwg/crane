@@ -262,8 +262,11 @@ fn broadcast(storage: *runtime.Instance, key: ?[]const u8, old_value: ?[]const u
     defer window.ctx.allocator.free(origin);
     // An opaque origin has no storage: its getters threw before any change.
     if (std.mem.eql(u8, origin, "null")) return;
-    const source_context = html_core.BrowsingContext.ofWindow(@ptrCast(window));
-    for (html_core.BrowsingContext.liveContexts()) |context| {
+    const source_context = dom.browser_state.browsingContextOf(window);
+    // The windows of this storage's Browser: its storage shed is theirs, and
+    // no other Browser's window hears of a change to it.
+    const navigables = dom.browser_state.navigablesOf(window.ctx) orelse return;
+    for (navigables.contexts()) |context| {
         if (context.orphaned or context.is_closed) continue;
         const remote: *runtime.Instance = @ptrCast(@alignCast(context.getActiveWindow() orelse continue));
         if (remote == window) continue;

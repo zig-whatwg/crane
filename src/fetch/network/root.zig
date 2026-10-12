@@ -47,6 +47,7 @@ pub const curl_backend = @import("curl_backend.zig");
 pub const connection_pool = @import("connection_pool.zig");
 pub const streaming_source = @import("streaming_source.zig");
 pub const scheduler = @import("scheduler.zig");
+pub const network_context = @import("network_context.zig");
 
 // Re-export main types
 pub const NetworkBackend = backend.NetworkBackend;
@@ -58,8 +59,6 @@ pub const HttpVersion = backend.HttpVersion;
 pub const TlsVersion = backend.TlsVersion;
 pub const ProxyConfig = backend.ProxyConfig;
 pub const CertVerifyOptions = backend.CertVerifyOptions;
-pub const setDefaultCertOptions = backend.setDefaultCertOptions;
-pub const defaultCertOptions = backend.defaultCertOptions;
 pub const ConnectionTimingInfo = backend.ConnectionTimingInfo;
 
 // Re-export libcurl backend
@@ -70,6 +69,9 @@ pub const Transfer = curl_backend.Transfer;
 
 // Re-export the event loop's network scheduler
 pub const NetworkScheduler = scheduler.NetworkScheduler;
+
+// A Browser's network: its connections, TLS options and WebSocket gate.
+pub const NetworkContext = network_context.NetworkContext;
 
 // Re-export connection pool. (Its process-wide instance, which nothing
 // fetched through - the curl share in curl_backend is the live pool - went

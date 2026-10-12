@@ -573,7 +573,7 @@ fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *s
     // 8.15. If httpRequest's header list does not contain `User-Agent`,
     //       append (`User-Agent`, the environment default `User-Agent`
     //       value).
-    if (!list.contains("User-Agent")) try addHeader(allocator, added, "User-Agent", default_user_agent);
+    if (!list.contains("User-Agent")) try addHeader(allocator, added, "User-Agent", userAgentOf(request));
     // 8.16. A conditional request in cache mode "default" is "no-store".
     var cache_mode = request.cache_mode;
     if (cache_mode == .default) {
@@ -617,8 +617,24 @@ fn addHeader(allocator: Allocator, added: *std.ArrayListUnmanaged(NetworkRequest
     };
 }
 
-/// The environment default `User-Agent` value (internal/user_agent.zig).
+/// The default `User-Agent` value of a Browser that sets none
+/// (internal/user_agent.zig).
 pub const default_user_agent = @import("../internal/user_agent.zig").default_user_agent;
+
+/// The environment default `User-Agent` value of `request`'s client: its
+/// Browser's (its network context's), or the default for a request no
+/// Browser made. BORROWED for the Browser's life.
+fn userAgentOf(request: *const InternalRequest) []const u8 {
+    const context = request.network orelse return default_user_agent;
+    return context.userAgent();
+}
+
+/// The proxy `request` goes through: its Browser's for its URL (null: the
+/// system's).
+fn proxyOf(request: *const InternalRequest) ?network.ProxyConfig {
+    const context = request.network orelse return null;
+    return context.proxyFor(request.currentUrl());
+}
 
 /// Fetch "append a request `Origin` header" for `request`: the value to
 /// append, or null when it appends none. OWNED.
@@ -876,10 +892,13 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: [
         .timeout_ms = 0, // No timeout by default
         .follow_redirects = false, // WHATWG Fetch handles redirects
         .max_redirects = 20,
-        .proxy = null, // TODO: Get from request/settings
-        // Whatever the embedder registered, which is `verify_peer` and
-        // `verify_host` against the system trust store unless it said otherwise.
-        .cert_options = network.defaultCertOptions(),
+        // Its Browser's proxy for the URL.
+        .proxy = proxyOf(request),
+        // Its Browser's TLS options - `verify_peer` and `verify_host`
+        // against the system trust store unless the Browser said otherwise -
+        // and its Browser's connections.
+        .cert_options = if (request.network) |context| context.certOptions() else .{},
+        .network = request.network,
         .verbose = false,
         .owned_values = owned_values,
     };
@@ -1018,7 +1037,7 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
         try headers.append(allocator, .{ .name = "Origin", .value = origin });
     }
     // 8.15 runs for the preflight too: its header list has no User-Agent.
-    try headers.append(allocator, .{ .name = "User-Agent", .value = default_user_agent });
+    try headers.append(allocator, .{ .name = "User-Agent", .value = userAgentOf(request) });
 
     const header_slice = try headers.toOwnedSlice(allocator);
     errdefer allocator.free(header_slice);
@@ -1030,7 +1049,9 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
         .body = null,
         .http_version = .http_2,
         .follow_redirects = false,
-        .cert_options = network.defaultCertOptions(),
+        .proxy = proxyOf(request),
+        .cert_options = if (request.network) |context| context.certOptions() else .{},
+        .network = request.network,
         .owned_values = owned_values,
     };
 }

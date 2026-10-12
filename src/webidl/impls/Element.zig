@@ -1078,18 +1078,43 @@ pub fn get_clientLeft(instance: *runtime.Instance) anyerror!i32 {
 
 /// Getter for clientWidth
 /// CSSOM View §3.1 - Returns inner width of element
-/// Returns 0 for non-rendered elements (no layout engine)
+/// "1. If the element has no associated CSS layout box ..., return zero." -
+/// with no layout capability, nothing has one. With one, the platform's
+/// box: a replaced element's from its facts (decision 19b's STOPGAP,
+/// dom.image_sources.replacedFacts), any other element's from layoutBox.
+/// Not modelled, stated: step 2's root and body elements (the viewport).
 pub fn get_clientWidth(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return 0;
+    const box = clientBox(instance) orelse return 0;
+    return roundedLength(box.client.width);
 }
 
 /// Getter for clientHeight
-/// CSSOM View §3.1 - Returns inner height of element
-/// Returns 0 for non-rendered elements (no layout engine)
+/// CSSOM View §3.1 - Returns inner height of element; as clientWidth.
 pub fn get_clientHeight(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return 0;
+    const box = clientBox(instance) orelse return 0;
+    return roundedLength(box.client.height);
+}
+
+/// The element's layout box, if the platform lays out and gives it one.
+fn clientBox(instance: *runtime.Instance) ?@import("platform").BoxMetrics {
+    const platform = @import("platform");
+    if (platform.capabilities.layout == .unsupported) {
+        return null;
+    } else {
+        const browser = @import("html").platform_state.of(instance.ctx) orelse return null;
+        const document = interfaces.Node.get_ownerDocument(instance) catch null;
+        const document_node = dom.image_sources.layoutNode(document);
+        const node = dom.image_sources.layoutNode(instance);
+        // STOPGAP (decision 19b): a replaced element's box is sized from the
+        // facts given with the query, until OQ4's DOM-to-renderer design.
+        if (dom.image_sources.replacedFacts(instance)) |facts| return platform.replacedElementBox(browser, document_node, node, &facts);
+        return platform.layoutBox(browser, document_node, node);
+    }
+}
+
+fn roundedLength(value: f64) i32 {
+    if (!std.math.isFinite(value)) return 0;
+    return @intFromFloat(std.math.clamp(@round(value), @as(f64, std.math.minInt(i32)), @as(f64, std.math.maxInt(i32))));
 }
 
 /// Getter for currentCSSZoom

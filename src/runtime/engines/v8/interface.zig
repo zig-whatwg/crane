@@ -1493,6 +1493,13 @@ pub const SpecialBinding = struct {
     named_deleter: ?[]const u8 = null,
     legacy_override_built_ins: bool = false,
     legacy_unenumerable_named_properties: bool = false,
+    /// [[OwnPropertyKeys]] (3.9.6) step 3 lists the visible named
+    /// properties (webidl.SpecialOperations.named_properties_in_own_keys).
+    /// The default is the spec's; false only where codegen records that
+    /// every browser leaves them out (HTMLFormElement). Named lookup is the
+    /// same either way: it asks the supported property names, never the key
+    /// list.
+    named_properties_in_own_keys: bool = true,
     /// The named getter and setter stand in for CSSOM's camel-cased
     /// attributes (webidl.SpecialOperations.crane_css_properties).
     crane_css_properties: bool = false,
@@ -1544,6 +1551,7 @@ pub fn specialBinding(comptime Interface: type) SpecialBinding {
                 binding.named_deleter = boundSpecialOperation(Interface, ops.named_deleter, .name);
                 binding.legacy_override_built_ins = ops.legacy_override_built_ins;
                 binding.legacy_unenumerable_named_properties = ops.legacy_unenumerable_named_properties;
+                binding.named_properties_in_own_keys = ops.named_properties_in_own_keys;
                 binding.crane_css_properties = ops.crane_css_properties;
             }
         }
@@ -1650,12 +1658,6 @@ pub fn V8Interface(comptime Interface: type) type {
 
     return struct {
         const Self = @This();
-
-        /// The iterator prototype template for an isolate without template
-        /// storage (see iteratorPrototypeTemplate): isolate-scoped, no context.
-        var iterator_template_cache: ?*v8.FunctionTemplate = null;
-        var iterator_template_cache_isolate: ?*v8.Isolate = null;
-        var iterator_template_cache_generation: u64 = 0;
 
         /// All methods in this interface
         const all_methods = methods;
@@ -2476,7 +2478,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Still cache it for future use within this session
             if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
-                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc) catch null) |storage| {
                     storage.put(interface_name, template) catch {};
                 }
             }
@@ -2496,7 +2498,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // The isolate's own template storage: templates live with their
                 // isolate.
                 if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
-                    if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                    if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc) catch null) |storage| {
                         if (storage.get(interface_name)) |cached| {
                             return cached;
                         }
@@ -2567,7 +2569,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Cache the template for callback interfaces too
                 if (!template_registry.snapshot_mode) {
                     if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
-                        if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                        if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc) catch null) |storage| {
                             storage.put(interface_name, template) catch {};
                         }
                     }
@@ -2861,7 +2863,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (has_named_setter) namedPropertySetter else namedPropertySetterReadOnly,
                     namedPropertyQuery,
                     namedPropertyDeleter,
-                    namedPropertyEnumerator,
+                    // [[OwnPropertyKeys]] lists the names unless every
+                    // browser leaves them out (Blink: no enumerator for a
+                    // [NotEnumerable] named getter).
+                    if (special.named_properties_in_own_keys) namedPropertyEnumerator else null,
                     namedPropertyDefiner,
                     namedPropertyDescriptor,
                     if (named_properties_mask) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
@@ -2937,7 +2942,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Cache the template in the isolate's own storage (cleaned up
             // with the isolate).
             if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
-                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc) catch null) |storage| {
                     storage.put(interface_name, template) catch {};
                 }
             }
@@ -6617,17 +6622,27 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// LegacyPlatformObjectGetOwnProperty step 2, for [[Get]]: the value
-        /// of a visible named property. A named interceptor is consulted
-        /// after the prototype chain unless named properties mask it (V8's
-        /// non-masking interceptor answers steps 2 and 4-6 of the visibility
-        /// algorithm for a read), so only step 1 is asked of it
-        /// (`whole_visibility` false); an indexed one always masks, so a
-        /// forwarded array index asks the whole algorithm
-        /// (`Storage.prototype[9] = p` hides storage's key "9").
+        /// of a named property the visibility algorithm (3.9.7) finds visible.
+        /// What V8 has already answered decides which steps are asked here:
+        ///   - a non-masking interceptor (no [LegacyOverrideBuiltIns]) is
+        ///     consulted only once O's own properties and its prototype chain
+        ///     have no P - steps 2 and 4-6 - so it asks step 1;
+        ///   - a masking one is consulted BEFORE O's own properties
+        ///     (LookupIterator visits a holder's interceptor first), so it asks
+        ///     steps 1-3: step 2, an own property hides the named property, holds
+        ///     under [LegacyOverrideBuiltIns], which skips only the prototype
+        ///     chain (form-nameditem.html: `form.x = 5` before a control named
+        ///     x is added keeps reading 5);
+        ///   - an indexed one always masks, so a forwarded array index asks
+        ///     the whole algorithm (`Storage.prototype[9] = p` hides
+        ///     storage's key "9") - `whole_visibility`.
+        /// Crane's CSS attributes are no WebIDL named properties: as before.
         fn namedGet(info: *const v8.PropertyCallbackInfo, key: []const u8, comptime whole_visibility: bool) v8.Intercepted {
             if (comptime !has_named_getter) return .kNo;
             const instance = holderInstance(info) orelse return .kNo;
-            if (whole_visibility) {
+            if (whole_visibility or (comptime special.legacy_override_built_ins and !is_css_style_declaration)) {
+                // isVisible stops at step 1 for an unsupported name: the
+                // own-property question is asked only of a supported one.
                 if (!isVisible(instance, info, key)) return .kNo;
             } else if (!is_css_style_declaration and !isSupportedPropertyName(instance, key)) {
                 // CSSStyleDeclaration answers every CSS property name -
@@ -6939,11 +6954,20 @@ pub fn V8Interface(comptime Interface: type) type {
             return namedDelete(info, key.of(index));
         }
 
-        /// [[OwnPropertyKeys]] (3.9.6) for the named interceptor: step 2's
-        /// supported property indices in ascending order (V8 lists the
-        /// indexed interceptor's after; the legacy platform object proxy puts
-        /// them first), then step 3's supported property names that are
-        /// visible, in their order. Own properties (steps 4-5) are V8's.
+        /// [[OwnPropertyKeys]] (3.9.6) step 3 for the named interceptor: the
+        /// supported property names that are visible, in their order - and
+        /// only names. Step 2's indices are the indexed interceptor's
+        /// enumerator's, which V8 lists first (KeyAccumulator::CollectOwnKeys
+        /// collects element indices, the indexed interceptor's included,
+        /// before property names; the legacy platform object proxy sorts them
+        /// first too). A number from a NAMED enumerator stops V8 at
+        /// FilterForEnumerableProperties' CHECK(IsName(*element)) whenever
+        /// Object.keys, for-in or JSON.stringify filters for enumerable keys
+        /// on an unproxied object (2026-10-12: a form, once Codex row 23
+        /// bound both of its getters); the proxy's ownKeys, which never
+        /// filters, had hidden it. Own properties (steps 4-5) are V8's.
+        /// Not installed where every browser leaves the names out
+        /// (special.named_properties_in_own_keys false: HTMLFormElement).
         fn namedPropertyEnumerator(info: *const v8.PropertyCallbackInfo) callconv(.c) void {
             if (comptime !has_named_getter) return;
 
@@ -6977,17 +7001,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 keys.deinit(std.heap.c_allocator);
             }
 
-            // Step 2: the supported property indices, ascending.
-            if (comptime has_indexed_getter and @hasDecl(Interface, "get_length")) {
-                const length = Interface.get_length(instance) catch 0;
-                var i: u32 = 0;
-                while (i < length) : (i += 1) {
-                    const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
-                    keys.append(std.heap.c_allocator, @ptrCast(v8_idx)) catch {};
-                }
-            }
-
-            // Step 3: the visible supported property names, in order.
+            // The visible supported property names, in order.
             for (names) |prop_name| {
                 const text = prop_name.asSlice();
                 const state = NameState.of(info, text);
@@ -7201,41 +7215,24 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// The isolate's template for this interface's iterator prototype
-        /// (borrowed). Kept in the isolate's template storage beside the
-        /// interface templates, or - for an isolate without one, as
-        /// createTemplateCached does - in a per-interface static for the
-        /// isolate and cache generation. A template holds no context.
+        /// (borrowed), kept in the isolate's template storage beside the
+        /// interface templates - made for an isolate that has none yet, as the
+        /// template registry's is - for the isolate's life. A template holds
+        /// no context. It was kept in a per-interface static for an isolate
+        /// without storage, and the storage itself was thrown away whenever
+        /// ANY agent ended (template_registry's process-wide generation): the
+        /// realm's next iterator then had a new prototype.
         fn iteratorPrototypeTemplate(isolate: *v8.Isolate) ?*v8.FunctionTemplate {
             const isolate_templates = @import("isolate_templates.zig");
-            const isolate_alloc = @import("isolate_allocator.zig");
             // Not an interface name (it has a space), so it cannot collide with one.
             const key = interface_name ++ " Iterator";
-            const storage: ?*isolate_templates.IsolateTemplates = if (isolate_alloc.getIsolateAllocator(isolate)) |alloc|
-                isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null
-            else
-                null;
-            if (storage) |store| {
-                if (store.get(key)) |template| return template;
-            } else if (iterator_template_cache) |cached| {
-                if (iterator_template_cache_isolate == isolate and
-                    iterator_template_cache_generation == template_registry.cache_generation)
-                {
-                    return cached;
-                }
-            }
+            const storage = isolate_templates.storageFor(isolate) orelse return null;
+            if (storage.get(key)) |template| return template;
             const template = v8.v8_FunctionTemplate_New(isolate, null, null) orelse return null;
-            if (storage) |store| {
-                store.put(key, template) catch {
-                    v8.v8_FunctionTemplate_Dispose(template);
-                    return null;
-                };
-            } else {
-                // A template of another isolate or generation is dropped, not
-                // disposed: its isolate may be gone.
-                iterator_template_cache = template;
-                iterator_template_cache_isolate = isolate;
-                iterator_template_cache_generation = template_registry.cache_generation;
-            }
+            storage.put(key, template) catch {
+                v8.v8_FunctionTemplate_Dispose(template);
+                return null;
+            };
             return template;
         }
 
@@ -7866,6 +7863,15 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const v8_object: *v8.Object = @ptrCast(@alignCast(@constCast(raw_ptr)));
                     info.setReturnValue(@ptrCast(v8_object));
+                    // setReturnValue reads the handle into a Local; the
+                    // impl handed the iterator over (an owned Global, as
+                    // every value an impl returns is the binding's). Kept,
+                    // it was a strong root: the iterator, its reader and
+                    // its stream lived to the agent's end - one per
+                    // `for await` (instances B2's measurement).
+                    if (ReturnPayload == runtime.JSValue) {
+                        if (result == .handle) v8.v8_Global_Dispose(@ptrCast(v8_object));
+                    }
                 } else if (fn_info.params.len == 2) {
                     // call_values(instance, options) - has options
                     // Parse options from JavaScript argument
@@ -7935,6 +7941,15 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const v8_object: *v8.Object = @ptrCast(@alignCast(@constCast(raw_ptr)));
                     info.setReturnValue(@ptrCast(v8_object));
+                    // setReturnValue reads the handle into a Local; the
+                    // impl handed the iterator over (an owned Global, as
+                    // every value an impl returns is the binding's). Kept,
+                    // it was a strong root: the iterator, its reader and
+                    // its stream lived to the agent's end - one per
+                    // `for await` (instances B2's measurement).
+                    if (ReturnPayload == runtime.JSValue) {
+                        if (result == .handle) v8.v8_Global_Dispose(@ptrCast(v8_object));
+                    }
                 } else {
                     @compileError("Unexpected call_values signature");
                 }

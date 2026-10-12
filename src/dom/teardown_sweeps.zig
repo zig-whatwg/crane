@@ -30,10 +30,13 @@
 //!   assigned and manually assigned nodes' buffers (64 freed in
 //!   shadow-dom/declarative/declarative-shadow-dom-attachment.html, whose
 //!   attachShadow calls orphan each declarative root's slot, 2026-10-10).
+//! - HTMLImageElement: an img whose slot was freed without its deinit keeps
+//!   its requests' URLs, image data and decode() promises (lane imgdec,
+//!   tests/html/image_fetch_detach_test.zig).
 //! HTMLInputElement's sweep retired with the vtable dispatch: an input in a
 //! document is deinit'd by its tree, and none was left at the end (0 of 0).
 //!
-//! lint-impls: hook for EventTarget, HTMLScriptElement, HTMLElement, Element, HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction, HTMLSlotElement, Text, Comment, DocumentType, DocumentFragment, CharacterData, Node, Document
+//! lint-impls: hook for EventTarget, HTMLScriptElement, HTMLElement, Element, HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction, HTMLSlotElement, HTMLImageElement, Text, Comment, DocumentType, DocumentFragment, CharacterData, Node, Document
 
 const std = @import("std");
 const runtime = @import("runtime");
