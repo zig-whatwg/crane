@@ -178,12 +178,16 @@ pub const XRReferenceSpace = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onreset(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRReferenceSpaceImpl.get_onreset(instance);
+        if (comptime @hasDecl(XRReferenceSpaceImpl, "get_onreset")) return try XRReferenceSpaceImpl.get_onreset(instance);
+        return event_handlers.value(EventHandler, instance, "onreset");
     }
 
     pub fn set_onreset(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRReferenceSpaceImpl.set_onreset(instance, value);
+        if (comptime @hasDecl(XRReferenceSpaceImpl, "set_onreset")) return try XRReferenceSpaceImpl.set_onreset(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onreset", value);
     }
 
     /// Extended attributes: [NewObject]

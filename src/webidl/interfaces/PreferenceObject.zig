@@ -204,12 +204,16 @@ pub const PreferenceObject = struct {
         return try PreferenceObjectImpl.get_validValues(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PreferenceObjectImpl.get_onchange(instance);
+        if (comptime @hasDecl(PreferenceObjectImpl, "get_onchange")) return try PreferenceObjectImpl.get_onchange(instance);
+        return event_handlers.value(EventHandler, instance, "onchange");
     }
 
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PreferenceObjectImpl.set_onchange(instance, value);
+        if (comptime @hasDecl(PreferenceObjectImpl, "set_onchange")) return try PreferenceObjectImpl.set_onchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onchange", value);
     }
 
     pub fn call_requestOverride(instance: *runtime.Instance, value: ?DOMString) anyerror!runtime.JSValue {

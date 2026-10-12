@@ -233,36 +233,46 @@ pub const IDBDatabase = struct {
         return try IDBDatabaseImpl.get_objectStoreNames(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onabort(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBDatabaseImpl.get_onabort(instance);
+        if (comptime @hasDecl(IDBDatabaseImpl, "get_onabort")) return try IDBDatabaseImpl.get_onabort(instance);
+        return event_handlers.value(EventHandler, instance, "onabort");
     }
 
     pub fn set_onabort(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBDatabaseImpl.set_onabort(instance, value);
+        if (comptime @hasDecl(IDBDatabaseImpl, "set_onabort")) return try IDBDatabaseImpl.set_onabort(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onabort", value);
     }
 
     pub fn get_onclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBDatabaseImpl.get_onclose(instance);
+        if (comptime @hasDecl(IDBDatabaseImpl, "get_onclose")) return try IDBDatabaseImpl.get_onclose(instance);
+        return event_handlers.value(EventHandler, instance, "onclose");
     }
 
     pub fn set_onclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBDatabaseImpl.set_onclose(instance, value);
+        if (comptime @hasDecl(IDBDatabaseImpl, "set_onclose")) return try IDBDatabaseImpl.set_onclose(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onclose", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBDatabaseImpl.get_onerror(instance);
+        if (comptime @hasDecl(IDBDatabaseImpl, "get_onerror")) return try IDBDatabaseImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBDatabaseImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(IDBDatabaseImpl, "set_onerror")) return try IDBDatabaseImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn get_onversionchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBDatabaseImpl.get_onversionchange(instance);
+        if (comptime @hasDecl(IDBDatabaseImpl, "get_onversionchange")) return try IDBDatabaseImpl.get_onversionchange(instance);
+        return event_handlers.value(EventHandler, instance, "onversionchange");
     }
 
     pub fn set_onversionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBDatabaseImpl.set_onversionchange(instance, value);
+        if (comptime @hasDecl(IDBDatabaseImpl, "set_onversionchange")) return try IDBDatabaseImpl.set_onversionchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onversionchange", value);
     }
 
     /// Extended attributes: [NewObject]

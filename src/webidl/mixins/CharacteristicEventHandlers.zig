@@ -23,10 +23,14 @@ pub fn installHooks() void {
     }
 }
 
+const event_handlers = @import("dom").event_handlers;
+
 pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) anyerror!EventHandler {
-    return try CharacteristicEventHandlersImpl.get_oncharacteristicvaluechanged(instance);
+    if (comptime @hasDecl(CharacteristicEventHandlersImpl, "get_oncharacteristicvaluechanged")) return try CharacteristicEventHandlersImpl.get_oncharacteristicvaluechanged(instance);
+    return event_handlers.value(EventHandler, instance, "oncharacteristicvaluechanged");
 }
 
 pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try CharacteristicEventHandlersImpl.set_oncharacteristicvaluechanged(instance, value);
+    if (comptime @hasDecl(CharacteristicEventHandlersImpl, "set_oncharacteristicvaluechanged")) return try CharacteristicEventHandlersImpl.set_oncharacteristicvaluechanged(instance, value);
+    try event_handlers.setValue(EventHandler, instance, "oncharacteristicvaluechanged", value);
 }

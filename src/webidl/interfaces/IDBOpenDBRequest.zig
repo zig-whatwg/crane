@@ -184,19 +184,25 @@ pub const IDBOpenDBRequest = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onblocked(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBOpenDBRequestImpl.get_onblocked(instance);
+        if (comptime @hasDecl(IDBOpenDBRequestImpl, "get_onblocked")) return try IDBOpenDBRequestImpl.get_onblocked(instance);
+        return event_handlers.value(EventHandler, instance, "onblocked");
     }
 
     pub fn set_onblocked(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBOpenDBRequestImpl.set_onblocked(instance, value);
+        if (comptime @hasDecl(IDBOpenDBRequestImpl, "set_onblocked")) return try IDBOpenDBRequestImpl.set_onblocked(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onblocked", value);
     }
 
     pub fn get_onupgradeneeded(instance: *runtime.Instance) anyerror!EventHandler {
-        return try IDBOpenDBRequestImpl.get_onupgradeneeded(instance);
+        if (comptime @hasDecl(IDBOpenDBRequestImpl, "get_onupgradeneeded")) return try IDBOpenDBRequestImpl.get_onupgradeneeded(instance);
+        return event_handlers.value(EventHandler, instance, "onupgradeneeded");
     }
 
     pub fn set_onupgradeneeded(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try IDBOpenDBRequestImpl.set_onupgradeneeded(instance, value);
+        if (comptime @hasDecl(IDBOpenDBRequestImpl, "set_onupgradeneeded")) return try IDBOpenDBRequestImpl.set_onupgradeneeded(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onupgradeneeded", value);
     }
 };

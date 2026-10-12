@@ -179,11 +179,15 @@ pub const MIDIInput = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onmidimessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MIDIInputImpl.get_onmidimessage(instance);
+        if (comptime @hasDecl(MIDIInputImpl, "get_onmidimessage")) return try MIDIInputImpl.get_onmidimessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmidimessage");
     }
 
     pub fn set_onmidimessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MIDIInputImpl.set_onmidimessage(instance, value);
+        if (comptime @hasDecl(MIDIInputImpl, "set_onmidimessage")) return try MIDIInputImpl.set_onmidimessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmidimessage", value);
     }
 };

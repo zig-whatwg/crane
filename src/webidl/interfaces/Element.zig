@@ -1012,20 +1012,26 @@ pub const Element = struct {
         try reflection.set(DOMString, instance, .{ .name = "elementtiming" }, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ElementImpl.get_onfullscreenchange(instance);
+        if (comptime @hasDecl(ElementImpl, "get_onfullscreenchange")) return try ElementImpl.get_onfullscreenchange(instance);
+        return event_handlers.value(EventHandler, instance, "onfullscreenchange");
     }
 
     pub fn set_onfullscreenchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ElementImpl.set_onfullscreenchange(instance, value);
+        if (comptime @hasDecl(ElementImpl, "set_onfullscreenchange")) return try ElementImpl.set_onfullscreenchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onfullscreenchange", value);
     }
 
     pub fn get_onfullscreenerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ElementImpl.get_onfullscreenerror(instance);
+        if (comptime @hasDecl(ElementImpl, "get_onfullscreenerror")) return try ElementImpl.get_onfullscreenerror(instance);
+        return event_handlers.value(EventHandler, instance, "onfullscreenerror");
     }
 
     pub fn set_onfullscreenerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ElementImpl.set_onfullscreenerror(instance, value);
+        if (comptime @hasDecl(ElementImpl, "set_onfullscreenerror")) return try ElementImpl.set_onfullscreenerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onfullscreenerror", value);
     }
 
     /// Extended attributes: [CEReactions]

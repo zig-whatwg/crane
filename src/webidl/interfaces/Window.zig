@@ -1486,12 +1486,16 @@ pub const Window = struct {
         return try WindowImpl.get_orientation(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onorientationchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onorientationchange(instance);
+        if (comptime @hasDecl(WindowImpl, "get_onorientationchange")) return try WindowImpl.get_onorientationchange(instance);
+        return event_handlers.value(EventHandler, instance, "onorientationchange");
     }
 
     pub fn set_onorientationchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onorientationchange(instance, value);
+        if (comptime @hasDecl(WindowImpl, "set_onorientationchange")) return try WindowImpl.set_onorientationchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onorientationchange", value);
     }
 
     /// Extended attributes: [SameObject]
@@ -1785,49 +1789,59 @@ pub const Window = struct {
     }
 
     pub fn get_onappinstalled(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onappinstalled(instance);
+        if (comptime @hasDecl(WindowImpl, "get_onappinstalled")) return try WindowImpl.get_onappinstalled(instance);
+        return event_handlers.value(EventHandler, instance, "onappinstalled");
     }
 
     pub fn set_onappinstalled(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onappinstalled(instance, value);
+        if (comptime @hasDecl(WindowImpl, "set_onappinstalled")) return try WindowImpl.set_onappinstalled(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onappinstalled", value);
     }
 
     pub fn get_onbeforeinstallprompt(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_onbeforeinstallprompt(instance);
+        if (comptime @hasDecl(WindowImpl, "get_onbeforeinstallprompt")) return try WindowImpl.get_onbeforeinstallprompt(instance);
+        return event_handlers.value(EventHandler, instance, "onbeforeinstallprompt");
     }
 
     pub fn set_onbeforeinstallprompt(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_onbeforeinstallprompt(instance, value);
+        if (comptime @hasDecl(WindowImpl, "set_onbeforeinstallprompt")) return try WindowImpl.set_onbeforeinstallprompt(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onbeforeinstallprompt", value);
     }
 
     /// Extended attributes: [SecureContext]
     pub fn get_ondeviceorientation(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondeviceorientation(instance);
+        if (comptime @hasDecl(WindowImpl, "get_ondeviceorientation")) return try WindowImpl.get_ondeviceorientation(instance);
+        return event_handlers.value(EventHandler, instance, "ondeviceorientation");
     }
 
     /// Extended attributes: [SecureContext]
     pub fn set_ondeviceorientation(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondeviceorientation(instance, value);
+        if (comptime @hasDecl(WindowImpl, "set_ondeviceorientation")) return try WindowImpl.set_ondeviceorientation(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondeviceorientation", value);
     }
 
     /// Extended attributes: [SecureContext]
     pub fn get_ondeviceorientationabsolute(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondeviceorientationabsolute(instance);
+        if (comptime @hasDecl(WindowImpl, "get_ondeviceorientationabsolute")) return try WindowImpl.get_ondeviceorientationabsolute(instance);
+        return event_handlers.value(EventHandler, instance, "ondeviceorientationabsolute");
     }
 
     /// Extended attributes: [SecureContext]
     pub fn set_ondeviceorientationabsolute(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondeviceorientationabsolute(instance, value);
+        if (comptime @hasDecl(WindowImpl, "set_ondeviceorientationabsolute")) return try WindowImpl.set_ondeviceorientationabsolute(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondeviceorientationabsolute", value);
     }
 
     /// Extended attributes: [SecureContext]
     pub fn get_ondevicemotion(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WindowImpl.get_ondevicemotion(instance);
+        if (comptime @hasDecl(WindowImpl, "get_ondevicemotion")) return try WindowImpl.get_ondevicemotion(instance);
+        return event_handlers.value(EventHandler, instance, "ondevicemotion");
     }
 
     /// Extended attributes: [SecureContext]
     pub fn set_ondevicemotion(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WindowImpl.set_ondevicemotion(instance, value);
+        if (comptime @hasDecl(WindowImpl, "set_ondevicemotion")) return try WindowImpl.set_ondevicemotion(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondevicemotion", value);
     }
 
     pub fn get_portalHost(instance: *runtime.Instance) anyerror!?*runtime.Instance {

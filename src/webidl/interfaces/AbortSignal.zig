@@ -202,12 +202,16 @@ pub const AbortSignal = struct {
         return try AbortSignalImpl.get_reason(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onabort(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AbortSignalImpl.get_onabort(instance);
+        if (comptime @hasDecl(AbortSignalImpl, "get_onabort")) return try AbortSignalImpl.get_onabort(instance);
+        return event_handlers.value(EventHandler, instance, "onabort");
     }
 
     pub fn set_onabort(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AbortSignalImpl.set_onabort(instance, value);
+        if (comptime @hasDecl(AbortSignalImpl, "set_onabort")) return try AbortSignalImpl.set_onabort(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onabort", value);
     }
 
     pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
