@@ -136,6 +136,31 @@ const browser_exceptions = [_]struct { interface: []const u8, kind: Kind }{
     .{ .interface = "XMLDocument", .kind = .named_getter },
 };
 
+/// The interfaces whose named properties no browser lists in
+/// [[OwnPropertyKeys]] (WebIDL 3.9.6 step 3), though each finds them by named
+/// lookup (golden rule 2): their table says `named_properties_in_own_keys =
+/// false`, and the binding leaves the names out of the key list only.
+const own_keys_without_names = [_][]const u8{
+    // HTML's supported property names of a form (4.10.3) are its controls'
+    // and images' names and ids. WebKit's HTMLFormElement::
+    // supportedPropertyNames() returns {} ("FIXME: Should be implemented
+    // (only needed for enumeration with includeDontEnumProperties mode since
+    // this class is annotated with LegacyUnenumerableNamedProperties)"),
+    // Gecko's HTMLFormElement::GetSupportedNames is empty ("TODO
+    // https://github.com/whatwg/html/issues/1731"), and Blink declares the
+    // named getter [NotEnumerable] (core/html/forms/html_form_element.idl),
+    // for which bind_gen/interface.py installs no named enumerator - all
+    // three keep named lookup. Checked 2026-10-12.
+    "HTMLFormElement",
+};
+
+fn omitsNamesFromOwnKeys(interface_name: []const u8) bool {
+    for (own_keys_without_names) |name| {
+        if (std.mem.eql(u8, name, interface_name)) return true;
+    }
+    return false;
+}
+
 fn isBrowserException(interface_name: []const u8, kind: Kind) bool {
     for (browser_exceptions) |e| {
         if (!std.mem.eql(u8, e.interface, interface_name)) continue;
@@ -164,6 +189,10 @@ pub const Model = struct {
     entries: std.EnumArray(Kind, ?Entry) = .initFill(null),
     legacy_override_built_ins: bool = false,
     legacy_unenumerable_named_properties: bool = false,
+    /// webidl.SpecialOperations.named_properties_in_own_keys: true unless the
+    /// interface, or the parent whose named getter it inherits, is one of
+    /// `own_keys_without_names`.
+    named_properties_in_own_keys: bool = true,
 
     pub fn get(self: *const Model, kind: Kind) ?Entry {
         return self.entries.get(kind);
@@ -244,6 +273,8 @@ pub fn build(
             const e = inherited.entries.get(kind) orelse continue;
             if (e.crane_css) continue;
             result.entries.set(kind, .{ .function = try allocator.dupe(u8, e.function), .anonymous = e.anonymous, .inherited_from = parent_name });
+            // An inherited named getter's names go where its declarer's do.
+            if (kind == .named_getter) result.named_properties_in_own_keys = inherited.named_properties_in_own_keys;
         }
         result.legacy_override_built_ins = result.legacy_override_built_ins or inherited.legacy_override_built_ins;
         result.legacy_unenumerable_named_properties = result.legacy_unenumerable_named_properties or inherited.legacy_unenumerable_named_properties;
@@ -266,10 +297,12 @@ pub fn build(
         if (result.entries.get(.indexed_setter)) |e| allocator.free(e.function);
         result.entries.set(.indexed_setter, null);
     }
+    if (omitsNamesFromOwnKeys(name)) result.named_properties_in_own_keys = false;
     if (result.entries.get(.named_getter) == null) {
         // The extended attributes are about named properties only.
         result.legacy_override_built_ins = false;
         result.legacy_unenumerable_named_properties = false;
+        result.named_properties_in_own_keys = true;
     }
     return result;
 }
@@ -305,6 +338,7 @@ pub fn writeMeta(writer: anytype, model: *const Model, interface_name: []const u
     }
     if (model.legacy_override_built_ins) try writer.writeAll("            .legacy_override_built_ins = true,\n");
     if (model.legacy_unenumerable_named_properties) try writer.writeAll("            .legacy_unenumerable_named_properties = true,\n");
+    if (!model.named_properties_in_own_keys) try writer.writeAll("            .named_properties_in_own_keys = false,\n");
     if (model.get(.named_getter)) |e| if (e.crane_css) try writer.writeAll("            .crane_css_properties = true,\n");
     try writer.writeAll("        };\n");
 }

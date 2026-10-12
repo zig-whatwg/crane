@@ -262,6 +262,7 @@ pub const HTMLFormElement = struct {
             .named_getter = .{ .function = "call_getter__1", .implemented = @hasDecl(HTMLFormElementImpl, "call_getter__1") },
             .legacy_override_built_ins = true,
             .legacy_unenumerable_named_properties = true,
+            .named_properties_in_own_keys = false,
         };
     };
 

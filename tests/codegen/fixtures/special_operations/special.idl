@@ -63,6 +63,14 @@ interface Document {
   getter object (DOMString name);
 };
 interface XMLDocument : Document {};
+// HTMLFormElement's named properties answer lookup and are left out of
+// [[OwnPropertyKeys]], as in every browser (whatwg/html#1731).
+[LegacyOverrideBuiltIns, LegacyUnenumerableNamedProperties]
+interface HTMLFormElement {
+  readonly attribute unsigned long length;
+  getter Thing (unsigned long index);
+  getter (Thing or Plain) (DOMString name);
+};
 interface OptionsHeir : OptionsCollection {};
 
 // Crane's own named properties: CSSOM's camel-cased attributes.

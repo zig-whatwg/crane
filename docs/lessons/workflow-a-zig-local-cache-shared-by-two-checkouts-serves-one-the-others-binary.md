@@ -32,3 +32,11 @@ inputs are the same files for every checkout. The cost is one cold build per mir
 compile time for results that may belong to someone else's tree - and nothing says so.** When a
 gate's result looks like another branch's code, check which binary actually ran (its mtime, its
 symbols, the manifest that served it) before debugging the code.
+
+**Status (2026-10-12)**: it holds on this Mac too. AGENTS.md's one local cache,
+`~/Library/Caches/crane-z16-cache`, is shared by every worktree under `.claude/worktrees/`. Lane bindlpo
+ran `zig build codegen -- --dest-root src/webidl/` with it while lane implsb2 was changing the codegen.
+The run rewrote 1,260 generated interfaces with implsb2's construction-chain text, where bindlpo's own
+codegen wrote one line. A lane-private cache (`~/Library/Caches/crane-<lane>-cache`, deleted with the lane)
+gave the one line. Run codegen, or any build whose output you commit, from a lane's own cache, and read
+`git status` after every regeneration.

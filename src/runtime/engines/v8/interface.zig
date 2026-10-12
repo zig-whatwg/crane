@@ -1493,6 +1493,13 @@ pub const SpecialBinding = struct {
     named_deleter: ?[]const u8 = null,
     legacy_override_built_ins: bool = false,
     legacy_unenumerable_named_properties: bool = false,
+    /// [[OwnPropertyKeys]] (3.9.6) step 3 lists the visible named
+    /// properties (webidl.SpecialOperations.named_properties_in_own_keys).
+    /// The default is the spec's; false only where codegen records that
+    /// every browser leaves them out (HTMLFormElement). Named lookup is the
+    /// same either way: it asks the supported property names, never the key
+    /// list.
+    named_properties_in_own_keys: bool = true,
     /// The named getter and setter stand in for CSSOM's camel-cased
     /// attributes (webidl.SpecialOperations.crane_css_properties).
     crane_css_properties: bool = false,
@@ -1544,6 +1551,7 @@ pub fn specialBinding(comptime Interface: type) SpecialBinding {
                 binding.named_deleter = boundSpecialOperation(Interface, ops.named_deleter, .name);
                 binding.legacy_override_built_ins = ops.legacy_override_built_ins;
                 binding.legacy_unenumerable_named_properties = ops.legacy_unenumerable_named_properties;
+                binding.named_properties_in_own_keys = ops.named_properties_in_own_keys;
                 binding.crane_css_properties = ops.crane_css_properties;
             }
         }
@@ -2855,7 +2863,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (has_named_setter) namedPropertySetter else namedPropertySetterReadOnly,
                     namedPropertyQuery,
                     namedPropertyDeleter,
-                    namedPropertyEnumerator,
+                    // [[OwnPropertyKeys]] lists the names unless every
+                    // browser leaves them out (Blink: no enumerator for a
+                    // [NotEnumerable] named getter).
+                    if (special.named_properties_in_own_keys) namedPropertyEnumerator else null,
                     namedPropertyDefiner,
                     namedPropertyDescriptor,
                     if (named_properties_mask) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
@@ -6611,17 +6622,27 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// LegacyPlatformObjectGetOwnProperty step 2, for [[Get]]: the value
-        /// of a visible named property. A named interceptor is consulted
-        /// after the prototype chain unless named properties mask it (V8's
-        /// non-masking interceptor answers steps 2 and 4-6 of the visibility
-        /// algorithm for a read), so only step 1 is asked of it
-        /// (`whole_visibility` false); an indexed one always masks, so a
-        /// forwarded array index asks the whole algorithm
-        /// (`Storage.prototype[9] = p` hides storage's key "9").
+        /// of a named property the visibility algorithm (3.9.7) finds visible.
+        /// What V8 has already answered decides which steps are asked here:
+        ///   - a non-masking interceptor (no [LegacyOverrideBuiltIns]) is
+        ///     consulted only once O's own properties and its prototype chain
+        ///     have no P - steps 2 and 4-6 - so it asks step 1;
+        ///   - a masking one is consulted BEFORE O's own properties
+        ///     (LookupIterator visits a holder's interceptor first), so it asks
+        ///     steps 1-3: step 2, an own property hides the named property, holds
+        ///     under [LegacyOverrideBuiltIns], which skips only the prototype
+        ///     chain (form-nameditem.html: `form.x = 5` before a control named
+        ///     x is added keeps reading 5);
+        ///   - an indexed one always masks, so a forwarded array index asks
+        ///     the whole algorithm (`Storage.prototype[9] = p` hides
+        ///     storage's key "9") - `whole_visibility`.
+        /// Crane's CSS attributes are no WebIDL named properties: as before.
         fn namedGet(info: *const v8.PropertyCallbackInfo, key: []const u8, comptime whole_visibility: bool) v8.Intercepted {
             if (comptime !has_named_getter) return .kNo;
             const instance = holderInstance(info) orelse return .kNo;
-            if (whole_visibility) {
+            if (whole_visibility or (comptime special.legacy_override_built_ins and !is_css_style_declaration)) {
+                // isVisible stops at step 1 for an unsupported name: the
+                // own-property question is asked only of a supported one.
                 if (!isVisible(instance, info, key)) return .kNo;
             } else if (!is_css_style_declaration and !isSupportedPropertyName(instance, key)) {
                 // CSSStyleDeclaration answers every CSS property name -
@@ -6933,11 +6954,20 @@ pub fn V8Interface(comptime Interface: type) type {
             return namedDelete(info, key.of(index));
         }
 
-        /// [[OwnPropertyKeys]] (3.9.6) for the named interceptor: step 2's
-        /// supported property indices in ascending order (V8 lists the
-        /// indexed interceptor's after; the legacy platform object proxy puts
-        /// them first), then step 3's supported property names that are
-        /// visible, in their order. Own properties (steps 4-5) are V8's.
+        /// [[OwnPropertyKeys]] (3.9.6) step 3 for the named interceptor: the
+        /// supported property names that are visible, in their order - and
+        /// only names. Step 2's indices are the indexed interceptor's
+        /// enumerator's, which V8 lists first (KeyAccumulator::CollectOwnKeys
+        /// collects element indices, the indexed interceptor's included,
+        /// before property names; the legacy platform object proxy sorts them
+        /// first too). A number from a NAMED enumerator stops V8 at
+        /// FilterForEnumerableProperties' CHECK(IsName(*element)) whenever
+        /// Object.keys, for-in or JSON.stringify filters for enumerable keys
+        /// on an unproxied object (2026-10-12: a form, once Codex row 23
+        /// bound both of its getters); the proxy's ownKeys, which never
+        /// filters, had hidden it. Own properties (steps 4-5) are V8's.
+        /// Not installed where every browser leaves the names out
+        /// (special.named_properties_in_own_keys false: HTMLFormElement).
         fn namedPropertyEnumerator(info: *const v8.PropertyCallbackInfo) callconv(.c) void {
             if (comptime !has_named_getter) return;
 
@@ -6971,17 +7001,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 keys.deinit(std.heap.c_allocator);
             }
 
-            // Step 2: the supported property indices, ascending.
-            if (comptime has_indexed_getter and @hasDecl(Interface, "get_length")) {
-                const length = Interface.get_length(instance) catch 0;
-                var i: u32 = 0;
-                while (i < length) : (i += 1) {
-                    const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
-                    keys.append(std.heap.c_allocator, @ptrCast(v8_idx)) catch {};
-                }
-            }
-
-            // Step 3: the visible supported property names, in order.
+            // The visible supported property names, in order.
             for (names) |prop_name| {
                 const text = prop_name.asSlice();
                 const state = NameState.of(info, text);
