@@ -4,8 +4,9 @@
 //! WPT runner and the test tiers build against it.
 //!
 //! Step 0 of the platform protocol: the OS services are the same kit parts
-//! darwin and linux compose; of the test capabilities only the in-memory
-//! clipboard (kit/memory_clipboard) is here. The fake capture devices, the WAV
+//! darwin and linux compose; of the test capabilities the in-memory
+//! clipboard (kit/memory_clipboard) and the Zig image decoders
+//! (image_decoding.zig, decision 19) are here. The fake capture devices, the WAV
 //! and WebM decoders, the scripted permission policy (decision 9), the
 //! dialogs, the picker queue and the console sink move in with recipes step 7,
 //! with the control surface the WPT runner reaches as `platform.adapter`.
@@ -20,6 +21,7 @@ const curl = @import("kit_curl");
 const crypto = @import("kit_crypto");
 const browser_state = @import("kit_browser_state");
 const memory_clipboard = @import("kit_memory_clipboard");
+const image_decoding = @import("image_decoding.zig");
 
 /// Per-Browser test state: fresh for every Browser, so nothing one test does
 /// reaches the next (WebKitTestRunner's process-global mocks need a reset).
@@ -72,6 +74,8 @@ pub const protocol = struct {
         // kit/memory_clipboard per Browser. Deviation: nothing leaves the
         // Browser and nothing another application copies arrives.
         c.clipboard = .emulated;
+        // Zig decoders compiled in (image_decoding.zig): PNG.
+        c.image_decoding = .native;
         break :blk c;
     };
 
@@ -182,7 +186,7 @@ pub const protocol = struct {
     pub const pushMediaData = headless.pushMediaData;
     pub const mediaVideoSize = headless.mediaVideoSize;
     pub const closeMediaDecoder = headless.closeMediaDecoder;
-    pub const decodeImage = headless.decodeImage;
+    pub const decodeImage = image_decoding.decodeImage;
     pub const mediaDecodingInfo = headless.mediaDecodingInfo;
     pub const openCodec = headless.openCodec;
     pub const codecInput = headless.codecInput;
