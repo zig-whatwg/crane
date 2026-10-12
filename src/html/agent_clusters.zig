@@ -10,10 +10,15 @@
 //! - A Window realm: "obtain a similar-origin window agent" keys its cluster
 //!   by the site of its document's origin ("obtain a site": the origin itself
 //!   when it is opaque, else its scheme and its host's registrable domain, or
-//!   the host when it has none), and by its origin when the browsing context
-//!   group is cross-origin isolated. Same-site documents share a cluster, so
-//!   document.domain - which never moves a document to another cluster -
-//!   plays no part, and a same-site cross-origin frame can receive a module.
+//!   the host when it has none), and by its origin when the cluster is
+//!   origin-keyed - as window.originAgentCluster answers: the first document
+//!   of that origin in the browsing context group asked for it with
+//!   `Origin-Agent-Cluster: ?1` in a secure context (the group's historical
+//!   agent cluster key map, dom.agent_cluster_keys), or the group is
+//!   cross-origin isolated. Same-site documents that are not origin-keyed
+//!   share a cluster, so document.domain - which never moves a document to
+//!   another cluster - plays no part, and a same-site cross-origin frame can
+//!   receive a module.
 //! - A shared worker's (and a service worker's) realm: "obtain a
 //!   worker/worklet agent" with isTopLevel true makes a new cluster - its
 //!   agent's own.
@@ -21,14 +26,10 @@
 //!   records on the worker agent's AgentHost when it obtains the agent; 0
 //!   (no cluster known: nothing is checked) until it does.
 //!
-//! Stated gaps: Crane implements neither the `Origin-Agent-Cluster` header
-//! (requestsOAC is always false; Window.originAgentCluster is false) nor the
-//! browsing context group's historical agent cluster key map, so the key is
-//! the site whatever a previous document of the origin asked for; and the
-//! browsing context group is not part of the key, so same-site documents in
-//! two groups of one Browser (two tabs) count as one cluster. An opaque
-//! origin's cluster is its global's own, so two documents sharing one opaque
-//! origin count as two.
+//! Stated gaps: the browsing context group is not part of the key, so
+//! same-site documents in two groups of one Browser (two tabs) count as one
+//! cluster. An opaque origin's cluster is its global's own, so two documents
+//! sharing one opaque origin count as two.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#obtain-similar-origin-window-agent
 //! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#obtain-a-worker/worklet-agent
@@ -39,6 +40,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const dom = @import("dom");
 const url = @import("url");
+const interfaces = @import("interfaces");
 
 const AgentHost = @import("html_core").agent_host.AgentHost;
 
@@ -74,8 +76,8 @@ pub fn ofRealm(realm: runtime.Context) u64 {
 }
 
 /// A Window's agent cluster: its document's origin's site, or the origin when
-/// the realm is cross-origin isolated (its group's cross-origin isolation
-/// mode is not "none": "obtain a similar-origin window agent" step 3).
+/// the cluster is origin-keyed ("obtain a similar-origin window agent" steps
+/// 3-5 and 6.3), as window.originAgentCluster answers.
 fn windowAgentCluster(global: *runtime.Instance) u64 {
     const settings = dom.global_settings.of(global) orelse return 0;
     const allocator = global.ctx.allocator;
@@ -87,7 +89,7 @@ fn windowAgentCluster(global: *runtime.Instance) u64 {
         const id: usize = @intFromPtr(global);
         return keyOf("opaque", std.mem.asBytes(&id));
     }
-    if (settings.cross_origin_isolated(global)) return keyOf("origin", origin);
+    if (interfaces.Window.get_originAgentCluster(global) catch false) return keyOf("origin", origin);
     const site = siteOf(allocator, origin) catch return keyOf("origin", origin);
     defer allocator.free(site);
     return keyOf("site", site);
