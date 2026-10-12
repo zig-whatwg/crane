@@ -312,6 +312,9 @@ pub const Capabilities = struct {
     windows: Support,
     /// canPlayType answers "".
     media_decoding: Support,
+    /// Every image is broken: HTML "update the image data" finds the image
+    /// cannot be decoded and fires error.
+    image_decoding: Support,
     /// NotSupportedError.
     webcodecs: Support,
     media_capabilities: Support,
@@ -1542,6 +1545,56 @@ pub inline fn mediaVideoSize(decoder: *MediaDecoder, seconds: f64, size: *VideoS
 pub inline fn closeMediaDecoder(decoder: *MediaDecoder) void {
     comptime gate(.media_decoding, "closeMediaDecoder");
     return impl.closeMediaDecoder(decoder);
+}
+
+// Image decoding [image_decoding] (decisions 19, 19a). Crane runs MIME
+// Sniffing's rules for images and HTML's image steps above the protocol; the
+// platform turns one complete resource's bytes into pixels.
+
+/// The limits Crane sets on one decode (decision 19: decoded-size limits sit
+/// on Crane's side of the protocol). An image whose header declares more is
+/// refused before any pixel memory is allocated.
+pub const ImageLimits = extern struct {
+    /// The largest width, and the largest height.
+    max_dimension: u32,
+    /// The largest width * height.
+    max_pixels: u64,
+};
+
+/// One decoded image: `width` x `height` pixels, rows top to bottom, each
+/// pixel R, G, B, A as 8-bit samples with straight (not premultiplied)
+/// alpha, in the image's own colour space - no colour management (decision
+/// 19: sRGB conversion only where a spec requires it). Of an animated image,
+/// its default image (the first frame). `pixels` (width * height * 4 bytes)
+/// is OWNED, allocated with the allocator `decodeImage` was given.
+pub const DecodedImage = extern struct {
+    width: u32,
+    height: u32,
+    pixels: Bytes,
+};
+
+/// Why a decode failed. Every one leaves HTML's image "broken".
+pub const ImageError = error{
+    OutOfMemory,
+    /// The `image_decoding` capability is unsupported.
+    NotSupported,
+    /// The platform decodes images, but not of this MIME type.
+    UnsupportedFormat,
+    /// Not a valid image of the type: HTML's "corrupted in some fatal way".
+    Corrupt,
+    /// The image's declared size exceeds the limits.
+    TooLarge,
+};
+
+/// Decode one complete image resource. `mime` is the image's type as Crane
+/// determined it (MIME Sniffing's rules for images, above the protocol): the
+/// platform decodes by it and does not sniff; a type it does not decode is
+/// `UnsupportedFormat`. `bytes` is BORROWED. Stateless, synchronous, any
+/// thread - HTML decodes "in parallel", so Crane may call it off the agent's
+/// thread.
+pub inline fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes, limits: ImageLimits) ImageError!DecodedImage {
+    comptime gate(.image_decoding, "decodeImage");
+    return impl.decodeImage(allocator, mime, bytes, limits);
 }
 
 /// A Media Capabilities decoding configuration.

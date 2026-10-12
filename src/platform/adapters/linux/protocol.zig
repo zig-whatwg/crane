@@ -150,6 +150,7 @@ pub const protocol = struct {
     pub const pushMediaData = headless.pushMediaData;
     pub const mediaVideoSize = headless.mediaVideoSize;
     pub const closeMediaDecoder = headless.closeMediaDecoder;
+    pub const decodeImage = headless.decodeImage;
     pub const mediaDecodingInfo = headless.mediaDecodingInfo;
     pub const openCodec = headless.openCodec;
     pub const codecInput = headless.codecInput;
