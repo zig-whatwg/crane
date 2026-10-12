@@ -61,35 +61,6 @@ pub const SVGTests = struct {
         },
     );
 
-    const delegates = .{
-        .get_requiredExtensions = &get_requiredExtensions,
-        .get_systemLanguage = &get_systemLanguage,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return SVGTestsImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return SVGTestsImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        SVGTestsImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

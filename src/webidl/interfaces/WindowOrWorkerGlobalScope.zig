@@ -124,58 +124,6 @@ pub const WindowOrWorkerGlobalScope = struct {
         },
     );
 
-    const delegates = .{
-        .get_caches = &get_caches,
-        .get_crossOriginIsolated = &get_crossOriginIsolated,
-        .get_crypto = &get_crypto,
-        .get_indexedDB = &get_indexedDB,
-        .get_isSecureContext = &get_isSecureContext,
-        .get_origin = &get_origin,
-        .get_performance = &get_performance,
-        .get_scheduler = &get_scheduler,
-        .get_trustedTypes = &get_trustedTypes,
-
-        .set_origin = &set_origin,
-        .set_performance = &set_performance,
-        .set_scheduler = &set_scheduler,
-
-        .call_atob = &call_atob,
-        .call_btoa = &call_btoa,
-        .call_clearInterval = &call_clearInterval,
-        .call_clearTimeout = &call_clearTimeout,
-        .call_createImageBitmap = &call_createImageBitmap,
-        .call_fetch = &call_fetch,
-        .call_queueMicrotask = &call_queueMicrotask,
-        .call_reportError = &call_reportError,
-        .call_setInterval = &call_setInterval,
-        .call_setTimeout = &call_setTimeout,
-        .call_structuredClone = &call_structuredClone,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return WindowOrWorkerGlobalScopeImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return WindowOrWorkerGlobalScopeImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        WindowOrWorkerGlobalScopeImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

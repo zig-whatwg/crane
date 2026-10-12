@@ -96,30 +96,30 @@ fn clientOf(instance: *runtime.Instance) ?Client {
     return .{ .jar = jar, .url = url, .opaque_origin = std.mem.eql(u8, origin, "null") };
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // A CookieStore is an EventTarget: its EventTarget state first.
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
+/// What a CookieStore is given at construction (`initWith`): whether its
+/// relevant settings object is a secure context - Window and
+/// ServiceWorkerGlobalScope pass theirs to their cookieStore attribute's
+/// store. The store keeps no origin: every operation reads its relevant
+/// settings object - its jar, creation URL and origin - when it runs.
+pub const construction_args = .{"is_secure_context"};
 
-    // Initialize internal state with default values
-    const internal = try InternalState.init(allocator, true);
+/// CookieStore's own construction steps: the generated chain runs
+/// EventTarget's first. Made with no arguments, a store is a secure
+/// context's.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    const is_secure_context: bool = if (@hasField(@TypeOf(args), "is_secure_context")) args.is_secure_context else true;
+
+    const internal = try InternalState.init(allocator, is_secure_context);
 
     // Store internal state pointer in state
-    const state = instance.getState(StateType);
+    const state = instance.getState(State);
     state.own._internal = internal;
     listenToJar(instance);
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// CookieStore's own teardown: the generated chain runs EventTarget's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // It hears the jar no more; a queued change task finds it gone.
     unlistenToJar(instance);
     // Clean up internal state
@@ -128,7 +128,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
         state.own._internal = null;
     }
-    EventTargetImpl.deinit(instance);
 }
 
 /// Helper to get internal state from instance
@@ -696,30 +695,6 @@ fn timestampMillis(ms: f64) i64 {
 // ============================================================================
 // Public API for integration
 // ============================================================================
-
-/// Create a new CookieStore. This is used by Window and
-/// ServiceWorkerGlobalScope to create their cookieStore attribute. The
-/// store keeps no origin: every operation reads its relevant settings
-/// object - its jar, creation URL and origin - when it runs.
-pub fn createForOrigin(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-    is_secure_context: bool,
-) !*runtime.Instance {
-    // A CookieStore is an EventTarget: its EventTarget state first.
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
-
-    const internal = try InternalState.init(allocator, is_secure_context);
-
-    const state = instance.getState(StateType);
-    state.own._internal = internal;
-    listenToJar(instance);
-
-    return instance;
-}
 
 /// Get the change observer for event registration
 pub fn getChangeObserver(instance: *runtime.Instance) ?*CookieChangeObserver {

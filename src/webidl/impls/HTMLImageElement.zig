@@ -298,19 +298,11 @@ fn removeInternal(instance: *runtime.Instance) void {
     Registry.remove(instance);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer HTMLElementImpl.deinit(instance);
-
+/// HTMLImageElement's own construction steps: the generated chain runs HTMLElement's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
+    _ = StateType;
+    _ = args;
     // Initialize internal state for image loading - registered, never looked
     // up: an entry already at this address is a dead img's, and a new img
     // that took it for its own inherited the dead one's request state (or,
@@ -318,27 +310,21 @@ pub fn init(
     // reports a dead one's (docs/lessons/architecture-an-address-keyed-entry-a-teardown-misses-is-inherited.md).
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{ .allocator = instance.ctx.allocator };
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// HTMLImageElement's own teardown: the generated chain runs HTMLElement's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up internal state
     if (getInternal(instance)) |internal| internal.deinit();
     removeInternal(instance);
-
-    // Chain to parent class through interface (per Golden Rule #14)
-    const HTMLElement = interfaces.HTMLElement;
-    HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(ctx.allocator, State, &HTMLImageElement.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try HTMLImageElement.init(ctx.allocator, ctx);
+    errdefer HTMLImageElement.deinit(instance);
 
     // TODO: Implement constructor logic with parameters
 

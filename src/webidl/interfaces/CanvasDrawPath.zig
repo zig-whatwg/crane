@@ -66,39 +66,6 @@ pub const CanvasDrawPath = struct {
         },
     );
 
-    const delegates = .{
-        .call_beginPath = &call_beginPath,
-        .call_clip = &call_clip,
-        .call_fill = &call_fill,
-        .call_isPointInPath = &call_isPointInPath,
-        .call_isPointInStroke = &call_isPointInStroke,
-        .call_stroke = &call_stroke,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return CanvasDrawPathImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return CanvasDrawPathImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        CanvasDrawPathImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

@@ -1,6 +1,8 @@
 # Architecture: A codegen-stub `init` silently produces a stateless node
 
 **Date**: 2026-09-22
+**Status** (2026-10-12, lane implsb2): the impl stub codegen writes has no `init` or `deinit` any more - the generated interface's construction chain runs the parent's steps (codegen-the-generated-interface-is-the-class.md). Impls copied from the old stub keep their `runtime.Instance.init` until the follow-on converts them.
+
 **Lesson**: A codegen-stub `init` or constructor produces an object with no
 state, and it fails much later, somewhere else, as `InvalidStateError`. Nodes:
 `CDATASection.zig` and `ProcessingInstruction.zig` still had the generated stub

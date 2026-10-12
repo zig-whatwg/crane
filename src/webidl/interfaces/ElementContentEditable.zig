@@ -68,43 +68,6 @@ pub const ElementContentEditable = struct {
         },
     );
 
-    const delegates = .{
-        .get_contentEditable = &get_contentEditable,
-        .get_enterKeyHint = &get_enterKeyHint,
-        .get_inputMode = &get_inputMode,
-        .get_isContentEditable = &get_isContentEditable,
-        .get_virtualKeyboardPolicy = &get_virtualKeyboardPolicy,
-
-        .set_contentEditable = &set_contentEditable,
-        .set_enterKeyHint = &set_enterKeyHint,
-        .set_inputMode = &set_inputMode,
-        .set_virtualKeyboardPolicy = &set_virtualKeyboardPolicy,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return ElementContentEditableImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return ElementContentEditableImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        ElementContentEditableImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

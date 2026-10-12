@@ -9,7 +9,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const SVGElement = interfaces.SVGElement;
-const ElementImpl = @import("Element.zig");
 
 pub const State = SVGElement.State;
 
@@ -22,25 +21,6 @@ pub const ImplError = error{
 /// - Private data not exposed via WebIDL attributes
 /// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
-
-/// Initialize instance: an SVG element is an Element, so its state is made
-/// through the chain Element -> Node -> EventTarget. (A codegen stub's
-/// `runtime.Instance.init` made a node with no Element or Node state, which
-/// every operation on it reads.)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    return ElementImpl.init(allocator, StateType, vtable, ctx);
-}
-
-/// Deinitialize instance, through its ancestors' impls: EventTarget's side
-/// tables are freed by its deinit.
-pub fn deinit(instance: *runtime.Instance) void {
-    ElementImpl.deinit(instance);
-}
 
 /// Getter for className
 pub fn get_className(instance: *runtime.Instance) anyerror!*runtime.Instance {

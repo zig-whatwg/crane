@@ -102,25 +102,81 @@ pub const MediaQueryList = struct {
     };
     pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
-    /// Initialize a new instance
+    /// Make a new instance: the construction chain, this interface's State
+    /// and vtable.
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return MediaQueryListImpl.init(allocator, State, &vtable, ctx);
+        return initChain(allocator, State, &vtable, ctx, .{});
     }
 
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
+    /// Make a new instance with construction arguments: facts given at
+    /// construction, as a C++ constructor's parameters. Each field of `args`
+    /// must be taken by an impl on the chain (its `construction_args`).
+    pub fn initWith(allocator: std.mem.Allocator, ctx: runtime.Context, args: anytype) !*runtime.Instance {
+        inline for (@typeInfo(@TypeOf(args)).@"struct".fields) |field| {
+            if (comptime !takesConstructionArg(field.name)) @compileError("MediaQueryList has no construction argument '" ++ field.name ++ "'");
+        }
+        return initChain(allocator, State, &vtable, ctx, args);
+    }
+
+    /// The construction chain for a descendant's State and vtable, for an
+    /// impl that still chains by hand.
     pub fn initWithState(
         allocator: std.mem.Allocator,
         comptime StateType: type,
         vtable_ptr: *const runtime.VTable,
         ctx: runtime.Context,
     ) !*runtime.Instance {
-        return MediaQueryListImpl.init(allocator, StateType, vtable_ptr, ctx);
+        return initChain(allocator, StateType, vtable_ptr, ctx, .{});
     }
 
-    /// Clean up instance resources
+    /// The construction chain: the parent interface's, then the impl's own
+    /// steps (`initOwn`), whose failure unwinds the parent's part and frees
+    /// the slot. An impl that still defines `init` chains by hand.
+    pub inline fn initChain(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+        args: anytype,
+    ) !*runtime.Instance {
+        if (comptime @hasDecl(MediaQueryListImpl, "init") and @hasDecl(MediaQueryListImpl, "initOwn")) @compileError("MediaQueryListImpl defines both init and initOwn");
+        if (comptime @hasDecl(MediaQueryListImpl, "init")) return MediaQueryListImpl.init(allocator, StateType, vtable_ptr, ctx);
+        const instance = try Meta.ParentInterface.initChain(allocator, StateType, vtable_ptr, ctx, args);
+        if (comptime @hasDecl(MediaQueryListImpl, "initOwn")) {
+            errdefer {
+                Meta.ParentInterface.deinitChain(instance);
+                runtime.gc.releaseStorage(instance);
+            }
+            try MediaQueryListImpl.initOwn(instance, allocator, StateType, args);
+        }
+        return instance;
+    }
+
+    /// Whether an impl on the construction chain takes the construction
+    /// argument `name`. A level that chains by hand passes nothing on.
+    pub fn takesConstructionArg(comptime name: []const u8) bool {
+        if (comptime @hasDecl(MediaQueryListImpl, "init")) return false;
+        if (comptime @hasDecl(MediaQueryListImpl, "construction_args")) {
+            inline for (MediaQueryListImpl.construction_args) |arg| {
+                if (comptime std.mem.eql(u8, arg, name)) return true;
+            }
+        }
+        return Meta.ParentInterface.takesConstructionArg(name);
+    }
+
+    /// The vtable's destructor: the destruction chain.
     pub fn deinit(instance: *runtime.Instance) void {
-        MediaQueryListImpl.deinit(instance);
+        deinitChain(instance);
+    }
+
+    /// The destruction chain: the impl's own part (`deinitOwn`), then the
+    /// parent interface's - construction in reverse. An impl that still
+    /// defines `deinit` chains by hand.
+    pub inline fn deinitChain(instance: *runtime.Instance) void {
+        if (comptime @hasDecl(MediaQueryListImpl, "deinit") and @hasDecl(MediaQueryListImpl, "deinitOwn")) @compileError("MediaQueryListImpl defines both deinit and deinitOwn");
+        if (comptime @hasDecl(MediaQueryListImpl, "deinit")) return MediaQueryListImpl.deinit(instance);
+        if (comptime @hasDecl(MediaQueryListImpl, "deinitOwn")) MediaQueryListImpl.deinitOwn(instance);
+        Meta.ParentInterface.deinitChain(instance);
     }
 
     /// The impl's process-wide hooks, installed once at process start

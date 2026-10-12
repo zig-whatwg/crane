@@ -86,31 +86,21 @@ pub fn installHooks() void {
     @import("dom").form_submission.install(submission_algorithms);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer interfaces.HTMLElement.deinit(instance);
-
+/// HTMLFormElement's own construction steps: the generated chain runs HTMLElement's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
+    _ = StateType;
+    _ = args;
     // Initialize HTMLFormElement's own internal state in registry
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{};
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// HTMLFormElement's own teardown: the generated chain runs HTMLElement's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         if (internal.elements_traced) engine.forgetTracedChild(instance, .{ .name = "elements" });
@@ -118,17 +108,14 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
     }
     Registry.remove(instance);
-
-    // Chain to parent class (via interface per Golden Rule #13)
-    interfaces.HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(ctx.allocator, State, &HTMLFormElement.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try HTMLFormElement.init(ctx.allocator, ctx);
+    errdefer HTMLFormElement.deinit(instance);
 
     // TODO: Implement constructor logic with parameters
 

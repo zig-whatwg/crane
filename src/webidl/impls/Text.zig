@@ -87,29 +87,19 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class initialization: CharacterData -> Node -> EventTarget
+/// Text's own construction steps: the generated chain runs CharacterData's first.
 ///
 /// IMPORTANT: Due to state hierarchy complexity, internal state is stored
 /// in a global registry rather than in the State struct.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (CharacterData) which chains to Node -> EventTarget
-    const instance = try CharacterDataImpl.init(allocator, StateType, vtable, ctx);
-    errdefer CharacterDataImpl.deinit(instance);
-
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize Text internal state in global registry
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    return instance;
 }
 
 /// Get Text's internal state from the registry
@@ -117,26 +107,21 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// Text's own teardown: the generated chain runs CharacterData's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
     Registry.remove(instance);
-    // CharacterData cleanup happens via inheritance chain
-    CharacterDataImpl.deinit(instance);
 }
 
 /// Constructor implementation
 /// DOM §4.12 - Text(data)
 /// Creates a new Text node with the given data
 pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &Text.vtable, ctx);
-    errdefer deinit(instance);
-
-    // Set node type to TEXT_NODE (3)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.TEXT_NODE);
+    const instance = try Text.init(ctx.allocator, ctx);
+    errdefer Text.deinit(instance);
 
     // Set the text data via CharacterData
     const data_slice = if (data.was_passed) data.value.asSlice() else "";
@@ -253,7 +238,7 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
         instance.ctx,
         webidl.Opt(runtime.DOMString).passed(new_data),
     );
-    errdefer deinit(new_node);
+    errdefer Text.deinit(new_node);
 
     if (NodeImpl.getOwnerDocument(instance)) |doc| {
         try NodeImpl.setOwnerDocument(new_node, doc);

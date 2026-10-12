@@ -288,19 +288,15 @@ pub fn installHooks() void {
     });
 }
 
-/// Initialize Navigation instance: an EventTarget, which currententrychange
-/// and the navigate events are fired at.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
+/// Navigation's own construction steps: the generated chain runs
+/// EventTarget's first (currententrychange and the navigate events are fired
+/// at a Navigation).
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator, .navigation = instance };
-    instance.getState(StateType).own._internal = internal;
+    instance.getState(State).own._internal = internal;
     try live.append(std.heap.c_allocator, instance);
     // "Initialize the navigation API entries for a new document": the current
     // entry, handed out now, is the "from" of the first currententrychange.
@@ -309,11 +305,11 @@ pub fn init(
     // activation, made while its entries are still the ones it was
     // activated with.
     _ = activationObject(instance, internal);
-    return instance;
 }
 
+/// Navigation's own teardown: the generated chain runs EventTarget's after it.
 /// Deinitialize Navigation instance
-pub fn deinit(instance: *runtime.Instance) void {
+pub fn deinitOwn(instance: *runtime.Instance) void {
     for (live.items, 0..) |navigation, i| {
         if (navigation == instance) {
             _ = live.swapRemove(i);
@@ -326,7 +322,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    EventTargetImpl.deinit(instance);
 }
 
 // ============================================================================

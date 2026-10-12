@@ -118,19 +118,8 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
-/// Initialize instance (creates the instance). A FileReader is an
-/// EventTarget: EventTarget's state is initialized, and later freed, with it.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    return EventTargetImpl.init(allocator, StateType, vtable, ctx);
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// FileReader's own teardown: the generated chain runs EventTarget's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         state.own._internal = null;
@@ -138,7 +127,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
     // The event handlers and listeners go with EventTarget's state. GC layer
     // handles slab freeing - do NOT call runtime.Instance.deinit().
-    EventTargetImpl.deinit(instance);
 }
 
 /// Constructor implementation
@@ -148,8 +136,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// "The FileReader() constructor, when invoked, must return a new FileReader
 /// object" - its state "empty", its result and error null.
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &FileReader.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try FileReader.init(ctx.allocator, ctx);
+    errdefer FileReader.deinit(instance);
     const internal = try InternalState.init(ctx.allocator);
     internal.reader = instance;
     instance.getState(State).own._internal = internal;

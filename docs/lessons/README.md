@@ -371,6 +371,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Codegen
 
+- [The generated interface is the class - its construction chain and construction arguments are emitted](codegen-the-generated-interface-is-the-class.md) - An impl writes only its own construction and destruction steps (initOwn/deinitOwn); what it is given at construction arrives as an argument of the generated chain.
 - [A special operation is found by its metadata, not its name](codegen-a-special-operation-is-found-by-its-metadata-not-its-name.md) - The binding map's names say a function is bound, never what it is; when the binding needs a member's role, codegen states it in a table beside the delegate, from the IDL, with an explicit default for "none".
 - [An anonymous indexed getter is gated like an overload](codegen-an-anonymous-indexed-getter-is-gated-like-an-overload.md) - When the binding needs to know whether an impl implements a member, codegen states it next to the gated delegate; never have the adapter reach into impls, and never wire a delegate the impl may not have.
 - [An iterable declaration's members are not operations](codegen-an-iterable-declaration-s-members-are-not-operations.md) - When the spec says "define" members, the binding defines them; codegen must not turn them into operations for an impl to implement.

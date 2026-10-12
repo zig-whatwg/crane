@@ -49,24 +49,14 @@ pub const InternalState = struct {
     }
 };
 
-/// Initialize instance: a File is a Blob, so its Blob part is built first.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    return BlobImpl.init(allocator, StateType, vtable, ctx);
-}
-
-pub fn deinit(instance: *runtime.Instance) void {
+/// File's own teardown: the generated chain runs Blob's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    BlobImpl.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
@@ -74,8 +64,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Spec: https://w3c.github.io/FileAPI/#file-constructor
 pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileName: runtime.USVString, options: webidl.Opt(dictionaries.FilePropertyBag)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &File.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try File.init(ctx.allocator, ctx);
+    errdefer File.deinit(instance);
 
     // Step 1: bytes, the result of processing blob parts given fileBits and
     // options.
@@ -119,8 +109,8 @@ pub fn createFromBytes(
     mime_type: []const u8,
     last_modified: ?i64,
 ) !*runtime.Instance {
-    const instance = try init(allocator, State, &File.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try File.init(allocator, ctx);
+    errdefer File.deinit(instance);
 
     {
         const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
@@ -242,7 +232,7 @@ test "File - basic constructor" {
         "text/plain",
         1700000000000,
     );
-    defer deinit(file_instance);
+    defer File.deinit(file_instance);
 
     const name = try get_name(file_instance);
     try std.testing.expectEqualStrings("test.txt", name.asSlice());
@@ -269,7 +259,7 @@ test "File - default lastModified" {
         "",
         null, // Should use current time
     );
-    defer deinit(file_instance);
+    defer File.deinit(file_instance);
 
     const last_modified = try get_lastModified(file_instance);
     // Should be a reasonable timestamp (after year 2020)
@@ -282,7 +272,7 @@ test "File - empty name" {
     const ctx = runtime.createNullContext();
 
     const file_instance = try createFromBytes(allocator, ctx, "", "", "", null);
-    defer deinit(file_instance);
+    defer File.deinit(file_instance);
 
     const name = try get_name(file_instance);
     try std.testing.expectEqualStrings("", name.asSlice());
@@ -293,7 +283,7 @@ test "File - webkitRelativePath empty by default" {
     const ctx = runtime.createNullContext();
 
     const file_instance = try createFromBytes(allocator, ctx, "", "test.txt", "", null);
-    defer deinit(file_instance);
+    defer File.deinit(file_instance);
 
     const path = try get_webkitRelativePath(file_instance);
     try std.testing.expectEqualStrings("", path.asSlice());

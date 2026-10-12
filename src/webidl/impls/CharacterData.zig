@@ -20,7 +20,6 @@ const infra = @import("infra");
 const CharacterData = interfaces.CharacterData;
 
 // Import parent class impl for initialization chain
-const NodeImpl = @import("Node.zig");
 
 // Import DOM algorithms from src/dom/
 const dom = @import("dom");
@@ -203,29 +202,19 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class initialization: Node -> EventTarget
+/// CharacterData's own construction steps: the generated chain runs Node's first.
 ///
 /// IMPORTANT: Due to state hierarchy complexity, internal state is stored
 /// in a global registry rather than in the State struct.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (Node) which chains to EventTarget
-    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
-    errdefer NodeImpl.deinit(instance);
-
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize CharacterData internal state in global registry
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = try InternalState.init(allocator);
-
-    return instance;
 }
 
 /// Get CharacterData's internal state from the registry
@@ -233,15 +222,13 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// CharacterData's own teardown: the generated chain runs Node's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
     Registry.remove(instance);
-    // Node cleanup happens via inheritance chain
-    NodeImpl.deinit(instance);
 }
 
 // =============================================================================

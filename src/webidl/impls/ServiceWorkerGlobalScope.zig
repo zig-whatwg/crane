@@ -12,7 +12,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const CookieStoreImpl = @import("CookieStore.zig");
 const ServiceWorkerGlobalScope = interfaces.ServiceWorkerGlobalScope;
 
 pub const State = ServiceWorkerGlobalScope.State;
@@ -166,14 +165,10 @@ pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
     }
 
     // Create new CookieStore for this origin
-    const CookieStore = interfaces.CookieStore;
-
-    const cookie_store = CookieStoreImpl.createForOrigin(
+    const cookie_store = interfaces.CookieStore.initWith(
         internal.allocator,
-        CookieStore.State,
-        &CookieStore.vtable,
         instance.ctx,
-        internal.is_secure_context,
+        .{ .is_secure_context = internal.is_secure_context },
     ) catch {
         return error.OutOfMemory;
     };

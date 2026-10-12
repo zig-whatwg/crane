@@ -18,7 +18,6 @@ const webidl = @import("webidl");
 const HTMLScriptElement = interfaces.HTMLScriptElement;
 
 // Parent class implementation
-const HTMLElementImpl = @import("HTMLElement.zig");
 const NodeImpl = @import("Node.zig");
 
 // DOM mutation seam, for the post-connection steps below.
@@ -110,18 +109,10 @@ fn scriptTextStep(element: *runtime.Instance) ?*dom_module.script_elements.Scrip
     return &internal.script_text;
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: HTMLElement → Element → Node → EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (HTMLElement) which chains to Element → Node → EventTarget
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer HTMLElementImpl.deinit(instance);
-
+/// HTMLScriptElement's own construction steps: the generated chain runs HTMLElement's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Set node type to ELEMENT_NODE (already set by Element.init)
     // Set local name to "script"
     try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("script"));
@@ -132,12 +123,10 @@ pub fn init(
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// HTMLScriptElement's own teardown: the generated chain runs HTMLElement's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     // Erase borrowed membership before this element's identity can end.
     dom_module.document_rendering.unblock(instance);
     script_element_state.forgetQueueMembership(instance);
@@ -146,17 +135,14 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
     }
     Registry.remove(instance);
-
-    // Chain to parent deinit
-    HTMLElementImpl.deinit(instance);
 }
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(ctx.allocator, State, &HTMLScriptElement.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try HTMLScriptElement.init(ctx.allocator, ctx);
+    errdefer HTMLScriptElement.deinit(instance);
 
     return instance;
 }

@@ -91,28 +91,15 @@ pub fn installHooks() void {
     dom.attr_nodes.install(.{ .name = &nameHook, .attach = &attachHook, .detach = &detachHook });
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class initialization: Node -> EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Chain to parent class (Node) which chains to EventTarget
-    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
-    errdefer NodeImpl.deinit(instance);
-
+/// Attr's own construction steps: the generated chain runs Node's first.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    _ = args;
     // Initialize Attr internal state
-    const state = instance.getState(StateType);
+    const state = instance.getState(State);
     const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
-
-    // An attribute node's node type, whichever path made it.
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ATTRIBUTE_NODE);
-
-    return instance;
 }
 
 /// The member an attribute keeps its element in (engine.traceChild): an Attr
@@ -182,8 +169,8 @@ fn detachHook(instance: *runtime.Instance, value: []const u8) dom.attr_nodes.Err
     keepElement(instance, internal, null);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// Attr's own teardown: the generated chain runs Node's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         // An Attr its wrapper's collection frees has no edge left to end; one
@@ -199,10 +186,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
-    // And Node's teardown: its NodeBase and its registry entry. Stopping here
-    // left them behind for every Attr node freed.
-    interfaces.Node.deinit(instance);
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 // =============================================================================
