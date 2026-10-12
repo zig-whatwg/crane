@@ -57,6 +57,14 @@ pub const SpecialOperations = struct {
     /// ancestor ("it applies to all its derived interfaces"): named
     /// properties are not enumerable.
     legacy_unenumerable_named_properties: bool = false,
+    /// [[OwnPropertyKeys]] (3.9.6) step 3 lists the visible supported property
+    /// names - the default, the spec's. False for the browsers' exception
+    /// (AGENTS.md golden rule 2), recorded by codegen: HTMLFormElement, whose
+    /// names every browser leaves out of `Object.getOwnPropertyNames` while
+    /// named lookup finds them (whatwg/html#1731; Blink's `[NotEnumerable]`
+    /// named getter, bind_gen installing no named enumerator). Lookup still
+    /// reads the supported property names; only the key list leaves them out.
+    named_properties_in_own_keys: bool = true,
     /// The named getter and setter are Crane's, not the IDL's: they stand in
     /// for CSSOM's camel-cased attributes of a CSS declaration interface
     /// (CSSOM 6.7.1, `_camel_cased_attribute`; codegen's

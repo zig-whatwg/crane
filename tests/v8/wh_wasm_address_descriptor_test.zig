@@ -174,7 +174,7 @@ test "snapshot realm: a Window realm restored from Crane's snapshot takes addres
     defer protocol.destroyAgent(agent);
     // Restored, not made afresh (createAgent falls back to a fresh isolate,
     // with a warning, when the snapshot does not restore).
-    if (ffi.v8_Isolate_GetData(@ptrCast(@alignCast(agent)), 2) == null) return error.AgentNotRestoredFromSnapshot;
+    if (!ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent)))) return error.AgentNotRestoredFromSnapshot;
     const realm = try windowRealm(agent, true);
     defer protocol.destroyWindowRealm(realm, .global_detached);
     try expectEval(realm, "typeof Window === 'function' && globalThis instanceof Window", "true");

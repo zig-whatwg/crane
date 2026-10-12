@@ -103,10 +103,10 @@ const SnapshotPage = struct {
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = true, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         // Restored, not made afresh: v8_Isolate_NewFromSnapshot keeps the
-        // blob's StartupData in embedder slot 2 (createAgent falls back to a
-        // fresh isolate, with a warning, when the snapshot does not restore -
-        // which would make these tests pass for the wrong reason).
-        if (ffi.v8_Isolate_GetData(@ptrCast(@alignCast(agent)), 2) == null) return error.AgentNotRestoredFromSnapshot;
+        // blob's StartupData in the isolate's record (createAgent falls back
+        // to a fresh isolate, with a warning, when the snapshot does not
+        // restore - which would make these tests pass for the wrong reason).
+        if (!ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent)))) return error.AgentNotRestoredFromSnapshot;
         const realm = try protocol.createWindowRealm(&.{
             .agent = agent,
             .allocator = std.heap.c_allocator,

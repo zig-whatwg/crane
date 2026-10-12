@@ -22,8 +22,8 @@ const isolate_lifecycle = @import("isolate_lifecycle.zig");
 const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
 const intl_binding = @import("intl_binding.zig");
+const observable_array = @import("observable_array.zig");
 const isolate_templates = @import("isolate_templates.zig");
-const template_registry = @import("template_registry.zig");
 const context_manager = @import("context_manager.zig");
 /// worker_realm.zig's agent operations.
 const worker_realm = @import("worker_realm.zig");
@@ -50,13 +50,11 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     // A host that already started the platform set the runtime flags then
     // too.
     if (!ffi.v8_Platform_IsInitialized()) snapshot_loader.initializePlatformForRuntime();
-    // The teardown handlers of the adapter's per-isolate modules, once, while
-    // the process starts: agents are made on every Browser and worker thread
-    // (docs/instances.md), and the handler table is read-only after this.
-    isolate_lifecycle.registerBuiltinHandlers() catch |err| log.warn("the isolate teardown handlers were not registered: {}", .{err});
     // [code_generation_checks]: the process's dispatchers, once, before any
     // agent's thread runs; each agent enables its isolate's callbacks.
     ffi.v8_SetProtocolCodeGenerationDispatchers(onCodeGenerationFromStrings, onWasmCodeGeneration);
+    // HostCreateShadowRealmContextCallback's, the same way.
+    shadow_realm.installDispatcher();
     engine_snapshot = null;
     if (options.snapshot) |stamped| engine_snapshot = try usableSnapshot(stamped);
 }
@@ -133,14 +131,14 @@ const AgentRecord = struct {
     /// V8PerIsolateData; disposed by the agent's end. Read and written on
     /// the agent's own thread only.
     window_properties_template: ?*ffi.FunctionTemplate = null,
-    /// template_registry.cache_generation when it was made: a later
-    /// generation means the template registry was rebuilt, and so must it be.
-    window_properties_generation: u64 = 0,
     /// The agent's live Intl objects' internal slots (intl_binding.Objects):
     /// made by its first Intl construction, on the agent's thread; freed by
     /// its end. The adapter's per-isolate state is the agent's (instances
     /// B2), as the nine process-wide Intl registries it replaces were not.
     intl_objects: ?*intl_binding.Objects = null,
+    /// The agent's live ObservableArray states (observable_array.Registry):
+    /// made by its first array, on the agent's thread; freed by its end.
+    observable_arrays: ?*observable_array.Registry = null,
 };
 
 /// The agent's PatternMatcher, made on its first use; null for an isolate
@@ -159,6 +157,15 @@ pub fn intlObjectsOf(isolate: *ffi.Isolate) ?*intl_binding.Objects {
     const record = recordOf(isolate) orelse return null;
     if (record.intl_objects == null) record.intl_objects = intl_binding.Objects.create(record.allocator) catch null;
     return record.intl_objects;
+}
+
+/// The agent's ObservableArray registry, made on its first use with the
+/// agent's allocator; null for an isolate createAgent did not make, or when
+/// there is no memory for it. Called on the agent's own thread only.
+pub fn observableArraysOf(isolate: *ffi.Isolate) ?*observable_array.Registry {
+    const record = recordOf(isolate) orelse return null;
+    if (record.observable_arrays == null) record.observable_arrays = observable_array.Registry.create(record.allocator) catch null;
+    return record.observable_arrays;
 }
 
 var agents_lock: std.Io.Mutex = .init;
@@ -292,15 +299,11 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // What every agent's isolate has before a realm is made in it: the
     // isolate's allocator (the templates it caches), and ShadowRealm support
     // (HostCreateShadowRealmContextCallback, and the agent's own record of
-    // its ShadowRealms). destroyAgent undoes them. The teardown handlers of
-    // the adapter's per-isolate modules are the process's (initializeEngine);
-    // a host that never started the engine gets them here, on its one thread.
+    // its ShadowRealms). destroyAgent undoes them (the teardown steps are
+    // isolate_lifecycle's constant table).
     {
         const entered = EnteredIsolate.of(@ptrCast(isolate));
         defer entered.leave();
-        if (!isolate_lifecycle.builtinHandlersRegistered()) {
-            isolate_lifecycle.registerBuiltinHandlers() catch |err| log.warn("the isolate's teardown handlers were not registered: {}", .{err});
-        }
         isolate_allocator.initIsolateAllocator(isolate, options.allocator, false) catch |err| {
             // One restored from a snapshot may have it already.
             if (err != error.AllocatorAlreadyInitialized) log.warn("the isolate's allocator was not made: {}", .{err});
@@ -336,6 +339,7 @@ pub fn endAgent(agent: *Agent) void {
     const window_properties = if (record) |r| r.window_properties_template else null;
     const deferred_teardown = if (record) |r| r.deferred_teardown else null;
     const intl_objects = if (record) |r| r.intl_objects else null;
+    const observable_arrays = if (record) |r| r.observable_arrays else null;
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
@@ -343,6 +347,9 @@ pub fn endAgent(agent: *Agent) void {
     // weak handles are this isolate's, disarmed here before the collections
     // below could reach a freed cell.
     if (intl_objects) |objects| objects.destroy();
+    // Its ObservableArray states, the same way: their proxies' weak handles
+    // disarmed before the collections below.
+    if (observable_arrays) |registry| registry.destroy();
     // Its utility context and compiled patterns: handles of this isolate,
     // released before it is disposed.
     ffi.v8_PatternMatcher_Delete(pattern_matcher);
@@ -363,9 +370,8 @@ pub fn endAgent(agent: *Agent) void {
     if (host_agent) {
         isolate_lifecycle.cleanupAll(isolate, allocator);
     } else {
-        // cleanupAll's isolate-scoped handlers, without the thread's.
+        // cleanupAll's isolate-scoped steps, without the thread's.
         isolate_templates.cleanupTemplateStorage(isolate, allocator);
-        template_registry.clearForIsolate(isolate);
         isolate_allocator.deinitIsolateAllocator(isolate);
     }
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
@@ -469,8 +475,7 @@ pub fn forgetAgent(agent: *Agent) void {
         const kv = agents.fetchRemove(isolate) orelse return;
         break :blk kv.value;
     };
-    // Not v8_Isolate_ClearPromiseRejectCallback: that one also drops the
-    // process-wide callback data every other isolate's tracker uses.
+    // This isolate's tracker alone: the dispatcher is every agent's.
     if (record.hooks.promiseRejectionTracker != null) ffi.v8_Isolate_ClearProtocolPromiseRejectCallback(isolate);
     if (record.hooks.afterMicrotaskCheckpoint != null) {
         ffi.v8_Isolate_RemoveMicrotasksCompletedCallback(isolate, onMicrotasksCompleted, record);

@@ -1575,7 +1575,7 @@ pub inline fn closeMediaDecoder(decoder: *MediaDecoder) void {
     return impl.closeMediaDecoder(decoder);
 }
 
-// Image decoding [image_decoding] (decisions 19, 19a). Crane runs MIME
+// Image decoding [image_decoding] (decisions 19, 19a, 19c). Crane runs MIME
 // Sniffing's rules for images and HTML's image steps above the protocol; the
 // platform turns one complete resource's bytes into pixels.
 

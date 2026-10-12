@@ -233,6 +233,30 @@ test "Document's named getter, and an XMLDocument without it, as in every browse
     try testing.expect(!contains(xml, "getSupportedPropertyNames"));
 }
 
+test "HTMLFormElement's named properties are left out of [[OwnPropertyKeys]], as in every browser; nothing else's are" {
+    var out = try Generated.init();
+    defer out.deinit();
+    const form = try out.file("HTMLFormElement");
+    defer testing.allocator.free(form);
+    try expectTable(form, &.{
+        ".indexed_getter = .{ .function = \"call_getter\", .implemented = @hasDecl(HTMLFormElementImpl, \"call_getter\") },",
+        ".named_getter = .{ .function = \"call_getter__1\", .implemented = @hasDecl(HTMLFormElementImpl, \"call_getter__1\") },",
+        ".legacy_override_built_ins = true,",
+        ".legacy_unenumerable_named_properties = true,",
+        ".named_properties_in_own_keys = false,",
+    });
+    // The default: an interface of the same shape under another name lists
+    // its names (WebIDL 3.9.6 step 3) - the table says nothing.
+    const other = try out.file("Form");
+    defer testing.allocator.free(other);
+    try testing.expect(!contains(other, "named_properties_in_own_keys"));
+    for ([_][]const u8{ "KeyStore", "StringMap", "Collection", "OptionsCollection", "ControlsCollection", "Document", "CSSStyleDeclaration" }) |name| {
+        const source = try out.file(name);
+        defer testing.allocator.free(source);
+        try testing.expect(!contains(source, "named_properties_in_own_keys"));
+    }
+}
+
 test "a CSS declaration interface's named properties are Crane's camel-cased attributes, and say so" {
     var out = try Generated.init();
     defer out.deinit();

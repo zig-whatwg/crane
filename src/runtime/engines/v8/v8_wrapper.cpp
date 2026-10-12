@@ -98,6 +98,7 @@ static void forgetStringHandle(Global<T>* handle);
 // each worker's), so the map is reached only under realmTagLock(); a dispose
 // on a thread with nothing tagged skips the lock (`realmTagCount`).
 static std::unordered_map<const void*, uintptr_t>& realmTaggedHandles() {
+    // process-wide: handles tagged with the realm whose API stored them, by handle - every dispose untags (untagRealmHandle), and a dispose names only its Global; under realmTagLock(), held for one insert, erase or scan, never across a call into V8.
     static std::unordered_map<const void*, uintptr_t> map;
     return map;
 }
@@ -378,6 +379,13 @@ struct WeakCallbackData {
 // (docs/instances.md) arms, releases and collects its own isolates' handles
 // here, so every access holds `weakDataLock()`. A record and its handle belong
 // to one isolate, used by one thread; the lock only keeps the containers whole.
+//
+// They stay the process's (instances B2 moved the rest of the adapter's
+// per-isolate state into each isolate's record, kIsolateDataSlot): a release
+// is reached from every delete site of a Global - fifty-odd `v8_*_Dispose`
+// functions and resetGlobalHandle, most handed nothing but the handle - and V8
+// cannot say which isolate a Global<T> is of, so the only key a release has is
+// the handle itself.
 static std::mutex& weakDataLock() {
     // process-wide: guards armedWeakData() and detachedWeakData(), which every isolate of the process shares; held for a find, an insert or an erase, never across a call into Zig or script.
     static std::mutex lock;
@@ -385,6 +393,7 @@ static std::mutex& weakDataLock() {
 }
 
 static std::unordered_map<const void*, WeakCallbackData*>& armedWeakData() {
+    // process-wide: every isolate's armed weak records, by their Global - a release (fifty-odd delete sites) has only the handle, and V8 cannot say which isolate a handle is of; under weakDataLock(), held for one find, insert or erase, never across a call into Zig or script.
     static std::unordered_map<const void*, WeakCallbackData*> map;
     return map;
 }
@@ -394,6 +403,7 @@ static std::unordered_map<const void*, WeakCallbackData*>& armedWeakData() {
 /// callback frees them. Held here so the count is a real live count and a record
 /// whose callback never fires is still reachable.
 static std::unordered_set<WeakCallbackData*>& detachedWeakData() {
+    // process-wide: the records a release detached from their Global while V8 still had their callback queued - entered by the same handle-only releases as armedWeakData(); under weakDataLock(); v8_Isolate_Dispose frees its own isolate's.
     static std::unordered_set<WeakCallbackData*> set;
     return set;
 }
@@ -679,447 +689,6 @@ static void WeakCallbackSecondPass(const WeakCallbackInfo<WeakCallbackData>& inf
 }
 
 // ============================================================================
-// CallbackManager: Owns V8 Callback Handles
-// ============================================================================
-//
-// This class manages all V8 callback function handles. It solves the problem
-// of V8 Local handles becoming invalid after HandleScope ends.
-//
-// Key insight: V8 Local<T> is NOT just a T* pointer - it's a handle containing
-// T** that points to a slot in an active HandleScope. When we pass the internal
-// pointer through FFI and try to reconstruct the Local, we create garbage.
-//
-// Solution (adopted from Chromium): All V8 handle management stays in C++.
-// The Zig side works only with opaque callback IDs (uint64_t), never with
-// V8 handles. Callbacks are converted from Local to Global IMMEDIATELY
-// upon registration, before any FFI boundary crossing.
-//
-// Architecture:
-//   Zig DOM Code (opaque IDs only) <-- FFI --> CallbackManager (owns Globals) --> V8
-
-#include <unordered_map>
-#include <unordered_set>
-#include <mutex>
-
-class CallbackManager {
-public:
-    // Stored callback information
-    struct StoredCallback {
-        Global<Function> function;
-        Global<Context> context;
-        Global<Value> receiver;  // 'this' binding
-        bool weak_registered = false;
-        bool collected = false;  // Set to true when weak callback fires
-    };
-
-    // Data passed to weak callback
-    struct WeakCallbackData {
-        uint64_t callback_id;
-        CallbackManager* manager;
-    };
-
-private:
-    std::unordered_map<uint64_t, StoredCallback> callbacks_;
-    std::unordered_set<uint64_t> collected_ids_;  // Track collected callback IDs
-    std::mutex mutex_;  // Thread safety
-    std::atomic<uint64_t> next_id_{1};
-    Isolate* isolate_;
-
-    // Singleton instance
-    static CallbackManager* instance_;
-    static std::mutex instance_mutex_;
-
-    // Static weak callback - called by V8 when function is about to be GC'd
-    static void WeakCallback(const WeakCallbackInfo<WeakCallbackData>& info) {
-        WeakCallbackData* data = info.GetParameter();
-        if (data && data->manager) {
-            data->manager->MarkCollected(data->callback_id);
-        }
-        delete data;
-    }
-
-public:
-    explicit CallbackManager(Isolate* isolate) : isolate_(isolate) {}
-
-    ~CallbackManager() {
-        // Reset all Global handles to allow V8 GC to collect them
-        std::lock_guard<std::mutex> lock(mutex_);
-        for (auto& pair : callbacks_) {
-            pair.second.function.Reset();
-            pair.second.context.Reset();
-            pair.second.receiver.Reset();
-        }
-        callbacks_.clear();
-    }
-
-    // Get or create the singleton instance
-    static CallbackManager* Get() {
-        std::lock_guard<std::mutex> lock(instance_mutex_);
-        return instance_;
-    }
-
-    // Initialize the singleton (called once at startup)
-    static void Initialize(Isolate* isolate) {
-        std::lock_guard<std::mutex> lock(instance_mutex_);
-        if (instance_ == nullptr) {
-            instance_ = new CallbackManager(isolate);
-        }
-    }
-
-    // Destroy the singleton (called at shutdown)
-    static void Destroy() {
-        std::lock_guard<std::mutex> lock(instance_mutex_);
-        if (instance_ != nullptr) {
-            delete instance_;
-            instance_ = nullptr;
-        }
-    }
-
-    // Register a callback - MUST be called while Locals are still valid
-    // Returns callback ID or 0 on failure
-    uint64_t Register(Local<Function> func, Local<Context> ctx, Local<Value> receiver = Local<Value>()) {
-        if (func.IsEmpty() || ctx.IsEmpty()) {
-            return 0;
-        }
-
-        uint64_t id = next_id_.fetch_add(1);
-
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        StoredCallback& cb = callbacks_[id];
-        cb.function.Reset(isolate_, func);
-        cb.context.Reset(isolate_, ctx);
-        if (!receiver.IsEmpty()) {
-            cb.receiver.Reset(isolate_, receiver);
-        }
-        cb.weak_registered = false;
-
-        return id;
-    }
-
-    // Invoke a registered callback
-    // Returns: true on success, false on failure
-    // On success, result contains the return value (may be nullptr for void returns)
-    // On failure, error_msg contains the error description
-    struct InvokeResult {
-        bool success;
-        Global<Value>* return_value;  // Caller owns, must dispose
-        const char* error_msg;        // Static string, valid until next call
-    };
-
-    InvokeResult Invoke(uint64_t id, int argc, Local<Value>* argv) {
-        InvokeResult result = {false, nullptr, nullptr};
-
-        // Create HandleScope FIRST - all Local handles must be created within a HandleScope.
-        // This is critical: without a HandleScope, Get() on Global handles creates Locals
-        // in whatever scope is on the stack, which may become invalid.
-        HandleScope handle_scope(isolate_);
-
-        // Now acquire lock and look up callback
-        std::unique_lock<std::mutex> lock(mutex_);
-
-        auto it = callbacks_.find(id);
-        if (it == callbacks_.end()) {
-            result.error_msg = "Callback not found";
-            return result;
-        }
-
-        StoredCallback& cb = it->second;
-
-        // Check if callback was collected by GC
-        if (cb.collected) {
-            result.error_msg = "Callback was garbage collected";
-            return result;
-        }
-
-        // Get Locals from Globals - WITHIN the HandleScope
-        Local<Function> func = cb.function.Get(isolate_);
-        Local<Context> ctx = cb.context.Get(isolate_);
-        Local<Value> receiver = cb.receiver.IsEmpty()
-            ? Undefined(isolate_).As<Value>()
-            : cb.receiver.Get(isolate_);
-
-        // Release lock before calling JS (avoids deadlock if callback registers another)
-        lock.unlock();
-
-        // Enter the callback's context
-        Context::Scope context_scope(ctx);
-
-        TryCatch try_catch(isolate_);
-
-        MaybeLocal<Value> maybe_result = func->Call(ctx, receiver, argc, argv);
-
-        if (try_catch.HasCaught()) {
-            // Extract error message
-            Local<Value> exception = try_catch.Exception();
-            String::Utf8Value exception_str(isolate_, exception);
-            static thread_local char error_buffer[1024];
-            snprintf(error_buffer, sizeof(error_buffer), "%s",
-                     *exception_str ? *exception_str : "Unknown error");
-            result.error_msg = error_buffer;
-            return result;
-        }
-
-        if (maybe_result.IsEmpty()) {
-            result.error_msg = "Callback returned empty result";
-            return result;
-        }
-
-        result.success = true;
-        Local<Value> ret_val = maybe_result.ToLocalChecked();
-        result.return_value = new Global<Value>(isolate_, ret_val);
-        return result;
-    }
-
-    // Convenience: Invoke with single argument
-    InvokeResult Invoke1(uint64_t id, Local<Value> arg) {
-        Local<Value> argv[1] = {arg};
-        return Invoke(id, 1, argv);
-    }
-
-    // Convenience: Invoke with no arguments
-    InvokeResult Invoke0(uint64_t id) {
-        return Invoke(id, 0, nullptr);
-    }
-
-    // Remove a callback (explicit cleanup)
-    void Remove(uint64_t id) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = callbacks_.find(id);
-        if (it != callbacks_.end()) {
-            it->second.function.Reset();
-            it->second.context.Reset();
-            it->second.receiver.Reset();
-            callbacks_.erase(it);
-        }
-    }
-
-    // Check if callback exists
-    bool Exists(uint64_t id) const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
-        return callbacks_.find(id) != callbacks_.end();
-    }
-
-    // Get statistics for debugging
-    size_t Count() const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
-        return callbacks_.size();
-    }
-
-    // Get the isolate
-    Isolate* GetIsolate() const {
-        return isolate_;
-    }
-
-    // ========================================================================
-    // Weak Callback Support
-    // ========================================================================
-    //
-    // Weak callbacks allow V8's GC to collect JavaScript functions that are
-    // no longer referenced. This prevents memory leaks in long-running sessions.
-    //
-    // When a callback is made weak:
-    // 1. The Global<Function> becomes a weak reference
-    // 2. V8 can collect the function if there are no other JS references
-    // 3. When collected, WeakCallback fires and marks the callback as collected
-    // 4. Subsequent invoke attempts return an error
-    //
-    // NOTE: Event listeners should NOT be weak by default - the listener
-    // should stay alive as long as the EventTarget exists.
-
-    // Make a callback weak - V8 can GC the function when no JS refs remain
-    // Returns true on success, false if callback not found or already weak
-    bool MakeWeak(uint64_t id) {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        auto it = callbacks_.find(id);
-        if (it == callbacks_.end() || it->second.weak_registered) {
-            return false;
-        }
-
-        StoredCallback& cb = it->second;
-
-        // Create weak callback data
-        WeakCallbackData* data = new WeakCallbackData{id, this};
-
-        // Make the function handle weak
-        cb.function.SetWeak(data, WeakCallback, WeakCallbackType::kParameter);
-        cb.weak_registered = true;
-
-        return true;
-    }
-
-    // Clear weak status - make callback strong again
-    // Returns true on success, false if callback not found or not weak
-    bool ClearWeak(uint64_t id) {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        auto it = callbacks_.find(id);
-        if (it == callbacks_.end() || !it->second.weak_registered) {
-            return false;
-        }
-
-        StoredCallback& cb = it->second;
-
-        // Note: ClearWeak() returns the parameter we passed to SetWeak
-        // We need to delete it to avoid memory leak
-        WeakCallbackData* data = cb.function.ClearWeak<WeakCallbackData>();
-        delete data;
-
-        cb.weak_registered = false;
-
-        return true;
-    }
-
-    // Check if callback has been collected by GC
-    bool IsCollected(uint64_t id) const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
-
-        // Check collected_ids first (faster)
-        if (collected_ids_.find(id) != collected_ids_.end()) {
-            return true;
-        }
-
-        // Also check the stored callback's collected flag
-        auto it = callbacks_.find(id);
-        if (it != callbacks_.end()) {
-            return it->second.collected;
-        }
-
-        // Callback doesn't exist - treat as collected
-        return true;
-    }
-
-    // Check if callback is weak
-    bool IsWeak(uint64_t id) const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
-        auto it = callbacks_.find(id);
-        if (it == callbacks_.end()) {
-            return false;
-        }
-        return it->second.weak_registered;
-    }
-
-    // Mark callback as collected (called from weak callback)
-    void MarkCollected(uint64_t id) {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        collected_ids_.insert(id);
-
-        auto it = callbacks_.find(id);
-        if (it != callbacks_.end()) {
-            it->second.collected = true;
-
-            // The node is NOT "already invalid": the object is gone, the
-            // persistent slot is still ours, and v8-weak-callback-info.h makes
-            // resetting it in the first-pass callback mandatory -
-            //   Check failed: Handle not reset in first callback.
-            // is a V8_Fatal, not a leak. `weak_registered` goes with it so a
-            // later `ClearWeak` does not try to pull a parameter back off a
-            // node that is no longer weak and no longer holds our record.
-            //
-            // `crane_callback_make_weak` has no callers today, so this has
-            // never fired; it is the same bug `releaseWeakArm` carries, and
-            // leaving one arm of it correct and the other wrong is how it
-            // comes back.
-            it->second.function.Reset();
-            it->second.weak_registered = false;
-        }
-    }
-
-    // Clean up collected callbacks - removes entries that have been GC'd
-    // Returns number of callbacks cleaned up
-    size_t CleanupCollected() {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        size_t count = 0;
-        for (auto id : collected_ids_) {
-            auto it = callbacks_.find(id);
-            if (it != callbacks_.end()) {
-                // Context and receiver may still be valid, clean them up
-                it->second.context.Reset();
-                it->second.receiver.Reset();
-                callbacks_.erase(it);
-                count++;
-            }
-        }
-        collected_ids_.clear();
-
-        return count;
-    }
-
-    // Get count of collected but not yet cleaned up callbacks
-    size_t CollectedCount() const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
-        return collected_ids_.size();
-    }
-
-    // Compare two callbacks by their underlying V8 function objects
-    // Returns true if they reference the same JavaScript function
-    bool Compare(uint64_t id1, uint64_t id2) {
-        if (id1 == id2) return true;  // Same ID = definitely same function
-
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        auto it1 = callbacks_.find(id1);
-        auto it2 = callbacks_.find(id2);
-
-        if (it1 == callbacks_.end() || it2 == callbacks_.end()) {
-            return false;  // One or both callbacks not found
-        }
-
-        if (it1->second.collected || it2->second.collected) {
-            return false;  // One or both callbacks have been GC'd
-        }
-
-        // Create HandleScope for accessing Global handles
-        HandleScope handle_scope(isolate_);
-
-        // Get the function objects from the Global handles
-        Local<Function> func1 = it1->second.function.Get(isolate_);
-        Local<Function> func2 = it2->second.function.Get(isolate_);
-
-        if (func1.IsEmpty() || func2.IsEmpty()) {
-            return false;
-        }
-
-        // Use V8's StrictEquals to compare the function objects
-        // This is the same check Chromium uses for event listener equality
-        return func1->StrictEquals(func2);
-    }
-
-    // Compare a registered callback with a raw (unregistered) function
-    // This is used by removeEventListener to find matching listeners
-    // without creating unnecessary registrations.
-    // NOTE: Caller must hold HandleScope and provide a valid Local<Function>
-    bool MatchesRawFunction(uint64_t id, Local<Function> raw_func) {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        auto it = callbacks_.find(id);
-        if (it == callbacks_.end()) {
-            return false;  // Callback not found
-        }
-
-        if (it->second.collected) {
-            return false;  // Callback has been GC'd
-        }
-
-        // Get the registered function
-        Local<Function> registered_func = it->second.function.Get(isolate_);
-        if (registered_func.IsEmpty()) {
-            return false;
-        }
-
-        // Use V8's StrictEquals to compare
-        return registered_func->StrictEquals(raw_func);
-    }
-};
-
-// Initialize static members
-CallbackManager* CallbackManager::instance_ = nullptr;
-std::mutex CallbackManager::instance_mutex_;
-
-// ============================================================================
 // V8 Exception Information Structure
 // ============================================================================
 //
@@ -1304,360 +873,6 @@ V8ErrorInfo* v8_Exception_GetErrorInfo(Global<Context>* context, Global<Value>* 
 }
 
 // ============================================================================
-// CallbackManager FFI Exports
-// ============================================================================
-//
-// These functions expose CallbackManager to Zig code. The key principle is that
-// V8 handles NEVER cross the FFI boundary - only opaque uint64_t callback IDs.
-
-/// Result structure for callback invocation
-struct CraneCallbackResult {
-    bool success;
-    Global<Value>* return_value;  // Caller must dispose if non-null
-    const char* error_msg;        // Valid until next call on this thread
-};
-
-/// Initialize the global callback manager (called once at startup)
-/// @param isolate - The V8 isolate to use for callback management
-void crane_callback_manager_init(Isolate* isolate) {
-    CallbackManager::Initialize(isolate);
-}
-
-/// Destroy the global callback manager (called at shutdown)
-void crane_callback_manager_destroy() {
-    CallbackManager::Destroy();
-}
-
-/// Register a callback function
-///
-/// The pointers passed here are Global<T>* handles returned by V8 FFI functions
-/// (like v8_FunctionCallbackInfo_GetArgument). We need to get Local handles from
-/// these Globals within a HandleScope.
-///
-/// @param func_global - Global<Function>* pointer (from V8 FFI functions)
-/// @param ctx_global - Global<Context>* pointer
-/// @param receiver_global - Global<Value>* pointer for 'this' binding (nullable)
-/// @return Callback ID (non-zero) on success, 0 on failure
-uint64_t crane_callback_register(void* func_global, void* ctx_global, void* receiver_global) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return 0;
-
-    Isolate* isolate = mgr->GetIsolate();
-    if (!isolate) return 0;
-
-    if (!func_global || !ctx_global) return 0;
-
-    // Create a HandleScope to hold the Local handles we'll create
-    HandleScope handle_scope(isolate);
-
-    // The pointers are Global<T>* - cast and Get() to get valid Local handles
-    Global<Value>* func_handle = reinterpret_cast<Global<Value>*>(func_global);
-    Local<Value> func_value = func_handle->Get(isolate);
-    if (func_value.IsEmpty() || !func_value->IsFunction()) return 0;
-    Local<Function> func = func_value.As<Function>();
-
-    // Context - cast directly to Global<Context>*
-    Global<Context>* ctx_as_context = reinterpret_cast<Global<Context>*>(ctx_global);
-    Local<Context> ctx = ctx_as_context->Get(isolate);
-    if (ctx.IsEmpty()) return 0;
-
-    Local<Value> receiver;
-    if (receiver_global) {
-        Global<Value>* recv_handle = reinterpret_cast<Global<Value>*>(receiver_global);
-        receiver = recv_handle->Get(isolate);
-    }
-
-    return mgr->Register(func, ctx, receiver);
-}
-
-/// Invoke a registered callback with multiple arguments
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @param argc - Number of arguments
-/// @param argv - Array of Global<Value>* argument pointers
-/// @return Result struct with success/error info
-CraneCallbackResult crane_callback_invoke(uint64_t callback_id, int argc, Global<Value>** argv) {
-    CraneCallbackResult result = {false, nullptr, nullptr};
-
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) {
-        result.error_msg = "CallbackManager not initialized";
-        return result;
-    }
-
-    Isolate* isolate = mgr->GetIsolate();
-    HandleScope handle_scope(isolate);
-
-    // Convert Global args to Local for the call
-    std::vector<Local<Value>> local_args;
-    local_args.reserve(argc);
-    for (int i = 0; i < argc; i++) {
-        if (argv[i]) {
-            local_args.push_back(argv[i]->Get(isolate));
-        } else {
-            local_args.push_back(Undefined(isolate));
-        }
-    }
-
-    auto mgr_result = mgr->Invoke(callback_id, argc, local_args.data());
-    result.success = mgr_result.success;
-    result.return_value = mgr_result.return_value;
-    result.error_msg = mgr_result.error_msg;
-
-    return result;
-}
-
-/// Invoke a callback with a single argument (common case optimization)
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @param arg - Global<Value>* argument pointer
-/// @return Result struct with success/error info
-CraneCallbackResult crane_callback_invoke1(uint64_t callback_id, Global<Value>* arg) {
-    CraneCallbackResult result = {false, nullptr, nullptr};
-
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) {
-        result.error_msg = "CallbackManager not initialized";
-        return result;
-    }
-
-    Isolate* isolate = mgr->GetIsolate();
-    HandleScope handle_scope(isolate);
-
-    Local<Value> local_arg = arg ? arg->Get(isolate) : Undefined(isolate).As<Value>();
-
-    auto mgr_result = mgr->Invoke1(callback_id, local_arg);
-    result.success = mgr_result.success;
-    result.return_value = mgr_result.return_value;
-    result.error_msg = mgr_result.error_msg;
-
-    return result;
-}
-
-/// Invoke a callback with no arguments
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return Result struct with success/error info
-CraneCallbackResult crane_callback_invoke0(uint64_t callback_id) {
-    CraneCallbackResult result = {false, nullptr, nullptr};
-
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) {
-        result.error_msg = "CallbackManager not initialized";
-        return result;
-    }
-
-    auto mgr_result = mgr->Invoke0(callback_id);
-    result.success = mgr_result.success;
-    result.return_value = mgr_result.return_value;
-    result.error_msg = mgr_result.error_msg;
-
-    return result;
-}
-
-/// Remove a callback
-///
-/// @param callback_id - The callback ID to remove
-void crane_callback_remove(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (mgr) {
-        mgr->Remove(callback_id);
-    }
-}
-
-/// Check if a callback exists
-///
-/// @param callback_id - The callback ID to check
-/// @return true if callback exists, false otherwise
-bool crane_callback_exists(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    return mgr ? mgr->Exists(callback_id) : false;
-}
-
-/// Get the number of registered callbacks (for debugging)
-///
-/// @return Number of registered callbacks
-uint64_t crane_callback_count() {
-    CallbackManager* mgr = CallbackManager::Get();
-    return mgr ? static_cast<uint64_t>(mgr->Count()) : 0;
-}
-
-/// Free a CraneCallbackResult's return value
-///
-/// @param return_value - The return value to free
-void crane_callback_free_result(Global<Value>* return_value) {
-    if (return_value) {
-        return_value->Reset();
-        delete return_value;
-    }
-}
-
-// ============================================================================
-// Weak Callback FFI Exports
-// ============================================================================
-// These functions allow Zig code to coordinate callback lifecycle with V8's GC.
-
-/// Make a callback weak - V8 can GC the function when no JS refs remain
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true on success, false if callback not found or already weak
-bool crane_callback_make_weak(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return false;
-    return mgr->MakeWeak(callback_id);
-}
-
-/// Clear weak status - make callback strong again
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true on success, false if callback not found or not weak
-bool crane_callback_clear_weak(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return false;
-    return mgr->ClearWeak(callback_id);
-}
-
-/// Check if callback is currently weak
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true if callback is weak, false otherwise
-bool crane_callback_is_weak(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return false;
-    return mgr->IsWeak(callback_id);
-}
-
-/// Check if callback has been collected by GC
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true if callback was collected, false otherwise
-bool crane_callback_is_collected(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return true;  // No manager = treat as collected
-    return mgr->IsCollected(callback_id);
-}
-
-/// Clean up callbacks that have been collected by GC
-/// Frees memory associated with collected callbacks.
-///
-/// @return Number of callbacks cleaned up
-uint64_t crane_callback_cleanup_collected() {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return 0;
-    return static_cast<uint64_t>(mgr->CleanupCollected());
-}
-
-/// Get count of collected but not yet cleaned up callbacks
-///
-/// @return Number of callbacks pending cleanup
-uint64_t crane_callback_collected_count() {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return 0;
-    return static_cast<uint64_t>(mgr->CollectedCount());
-}
-
-/// Compare two callbacks by their underlying V8 function objects
-/// Returns true if they reference the same JavaScript function.
-/// This is used by removeEventListener to match callbacks - per DOM spec,
-/// two event listeners are the same if they have the same callback.
-///
-/// @param callback_id1 - First callback ID
-/// @param callback_id2 - Second callback ID
-/// @return true if both callbacks wrap the same JavaScript function
-bool crane_callback_compare(uint64_t callback_id1, uint64_t callback_id2) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return false;
-    return mgr->Compare(callback_id1, callback_id2);
-}
-
-// ============================================================================
-// Comparison-Only Function Handles (for removeEventListener)
-// ============================================================================
-//
-// These functions allow creating temporary Global<Function> handles for
-// comparison purposes without registering them with CallbackManager.
-// This is the production-quality approach used by Chromium: removeEventListener
-// doesn't need to create a persistent registration, it just needs to compare
-// the provided function against already-registered listeners.
-//
-// Usage:
-//   1. Create a comparison handle: crane_create_function_global()
-//   2. Compare with registered callback: crane_callback_matches_raw_function()
-//   3. Release the handle: crane_release_function_global()
-
-/// Create a Global<Function> handle without registering with CallbackManager
-/// This is for comparison purposes only (e.g., removeEventListener).
-/// The caller MUST call crane_release_function_global() to avoid memory leaks.
-///
-/// @param func_global - Pointer to an existing Global<Value> containing a function
-/// @param ctx_global - Pointer to an existing Global<Context>
-/// @return Pointer to a new Global<Function>, or nullptr on failure
-Global<Function>* crane_create_function_global(void* func_global, void* ctx_global) {
-    if (!func_global || !ctx_global) return nullptr;
-
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return nullptr;
-
-    Isolate* isolate = mgr->GetIsolate();
-    if (!isolate) return nullptr;
-
-    HandleScope handle_scope(isolate);
-
-    // Get the function from the Global handle
-    Global<Value>* global_value = static_cast<Global<Value>*>(func_global);
-    Local<Value> func_value = global_value->Get(isolate);
-
-    if (func_value.IsEmpty() || !func_value->IsFunction()) {
-        return nullptr;
-    }
-
-    // Create a new Global<Function> that the caller owns
-    Global<Function>* result = new Global<Function>(isolate, func_value.As<Function>());
-    return result;
-}
-
-/// Release a Global<Function> handle created by crane_create_function_global
-/// This MUST be called to avoid memory leaks.
-///
-/// @param global - Pointer to the Global<Function> to release
-void crane_release_function_global(Global<Function>* global) {
-    if (global) {
-        releaseWeakArm(global);
-        global->Reset();
-        delete global;
-    }
-}
-
-/// Compare a registered callback with an unregistered function handle
-/// This is the core of the comparison-only approach for removeEventListener.
-///
-/// @param callback_id - ID of a registered callback to compare against
-/// @param raw_func - Unregistered Global<Function>* to compare
-/// @return true if the functions are identical (same JS function object)
-bool crane_callback_matches_raw_function(uint64_t callback_id, Global<Function>* raw_func) {
-    if (!raw_func || raw_func->IsEmpty()) return false;
-
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return false;
-
-    Isolate* isolate = mgr->GetIsolate();
-    if (!isolate) return false;
-
-    // Get the registered callback's function
-    // We need to access CallbackManager's internal storage
-    // Use the Compare method logic but with a raw function
-    HandleScope handle_scope(isolate);
-
-    // Get the raw function as a Local
-    Local<Function> raw_local = raw_func->Get(isolate);
-    if (raw_local.IsEmpty()) return false;
-
-    // Compare with the registered callback
-    // This requires CallbackManager to expose the function for a given ID
-    return mgr->MatchesRawFunction(callback_id, raw_local);
-}
-
-// ============================================================================
 // Safe Script/Module Operations with TryCatch
 // ============================================================================
 // These "_Safe" variants wrap V8 operations with TryCatch to capture exception
@@ -1685,12 +900,6 @@ struct V8FunctionCallResult {
 struct V8ModuleCompileResult {
     Global<Module>* module;      // nullptr if compilation failed
     V8ErrorInfo* error;          // nullptr if compilation succeeded
-};
-
-/// Result structure for safe module instantiation
-struct V8ModuleInstantiateResult {
-    bool success;                // true if instantiation succeeded
-    V8ErrorInfo* error;          // nullptr if instantiation succeeded
 };
 
 /// Result structure for safe module evaluation
@@ -2038,7 +1247,8 @@ bool v8_RunCatching(Isolate* isolate, void (*body)(void*), void* data, Global<Va
 // The innermost scope is kept in the isolate's data slot 3 (a scope saves the
 // outer one and restores it on exit). Slot 3 held a snapshot isolate's copy
 // of its blob only "for cleanup", and nothing ever read it back: the copy is
-// the StartupData's `data` in slot 2.
+// the StartupData's `data`, kept by the isolate's record in slot 2
+// (kIsolateDataSlot).
 static constexpr uint32_t kBindingCatchScopeSlot = 3;
 
 /// Run `body(data)` in a binding catch scope. A caught exception is rethrown
@@ -2589,56 +1799,6 @@ void v8_FreeModuleCompileResult(V8ModuleCompileResult* result) {
     delete result;
 }
 
-/// Forward declaration of module resolve callback (defined later in file)
-static MaybeLocal<Module> V8ModuleResolveCallback(
-    Local<Context> context,
-    Local<String> specifier,
-    Local<FixedArray> import_assertions,
-    Local<Module> referrer
-);
-
-/// Instantiate a module with TryCatch error handling
-V8ModuleInstantiateResult* v8_Module_Instantiate_Safe(Global<Context>* context, Global<Module>* module) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    
-    Local<Context> local_context = context->Get(isolate);
-    Local<Module> local_module = module->Get(isolate);
-    
-    V8ModuleInstantiateResult* result = new V8ModuleInstantiateResult();
-    result->success = false;
-    result->error = nullptr;
-    
-    TryCatch try_catch(isolate);
-    
-    Maybe<bool> maybe_success = local_module->InstantiateModule(local_context, V8ModuleResolveCallback);
-    
-    if (try_catch.HasCaught()) {
-        result->error = extractException(isolate, &try_catch);
-        return result;
-    }
-    
-    result->success = maybe_success.FromMaybe(false);
-    if (!result->success) {
-        result->error = new V8ErrorInfo();
-        result->error->has_error = true;
-        result->error->message = strdup("Module instantiation failed");
-        result->error->stack_trace = nullptr;
-        result->error->line_number = -1;
-        result->error->column_number = -1;
-        result->error->source_line = nullptr;
-        result->error->resource_name = nullptr;
-    }
-    return result;
-}
-
-/// Free a V8ModuleInstantiateResult
-void v8_FreeModuleInstantiateResult(V8ModuleInstantiateResult* result) {
-    if (!result) return;
-    if (result->error) v8_FreeErrorInfo(result->error);
-    delete result;
-}
-
 /// Evaluate a module with TryCatch error handling
 V8ModuleEvaluateResult* v8_Module_Evaluate_Safe(Global<Context>* context, Global<Module>* module) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -2820,17 +1980,68 @@ void v8_Platform_Dispose() {
 // Isolate Management
 // ============================================================================
 
-// Map to track ArrayBuffer::Allocators per isolate for cleanup. Isolates are
-// made and disposed on every Browser and worker thread (docs/instances.md):
-// `lock` guards `map`, for one insert or one find-and-erase.
-struct IsolateAllocators {
-    std::mutex lock;
-    std::unordered_map<Isolate*, ArrayBuffer::Allocator*> map;
-};
-static IsolateAllocators g_isolate_allocators;
+// ----------------------------------------------------------------------------
+// The adapter's per-isolate state
+// ----------------------------------------------------------------------------
+//
+// One record per isolate in its embedder data slot 2 (`kIsolateDataSlot`), as
+// Blink keeps V8PerIsolateData in `isolate->GetData(gin::kEmbedderBlink)`:
+// made with the isolate (v8_Isolate_New, v8_Isolate_NewFromSnapshot), deleted
+// by v8_Isolate_Dispose, read and written on the isolate's thread only - no
+// lock, and nothing of another isolate reaches it (instances B2). What it
+// holds used to be process-wide, under mutexes every Browser and worker
+// thread took. Slots 0 and 1 are the Zig side's (isolate_allocator.zig,
+// isolate_templates.zig); slot 3 is the binding catch scope.
+//
+// The isolates' ArrayBuffer::Allocators are no longer kept here or anywhere:
+// each is handed to V8 as CreateParams::array_buffer_allocator_shared, so the
+// isolate and every BackingStore it allocated hold it (v8-isolate.h) and the
+// last of them frees it. It was a process-wide map, deleted at the isolate's
+// dispose even while a BackingStore made with it (an ArrayBuffer transferred
+// to another isolate) still lived; a snapshot isolate's was never deleted.
+static constexpr uint32_t kIsolateDataSlot = 2;
 
-// Defined with the async iterator template cache, below.
-void v8_ClearAsyncIteratorTemplateCacheFor(Isolate* isolate);
+/// A JSON module's parsed value, held from creation until V8 runs its
+/// evaluation steps (see v8_Module_CreateJsonModule).
+struct SyntheticJsonExport {
+    Global<Module> module;
+    Global<Value> value;
+};
+
+struct IsolateData {
+    /// A snapshot isolate's StartupData (v8_Isolate_NewFromSnapshot): V8 keeps
+    /// a pointer to it for the isolate's life. Null for an isolate made
+    /// afresh. Not freed with the record - as before - for the reason
+    /// v8_Isolate_NewFromSnapshot gives.
+    StartupData* startup_data = nullptr;
+    /// The isolate's JSON (and default-export) modules waiting for
+    /// evaluation, until V8 runs their evaluation steps or the module is
+    /// disposed - or the isolate is: v8_Isolate_Dispose resets what is left.
+    std::vector<SyntheticJsonExport*> synthetic_json_exports;
+
+    /// Take out the entry whose module is `module`, if any.
+    SyntheticJsonExport* takeSyntheticExport(Local<Module> module) {
+        for (size_t i = 0; i < synthetic_json_exports.size(); i++) {
+            if (!(synthetic_json_exports[i]->module == module)) continue;
+            SyntheticJsonExport* found = synthetic_json_exports[i];
+            synthetic_json_exports.erase(synthetic_json_exports.begin() + i);
+            return found;
+        }
+        return nullptr;
+    }
+};
+
+/// `isolate`'s record, or null for an isolate this file did not make (the
+/// snapshot creator's).
+static IsolateData* isolateData(Isolate* isolate) {
+    return isolate ? static_cast<IsolateData*>(isolate->GetData(kIsolateDataSlot)) : nullptr;
+}
+
+static void deleteSyntheticExport(SyntheticJsonExport* entry) {
+    entry->module.Reset();
+    entry->value.Reset();
+    delete entry;
+}
 
 Isolate* v8_Isolate_New() {
     if (!v8_initialized) {
@@ -2838,35 +2049,36 @@ Isolate* v8_Isolate_New() {
     }
     
     Isolate::CreateParams create_params;
-    ArrayBuffer::Allocator* allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
-    create_params.array_buffer_allocator = allocator;
+    create_params.array_buffer_allocator_shared =
+        std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     Isolate* isolate = Isolate::New(create_params);
-    
-    // Track the allocator for cleanup when isolate is disposed
-    if (isolate) {
-        std::lock_guard<std::mutex> guard(g_isolate_allocators.lock);
-        g_isolate_allocators.map[isolate] = allocator;
-    } else {
-        // Isolate creation failed, clean up the allocator
-        delete allocator;
-    }
-    
+    if (isolate) isolate->SetData(kIsolateDataSlot, new IsolateData());
     return isolate;
+}
+
+/// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
+bool v8_Isolate_IsFromSnapshot(Isolate* isolate) {
+    IsolateData* data = isolateData(isolate);
+    return data && data->startup_data;
+}
+
+/// How many of `isolate`'s JSON (and default-export) modules wait for
+/// evaluation (IsolateData::synthetic_json_exports), for tests.
+size_t v8_Isolate_PendingSyntheticModuleCount(Isolate* isolate) {
+    IsolateData* data = isolateData(isolate);
+    return data ? data->synthetic_json_exports.size() : 0;
 }
 
 void v8_Isolate_Dispose(Isolate* isolate) {
     if (isolate) {
-        // Get the allocator before disposing the isolate
-        ArrayBuffer::Allocator* allocator = nullptr;
-        {
-            std::lock_guard<std::mutex> guard(g_isolate_allocators.lock);
-            auto it = g_isolate_allocators.map.find(isolate);
-            if (it != g_isolate_allocators.map.end()) {
-                allocator = it->second;
-                g_isolate_allocators.map.erase(it);
-            }
+        // The adapter's per-isolate record: its handles reset while their
+        // isolate lives, on its thread.
+        if (IsolateData* data = isolateData(isolate)) {
+            isolate->SetData(kIsolateDataSlot, nullptr);
+            for (SyntheticJsonExport* entry : data->synthetic_json_exports) deleteSyntheticExport(entry);
+            delete data;
         }
-        
+
         // Records that a dispose detached from their Global while V8 still had
         // their callback queued. Disposing THIS isolate is the point at which
         // its callbacks provably will not run, so it is where they are freed.
@@ -2885,11 +2097,6 @@ void v8_Isolate_Dispose(Isolate* isolate) {
                 }
             }
         }
-
-        // Its async iterator template, if script made one: an entry left for
-        // a disposed isolate would be found by the next isolate made at the
-        // same address.
-        v8_ClearAsyncIteratorTemplateCacheFor(isolate);
 
         // DefaultPlatform keeps a foreground task runner per isolate, holding
         // what V8 posted for it; without this a later isolate at the same
@@ -2918,10 +2125,6 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             }
         }
 
-        // Then delete the allocator
-        if (allocator) {
-            delete allocator;
-        }
     }
 }
 
@@ -4855,18 +4058,6 @@ void v8_Script_Dispose(Global<Script>* script) {
 // Module Functions (ES Modules support)
 // ============================================================================
 
-/// Module resolve callback data structure
-///
-/// The callback is handed what identifies a ModuleRequest to the host - its
-/// specifier and its "type" import attribute (null when absent) - plus the
-/// referrer's identity hash, which is how the embedder finds the referrer's own
-/// record (and so its base URL and its already-fetched children). It returns
-/// the Global<Module>* of the child; ownership stays with the embedder.
-struct ModuleResolveCallbackData {
-    void* user_data;
-    void* (*callback)(void* user_data, const char* specifier, int specifier_len, const char* type_attribute, int referrer_identity_hash);
-};
-
 /// The value of the "type" entry in an import-attributes FixedArray, as a new[]
 /// string the caller delete[]s, or nullptr when there is none. `stride` is 3 for
 /// arrays that carry source positions (ModuleRequest::GetImportAttributes and
@@ -4897,46 +4088,6 @@ static char* importTypeAttribute(Isolate* isolate, Local<Context> context, Local
     return type;
 }
 
-/// Global module resolve callback (set per isolate)
-static ModuleResolveCallbackData* g_module_resolve_callback = nullptr;
-
-/// A JSON module's parsed value, held from creation until V8 runs its
-/// evaluation steps (see v8_Module_CreateJsonModule).
-struct SyntheticJsonExport {
-    /// The isolate the handles are of: an entry is read and reset only on
-    /// its isolate's thread, and only that isolate's entries are compared.
-    Isolate* isolate;
-    Global<Module> module;
-    Global<Value> value;
-};
-
-/// Every isolate's JSON (and default-export) modules waiting for evaluation.
-/// Isolates live on every Browser and worker thread (docs/instances.md):
-/// `lock` guards `entries`, for one push or one find-and-erase; the handles
-/// are touched after the lock, on the entry's own thread.
-struct SyntheticJsonExports {
-    std::mutex lock;
-    std::vector<SyntheticJsonExport*> entries;
-
-    /// Take out `isolate`'s entry whose module is `module`, if any.
-    SyntheticJsonExport* take(Isolate* isolate, Local<Module> module) {
-        std::lock_guard<std::mutex> guard(lock);
-        for (size_t i = 0; i < entries.size(); i++) {
-            if (entries[i]->isolate != isolate) continue;
-            if (!(entries[i]->module == module)) continue;
-            SyntheticJsonExport* found = entries[i];
-            entries.erase(entries.begin() + i);
-            return found;
-        }
-        return nullptr;
-    }
-
-    void add(SyntheticJsonExport* entry) {
-        std::lock_guard<std::mutex> guard(lock);
-        entries.push_back(entry);
-    }
-};
-static SyntheticJsonExports g_synthetic_json_exports;
 
 /// Report an unresolvable module specifier as a JavaScript exception.
 ///
@@ -4974,61 +4125,6 @@ static void throwUnresolvedModuleSpecifier(Isolate* isolate, Local<String> speci
         return;
     }
     isolate->ThrowException(Exception::TypeError(message));
-}
-
-/// V8 Module resolve callback wrapper
-static MaybeLocal<Module> V8ModuleResolveCallback(
-    Local<Context> context,
-    Local<String> specifier,
-    Local<FixedArray> import_assertions,
-    Local<Module> referrer
-) {
-    Isolate* isolate = context->GetIsolate();
-
-    if (!g_module_resolve_callback || !g_module_resolve_callback->callback) {
-        throwUnresolvedModuleSpecifier(isolate, specifier);
-        return MaybeLocal<Module>();
-    }
-
-    // Convert specifier to C string
-    String::Utf8Value specifier_utf8(isolate, specifier);
-    const char* specifier_cstr = *specifier_utf8;
-    int specifier_len = specifier_utf8.length();
-
-    // The resolve callback's attributes carry source positions: (key, value,
-    // position) triples, as d8's ResolveModuleCallback reads them.
-    char* type_attribute = importTypeAttribute(isolate, context, import_assertions, 3, nullptr);
-
-    // Call the Zig callback
-    void* result = g_module_resolve_callback->callback(
-        g_module_resolve_callback->user_data,
-        specifier_cstr,
-        specifier_len,
-        type_attribute,
-        referrer->GetIdentityHash()
-    );
-    delete[] type_attribute;
-
-    if (!result) {
-        throwUnresolvedModuleSpecifier(isolate, specifier);
-        return MaybeLocal<Module>();
-    }
-
-    // Result is a Global<Module>* the embedder keeps owning.
-    Global<Module>* resolved = static_cast<Global<Module>*>(result);
-    return resolved->Get(isolate);
-}
-
-/// Set the module resolve callback for the current isolate
-void v8_Module_SetResolveCallback(
-    void* user_data,
-    void* (*callback)(void* user_data, const char* specifier, int specifier_len, const char* type_attribute, int referrer_identity_hash)
-) {
-    if (!g_module_resolve_callback) {
-        g_module_resolve_callback = new ModuleResolveCallbackData();
-    }
-    g_module_resolve_callback->user_data = user_data;
-    g_module_resolve_callback->callback = callback;
 }
 
 /// Compile source code as an ES Module
@@ -5137,29 +4233,6 @@ int v8_Module_GetStatus(Global<Module>* module) {
     return static_cast<int>(local_module->GetStatus());
 }
 
-/// Instantiate the module (link all imports)
-/// Returns true on success, false on error
-bool v8_Module_Instantiate(Global<Context>* context, Global<Module>* module) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-
-    Local<Context> local_context = context->Get(isolate);
-    Local<Module> local_module = module->Get(isolate);
-
-    // Enter the context for module instantiation
-    // This ensures import resolution happens in the right realm
-    Context::Scope context_scope(local_context);
-
-    // Same reasoning as v8_Module_Compile: a failed link schedules an exception
-    // that this bool return cannot carry, and an exception left pending kills
-    // the process at the next V8 call rather than here.
-    TryCatch try_catch(isolate);
-
-    Maybe<bool> result = local_module->InstantiateModule(local_context, V8ModuleResolveCallback);
-
-    return result.FromMaybe(false);
-}
-
 /// Evaluate the module (execute the top-level code)
 /// Returns the result value or nullptr on error
 Global<Value>* v8_Module_Evaluate(Global<Context>* context, Global<Module>* module) {
@@ -5253,14 +4326,10 @@ void v8_Module_Dispose(Global<Module>* module) {
         // parsed value in the synthetic-export table; drop it with the module.
         if (!module->IsEmpty()) {
             Isolate* isolate = Isolate::GetCurrent();
-            if (isolate) {
+            if (IsolateData* data = isolateData(isolate)) {
                 HandleScope handle_scope(isolate);
                 Local<Module> local = module->Get(isolate);
-                if (SyntheticJsonExport* entry = g_synthetic_json_exports.take(isolate, local)) {
-                    entry->module.Reset();
-                    entry->value.Reset();
-                    delete entry;
-                }
+                if (SyntheticJsonExport* entry = data->takeSyntheticExport(local)) deleteSyntheticExport(entry);
             }
         }
         releaseWeakArm(module);
@@ -5359,11 +4428,10 @@ static MaybeLocal<Value> JsonModuleEvaluationSteps(Local<Context> context, Local
 
     Local<Value> value;
     bool found = false;
-    if (SyntheticJsonExport* entry = g_synthetic_json_exports.take(isolate, module)) {
+    IsolateData* data = isolateData(isolate);
+    if (SyntheticJsonExport* entry = data ? data->takeSyntheticExport(module) : nullptr) {
         value = entry->value.Get(isolate);
-        entry->module.Reset();
-        entry->value.Reset();
-        delete entry;
+        deleteSyntheticExport(entry);
         found = true;
     }
 
@@ -5440,11 +4508,19 @@ Global<Module>* v8_Module_CreateJsonModule(
         JsonModuleEvaluationSteps
     );
 
+    IsolateData* data = isolateData(isolate);
+    if (!data) {
+        *out_error = new V8ErrorInfo();
+        (*out_error)->has_error = true;
+        (*out_error)->message = strdup("JSON modules need an isolate made by v8_Isolate_New or v8_Isolate_NewFromSnapshot");
+        (*out_error)->line_number = -1;
+        (*out_error)->column_number = -1;
+        return nullptr;
+    }
     SyntheticJsonExport* entry = new SyntheticJsonExport();
-    entry->isolate = isolate;
     entry->module.Reset(isolate, module);
     entry->value.Reset(isolate, parsed);
-    g_synthetic_json_exports.add(entry);
+    data->synthetic_json_exports.push_back(entry);
 
     return trackHandle(new Global<Module>(isolate, module));
 }
@@ -5484,11 +4560,12 @@ Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
         JsonModuleEvaluationSteps
     );
 
+    IsolateData* data = isolateData(isolate);
+    if (!data) return nullptr;
     SyntheticJsonExport* entry = new SyntheticJsonExport();
-    entry->isolate = isolate;
     entry->module.Reset(isolate, module);
     entry->value.Reset(isolate, default_export);
-    g_synthetic_json_exports.add(entry);
+    data->synthetic_json_exports.push_back(entry);
 
     return trackHandle(new Global<Module>(isolate, module));
 }
@@ -5496,134 +4573,6 @@ Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
 // ============================================================================
 // Dynamic Import (import() expression) Support
 // ============================================================================
-
-/// Dynamic import callback data structure
-struct DynamicImportCallbackData {
-    void* user_data;
-    /// Callback signature:
-    ///   user_data: Context passed during setup
-    ///   context: V8 Context* where import() was called
-    ///   referrer_module_specifier: Module specifier string of the calling module (or null)
-    ///   referrer_module_specifier_len: Length of specifier string
-    ///   specifier: The specifier passed to import()
-    ///   specifier_len: Length of specifier
-    ///   promise_resolver: V8 PromiseResolver* to resolve/reject with result
-    ///   type_attribute: the import's "type" attribute, or null (valid for the
-    ///     duration of the call only)
-    /// Returns: void (result communicated via promise_resolver)
-    void (*callback)(
-        void* user_data,
-        void* context,
-        const char* referrer_module_specifier,
-        int referrer_module_specifier_len,
-        const char* specifier,
-        int specifier_len,
-        void* promise_resolver,
-        const char* type_attribute
-    );
-};
-
-/// Global dynamic import callback (set per isolate)
-static DynamicImportCallbackData* g_dynamic_import_callback = nullptr;
-
-/// V8 Host dynamic import callback wrapper
-/// This is called by V8 whenever import() is used in JavaScript
-static MaybeLocal<Promise> V8HostImportModuleDynamicallyCallback(
-    Local<Context> context,
-    Local<Data> host_defined_options,
-    Local<Value> resource_name,
-    Local<String> specifier,
-    Local<FixedArray> import_assertions
-) {
-    (void)host_defined_options;
-
-    Isolate* isolate = context->GetIsolate();
-    EscapableHandleScope handle_scope(isolate);
-    
-    // Create promise resolver to return
-    Local<Promise::Resolver> resolver;
-    if (!Promise::Resolver::New(context).ToLocal(&resolver)) {
-        return MaybeLocal<Promise>();
-    }
-    
-    // If no callback registered, reject with error
-    if (!g_dynamic_import_callback || !g_dynamic_import_callback->callback) {
-        Local<String> error_msg = String::NewFromUtf8Literal(isolate, "Dynamic import not supported");
-        Local<Value> error = Exception::Error(error_msg);
-        resolver->Reject(context, error).Check();
-        return handle_scope.Escape(resolver->GetPromise());
-    }
-    
-    // Convert specifier to C string
-    String::Utf8Value specifier_utf8(isolate, specifier);
-    const char* specifier_cstr = *specifier_utf8;
-    int specifier_len = specifier_utf8.length();
-    
-    // Convert resource name (referrer) to C string if present
-    const char* referrer_cstr = nullptr;
-    int referrer_len = 0;
-    String::Utf8Value* referrer_utf8 = nullptr;
-    if (!resource_name.IsEmpty() && resource_name->IsString()) {
-        referrer_utf8 = new String::Utf8Value(isolate, resource_name);
-        referrer_cstr = **referrer_utf8;
-        referrer_len = referrer_utf8->length();
-    }
-    
-    // Create Global handles for context and resolver to pass to Zig
-    Global<Context>* context_global = new Global<Context>(isolate, context);
-    Global<Promise::Resolver>* resolver_global = new Global<Promise::Resolver>(isolate, resolver);
-
-    // The import's "type" attribute - a dynamic import's attributes carry no
-    // source positions, so (key, value) pairs.
-    char* type_attribute = importTypeAttribute(isolate, context, import_assertions, 2, nullptr);
-
-    // Call the Zig callback - it will resolve/reject the promise
-    g_dynamic_import_callback->callback(
-        g_dynamic_import_callback->user_data,
-        context_global,
-        referrer_cstr,
-        referrer_len,
-        specifier_cstr,
-        specifier_len,
-        resolver_global,
-        type_attribute
-    );
-    delete[] type_attribute;
-    
-    // Clean up referrer string (if allocated)
-    if (referrer_utf8) {
-        delete referrer_utf8;
-    }
-    
-    // Return the promise - Zig callback will resolve/reject it asynchronously
-    return handle_scope.Escape(resolver->GetPromise());
-}
-
-// import.meta - HTML "HostGetImportMetaProperties": its url is the module
-// script's base URL. Zig keeps the module scripts and their URLs
-// (src/html/module_script.zig), so this asks it for the script whose record is
-// `module`; V8 names a module only by object identity. V8 hands the callback a
-// fresh object with a null prototype (v8-callbacks.h,
-// HostInitializeImportMetaObjectCallback) - properties are ours to add.
-typedef const char* (*ImportMetaUrlCallback)(int identity_hash, Global<Module>* module, size_t* len);
-static ImportMetaUrlCallback g_import_meta_url_callback = nullptr;
-
-static void V8HostInitializeImportMetaObjectCallback(Local<Context> context, Local<Module> module, Local<Object> meta) {
-    if (!g_import_meta_url_callback) return;
-    Isolate* isolate = context->GetIsolate();
-    Global<Module> handle(isolate, module);
-    size_t len = 0;
-    const char* url = g_import_meta_url_callback(module->GetIdentityHash(), &handle, &len);
-    if (!url) return;
-    Local<String> value;
-    if (!String::NewFromUtf8(isolate, url, NewStringType::kNormal, static_cast<int>(len)).ToLocal(&value)) return;
-    (void)meta->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "url"), value).FromMaybe(false);
-}
-
-void v8_Isolate_SetImportMetaUrlCallback(Isolate* isolate, ImportMetaUrlCallback callback) {
-    g_import_meta_url_callback = callback;
-    isolate->SetHostInitializeImportMetaObjectCallback(V8HostInitializeImportMetaObjectCallback);
-}
 
 /// %Error.prototype% of `context`: the realm's intrinsic, not whatever script
 /// has since stored at globalThis.Error. An Error made in the context has it
@@ -5646,33 +4595,6 @@ bool v8_Module_Equals(Global<Module>* a, Global<Module>* b) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     return a->Get(isolate) == b->Get(isolate);
-}
-
-/// Set the dynamic import callback for the current isolate
-/// This callback is invoked whenever import() is used in JavaScript
-void v8_Isolate_SetHostImportModuleDynamicallyCallback(
-    Isolate* isolate,
-    void* user_data,
-    void (*callback)(
-        void* user_data,
-        void* context,
-        const char* referrer_module_specifier,
-        int referrer_module_specifier_len,
-        const char* specifier,
-        int specifier_len,
-        void* promise_resolver,
-        const char* type_attribute
-    )
-) {
-    // Store callback data
-    if (!g_dynamic_import_callback) {
-        g_dynamic_import_callback = new DynamicImportCallbackData();
-    }
-    g_dynamic_import_callback->user_data = user_data;
-    g_dynamic_import_callback->callback = callback;
-    
-    // Register with V8
-    isolate->SetHostImportModuleDynamicallyCallback(V8HostImportModuleDynamicallyCallback);
 }
 
 /// Resolve a dynamic import promise with a module namespace
@@ -8069,90 +6991,6 @@ void v8_Isolate_SetMicrotasksPolicy(Isolate* isolate, int policy) {
 // Promise Rejection Tracking (for unhandledrejection/rejectionhandled events)
 // ============================================================================
 
-/// Type definition for Zig promise rejection event callback
-/// Signature: fn(user_data: *anyopaque, event_type: i32, promise: *anyopaque, value: ?*anyopaque) void
-/// 
-/// event_type values (from V8 PromiseRejectEvent enum):
-///   0 = kPromiseRejectWithNoHandler       - Promise rejected, no handler attached
-///   1 = kPromiseHandlerAddedAfterReject   - Handler added to previously-rejected promise
-///   2 = kPromiseRejectAfterResolved       - Promise rejected after already resolved (unused)
-///   3 = kPromiseResolveAfterResolved      - Promise resolved after already resolved (unused)
-typedef void (*ZigPromiseRejectEventCallback)(
-    void* user_data,
-    int event_type,
-    void* promise,
-    void* value
-);
-
-/// Global storage for promise reject callback data
-struct PromiseRejectCallbackData {
-    void* user_data;
-    ZigPromiseRejectEventCallback callback;
-};
-static PromiseRejectCallbackData* g_promise_reject_callback = nullptr;
-
-/// V8 callback that forwards promise rejection events to Zig
-static void V8PromiseRejectCallback(PromiseRejectMessage message) {
-    if (!g_promise_reject_callback || !g_promise_reject_callback->callback) {
-        return;
-    }
-    
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    
-    // Get the promise (always available)
-    Local<Promise> promise = message.GetPromise();
-    
-    // Get the rejection value (may be empty for some event types)
-    Local<Value> value = message.GetValue();
-    
-    // Create Global handles for Zig to use
-    // Note: Zig is responsible for disposing these
-    Global<Promise>* promise_global = trackHandle(new Global<Promise>(isolate, promise));
-    
-    Global<Value>* value_global = nullptr;
-    if (!value.IsEmpty()) {
-        value_global = trackHandle(new Global<Value>(isolate, value));
-    }
-    
-    // Map V8 event type to integer
-    int event_type = static_cast<int>(message.GetEvent());
-    
-    // Call Zig callback
-    g_promise_reject_callback->callback(
-        g_promise_reject_callback->user_data,
-        event_type,
-        promise_global,
-        value_global
-    );
-}
-
-/// Set the promise rejection callback for an isolate
-/// 
-/// This enables tracking of unhandled promise rejections and late-attached handlers.
-/// The callback will be invoked when:
-/// - A promise is rejected with no handler (event_type=0)
-/// - A handler is added to a previously-rejected promise (event_type=1)
-///
-/// @param isolate - The V8 isolate to configure
-/// @param user_data - Opaque pointer passed to callback
-/// @param callback - Zig callback function
-void v8_Isolate_SetPromiseRejectCallback(
-    Isolate* isolate,
-    void* user_data,
-    ZigPromiseRejectEventCallback callback
-) {
-    // Store callback data
-    if (!g_promise_reject_callback) {
-        g_promise_reject_callback = new PromiseRejectCallbackData();
-    }
-    g_promise_reject_callback->user_data = user_data;
-    g_promise_reject_callback->callback = callback;
-    
-    // Register with V8
-    isolate->SetPromiseRejectCallback(V8PromiseRejectCallback);
-}
-
 /// promise.[[PromiseIsHandled]] (HTML "notify about rejected promises" step
 /// 4.1.1 and HostPromiseRejectionTracker). False for a non-promise.
 bool v8_Promise_HasHandler(Global<Value>* promise) {
@@ -8175,15 +7013,6 @@ void v8_Isolate_AddMicrotasksCompletedCallback(Isolate* isolate, void (*callback
 
 void v8_Isolate_RemoveMicrotasksCompletedCallback(Isolate* isolate, void (*callback)(Isolate*, void*), void* data) {
     isolate->RemoveMicrotasksCompletedCallback(callback, data);
-}
-
-/// Clear the promise rejection callback for an isolate
-void v8_Isolate_ClearPromiseRejectCallback(Isolate* isolate) {
-    if (g_promise_reject_callback) {
-        delete g_promise_reject_callback;
-        g_promise_reject_callback = nullptr;
-    }
-    isolate->SetPromiseRejectCallback(nullptr);
 }
 
 // ============================================================================
@@ -9267,6 +8096,12 @@ Global<Value>* v8_Value_ToWeakGlobal(
 // ============================================================================
 // Async Iterator Support
 // ============================================================================
+//
+// What is left of an async iterator object the adapter once made itself
+// (v8_AsyncIterator_New, deleted with its process-wide template cache: no
+// caller). Its three callbacks stay because the external references table
+// registers them (external_references.zig), and a snapshot resolves every
+// callback by its index there.
 
 /// Zig async iterator next callback type
 /// Returns a V8 Promise that resolves to { value, done }
@@ -9398,193 +8233,6 @@ static void AsyncIteratorSelfCallback(const FunctionCallbackInfo<Value>& info) {
     // Return the iterator object itself (this)
     info.GetReturnValue().Set(info.This());
 }
-
-/// Create a V8 async iterator object wrapping a Zig async iterator
-///
-/// Creates a JavaScript object with next() and return() methods that conform
-/// to the ES async iterator protocol.
-///
-/// The object has an internal field storing AsyncIteratorData with:
-/// - iterator_ptr: Opaque Zig iterator pointer
-/// - next_fn: Zig callback for next() -> { value, done }
-/// - return_fn: Zig callback for cleanup
-///
-/// JavaScript Usage:
-///   const result = await iterator.next(); // { value: ..., done: false }
-///   await iterator.return(); // Cleanup
-
-// Cached async iterator templates - all iterators of one isolate share one
-// constructor - one per isolate. It used to be ONE slot for the process,
-// reset whenever another isolate asked: a worker's `for await` then reset the
-// page's template (and after the worker's isolate was disposed, the page reset
-// a dead handle - docs/lessons/architecture-before-disposing-an-isolate-find-
-// everything-the.md). With workers on threads of their own (docs/instances.md)
-// that reset would come from another thread. Each isolate's entry is made, read
-// and reset only on its own thread; `lock` keeps the map whole.
-struct AsyncIteratorTemplates {
-    std::mutex lock;
-    std::unordered_map<Isolate*, Global<FunctionTemplate>*> map;
-};
-static AsyncIteratorTemplates g_async_iterator_template;
-
-/// Clear every isolate's async iterator template. Only at the process's end,
-/// on the thread that owns every remaining isolate.
-void v8_ClearAsyncIteratorTemplateCache() {
-    std::lock_guard<std::mutex> guard(g_async_iterator_template.lock);
-    for (auto& kv : g_async_iterator_template.map) {
-        kv.second->Reset();
-        delete kv.second;
-    }
-    g_async_iterator_template.map.clear();
-}
-
-/// Clear |isolate|'s template, on its own thread, before it is disposed: a
-/// worker's teardown must not reset the page's.
-void v8_ClearAsyncIteratorTemplateCacheFor(Isolate* isolate) {
-    Global<FunctionTemplate>* doomed = nullptr;
-    {
-        std::lock_guard<std::mutex> guard(g_async_iterator_template.lock);
-        auto it = g_async_iterator_template.map.find(isolate);
-        if (it == g_async_iterator_template.map.end()) return;
-        doomed = it->second;
-        g_async_iterator_template.map.erase(it);
-    }
-    doomed->Reset();
-    delete doomed;
-}
-
-/// Clear the module resolve callback
-/// MUST be called before disposing an isolate to prevent use-after-free crashes.
-/// The user_data pointer becomes invalid when the Zig runtime is deinitialized.
-void v8_ClearModuleResolveCallback() {
-    if (g_module_resolve_callback != nullptr) {
-        delete g_module_resolve_callback;
-        g_module_resolve_callback = nullptr;
-    }
-    // Parsed JSON values of modules that were never evaluated. Their Globals
-    // belong to the isolate being torn down and must be reset before it goes.
-    // (Full teardown only: every isolate left is the calling thread's.)
-    {
-        std::lock_guard<std::mutex> guard(g_synthetic_json_exports.lock);
-        for (SyntheticJsonExport* entry : g_synthetic_json_exports.entries) {
-            entry->module.Reset();
-            entry->value.Reset();
-            delete entry;
-        }
-        g_synthetic_json_exports.entries.clear();
-    }
-}
-
-/// Clear the dynamic import callback
-/// MUST be called before disposing an isolate to prevent use-after-free crashes.
-/// The user_data pointer becomes invalid when the Zig runtime is deinitialized.
-void v8_ClearDynamicImportCallback() {
-    if (g_dynamic_import_callback != nullptr) {
-        delete g_dynamic_import_callback;
-        g_dynamic_import_callback = nullptr;
-    }
-}
-
-/// Get or create |isolate|'s async iterator template (the current thread's).
-static Local<FunctionTemplate> getAsyncIteratorTemplate(Isolate* isolate) {
-    {
-        std::lock_guard<std::mutex> guard(g_async_iterator_template.lock);
-        auto it = g_async_iterator_template.map.find(isolate);
-        if (it != g_async_iterator_template.map.end()) return it->second->Get(isolate);
-    }
-    // Made outside the lock: FunctionTemplate::New allocates on the V8 heap,
-    // which can collect, and a collection runs weak callbacks that take other
-    // locks. Only this thread makes |isolate|'s entry, so none appears meanwhile.
-    Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate);
-    tpl->SetClassName(String::NewFromUtf8Literal(isolate, "ReadableStreamAsyncIterator"));
-    tpl->InstanceTemplate()->SetInternalFieldCount(1);
-    Global<FunctionTemplate>* cached = new Global<FunctionTemplate>(isolate, tpl);
-    std::lock_guard<std::mutex> guard(g_async_iterator_template.lock);
-    g_async_iterator_template.map[isolate] = cached;
-    return tpl;
-}
-
-Global<Object>* v8_AsyncIterator_New(
-    Isolate* isolate,
-    Global<Context>* context,
-    void* iterator_ptr,
-    ZigAsyncIteratorNextFn next_fn,
-    ZigAsyncIteratorReturnFn return_fn
-) {
-    HandleScope handle_scope(isolate);
-    Local<Context> ctx = context->Get(isolate);
-    
-    // Get the cached template - all iterators share this template
-    Local<FunctionTemplate> tpl = getAsyncIteratorTemplate(isolate);
-    
-    // Create object instance from template's instance template
-    Local<Object> obj = tpl->InstanceTemplate()->NewInstance(ctx).ToLocalChecked();
-    
-    // Allocate and store iterator data in internal field
-    AsyncIteratorData* data = new AsyncIteratorData{
-        iterator_ptr,
-        next_fn,
-        return_fn
-    };
-    obj->SetAlignedPointerInInternalField(0, data);
-    
-
-    
-    // Wrap data pointer in External for passing to function callbacks
-    Local<External> data_external = External::New(isolate, data);
-    
-    // Create 'next' method with data passed via External
-    Local<String> next_name = String::NewFromUtf8Literal(isolate, "next");
-    Local<FunctionTemplate> next_tpl = FunctionTemplate::New(isolate, AsyncIteratorNextCallback, data_external);
-    Local<Function> next_fn_obj = next_tpl->GetFunction(ctx).ToLocalChecked();
-    obj->Set(ctx, next_name, next_fn_obj).Check();
-    
-    // Create 'return' method with data passed via External
-    Local<String> return_name = String::NewFromUtf8Literal(isolate, "return");
-    Local<FunctionTemplate> return_tpl = FunctionTemplate::New(isolate, AsyncIteratorReturnCallback, data_external);
-    Local<Function> return_fn_obj = return_tpl->GetFunction(ctx).ToLocalChecked();
-    obj->Set(ctx, return_name, return_fn_obj).Check();
-    
-    // Add Symbol.asyncIterator that returns this object
-    // This makes the object both an async iterator AND async iterable
-    // so that `for await...of` works directly on the iterator object
-    Local<Symbol> async_iterator_symbol = Symbol::GetAsyncIterator(isolate);
-    Local<FunctionTemplate> self_tpl = FunctionTemplate::New(isolate, AsyncIteratorSelfCallback);
-    Local<Function> self_fn = self_tpl->GetFunction(ctx).ToLocalChecked();
-    obj->Set(ctx, async_iterator_symbol, self_fn).Check();
-    
-    // Return as Global handle
-    return trackHandle(new Global<Object>(isolate, obj));
-}
-
-/// Dispose an async iterator object and free its internal data
-void v8_AsyncIterator_Dispose(Global<Object>* iterator) {
-    // Snapshot mode: trackHandle queued this handle for bulk cleanup (see
-    // v8_ObjectTemplate_Dispose), so deleting it here too is a double free.
-    if (g_snapshot_mode) return;
-    if (!iterator) return;
-    
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Object> obj = iterator->Get(isolate);
-    
-    // Free internal AsyncIteratorData
-    if (obj->InternalFieldCount() >= 1) {
-        AsyncIteratorData* data = static_cast<AsyncIteratorData*>(
-            obj->GetAlignedPointerFromInternalField(0)
-        );
-        if (data) {
-            delete data;
-            obj->SetAlignedPointerInInternalField(0, nullptr);
-        }
-    }
-    
-    // Dispose Global handle
-    releaseWeakArm(iterator);
-    iterator->Reset();
-    delete iterator;
-}
-
 
 // ============================================================================
 // TestUtils API - GC for testing (WHATWG TestUtils Standard)
@@ -9962,9 +8610,12 @@ Isolate* v8_Isolate_NewFromSnapshot(
         return nullptr;
     }
     
-    // Create isolate params with snapshot and external references
+    // Create isolate params with snapshot and external references. The
+    // ArrayBuffer allocator is V8's to free once the isolate and every
+    // BackingStore it allocated are gone (v8_Isolate_New says why).
     Isolate::CreateParams create_params;
-    create_params.array_buffer_allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
+    create_params.array_buffer_allocator_shared =
+        std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     create_params.snapshot_blob = startup_data;  // Heap-allocated, lives forever
     create_params.external_references = external_references;
     
@@ -9976,14 +8627,13 @@ Isolate* v8_Isolate_NewFromSnapshot(
         return nullptr;
     }
     
-    // Store pointers in isolate's embedder data slots for cleanup later
-    // NOTE: Slots 0-1 are reserved for Zig-side usage:
-    //   Slot 0: IsolateAllocator (see isolate_allocator.zig)
-    //   Slot 1: IsolateTemplates (see isolate_templates.zig)
-    // We use higher slots for C++ data:
-    //   Slot 2: StartupData struct pointer (its `data` is the blob's copy)
-    //   Slot 3: the innermost binding catch scope (kBindingCatchScopeSlot)
-    isolate->SetData(2, startup_data);
+    // The adapter's per-isolate record (kIsolateDataSlot), with the
+    // StartupData (its `data` is the blob's copy). Slots 0-1 are the Zig
+    // side's (isolate_allocator.zig, isolate_templates.zig); slot 3 is the
+    // innermost binding catch scope (kBindingCatchScopeSlot).
+    IsolateData* isolate_data = new IsolateData();
+    isolate_data->startup_data = startup_data;
+    isolate->SetData(kIsolateDataSlot, isolate_data);
     
     return isolate;
 }
@@ -10523,17 +9173,6 @@ void v8_Unlocker_Dispose(void* unlocker) {
 /// from within an active HandleScope. This function creates a Global that persists
 /// after the HandleScope ends.
 ///
-/// WARNING - CALLBACK USE CASE DEPRECATED:
-/// For storing JavaScript callbacks (event listeners, stream callbacks, etc.),
-/// use the CallbackManager API instead (crane_callback_register, etc.).
-/// The CallbackManager provides safe handle management that doesn't require
-/// passing V8 handles through FFI boundaries.
-///
-/// This function is still valid for:
-/// - Storing error values
-/// - Storing non-callback values that need to persist
-/// - Creating GlobalHandle from valid Local values within a HandleScope
-///
 /// @param isolate - Current V8 isolate
 /// @param local - Local value pointer (from callback or conversion)
 /// @return New Global<Value>* or nullptr if local is empty
@@ -10564,10 +9203,6 @@ Global<Value>* v8_Value_ToGlobal(Isolate* isolate, void* local) {
 
     return trackHandle(global);
 }
-
-// NOTE: v8_Function_ToGlobal was removed - it was unused and the pattern
-// of reconstructing Local handles from raw pointers was problematic.
-// For callback storage, use the CallbackManager API instead.
 
 /// Dispose a Global<Value> handle
 ///
@@ -11578,66 +10213,41 @@ extern "C" void v8_Context_GlobalHandle_Dispose(Global<Context>* handle) {
     }
 }
 
-/// Callback data for ShadowRealm context creation
-struct ShadowRealmCallbackData {
-    void* user_data;
-    void* (*callback)(void* user_data, void* initiator_context);
-};
-
-/// Global storage for ShadowRealm callback
-static ShadowRealmCallbackData* g_shadow_realm_callback = nullptr;
-
-/// Recursion guard for ShadowRealm callback
-/// V8's Context::New() can trigger this callback during harmony_shadow_realm initialization
-static thread_local bool g_in_shadow_realm_callback = false;
+/// HostCreateShadowRealmContextCallback's dispatcher: one Zig function for
+/// every agent (shadow_realm.shadowRealmContextCallback), which finds the
+/// agent's ShadowRealm data by its isolate. Handed the initiator context as a
+/// Global<Context>* it may read during the call; returns a Global<Context>*
+/// of the new context, or null.
+typedef void* (*ShadowRealmContextDispatch)(void* initiator_context);
+// process-wide: the one Zig dispatcher (shadow_realm.shadowRealmContextCallback) every agent's isolate calls, finding the agent's ShadowRealm data by isolate; written once at process start (protocol_agents.initializeEngine, before any agent's thread exists), read-only after. It was a heap record every createAgent rewrote, on whatever thread made the agent.
+static ShadowRealmContextDispatch g_shadow_realm_dispatch = nullptr;
 
 /// V8 internal callback for ShadowRealm context creation
 /// This is called by V8 when JavaScript code executes `new ShadowRealm()`
 static MaybeLocal<Context> V8HostCreateShadowRealmContextCallback(Local<Context> initiator_context) {
-    // Recursion guard: V8's Context::New() can trigger this callback
-    // during internal harmony_shadow_realm initialization.
-    // Return empty to break the recursion - V8 handles this gracefully.
-    if (g_in_shadow_realm_callback) {
-        return MaybeLocal<Context>();
-    }
-
-    g_in_shadow_realm_callback = true;
-
     Isolate* isolate = initiator_context->GetIsolate();
-
-    if (!g_shadow_realm_callback || !g_shadow_realm_callback->callback) {
-        // No callback registered - return empty to signal failure
-        g_in_shadow_realm_callback = false;
-        return MaybeLocal<Context>();
+    void* result = nullptr;
+    if (ShadowRealmContextDispatch dispatch = g_shadow_realm_dispatch) {
+        // The initiator, for Zig to read during the call.
+        Global<Context>* initiator_global = new Global<Context>(isolate, initiator_context);
+        result = dispatch(initiator_global);
+        delete initiator_global;
     }
-
-    // Create a Global handle for the initiator context to pass to Zig
-    Global<Context>* initiator_global = new Global<Context>(isolate, initiator_context);
-
-    // Call the Zig callback to create the ShadowRealm context
-    void* result = g_shadow_realm_callback->callback(
-        g_shadow_realm_callback->user_data,
-        initiator_global
-    );
-
-    // Clean up the initiator global - Zig has extracted what it needs
-    delete initiator_global;
-
     if (!result) {
-        // Zig callback returned null - context creation failed
-        g_in_shadow_realm_callback = false;
+        // v8-callbacks.h: "If the creation fails, the embedder must propagate
+        // that exception by returning an empty MaybeLocal" - an empty result
+        // with nothing pending is not one V8 can propagate.
+        if (!isolate->HasPendingException()) {
+            isolate->ThrowException(Exception::TypeError(
+                String::NewFromUtf8Literal(isolate, "The ShadowRealm's realm could not be created")));
+        }
         return MaybeLocal<Context>();
     }
 
-    // Result is a Global<Context>* to the new ShadowRealm context
+    // Result is a Global<Context>* to the new ShadowRealm context, kept by
+    // the agent's ShadowRealm data (its end disposes it).
     Global<Context>* new_context_global = static_cast<Global<Context>*>(result);
-    Local<Context> new_context = new_context_global->Get(isolate);
-
-    // The caller owns the Global handle, they'll clean it up
-    // V8 will keep the Local alive as needed
-
-    g_in_shadow_realm_callback = false;
-    return new_context;
+    return new_context_global->Get(isolate);
 }
 
 // ============================================================================
@@ -12462,30 +11072,18 @@ void v8_Free_ArrayBufferTransferData(ArrayBufferTransferData* data, size_t count
 
 extern "C" {
 
-/// Set the ShadowRealm context creation callback
-///
-/// This callback is invoked when JavaScript code executes `new ShadowRealm()`.
-/// The callback should create and return a new V8 context configured for
-/// ShadowRealm execution (with appropriate WebIDL interfaces exposed).
-///
-/// @param isolate - The V8 isolate to configure
-/// @param user_data - Opaque pointer passed to callback
-/// @param callback - Function to create ShadowRealm context
-///                   Parameters: (user_data, initiator_context as Global<Context>*)
-///                   Returns: Global<Context>* to the new context, or nullptr on failure
-void v8_Isolate_SetHostCreateShadowRealmContextCallback(
-    Isolate* isolate,
-    void* user_data,
-    void* (*callback)(void* user_data, void* initiator_context)
-) {
-    // Store callback data
-    if (!g_shadow_realm_callback) {
-        g_shadow_realm_callback = new ShadowRealmCallbackData();
-    }
-    g_shadow_realm_callback->user_data = user_data;
-    g_shadow_realm_callback->callback = callback;
+/// The process's ShadowRealm dispatcher: set once, while the process starts
+/// (engine.initializeEngine), before any agent's thread runs - never per
+/// agent, which with agents on their own threads would be concurrent writes
+/// of one global.
+void v8_SetShadowRealmContextDispatcher(ShadowRealmContextDispatch dispatch) {
+    g_shadow_realm_dispatch = dispatch;
+}
 
-    // Register with V8
+/// Let `isolate` make ShadowRealms (HostCreateShadowRealmContextCallback,
+/// through the process's dispatcher). With no dispatcher set - a host that
+/// never called initializeEngine - `new ShadowRealm()` throws a TypeError.
+void v8_Isolate_EnableShadowRealms(Isolate* isolate) {
     isolate->SetHostCreateShadowRealmContextCallback(V8HostCreateShadowRealmContextCallback);
 }
 

@@ -1,29 +1,29 @@
 //! V8 Isolate-Local Template Storage
 //!
-//! Stores V8 FunctionTemplates per-isolate using V8's embedder data slots.
-//! This is the canonical approach used by Node.js and Chrome for embedder data.
-//!
-//! ## Architecture
-//!
-//! V8 FunctionTemplates are bound to specific isolates. When an isolate is disposed,
-//! its templates become invalid. This module stores templates in V8's isolate data
-//! slots, ensuring they are automatically scoped to the isolate's lifetime.
+//! An isolate's FunctionTemplates, kept in one of V8's embedder data slots -
+//! the isolate's own, as Blink keeps its templates in V8PerIsolateData
+//! (`isolate->GetData(gin::kEmbedderBlink)`). Nothing of another isolate
+//! reaches them, and they go with their isolate (`cleanupTemplateStorage`,
+//! before it is disposed).
 //!
 //! ## Slot Usage
 //!
 //! - Slot 0: IsolateAllocator (see isolate_allocator.zig)
 //! - Slot 1: IsolateTemplates (this module)
+//! - Slot 2: v8_wrapper.cpp's per-isolate data
+//! - Slot 3: the innermost binding catch scope (v8_wrapper.cpp)
 //!
-//! ## Problem Solved
+//! ## One isolate's, on its thread
 //!
-//! Before this implementation, templates were cached in Zig static variables.
-//! When running multiple WPT tests, each test creates/disposes an isolate.
-//! The stale template pointers caused "Bus error" crashes on the second test.
-//!
-//! This module stores templates per-isolate, ensuring:
-//! 1. Automatic invalidation when isolate is disposed
-//! 2. No stale pointer possibility
-//! 3. Proper scoping to isolate lifetime
+//! Agents live on several threads (every Browser and every worker has its
+//! own, docs/instances.md), and an isolate is used by one thread at a time:
+//! its storage is read and written there, without a lock. The template
+//! registry (template_registry.zig) was a process-wide table of every
+//! isolate's templates under a mutex, and a process-wide generation counter
+//! that EVERY agent's end bumped threw away every OTHER isolate's storage -
+//! a worker's end on its own thread made the page's next iterator from a new
+//! template, so its prototype was not the realm's (instances B2,
+//! tests/v8/agent_templates_isolation_test.zig).
 
 const std = @import("std");
 const v8 = @import("ffi.zig");
@@ -33,33 +33,35 @@ const v8 = @import("ffi.zig");
 /// Slot 0 is used by isolate_allocator.zig for allocator storage
 pub const TEMPLATE_SLOT: c_int = 1;
 
-/// Maximum number of templates that can be stored per isolate
-const MAX_TEMPLATES = 2048;
-
-/// Template entry in the per-isolate storage
-const TemplateEntry = struct {
-    name: []const u8,
-    template: *v8.FunctionTemplate,
-};
-
 /// Per-isolate template storage
 pub const IsolateTemplates = struct {
     allocator: std.mem.Allocator,
+    /// The binding's cache: the template it made for each interface
+    /// (createTemplateCached), and each iterable interface's iterator
+    /// prototype template ("<Interface> Iterator"). Not disposed here - the
+    /// ones objects are made from are also `registered`.
     templates: std.StringHashMap(*v8.FunctionTemplate),
-    generation: u64,
+    /// The template registry (template_registry.register): the template each
+    /// interface's objects of this isolate are made from, by interface name.
+    /// The names are BORROWED (the generated interfaces' comptime names); the
+    /// templates are disposed with the storage.
+    registered: std.StringHashMapUnmanaged(*v8.FunctionTemplate) = .empty,
 
     /// Initialize isolate-local template storage
-    pub fn init(allocator: std.mem.Allocator, generation: u64) IsolateTemplates {
+    pub fn init(allocator: std.mem.Allocator) IsolateTemplates {
         return .{
             .allocator = allocator,
             .templates = std.StringHashMap(*v8.FunctionTemplate).init(allocator),
-            .generation = generation,
         };
     }
 
-    /// Deinitialize and free all resources
-    pub fn deinit(self: *IsolateTemplates) void {
-        // Clear the hashmap - templates themselves are owned by V8
+    /// Free the maps. `dispose`: the registered templates' handles too.
+    pub fn deinit(self: *IsolateTemplates, dispose: bool) void {
+        if (dispose) {
+            var registered = self.registered.valueIterator();
+            while (registered.next()) |template| v8.v8_FunctionTemplate_Dispose(template.*);
+        }
+        self.registered.deinit(self.allocator);
         self.templates.deinit();
     }
 
@@ -89,47 +91,28 @@ pub const IsolateTemplates = struct {
     }
 };
 
-/// Get or create template storage for an isolate
-///
-/// If storage doesn't exist for this isolate, creates new storage.
-/// If storage exists but has a different generation, recreates it.
-///
-/// Arguments:
-/// - isolate: V8 isolate to get/create storage for
-/// - allocator: Allocator to use for creating storage
-/// - generation: Current global generation counter (from template_registry)
-///
-/// Returns: Pointer to the isolate's template storage
+/// The isolate's template storage, made with `allocator` if it has none.
 pub fn getOrCreateTemplateStorage(
     isolate: *v8.Isolate,
     allocator: std.mem.Allocator,
-    generation: u64,
 ) !*IsolateTemplates {
-    // Check for existing storage
-    if (v8.v8_Isolate_GetData(isolate, TEMPLATE_SLOT)) |existing_ptr| {
-        const existing: *IsolateTemplates = @ptrCast(@alignCast(existing_ptr));
+    if (getTemplateStorage(isolate)) |existing| return existing;
 
-        // Check if generation matches
-        if (existing.generation == generation) {
-            return existing;
-        }
-
-        // Generation mismatch - storage is stale, clean it up
-        existing.deinit();
-        allocator.destroy(existing);
-        v8.v8_Isolate_SetData(isolate, TEMPLATE_SLOT, null);
-    }
-
-    // Create new storage
     const storage = try allocator.create(IsolateTemplates);
-    errdefer allocator.destroy(storage);
-
-    storage.* = IsolateTemplates.init(allocator, generation);
-
-    // Store in isolate data slot
+    storage.* = IsolateTemplates.init(allocator);
     v8.v8_Isolate_SetData(isolate, TEMPLATE_SLOT, storage);
-
     return storage;
+}
+
+/// The isolate's template storage, made if it has none: with the isolate's
+/// allocator (isolate_allocator.zig), or - for an isolate without one, the
+/// snapshot generator's or a test's own - the C allocator. Null when out of
+/// memory. On the isolate's own thread.
+pub fn storageFor(isolate: *v8.Isolate) ?*IsolateTemplates {
+    if (getTemplateStorage(isolate)) |existing| return existing;
+    const isolate_alloc = @import("isolate_allocator.zig");
+    const allocator = isolate_alloc.getIsolateAllocator(isolate) orelse std.heap.c_allocator;
+    return getOrCreateTemplateStorage(isolate, allocator) catch null;
 }
 
 /// Get template storage for an isolate (returns null if not initialized)
@@ -138,52 +121,26 @@ pub fn getTemplateStorage(isolate: *v8.Isolate) ?*IsolateTemplates {
     return @ptrCast(@alignCast(data_ptr));
 }
 
-/// Cleanup template storage for an isolate
+/// End the isolate's template storage: its registered templates disposed,
+/// its maps and the storage freed, the slot cleared.
 ///
-/// MUST be called BEFORE disposing the isolate to prevent memory leaks.
-/// This clears the template hashmap and frees the storage struct.
-///
-/// Arguments:
-/// - isolate: V8 isolate to cleanup storage for
-/// - allocator: Unused (kept for API compatibility) - storage uses its own allocator
+/// MUST be called BEFORE disposing the isolate, on its thread.
 pub fn cleanupTemplateStorage(isolate: *v8.Isolate, _: std.mem.Allocator) void {
-    const data_ptr = v8.v8_Isolate_GetData(isolate, TEMPLATE_SLOT) orelse return;
-    const storage: *IsolateTemplates = @ptrCast(@alignCast(data_ptr));
+    endStorage(isolate, true);
+}
 
-    // CRITICAL: Use the storage's own allocator, not the passed-in one!
-    // The storage was created with isolate_alloc.getIsolateAllocator() which
-    // returns an internal Arena/GPA allocator, NOT the browser's allocator.
-    // Using the wrong allocator causes "Invalid free" canary errors.
-    const storage_allocator = storage.allocator;
+/// `cleanupTemplateStorage` without disposing anything: for a test whose
+/// templates are synthetic pointers.
+pub fn forgetTemplateStorage(isolate: *v8.Isolate) void {
+    endStorage(isolate, false);
+}
 
-    // Deinitialize the hashmap
-    storage.deinit();
-
-    // Free the storage struct with its own allocator
-    storage_allocator.destroy(storage);
-
-    // Clear isolate data slot
+fn endStorage(isolate: *v8.Isolate, dispose: bool) void {
+    const storage = getTemplateStorage(isolate) orelse return;
     v8.v8_Isolate_SetData(isolate, TEMPLATE_SLOT, null);
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "IsolateTemplates - basic operations" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    var storage = IsolateTemplates.init(allocator, 1);
-    defer storage.deinit();
-
-    // Initially empty
-    try testing.expectEqual(@as(usize, 0), storage.count());
-    try testing.expect(!storage.contains("Element"));
-    try testing.expectEqual(@as(?*v8.FunctionTemplate, null), storage.get("Element"));
-}
-
-test "IsolateTemplates module compiles" {
-    const testing = std.testing;
-    testing.refAllDecls(@This());
+    // The storage's own allocator: the isolate's, or the C allocator for an
+    // isolate without one.
+    const storage_allocator = storage.allocator;
+    storage.deinit(dispose);
+    storage_allocator.destroy(storage);
 }
