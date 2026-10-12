@@ -271,6 +271,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Every native callback owns what `info` hands it - a dispatcher written beside interface.zig repeats its leaks](architecture-every-native-callback-owns-what-info-hands-it.md) - Run each callback's statement 10,000 times under `gc_bench --c-alloc` and read `global_handle_bytes`; a dispatcher that bypasses interface.zig's release predicates must be measured on its own.
 
 ### Spec Compliance
+- [A frame navigation sees only the response headers its fetch copied](spec-compliance-a-frame-navigation-sees-only-the-headers-its-fetch-copied.md) - A header a frame or popup navigation reads must be on fetch_integration's copy list - a missing one reads as "not sent", silently.
 - [MIME parameters compare string contents](spec-compliance-mime-parameters-compare-string-contents.md) - Check collection equality before using it for specification strings, and test parsing independently of its callers.
 - [Preserve quotes until MIME parsing](spec-compliance-preserve-quotes-until-mime-parsing.md) - Header splitting preserves the quoted representation that later MIME parsing consumes; test the composed algorithms and allocation failures.
 - [Blob type is not a MIME parser](spec-compliance-blob-type-is-not-a-mime-parser.md) - Split WPT results by API and browser before changing shared-looking type handling; Blob normalization and Fetch MIME extraction are different contracts.
