@@ -4806,6 +4806,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     dom_mod.addImport("selector", selector_mod);
     // Add unified interfaces module
     dom_mod.addImport("interfaces", interfaces_mod);
+    // The generated interfaces' defaults run src/dom's algorithms: an event
+    // handler IDL attribute's getter and setter (dom.event_handlers).
+    interfaces_mod.addImport("dom", dom_mod);
 
     // V8 module needs dom for document initialization
     v8_mod.addImport("dom", dom_mod);
@@ -4826,6 +4829,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     mixins_mod.addImport("callbacks", callbacks_mod);
     mixins_mod.addImport("webidl", webidl_mod);
     mixins_mod.addImport("mixins", mixins_mod); // Self-import for cross-mixin refs
+    // A mixin module's defaults run src/dom's algorithms, as an interface's do.
+    mixins_mod.addImport("dom", dom_mod);
 
     // Add mixins to impls (so impls can use shared mixin code)
     impls_mod.addImport("mixins", mixins_mod);

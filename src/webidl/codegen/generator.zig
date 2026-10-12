@@ -1306,7 +1306,8 @@ fn generateImplFile(
     }
 
     // A [Reflect*] accessor on an element is the generated interface's own
-    // (HTML 2.6): a stub here would override it with NotImplemented.
+    // (HTML 2.6): a stub here would override it with NotImplemented. So is
+    // every event handler IDL attribute's (HTML 8.1.8.1).
     const reflects = if (ir) |ir_ptr| reflectsOnElement(ir_ptr, interface.name) else false;
 
     // Generate getter stubs
@@ -1315,6 +1316,7 @@ fn generateImplFile(
             defer r.deinit(allocator);
             if (r.reflectsGetter()) continue;
         };
+        if (writer.isEventHandlerAttribute(attr)) continue;
 
         // Sanitize attribute name for function names (convert hyphens to underscores)
         const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
@@ -1345,6 +1347,7 @@ fn generateImplFile(
             r.deinit(allocator);
             continue;
         };
+        if (writer.isEventHandlerAttribute(attr)) continue;
         if (!attr.readonly) {
             // Sanitize attribute name for function names (convert hyphens to underscores)
             const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
