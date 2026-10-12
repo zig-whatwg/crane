@@ -24,7 +24,6 @@ const log = std.log.scoped(.v8_conv);
 const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
-const namespace = @import("namespace.zig");
 const interface_mod = @import("interface.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
@@ -3207,11 +3206,6 @@ pub fn throwTypeError(
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer v8.v8_Context_Dispose(context);
 
-    // Log error through context if available
-    if (namespace.getGlobalContext()) |ctx| {
-        ctx.logger.@"error"("V8 TypeError: {s}", .{message}) catch {};
-    }
-
     const msg_str = v8.v8_String_NewFromUtf8(
         isolate,
         message.ptr,
@@ -3253,11 +3247,6 @@ pub fn throwTypeErrorFromContext(
     v8.v8_Context_Enter(context);
     defer v8.v8_Context_Exit(context);
 
-    // Log error through context if available
-    if (namespace.getGlobalContext()) |ctx| {
-        ctx.logger.@"error"("V8 TypeError (cross-realm): {s}", .{message}) catch {};
-    }
-
     const msg_str = v8.v8_String_NewFromUtf8(
         isolate,
         message.ptr,
@@ -3281,11 +3270,6 @@ pub fn throwRangeError(
     isolate: *v8.Isolate,
     message: []const u8,
 ) void {
-    // Log error through context if available
-    if (namespace.getGlobalContext()) |ctx| {
-        ctx.logger.@"error"("V8 RangeError: {s}", .{message}) catch {};
-    }
-
     const msg_str = v8.v8_String_NewFromUtf8(
         isolate,
         message.ptr,
@@ -3302,11 +3286,6 @@ pub fn throwError(
     isolate: *v8.Isolate,
     message: []const u8,
 ) void {
-    // Log error through context if available
-    if (namespace.getGlobalContext()) |ctx| {
-        ctx.logger.@"error"("V8 Error: {s}", .{message}) catch {};
-    }
-
     const msg_str = v8.v8_String_NewFromUtf8(
         isolate,
         message.ptr,

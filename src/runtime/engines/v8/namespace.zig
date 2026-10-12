@@ -39,42 +39,52 @@ const interface = @import("interface.zig");
 /// binding is made from through this module).
 pub const generated_namespaces = @import("namespaces");
 
-/// The allocator of the runtime context namespace operations receive - what
-/// an impl allocates a result with, and what the binding frees it with.
-/// Tests set it to std.testing.allocator (then clearGlobalContext() at the
-/// end of the test) to see a leak.
-pub var context_allocator: std.mem.Allocator = std.heap.page_allocator;
-
-/// Global runtime context for V8 namespace operations
-/// TODO: This should be stored per-isolate, not globally
-var global_context: ?*runtime.ContextData = null;
-var global_context_mutex: std.Io.Mutex = .init;
-
-/// Get the global runtime context (may return null if not yet initialized)
-pub fn getGlobalContext() ?runtime.Context {
-    std.Io.Threaded.mutexLock(&global_context_mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_context_mutex);
-    return global_context;
-}
-
-/// Clear the global runtime context
+/// The realm a namespace operation that takes one (`runtime.Context`) is
+/// handed: the CURRENT realm - V8 enters the operation's creation context
+/// while the callback runs (current_realm.zig) - as WebIDL runs a namespace
+/// operation in it, and the Console Standard keeps each console namespace
+/// object's count map, timer table and group stack per realm.
 ///
-/// MUST be called before disposing an isolate to prevent use-after-free.
-/// The global context holds pointers to V8-specific data that becomes invalid
-/// when the isolate is disposed.
+/// It was one runtime context for the process, made by the first call and
+/// kept to the end (`global_context`): every realm of every agent shared one
+/// console state, mutated from every agent's thread unlocked - the mutex
+/// covered only the context's creation (instances B2,
+/// tests/v8/namespace_current_realm_test.zig).
 ///
-/// Called by template_registry.clear() as part of isolate cleanup.
-pub fn clearGlobalContext() void {
-    std.Io.Threaded.mutexLock(&global_context_mutex);
-    defer std.Io.Threaded.mutexUnlock(&global_context_mutex);
-    if (global_context) |ctx| {
-        // Deinit the context data to free resources
-        ctx.deinit();
-        // Free the ContextData struct itself
-        context_allocator.destroy(ctx);
+/// A context no realm was made for (a binding test's bare context) gets a
+/// runtime context for the call alone (`CallRealm`).
+const context_manager = @import("context_manager.zig");
+const isolate_allocator = @import("isolate_allocator.zig");
+
+/// The runtime context a namespace call runs with: the realm's, or one made
+/// for a context no realm was made for - over the isolate's allocator (the C
+/// allocator for an isolate without one) - and ended with the call.
+const CallRealm = struct {
+    realm: ?runtime.Context = null,
+    scoped: ?runtime.ContextData = null,
+
+    /// What the operation's allocations and its arguments' arena come from.
+    fn allocatorOf(isolate: *v8.Isolate, context: *v8.Context) std.mem.Allocator {
+        if (context_manager.get(context)) |realm| return realm.getAllocator();
+        return isolate_allocator.getIsolateAllocator(isolate) orelse std.heap.c_allocator;
     }
-    global_context = null;
-}
+
+    /// The realm of `context`, made for the call if it has none.
+    fn of(self: *CallRealm, isolate: *v8.Isolate, context: *v8.Context) !runtime.Context {
+        if (self.realm) |realm| return realm;
+        if (context_manager.get(context)) |realm| {
+            self.realm = realm;
+            return realm;
+        }
+        self.scoped = try runtime.ContextData.init(allocatorOf(isolate, context), .{ .engine_ctx = @ptrCast(context) });
+        self.realm = &self.scoped.?;
+        return self.realm.?;
+    }
+
+    fn end(self: *CallRealm) void {
+        if (self.scoped) |*scoped| scoped.deinit();
+    }
+};
 
 /// Whether the Global `conv.toV8Value(T, ...)` made of `result` is the
 /// binding's to release once it is the call's return value: an error the
@@ -396,14 +406,16 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     // and a Global<Context> keeps its realm - the whole page -
                     // alive: one left per call kept every page that called
                     // TestUtils.gc() or console.log() to the end of the
-                    // process. Released on the way out, unless it became the
-                    // process-wide context below, which keeps it.
+                    // process. Released on the way out.
                     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                         conv.throwTypeError(isolate, "Failed to get current context");
                         return;
                     };
-                    var context_kept = false;
-                    defer if (!context_kept) v8.v8_Context_Dispose(context);
+                    defer v8.v8_Context_Dispose(context);
+                    // The realm the operation runs in, if it takes one; ended
+                    // after everything below that may use it.
+                    var call_realm: CallRealm = .{};
+                    defer call_realm.end();
 
                     // Calculate required params: count params before variadic slice
                     const argc = info.length();
@@ -435,12 +447,12 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     // Extract and convert arguments at compile time based on parameter types
                     var args: std.meta.ArgsTuple(@TypeOf(namespace_fn)) = undefined;
 
-                    // The arguments convert into an arena over the context's
+                    // The arguments convert into an arena over the realm's
                     // allocator, released when the call returns - borrowed for
                     // the call, as an interface operation's are - whatever
                     // their size: a 4 KB stack buffer made any longer string
                     // argument a TypeError ("Type error in argument").
-                    var arena = std.heap.ArenaAllocator.init(context_allocator);
+                    var arena = std.heap.ArenaAllocator.init(CallRealm.allocatorOf(isolate, context));
                     defer arena.deinit();
                     const allocator = arena.allocator();
 
@@ -468,35 +480,15 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     inline for (fn_type_info.params, 0..) |param, i| {
                         const ParamType = param.type.?;
 
-                        // Handle special case: runtime.Context
+                        // Handle special case: runtime.Context - the
+                        // current realm.
                         if (ParamType == runtime.Context) {
-                            // Get or create the global context
-                            std.Io.Threaded.mutexLock(&global_context_mutex);
-                            defer std.Io.Threaded.mutexUnlock(&global_context_mutex);
-
-                            if (global_context == null) {
-                                // Initialize global context with colored logger
-                                // TODO: proper lifecycle (one per realm).
-                                const gpa = context_allocator;
-                                global_context = gpa.create(runtime.ContextData) catch {
-                                    conv.throwTypeError(isolate, "Failed to create runtime context");
-                                    return;
-                                };
-                                global_context.?.* = runtime.ContextData.init(gpa, .{
-                                    .colored = true,
-                                    .engine_ctx = @ptrCast(context),
-                                }) catch {
-                                    conv.throwTypeError(isolate, "Failed to initialize runtime context");
-                                    return;
-                                };
-                                // TODO: the first calling realm's context is
-                                // kept for the process (one page, not one per
-                                // call); a per-realm context is the fix.
-                                context_kept = true;
-                            }
-
-                            args[i] = global_context.?;
-                            impl_context = global_context.?;
+                            const realm = call_realm.of(isolate, context) catch {
+                                conv.throwTypeError(isolate, "Failed to create runtime context");
+                                return;
+                            };
+                            args[i] = realm;
+                            impl_context = realm;
                             converted = i + 1;
                             // runtime.Context doesn't consume a JS argument
                             continue;
