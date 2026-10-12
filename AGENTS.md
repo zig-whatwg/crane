@@ -471,6 +471,7 @@ else:
 | static attribute | `get_static_<name>`, `set_static_<name>` - accessors of the interface object |
 | static operation | `call_static_<name>` |
 | constant | none - the generated interface answers it (`get_<NAME>()`) |
+| special operation (indexed/named getter, setter, deleter) | bound from the generated `Meta.special_operations`, never by name; an anonymous one's delegate is `call_<keyword>`, or `call_<keyword>__<k>` for the k-th of its keyword |
 
 - **A private function never takes one of those prefixes.** Name helpers in
   camelCase.
