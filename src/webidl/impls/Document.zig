@@ -1301,12 +1301,15 @@ pub fn get_namedFlows(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Getter for rootElement
 /// SVG §5.1.2 - Returns the root svg element for SVG documents, null otherwise
 pub fn get_rootElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // For SVG documents, this would return the root <svg> element
-    // For non-SVG documents, return null
-    // TODO: Check if document is SVG and return root svg element
-    _ = internal;
-    return null;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    // SVG 2 "Document interface extensions": rootElement is the document
+    // element when that is an svg element, else null (Blink's
+    // Document::rootElement is DynamicTo<SVGSVGElement>(documentElement())).
+    const root = documentElementOf(instance) orelse return null;
+    const root_names = @import("dom").node_creation.elementNames(root) orelse return null;
+    const ns = root_names.namespace orelse return null;
+    if (!std.mem.eql(u8, ns, "http://www.w3.org/2000/svg") or !std.mem.eql(u8, root_names.local_name, "svg")) return null;
+    return root;
 }
 
 /// Getter for activeViewTransition

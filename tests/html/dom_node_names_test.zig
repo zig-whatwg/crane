@@ -85,3 +85,19 @@ test "tagName is uppercased only for an HTML-namespace element in an HTML docume
     const root = try elementNS(xml, null, html_ns, "div");
     try expectTagName(root, "div");
 }
+
+test "rootElement is the document element when it is an svg element" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    const svg_doc = try h.document(.xml);
+    defer interfaces.Document.deinit(svg_doc);
+    try std.testing.expect(try interfaces.Document.get_rootElement(svg_doc) == null);
+    const svg = try elementNS(svg_doc, null, svg_ns, "svg");
+    try std.testing.expectEqual(svg, (try interfaces.Document.get_rootElement(svg_doc)).?);
+
+    const other = try h.document(.xml);
+    defer interfaces.Document.deinit(other);
+    _ = try elementNS(other, null, svg_ns, "g");
+    try std.testing.expect(try interfaces.Document.get_rootElement(other) == null);
+}
