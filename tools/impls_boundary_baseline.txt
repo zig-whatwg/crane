@@ -80,7 +80,6 @@ src/webidl/impls/CookieStore.zig EventTarget.setEventHandler 1
 src/webidl/impls/CustomEvent.zig Event.getDispatchFlag 1
 src/webidl/impls/DOMImplementation.zig DocumentType.createDocumentType 2
 src/webidl/impls/DOMParser.zig HTMLParser.parseHTML 1
-src/webidl/impls/DOMStringMap.zig Element.call_getAttribute 1
 src/webidl/impls/DOMStringMap.zig Element.call_removeAttribute 1
 src/webidl/impls/DOMStringMap.zig Element.getInternalState 1
 src/webidl/impls/DedicatedWorkerGlobalScope.zig EventTarget.eventHandler 3
@@ -143,7 +142,6 @@ src/webidl/impls/HTMLElement.zig Element.removeAttributeByNamespaceAndLocalName 
 src/webidl/impls/HTMLElement.zig Element.setAttributeValue 1
 src/webidl/impls/HTMLElement.zig Node.set_textContent 1
 src/webidl/impls/HTMLFormElement.zig Element.getInternal 2
-src/webidl/impls/HTMLFormElement.zig Node.getInternalState 1
 src/webidl/impls/HTMLHyperlinkElementUtils.zig Element.getInternal 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setSupportedTokens 1

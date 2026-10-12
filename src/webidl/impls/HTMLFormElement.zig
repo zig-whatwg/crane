@@ -22,7 +22,6 @@ const log = std.log.scoped(.forms);
 
 // Import related impls for attribute access
 const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
 const form_associated = @import("html").form_associated;
 const attributeValue = form_associated.attributeValue;
 const hasAttribute = form_associated.hasAttribute;
@@ -176,8 +175,7 @@ pub fn get_action(instance: *runtime.Instance) anyerror!runtime.USVString {
     }
 
     // Fall back to the document URL.
-    const node_internal = NodeImpl.getInternalState(instance) orelse return error.InvalidState;
-    if (node_internal.owner_document) |doc| {
+    if (try interfaces.Node.get_ownerDocument(instance)) |doc| {
         return interfaces.Document.get_URL(doc) catch
             try instance.ctx.allocator.dupe(u8, "");
     }

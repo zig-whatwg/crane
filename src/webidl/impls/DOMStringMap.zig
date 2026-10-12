@@ -152,7 +152,6 @@ fn toHyphenated(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
 /// Note: Per WebIDL spec, this is only called when the property exists (interceptor checks first).
 pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) !runtime.DOMString {
     const internal = getInternalState(instance) orelse return error.InvalidState;
-    const ElementImpl = @import("Element.zig");
 
     // Convert camelCase name to hyphenated attribute name
     const allocator = internal.allocator;
@@ -161,7 +160,7 @@ pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) !runtim
 
     // Get the attribute value from the element
     const attr_dom_str = runtime.DOMString.initInterned(attr_name);
-    const value = try ElementImpl.call_getAttribute(internal.element, attr_dom_str);
+    const value = try interfaces.Element.call_getAttribute(internal.element, attr_dom_str);
 
     // Return empty string if attribute doesn't exist (shouldn't happen if interceptor checks first)
     return value orelse runtime.DOMString.initEmpty();
