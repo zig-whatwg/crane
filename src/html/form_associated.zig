@@ -166,10 +166,15 @@ pub fn formOwner(element: *Instance) ?*Instance {
     if (parserFormOwner(element)) |form| return form;
     const connected = interfaces.Node.get_isConnected(element) catch false;
     if (connected and hasAttribute(element, "form")) {
-        var value = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("form")) catch null) orelse return null;
-        defer value.deinit(element.ctx.allocator);
-        const found = firstElementWithId(rootOf(element), value.asSlice()) orelse return null;
-        return if (isForm(found)) found else null;
+        // HTML "reset the form owner", step 4: only listed elements use
+        // this attribute. An img falls through to its nearest ancestor form
+        // (step 5); elements without the attribute take the existing path.
+        if (isListed(element)) {
+            var value = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("form")) catch null) orelse return null;
+            defer value.deinit(element.ctx.allocator);
+            const found = firstElementWithId(rootOf(element), value.asSlice()) orelse return null;
+            return if (isForm(found)) found else null;
+        }
     }
     var ancestor = parentOf(element);
     while (ancestor) |a| : (ancestor = parentOf(a)) {
