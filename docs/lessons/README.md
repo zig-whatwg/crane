@@ -277,6 +277,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A named property enumerator returns names only](architecture-a-named-property-enumerator-returns-names-only.md) - An interceptor returns the key type its kind names, and a proxy in front of an object can hide what the object's own callbacks do wrong: test an unproxied object of every interceptor shape.
 
 ### Spec Compliance
+- [A label limit must not discard the public suffix](spec-compliance-domain-limits-must-not-drop-the-public-suffix.md) - Match the rightmost labels without truncating the hostname's security boundary.
 - [document.domain is a two-sided opt-in](spec-compliance-document-domain-is-a-two-sided-opt-in.md) - An unchanged document.domain getter does not mean unchanged access: setting it is an explicit opt-in, and both origins must opt in.
 - [A union's sequence member is decided by @@iterator, not IsArray](spec-compliance-a-union-s-sequence-member-is-decided-by-iterator-not-isarray.md) - Never route a union by the JavaScript type you expect callers to pass - follow 3.2.25's steps, and test with a non-Array iterable and a Proxy that logs its traps.
 - [Node intersection excludes boundary contact](spec-compliance-node-intersection-excludes-boundary-contact.md) - Test both equal-boundary edges and collapsed interior points.
@@ -402,6 +403,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+- [A passing parent test may omit the popup assertion](testing-a-passing-parent-test-may-omit-the-popup-assertion.md) - A browser result proves only the assertions it actually reports.
 - [A use-after-free that reads stale bytes passes - allocate from pages unmapped on free](testing-a-use-after-free-that-reads-stale-bytes-passes-unmap-on-free.md) - A green result over freed memory proves nothing: when the bug is a read after a free, run the red test on an allocator that unmaps on free, and count its allocations so leaks still fail.
 - [Reading a torn-down node's state in an engine-less realm reads freed memory](testing-reading-a-torn-down-nodes-state-in-an-engine-less-realm-reads-freed-memory.md) - A green test that reads an object after its teardown is reading freed memory unless the teardown is documented to keep it - check which branch of the storage release the test's realm takes.
 - [A retention bound relative to a control holds only when the control retains nothing](testing-a-retention-bound-relative-to-a-control-needs-a-control-that-retains-nothing.md) - Read the control's numbers before you read the comparison: a control that leaks makes "no worse than without" mean nothing.
