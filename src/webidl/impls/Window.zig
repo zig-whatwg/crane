@@ -465,6 +465,7 @@ pub fn installHooks() void {
     @import("dom").global_settings.install(.{
         .owns = &isWindow,
         .origin = &settingsOrigin,
+        .origin_record = &settingsOriginRecord,
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .indexed_db = &settingsIndexedDB,
@@ -524,6 +525,15 @@ fn setUserActivationTimestamps(window: *runtime.Instance, timestamps: @import("d
 fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return instance.ctx.allocator.dupe(u8, effectiveOrigin(instance, internal));
+}
+
+/// The settings object's origin as an object: the associated Document's
+/// origin record (borrowed), or null before the window has a document.
+fn settingsOriginRecord(instance: *runtime.Instance) ?*@import("dom").origin_record.OriginRecord {
+    if (!isWindow(instance)) return null;
+    const internal = getInternal(instance) orelse return null;
+    const document = internal.document orelse return null;
+    return @import("dom").document_origin.record(document);
 }
 
 /// Mixed Content 4.3: any authenticated embedding document prohibits
@@ -1009,51 +1019,18 @@ pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// HTML "same origin-domain" for two windows' origins - their documents'.
+/// A document whose origin is its creator's - about:blank, about:srcdoc, a
+/// javascript: URL's result - holds its creator's origin record, so one
+/// record on both sides is one origin (step 1, or 2 with identical
+/// domains), and a domain set through either document is both documents'.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#same-origin-domain
 fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
     const a_internal = getInternal(a) orelse return false;
     const b_internal = getInternal(b) orelse return false;
-    const a_origin = effectiveOrigin(a, a_internal);
-    const b_origin = effectiveOrigin(b, b_internal);
-    // 1. "If A and B are the same opaque origin, then return true." An
-    // opaque origin serializes as "null", which does not say which one it
-    // is: two different windows are not known to share one.
-    if (std.mem.eql(u8, a_origin, "null") or std.mem.eql(u8, b_origin, "null")) return false;
-    // 2. "If A and B are both tuple origins, run these substeps:"
-    const a_domain = originDomainOf(a, a_internal, 0);
-    const b_domain = originDomainOf(b, b_internal, 0);
-    return @import("html").origin_domain.sameOriginDomainValues(a_origin, a_domain, b_origin, b_domain);
-}
-
-/// The domain of the origin of `window`'s document, or null. A document
-/// whose origin is its creator's - about:blank, about:srcdoc, a javascript:
-/// URL's result (inheritsCreatorOrigin) - shares that origin, and so its
-/// domain: setting document.domain in one of the two documents affects both
-/// (HTML: the origin is aliased). Its creator's is read - the parent's for a
-/// frame, the opener's for a popup. Deviation, stated: the setter run in the
-/// aliasing document itself sets only that document's domain.
-fn originDomainOf(window: *runtime.Instance, internal: *InternalState, depth: u8) ?[]const u8 {
-    const document = internal.document orelse return null;
-    if (depth < 16 and documentInheritsCreatorOrigin(document)) {
-        const bc = internal.browsing_context;
-        if (bc.parent orelse bc.opener) |creator_bc| {
-            if (creator_bc.getActiveWindow()) |ptr| {
-                const creator: *runtime.Instance = @ptrCast(@alignCast(ptr));
-                if (creator != window) {
-                    if (getInternal(creator)) |creator_internal| return originDomainOf(creator, creator_internal, depth + 1);
-                }
-            }
-        }
-    }
-    return @import("dom").document_origin.domain(document);
-}
-
-/// Whether `document`'s URL is one whose document takes its creator's origin.
-fn documentInheritsCreatorOrigin(document: *runtime.Instance) bool {
-    const url = interfaces.Document.get_URL(document) catch return false;
-    // The getter clones into the document's context allocator.
-    defer document.ctx.allocator.free(url);
-    return url.len == 0 or inheritsCreatorOrigin(url);
+    return @import("dom").origin_record.sameOriginDomain(
+        .{ .serialized = effectiveOrigin(a, a_internal), .record = settingsOriginRecord(a) },
+        .{ .serialized = effectiveOrigin(b, b_internal), .record = settingsOriginRecord(b) },
+    );
 }
 
 /// Getter for name - The window's target name

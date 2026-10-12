@@ -495,33 +495,32 @@ pub fn contentWindow(integration: *IFrameIntegration) ?*runtime.Instance {
 
 /// HTML "content document": the content navigable's active document if
 /// its origin is same origin-domain with the container's node document's
-/// origin; otherwise null. Both documents are already known, so the domain
-/// lookup must not go through the security-checked Window.document getter.
+/// origin; otherwise null. Both documents are already known, so their
+/// origins are read through dom.document_origin - the records, whose
+/// identity and domains decide - never the security-checked Window.document
+/// getter. An inherited document on either side - an about:blank or srcdoc
+/// content document, or a container document that is one - holds its
+/// creator's record, and so its creator's domain.
 pub fn contentDocument(integration: *IFrameIntegration, container_document: *runtime.Instance) ?*runtime.Instance {
     if (integration.state == .discarded) return null;
     const document = activeDocumentOf(integration) orelse return null;
     if (document == container_document) return document;
-    const domain = @import("document_origin.zig");
-    const container_domain = domain.domain(container_document);
-    const document_domain = domain.domain(document);
-    // Interim until the cross-origin-objects lane supplies shared origin
-    // records: an inherited document's own domain slot does not describe
-    // its creator's mutable origin. Preserve the existing lookup while it
-    // remains in its original container document (no creator traversal).
-    const context = integration.browsing_context orelse return null;
-    if (context.parent) |parent| {
-        if (parent.getActiveDocument() == @as(*anyopaque, @ptrCast(container_document))) {
-            // Step 2.2: with both domains null, same origin-domain is
-            // exactly same origin. In the original container document,
-            // the existing navigation origins answer that without any
-            // allocating URL/origin getter on the common access path.
-            if (container_domain == null and document_domain == null) {
-                return if (integration.isContentDocumentAccessible(integration.container_origin)) document else null;
-            }
-            const url = interfaces.Document.get_URL(document) catch return null;
-            defer document.ctx.allocator.free(url);
-            const steps = html_core.navigation.navigate_steps;
-            if (url.len == 0 or steps.matchesAboutBlank(url) or steps.matchesAboutSrcdoc(url) or steps.isJavascript(url)) {
+    const document_origin = @import("document_origin.zig");
+    const container_record = document_origin.record(container_document);
+    const record = document_origin.record(document);
+    // Step 1 of same origin-domain: one origin on both sides - the content
+    // document inherited the container document's.
+    if (container_record != null and container_record == record) return document;
+    const container_domain = if (container_record) |r| r.domain else null;
+    const document_domain = if (record) |r| r.domain else null;
+    // Step 2.2: with both domains null, same origin-domain is exactly same
+    // origin. In the original container document, the navigation's origins
+    // answer that without any allocating URL/origin getter on the common
+    // access path.
+    if (container_domain == null and document_domain == null) {
+        const context = integration.browsing_context orelse return null;
+        if (context.parent) |parent| {
+            if (parent.getActiveDocument() == @as(*anyopaque, @ptrCast(container_document))) {
                 return if (integration.isContentDocumentAccessible(integration.container_origin)) document else null;
             }
         }
@@ -532,11 +531,10 @@ pub fn contentDocument(integration: *IFrameIntegration, container_document: *run
     defer container_window.ctx.allocator.free(container_origin);
     const origin = interfaces.Window.get_origin(window) catch return null;
     defer window.ctx.allocator.free(origin);
-    if (!html_core.window.window_proxy.sameOriginDomainValues(
-        container_origin,
-        container_domain,
-        origin,
-        document_domain,
+    const origin_record = @import("origin_record.zig");
+    if (!origin_record.sameOriginDomain(
+        .{ .serialized = container_origin, .record = container_record },
+        .{ .serialized = origin, .record = record },
     )) return null;
     return document;
 }
