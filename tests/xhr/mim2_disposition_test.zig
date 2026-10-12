@@ -57,6 +57,32 @@ test "quoted values keep ordinary backslashes literally" {
     try check(std.testing.allocator, "form-data; name=\"a\\\\\"; filename=b", "a\\\\", "b");
 }
 
+test "a backslash before the closing name quote remains literal" {
+    try check(std.testing.allocator, "form-data; name=\"a\\\"", "a\\", null);
+}
+
+test "a backslash before the closing filename quote remains literal" {
+    try check(std.testing.allocator, "form-data; name=field; filename=\"C:\\dir\\\"", "field", "C:\\dir\\");
+}
+
+test "a trailing name backslash does not consume the next parameter" {
+    try check(std.testing.allocator, "form-data; name=\"a\\\"; filename=\"f\"", "a\\", "f");
+}
+
+test "optional space and tab after a closing quote preserve the backslash" {
+    try check(std.testing.allocator, "form-data; name=\"a\\\" \t", "a\\", null);
+    try check(std.testing.allocator, "form-data; name=\"a\\\" \t; filename=\"f\\\" \t", "a\\", "f\\");
+}
+
+fn trailingBackslashTrial(allocator: std.mem.Allocator) !void {
+    try check(allocator, "form-data; name=first; name=\"a\\\"b\\\"; filename=\"x\\\"y\\\"", "a\"b\\", "x\"y\\");
+}
+
+test "internal escaped quotes and trailing backslashes share exact allocation sizes" {
+    try trailingBackslashTrial(std.testing.allocator);
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, trailingBackslashTrial, .{});
+}
+
 test "the last duplicate parameter wins in Blink and Gecko" {
     try check(std.testing.allocator, "form-data; name=\"first\"; filename=\"one\"; name=last; filename=two", "last", "two");
 }

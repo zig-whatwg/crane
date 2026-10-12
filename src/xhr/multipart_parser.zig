@@ -123,14 +123,25 @@ fn parseContentDisposition(allocator: Allocator, line: []const u8) !struct { nam
         if (quoted) {
             while (position < line.len and line[position] != '"') {
                 if (line[position] == '\\' and position + 1 < line.len) {
-                    // Escaped quotes split all three engines. RFC 2183 refers
-                    // to RFC 822 sections 3.3/3.4: a quoted-pair yields the
-                    // quoted character. RFC 5322 section 3.2.1 preserves this.
+                    if (line[position + 1] == '"') {
+                        var after_quote = position + 2;
+                        while (after_quote < line.len and (line[after_quote] == ' ' or line[after_quote] == '\t')) : (after_quote += 1) {}
+                        // WebKit parseParameters and Gecko ParseHeader (above)
+                        // retain a backslash before the closing quote. Only
+                        // Blink unescapes it, breaking a FormData round trip.
+                        if (after_quote == line.len or line[after_quote] == ';') {
+                            position += 1;
+                            break;
+                        }
+                        escaped_quotes += 1;
+                    }
+                    // An internal escaped quote still splits all three engines.
+                    // RFC 2183 refers to RFC 822 sections 3.3/3.4: a quoted-pair
+                    // yields the quoted character. RFC 5322 section 3.2.1 agrees.
                     // Other quoted-pairs keep BOTH bytes (WebKit + Gecko),
                     // but must be consumed together so a following quote closes.
                     // https://www.rfc-editor.org/rfc/rfc822#section-3.3
                     // https://www.rfc-editor.org/rfc/rfc5322#section-3.2.1
-                    if (line[position + 1] == '"') escaped_quotes += 1;
                     position += 2;
                 } else {
                     position += 1;
