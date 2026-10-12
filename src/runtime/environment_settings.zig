@@ -22,7 +22,7 @@ const Allocator = std.mem.Allocator;
 /// Origin representation for security checks
 ///
 /// Per URL Standard and HTML Standard, an origin is either:
-/// - A tuple origin: (scheme, host, port)
+/// - A tuple origin: (scheme, host, port, domain)
 /// - An opaque origin: unique, never same-origin with anything
 ///
 /// This is a simplified version that works with the Environment Settings Object.
@@ -32,6 +32,11 @@ pub const Origin = struct {
     scheme: []const u8,
     host: []const u8,
     port: ?u16,
+
+    /// document.domain's opt-in, null by default. BORROWED from its owner,
+    /// even for initOwned: deinit frees only the owned scheme and host.
+    /// A view with a domain is valid only until its owner changes it.
+    domain: ?[]const u8 = null,
 
     /// Opaque origin marker (unique, never same-origin with anything)
     is_opaque: bool = false,
@@ -115,11 +120,18 @@ pub const Origin = struct {
 
     /// Check if same-origin-domain (relaxed for document.domain)
     ///
-    /// Per HTML Standard §7.5.2
-    /// Note: document.domain is deprecated and this is a simplified implementation
+    /// Per HTML Standard 7.1.1, including the distinction between an unset
+    /// domain and one explicitly set to the origin's own host.
     pub fn isSameOriginDomain(self: Self, other: Self) bool {
-        // For now, same as same-origin (document.domain is deprecated)
-        return self.isSameOrigin(other);
+        // 1. This representation has no shared opaque-origin identity.
+        if (self.is_opaque or other.is_opaque) return false;
+        // 2.1. Equal non-null domains and schemes; hosts and ports ignored.
+        if (self.domain) |domain| {
+            const other_domain = other.domain orelse return false;
+            return std.mem.eql(u8, self.scheme, other.scheme) and std.mem.eql(u8, domain, other_domain);
+        }
+        // 2.2-3. Same origin only when neither has set a domain.
+        return other.domain == null and self.isSameOrigin(other);
     }
 
     /// Serialize origin to string

@@ -30,10 +30,15 @@ const Navigables = @import("browsing_context.zig").Navigables;
 /// Origin representation for security checks
 /// Per URL Standard and HTML Standard
 pub const Origin = struct {
-    /// Tuple origin: (scheme, host, port)
+    /// Tuple origin: (scheme, host, port, domain)
     scheme: []const u8,
     host: []const u8,
     port: ?u16,
+
+    /// The domain set by document.domain, or null until explicitly set.
+    /// BORROWED, like scheme and host: do not keep this view beyond the
+    /// owning document's lifetime or its next domain change.
+    domain: ?[]const u8 = null,
 
     /// Opaque origin (unique, never same-origin with anything)
     is_opaque: bool = false,
@@ -82,13 +87,40 @@ pub const Origin = struct {
         return true;
     }
 
-    /// Check if same-origin-domain (relaxed for document.domain)
-    /// Per HTML Standard §7.5.2
+    /// HTML 7.1.1 "same origin-domain". Setting a domain on only one
+    /// origin revokes access even when scheme, host and port still match.
     pub fn isSameOriginDomain(self: Origin, other: Origin) bool {
-        // For now, same as same-origin (document.domain is deprecated)
-        return self.isSameOrigin(other);
+        // 1. This representation has no shared opaque-origin identity.
+        if (self.is_opaque or other.is_opaque) return false;
+        // 2.1. Both domains must be set; their schemes still have to match,
+        // but their original hosts and ports no longer participate.
+        if (self.domain) |domain| {
+            const other_domain = other.domain orelse return false;
+            return std.mem.eql(u8, self.scheme, other.scheme) and std.mem.eql(u8, domain, other_domain);
+        }
+        // 2.2-3. Same origin is sufficient only with BOTH domains null.
+        return other.domain == null and self.isSameOrigin(other);
     }
 };
+
+/// HTML "same origin-domain" over canonical origin serializations and the
+/// separately stored domains. Serialization deliberately omits the domain.
+/// The caller handles known shared identity first: "null" alone cannot
+/// distinguish opaque origins. All slices are borrowed for this call.
+/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#same-origin-domain
+pub fn sameOriginDomainValues(a_origin: []const u8, a_domain: ?[]const u8, b_origin: []const u8, b_domain: ?[]const u8) bool {
+    // 1. No opaque identity can be recovered from its serialization.
+    if (std.mem.eql(u8, a_origin, "null") or std.mem.eql(u8, b_origin, "null")) return false;
+    // 2.1. A domain opt-in requires the other origin to opt in too.
+    if (a_domain) |domain| {
+        const other_domain = b_domain orelse return false;
+        const a_scheme = a_origin[0 .. std.mem.indexOfScalar(u8, a_origin, ':') orelse a_origin.len];
+        const b_scheme = b_origin[0 .. std.mem.indexOfScalar(u8, b_origin, ':') orelse b_origin.len];
+        return std.mem.eql(u8, a_scheme, b_scheme) and std.mem.eql(u8, domain, other_domain);
+    }
+    // 2.2-3. Canonical serialization compares scheme, host and port only.
+    return b_domain == null and std.mem.eql(u8, a_origin, b_origin);
+}
 
 /// Properties allowed for cross-origin access
 /// Per HTML Standard §7.4.6
@@ -162,8 +194,8 @@ pub const WindowProxy = struct {
     /// Check if an accessor origin can access a property
     /// Returns true if access is allowed, false if SecurityError should be thrown
     pub fn canAccess(self: *const WindowProxy, accessor_origin: Origin, property: CrossOriginProperty) bool {
-        // Same-origin always allowed
-        if (self.document_origin.isSameOrigin(accessor_origin)) {
+        // Same origin-domain permits unrestricted access.
+        if (self.document_origin.isSameOriginDomain(accessor_origin)) {
             return true;
         }
 
@@ -180,7 +212,7 @@ pub const WindowProxy = struct {
     /// Check if an accessor can access any property (unrestricted)
     /// This is used for same-origin checks before accessing arbitrary properties
     pub fn isSameOriginAccess(self: *const WindowProxy, accessor_origin: Origin) bool {
-        return self.document_origin.isSameOrigin(accessor_origin);
+        return self.document_origin.isSameOriginDomain(accessor_origin);
     }
 
     /// Get the WindowProxy itself (always allowed)
@@ -310,8 +342,8 @@ pub const WindowProxy = struct {
         accessor_origin: Origin,
         property_name: []const u8,
     ) WindowProxyError!void {
-        // Same-origin access always allowed
-        if (self.document_origin.isSameOrigin(accessor_origin)) {
+        // The ordinary property path requires same origin-domain.
+        if (self.document_origin.isSameOriginDomain(accessor_origin)) {
             return;
         }
 

@@ -2188,11 +2188,12 @@ pub fn set_onresume(instance: *runtime.Instance, value: typedefs.EventHandler) a
 /// HTML document.domain's setter.
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
 ///
-/// Deviation, stated: step 2's sandboxed document.domain browsing context
-/// flag is not read - a document here cannot see its browsing context's
-/// sandboxing flags. A sandboxed frame without allow-same-origin has an
-/// opaque origin and throws at step 4 anyway; one with allow-same-origin can
-/// set its domain, where the spec throws.
+/// Deviation, stated: step 2 needs the document's ACTIVE sandboxing flag
+/// set, captured at creation, including CSP sandbox. The browsing context's
+/// live iframe flags can change without navigating and cannot substitute
+/// for it. The routed active-sandbox-state lane owns that missing state.
+/// Without allow-same-origin, step 4 rejects the opaque origin; with it,
+/// setting a sandboxed document's domain is still incorrectly permitted.
 pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;

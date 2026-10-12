@@ -7,8 +7,8 @@
 //! A shared helper, not an impl's: types reach a Window's origin and document
 //! through its interface (the WindowOrWorkerGlobalScope `origin` getter,
 //! `document`) and the document's origin's domain through the
-//! dom.document_origin hook. Window's own checks still use its private copy
-//! of the comparison (Window.zig sameOriginDomain), queued to move here.
+//! dom.document_origin hook. Window's own checks use the same pure
+//! comparison with the origins they already read internally.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/browsers.html#same-origin-domain
 //! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-location-interface
@@ -18,6 +18,10 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+
+/// The shared pure comparison also serves dom's already-known documents.
+/// Keep it in html_core to avoid making dom depend on the full html module.
+pub const sameOriginDomainValues = @import("html_core").window.window_proxy.sameOriginDomainValues;
 
 /// The Window that is `realm`'s global object, or null for a realm whose
 /// global is not a Window (a worker's, a ShadowRealm's).
@@ -56,16 +60,7 @@ pub fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
     // 2. "If A and B are both tuple origins, run these substeps:"
     const a_domain = domainOf(a);
     const b_domain = domainOf(b);
-    // 2.1. "If A and B's schemes are identical, and their domains are
-    // identical and non-null, then return true."
-    if (a_domain != null and b_domain != null) {
-        return std.mem.eql(u8, schemeOf(a_origin), schemeOf(b_origin)) and std.mem.eql(u8, a_domain.?, b_domain.?);
-    }
-    // 2.2. "Otherwise, if A and B are same origin and their domains are
-    // identical and null, then return true."
-    if (a_domain == null and b_domain == null) return std.mem.eql(u8, a_origin, b_origin);
-    // 3. "Return false."
-    return false;
+    return sameOriginDomainValues(a_origin, a_domain, b_origin, b_domain);
 }
 
 /// The domain of `window`'s document's origin, or null (BORROWED from the
@@ -81,14 +76,4 @@ pub fn sameOriginDomain(a: *runtime.Instance, b: *runtime.Instance) bool {
 fn domainOf(window: *runtime.Instance) ?[]const u8 {
     const document = interfaces.Window.get_document(window) catch return null;
     return dom.document_origin.domain(document);
-}
-
-/// The scheme of a tuple origin's serialization.
-fn schemeOf(serialized: []const u8) []const u8 {
-    return serialized[0 .. std.mem.indexOf(u8, serialized, "://") orelse serialized.len];
-}
-
-test "schemeOf reads the scheme of a serialized tuple origin" {
-    try std.testing.expectEqualStrings("https", schemeOf("https://example.com"));
-    try std.testing.expectEqualStrings("http", schemeOf("http://www1.web-platform.test:8000"));
 }
