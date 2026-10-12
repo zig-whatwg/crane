@@ -22,10 +22,8 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLElement = interfaces.HTMLElement;
 
-// Import parent impl for chaining initialization
-const ElementImpl = @import("Element.zig");
 // An element's attributes and local name, read in place (dom.element_data,
-// which Element installs).
+// which Element installs); written through dom.element_attributes.
 const element_data = @import("dom").element_data;
 
 // Import CSSStyleDeclaration impl for inline style creation
@@ -270,21 +268,21 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// The value of this element's content attribute `name` (no namespace), or
 /// null when it has none.
 fn getContentAttribute(instance: *runtime.Instance, name: []const u8) ?runtime.DOMString {
-    const elem_internal = ElementImpl.getInternalState(instance) orelse return null;
-    const attr = elem_internal.findAttribute(null, name) orelse return null;
+    const data = element_data.of(instance) orelse return null;
+    const attr = element_data.getAttributeByNamespaceAndLocalName(data, null, name) orelse return null;
     return runtime.DOMString.initInterned(attr.value);
 }
 
 /// Set content attribute `name` - DOM "set an attribute value", the setter
 /// steps of a reflected attribute - so the change is observed like any other.
 fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: runtime.DOMString) !void {
-    try ElementImpl.setAttributeValue(instance, name, value.asSlice(), null, null);
+    try @import("dom").element_attributes.set(instance, name, value.asSlice(), .{});
 }
 
 /// Remove content attribute `name` - DOM "remove an attribute by namespace
 /// and local name" with a null namespace.
 fn removeContentAttribute(instance: *runtime.Instance, name: []const u8) void {
-    ElementImpl.removeAttributeByNamespaceAndLocalName(instance, null, name);
+    @import("dom").element_attributes.remove(instance, null, name);
 }
 
 // =============================================================================

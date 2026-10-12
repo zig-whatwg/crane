@@ -1178,22 +1178,12 @@ fn removeAttributeAt(instance: *runtime.Instance, internal: *InternalState, inde
     handleAttributeChanges(instance, entry.namespace_uri, entry.local_name, entry.value, null);
 }
 
-/// DOM "get an attribute value": the value of the attribute with this
-/// namespace and local name, or the empty string. Borrowed - valid until the
-/// attribute next changes.
-///
-/// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-get-value
-pub fn getAttributeValue(instance: *runtime.Instance, local_name: []const u8, namespace: ?[]const u8) []const u8 {
-    const internal = getInternal(instance) orelse return "";
-    return dom.element_data.getAttributeValue(&internal.data, local_name, namespace);
-}
-
 /// DOM "set an attribute value": the setter steps of every reflected string
 /// attribute, and of the internal callers that set a content attribute -
 /// those outside this file through `dom.element_attributes.set`.
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-set-value
-pub fn setAttributeValue(
+fn setAttributeValue(
     instance: *runtime.Instance,
     local_name: []const u8,
     value: []const u8,
@@ -1220,7 +1210,7 @@ pub fn setAttributeValue(
 /// file, `dom.element_attributes.remove`.
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove-by-namespace
-pub fn removeAttributeByNamespaceAndLocalName(instance: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) void {
+fn removeAttributeByNamespaceAndLocalName(instance: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) void {
     const internal = getInternal(instance) orelse return;
     // Step 1: "Let attr be the result of getting an attribute given
     // namespace, localName, and element." (Getting one maps "" to null.)

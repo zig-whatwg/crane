@@ -11,7 +11,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLTextAreaElement = interfaces.HTMLTextAreaElement;
 
-const ElementImpl = @import("Element.zig");
 // A Text node's data lives in CharacterData's inline/heap storage, NOT in
 // Node.InternalState.node_value - that field stays null for parsed and created
 // text alike, so reading it yields "" for every textarea. It is read in place
@@ -379,8 +378,8 @@ pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString 
     //
     // TODO: the autofill mantle also exposes field names; only on/off are
     // recognised here, so anything else reads back "".
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    const entry = elem_internal.findAttribute(null, "autocomplete") orelse
+    const data = dom.element_data.of(instance) orelse return error.InvalidState;
+    const entry = dom.element_data.getAttributeByNamespaceAndLocalName(data, null, "autocomplete") orelse
         return runtime.DOMString.initEmpty();
     inline for ([_][]const u8{ "on", "off" }) |candidate| {
         if (std.ascii.eqlIgnoreCase(entry.value, candidate)) {

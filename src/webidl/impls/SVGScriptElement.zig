@@ -18,7 +18,6 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const SVGScriptElement = interfaces.SVGScriptElement;
 
-const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
 
 const dom_module = @import("dom");
@@ -100,13 +99,14 @@ fn flagsOf(element: *runtime.Instance) ?*ScriptFlags {
 
 /// Getter for type: reflects the `type` content attribute.
 pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const value = ElementImpl.getAttributeValue(instance, "type", null);
-    return runtime.DOMString.initInterned(value);
+    // DOM "get an attribute value" given the element and "type".
+    const data = dom_module.element_data.of(instance) orelse return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initInterned(dom_module.element_data.getAttributeValue(data, "type", null));
 }
 
 /// Setter for type: DOM "set an attribute value" for `type`.
 pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try ElementImpl.setAttributeValue(instance, "type", value.asSlice(), null, null);
+    try dom_module.element_attributes.set(instance, "type", value.asSlice(), .{});
 }
 
 /// Getter for crossOrigin
