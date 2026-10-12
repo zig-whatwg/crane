@@ -368,6 +368,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A test that passes because nothing ever ends tests nothing](spec-compliance-a-test-that-passes-because-nothing-ends-tests-nothing.md) - When a new lifetime rule turns tests red, ask whether they ever passed for the right reason: a "survives" test that went green on a leak is an unimplemented feature, not a regression - implement the extension, never restore the leak.
 - [A WebAssembly.Module is bound to its agent cluster, not its origin](spec-compliance-a-wasm-module-is-bound-to-its-agent-cluster-not-its-origin.md) - A test that passed only because a feature was missing proves nothing; when the feature breaks it, read the spec's own note and the three engines' wpt.fyi runs before adding a deviation - if two engines and the spec agree, the failing test was written for the third.
 - [A union member of a union is flattened into it](spec-compliance-a-union-member-of-a-union-is-flattened-into-it.md) - When a binding conversion handles a union, handle nested unions as their flattened members - and when a newly implemented method throws TypeError before its first line, suspect the argument conversion, not the method.
+- [An XML error document is the browsers', not the spec's](spec-compliance-an-xml-error-document-is-the-browsers-not-the-spec-s.md) - A WPT subtest that the browsers fail together tests the spec, not the web. Follow the browsers, and record what that costs.
 
 ### Codegen
 
@@ -496,6 +497,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A union conversion needs a case per member type](testing-a-union-conversion-needs-a-case-per-member-type.md) - Enumerate the flattened member types from the IDL and give each its own case - plus an offset view and a detached buffer - before calling a conversion done.
 - [A test encoder written beside its decoder can share its mistake](testing-a-test-encoder-written-beside-its-decoder-can-share-its-mistake.md) - An encoder and decoder written together agree with each other, not with the format: anchor one of them to an independent implementation, and build truncated streams that end where you think they do.
 - [The WebDriver remote end reads the browsing context, not script's getters](testing-the-webdriver-remote-end-reads-the-browsing-context-not-script-getters.md) - Remote-end code is not script: reach a window's document and cookie store through its browsing context, never through an IDL getter that checks the accessor or a top-level-only field.
+- [A feature that starts working shows the failures it masked](testing-a-feature-that-starts-working-shows-the-failures-it-masked.md) - Unblocking moves a file's failures onto the next bug in its path. Count them again before calling the rest out of scope.
 
 ### Debugging
 
