@@ -7,14 +7,12 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const event_construction = @import("dom").event_construction;
 const PointerEvent = interfaces.PointerEvent;
-const clock = @import("clock");
 
 pub const State = PointerEvent.State;
 

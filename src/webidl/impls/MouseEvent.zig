@@ -6,7 +6,6 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
@@ -15,7 +14,6 @@ const engine = @import("engine");
 const KeptInstance = @import("dom").custom_elements.KeptInstance;
 const MouseEvent = interfaces.MouseEvent;
 const event_construction = @import("dom").event_construction;
-const clock = @import("clock");
 
 pub const State = MouseEvent.State;
 
