@@ -364,9 +364,6 @@ fn getLiveLength(internal: *InternalState) u32 {
 fn getLiveItem(internal: *InternalState, index: u32) ?*runtime.Instance {
     const root = internal.root orelse return null;
 
-    // Import Node impl to access helper functions
-    const NodeImpl = @import("Node.zig");
-
     switch (internal.live_type) {
         .elements_by_name => {
             if (!prepareCache(internal)) return null;
@@ -395,7 +392,7 @@ fn getLiveItem(internal: *InternalState, index: u32) ?*runtime.Instance {
             }
             // Keep the existing null-version traversal until the counter is wired.
             // Walk children to find the nth one
-            var child = NodeImpl.getFirstChild(root);
+            var child = interfaces.Node.get_firstChild(root) catch null;
             var current_index: u32 = 0;
 
             while (child) |c| {
@@ -403,7 +400,7 @@ fn getLiveItem(internal: *InternalState, index: u32) ?*runtime.Instance {
                     return c;
                 }
                 current_index += 1;
-                child = NodeImpl.getNextSibling(c);
+                child = interfaces.Node.get_nextSibling(c) catch null;
             }
             return null;
         },
