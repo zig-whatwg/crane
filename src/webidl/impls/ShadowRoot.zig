@@ -315,23 +315,6 @@ pub fn get_host(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 // ============================================================================
-// Event Handlers
-// ============================================================================
-
-/// DOM 4.8: "The onslotchange attribute is an event handler IDL attribute
-/// for the onslotchange event handler, whose event handler event type is
-/// slotchange." Stored in the shadow root's event handler map, as every
-/// event handler IDL attribute is (dom.event_handlers).
-pub fn get_onslotchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return @import("dom").event_handlers.get(typedefs.EventHandler, instance, "slotchange");
-}
-
-/// DOM 4.8: the onslotchange event handler IDL attribute's setter.
-pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try @import("dom").event_handlers.set(typedefs.EventHandler, instance, "slotchange", value);
-}
-
-// ============================================================================
 // InnerHTML mixin
 // ============================================================================
 

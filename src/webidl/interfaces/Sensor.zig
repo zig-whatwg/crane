@@ -218,28 +218,36 @@ pub const Sensor = struct {
         return try SensorImpl.get_timestamp(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onreading(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SensorImpl.get_onreading(instance);
+        if (comptime @hasDecl(SensorImpl, "get_onreading")) return try SensorImpl.get_onreading(instance);
+        return event_handlers.value(EventHandler, instance, "onreading");
     }
 
     pub fn set_onreading(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SensorImpl.set_onreading(instance, value);
+        if (comptime @hasDecl(SensorImpl, "set_onreading")) return try SensorImpl.set_onreading(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onreading", value);
     }
 
     pub fn get_onactivate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SensorImpl.get_onactivate(instance);
+        if (comptime @hasDecl(SensorImpl, "get_onactivate")) return try SensorImpl.get_onactivate(instance);
+        return event_handlers.value(EventHandler, instance, "onactivate");
     }
 
     pub fn set_onactivate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SensorImpl.set_onactivate(instance, value);
+        if (comptime @hasDecl(SensorImpl, "set_onactivate")) return try SensorImpl.set_onactivate(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onactivate", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SensorImpl.get_onerror(instance);
+        if (comptime @hasDecl(SensorImpl, "get_onerror")) return try SensorImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SensorImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(SensorImpl, "set_onerror")) return try SensorImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn call_start(instance: *runtime.Instance) anyerror!void {

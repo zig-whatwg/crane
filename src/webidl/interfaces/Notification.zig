@@ -296,36 +296,46 @@ pub const Notification = struct {
         return try NotificationImpl.get_static_maxActions(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onclick(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NotificationImpl.get_onclick(instance);
+        if (comptime @hasDecl(NotificationImpl, "get_onclick")) return try NotificationImpl.get_onclick(instance);
+        return event_handlers.value(EventHandler, instance, "onclick");
     }
 
     pub fn set_onclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NotificationImpl.set_onclick(instance, value);
+        if (comptime @hasDecl(NotificationImpl, "set_onclick")) return try NotificationImpl.set_onclick(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onclick", value);
     }
 
     pub fn get_onshow(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NotificationImpl.get_onshow(instance);
+        if (comptime @hasDecl(NotificationImpl, "get_onshow")) return try NotificationImpl.get_onshow(instance);
+        return event_handlers.value(EventHandler, instance, "onshow");
     }
 
     pub fn set_onshow(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NotificationImpl.set_onshow(instance, value);
+        if (comptime @hasDecl(NotificationImpl, "set_onshow")) return try NotificationImpl.set_onshow(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onshow", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NotificationImpl.get_onerror(instance);
+        if (comptime @hasDecl(NotificationImpl, "get_onerror")) return try NotificationImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NotificationImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(NotificationImpl, "set_onerror")) return try NotificationImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn get_onclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NotificationImpl.get_onclose(instance);
+        if (comptime @hasDecl(NotificationImpl, "get_onclose")) return try NotificationImpl.get_onclose(instance);
+        return event_handlers.value(EventHandler, instance, "onclose");
     }
 
     pub fn set_onclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NotificationImpl.set_onclose(instance, value);
+        if (comptime @hasDecl(NotificationImpl, "set_onclose")) return try NotificationImpl.set_onclose(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onclose", value);
     }
 
     pub fn get_title(instance: *runtime.Instance) anyerror!DOMString {

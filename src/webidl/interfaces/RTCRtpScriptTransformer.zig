@@ -201,12 +201,16 @@ pub const RTCRtpScriptTransformer = struct {
         return try RTCRtpScriptTransformerImpl.get_writable(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onkeyframerequest(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCRtpScriptTransformerImpl.get_onkeyframerequest(instance);
+        if (comptime @hasDecl(RTCRtpScriptTransformerImpl, "get_onkeyframerequest")) return try RTCRtpScriptTransformerImpl.get_onkeyframerequest(instance);
+        return event_handlers.value(EventHandler, instance, "onkeyframerequest");
     }
 
     pub fn set_onkeyframerequest(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCRtpScriptTransformerImpl.set_onkeyframerequest(instance, value);
+        if (comptime @hasDecl(RTCRtpScriptTransformerImpl, "set_onkeyframerequest")) return try RTCRtpScriptTransformerImpl.set_onkeyframerequest(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onkeyframerequest", value);
     }
 
     pub fn get_options(instance: *runtime.Instance) anyerror!runtime.JSValue {

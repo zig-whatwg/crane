@@ -257,12 +257,16 @@ pub const TextTrack = struct {
         return try TextTrackImpl.get_activeCues(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_oncuechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try TextTrackImpl.get_oncuechange(instance);
+        if (comptime @hasDecl(TextTrackImpl, "get_oncuechange")) return try TextTrackImpl.get_oncuechange(instance);
+        return event_handlers.value(EventHandler, instance, "oncuechange");
     }
 
     pub fn set_oncuechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try TextTrackImpl.set_oncuechange(instance, value);
+        if (comptime @hasDecl(TextTrackImpl, "set_oncuechange")) return try TextTrackImpl.set_oncuechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncuechange", value);
     }
 
     pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {

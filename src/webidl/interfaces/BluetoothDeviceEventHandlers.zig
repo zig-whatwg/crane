@@ -70,19 +70,25 @@ pub const BluetoothDeviceEventHandlers = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onadvertisementreceived(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothDeviceEventHandlersImpl.get_onadvertisementreceived(instance);
+        if (comptime @hasDecl(BluetoothDeviceEventHandlersImpl, "get_onadvertisementreceived")) return try BluetoothDeviceEventHandlersImpl.get_onadvertisementreceived(instance);
+        return event_handlers.value(EventHandler, instance, "onadvertisementreceived");
     }
 
     pub fn set_onadvertisementreceived(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothDeviceEventHandlersImpl.set_onadvertisementreceived(instance, value);
+        if (comptime @hasDecl(BluetoothDeviceEventHandlersImpl, "set_onadvertisementreceived")) return try BluetoothDeviceEventHandlersImpl.set_onadvertisementreceived(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onadvertisementreceived", value);
     }
 
     pub fn get_ongattserverdisconnected(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothDeviceEventHandlersImpl.get_ongattserverdisconnected(instance);
+        if (comptime @hasDecl(BluetoothDeviceEventHandlersImpl, "get_ongattserverdisconnected")) return try BluetoothDeviceEventHandlersImpl.get_ongattserverdisconnected(instance);
+        return event_handlers.value(EventHandler, instance, "ongattserverdisconnected");
     }
 
     pub fn set_ongattserverdisconnected(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothDeviceEventHandlersImpl.set_ongattserverdisconnected(instance, value);
+        if (comptime @hasDecl(BluetoothDeviceEventHandlersImpl, "set_ongattserverdisconnected")) return try BluetoothDeviceEventHandlersImpl.set_ongattserverdisconnected(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ongattserverdisconnected", value);
     }
 };

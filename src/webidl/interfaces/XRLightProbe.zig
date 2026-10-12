@@ -180,11 +180,15 @@ pub const XRLightProbe = struct {
         return try XRLightProbeImpl.get_probeSpace(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onreflectionchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRLightProbeImpl.get_onreflectionchange(instance);
+        if (comptime @hasDecl(XRLightProbeImpl, "get_onreflectionchange")) return try XRLightProbeImpl.get_onreflectionchange(instance);
+        return event_handlers.value(EventHandler, instance, "onreflectionchange");
     }
 
     pub fn set_onreflectionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRLightProbeImpl.set_onreflectionchange(instance, value);
+        if (comptime @hasDecl(XRLightProbeImpl, "set_onreflectionchange")) return try XRLightProbeImpl.set_onreflectionchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onreflectionchange", value);
     }
 };

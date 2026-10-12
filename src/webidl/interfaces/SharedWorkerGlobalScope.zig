@@ -230,12 +230,16 @@ pub const SharedWorkerGlobalScope = struct {
         try runtime.defineOwnProperty(instance, "name", value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onconnect(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SharedWorkerGlobalScopeImpl.get_onconnect(instance);
+        if (comptime @hasDecl(SharedWorkerGlobalScopeImpl, "get_onconnect")) return try SharedWorkerGlobalScopeImpl.get_onconnect(instance);
+        return event_handlers.value(EventHandler, instance, "onconnect");
     }
 
     pub fn set_onconnect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SharedWorkerGlobalScopeImpl.set_onconnect(instance, value);
+        if (comptime @hasDecl(SharedWorkerGlobalScopeImpl, "set_onconnect")) return try SharedWorkerGlobalScopeImpl.set_onconnect(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onconnect", value);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {

@@ -240,12 +240,16 @@ pub const XRCylinderLayer = struct {
         try XRCylinderLayerImpl.set_aspectRatio(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onredraw(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRCylinderLayerImpl.get_onredraw(instance);
+        if (comptime @hasDecl(XRCylinderLayerImpl, "get_onredraw")) return try XRCylinderLayerImpl.get_onredraw(instance);
+        return event_handlers.value(EventHandler, instance, "onredraw");
     }
 
     pub fn set_onredraw(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRCylinderLayerImpl.set_onredraw(instance, value);
+        if (comptime @hasDecl(XRCylinderLayerImpl, "set_onredraw")) return try XRCylinderLayerImpl.set_onredraw(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onredraw", value);
     }
 
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and

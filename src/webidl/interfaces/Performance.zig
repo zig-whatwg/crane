@@ -306,12 +306,16 @@ pub const Performance = struct {
         return value;
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onresourcetimingbufferfull(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PerformanceImpl.get_onresourcetimingbufferfull(instance);
+        if (comptime @hasDecl(PerformanceImpl, "get_onresourcetimingbufferfull")) return try PerformanceImpl.get_onresourcetimingbufferfull(instance);
+        return event_handlers.value(EventHandler, instance, "onresourcetimingbufferfull");
     }
 
     pub fn set_onresourcetimingbufferfull(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PerformanceImpl.set_onresourcetimingbufferfull(instance, value);
+        if (comptime @hasDecl(PerformanceImpl, "set_onresourcetimingbufferfull")) return try PerformanceImpl.set_onresourcetimingbufferfull(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onresourcetimingbufferfull", value);
     }
 
     pub fn call_clearResourceTimings(instance: *runtime.Instance) anyerror!void {

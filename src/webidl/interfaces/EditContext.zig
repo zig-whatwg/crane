@@ -257,44 +257,56 @@ pub const EditContext = struct {
         return try EditContextImpl.get_characterBoundsRangeStart(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_ontextupdate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try EditContextImpl.get_ontextupdate(instance);
+        if (comptime @hasDecl(EditContextImpl, "get_ontextupdate")) return try EditContextImpl.get_ontextupdate(instance);
+        return event_handlers.value(EventHandler, instance, "ontextupdate");
     }
 
     pub fn set_ontextupdate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try EditContextImpl.set_ontextupdate(instance, value);
+        if (comptime @hasDecl(EditContextImpl, "set_ontextupdate")) return try EditContextImpl.set_ontextupdate(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ontextupdate", value);
     }
 
     pub fn get_ontextformatupdate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try EditContextImpl.get_ontextformatupdate(instance);
+        if (comptime @hasDecl(EditContextImpl, "get_ontextformatupdate")) return try EditContextImpl.get_ontextformatupdate(instance);
+        return event_handlers.value(EventHandler, instance, "ontextformatupdate");
     }
 
     pub fn set_ontextformatupdate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try EditContextImpl.set_ontextformatupdate(instance, value);
+        if (comptime @hasDecl(EditContextImpl, "set_ontextformatupdate")) return try EditContextImpl.set_ontextformatupdate(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ontextformatupdate", value);
     }
 
     pub fn get_oncharacterboundsupdate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try EditContextImpl.get_oncharacterboundsupdate(instance);
+        if (comptime @hasDecl(EditContextImpl, "get_oncharacterboundsupdate")) return try EditContextImpl.get_oncharacterboundsupdate(instance);
+        return event_handlers.value(EventHandler, instance, "oncharacterboundsupdate");
     }
 
     pub fn set_oncharacterboundsupdate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try EditContextImpl.set_oncharacterboundsupdate(instance, value);
+        if (comptime @hasDecl(EditContextImpl, "set_oncharacterboundsupdate")) return try EditContextImpl.set_oncharacterboundsupdate(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncharacterboundsupdate", value);
     }
 
     pub fn get_oncompositionstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try EditContextImpl.get_oncompositionstart(instance);
+        if (comptime @hasDecl(EditContextImpl, "get_oncompositionstart")) return try EditContextImpl.get_oncompositionstart(instance);
+        return event_handlers.value(EventHandler, instance, "oncompositionstart");
     }
 
     pub fn set_oncompositionstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try EditContextImpl.set_oncompositionstart(instance, value);
+        if (comptime @hasDecl(EditContextImpl, "set_oncompositionstart")) return try EditContextImpl.set_oncompositionstart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncompositionstart", value);
     }
 
     pub fn get_oncompositionend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try EditContextImpl.get_oncompositionend(instance);
+        if (comptime @hasDecl(EditContextImpl, "get_oncompositionend")) return try EditContextImpl.get_oncompositionend(instance);
+        return event_handlers.value(EventHandler, instance, "oncompositionend");
     }
 
     pub fn set_oncompositionend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try EditContextImpl.set_oncompositionend(instance, value);
+        if (comptime @hasDecl(EditContextImpl, "set_oncompositionend")) return try EditContextImpl.set_oncompositionend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncompositionend", value);
     }
 
     pub fn call_updateCharacterBounds(instance: *runtime.Instance, rangeStart: u32, characterBounds: runtime.JSValue) anyerror!void {

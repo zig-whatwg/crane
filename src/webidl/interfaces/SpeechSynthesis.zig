@@ -214,12 +214,16 @@ pub const SpeechSynthesis = struct {
         return try SpeechSynthesisImpl.get_paused(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onvoiceschanged(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechSynthesisImpl.get_onvoiceschanged(instance);
+        if (comptime @hasDecl(SpeechSynthesisImpl, "get_onvoiceschanged")) return try SpeechSynthesisImpl.get_onvoiceschanged(instance);
+        return event_handlers.value(EventHandler, instance, "onvoiceschanged");
     }
 
     pub fn set_onvoiceschanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechSynthesisImpl.set_onvoiceschanged(instance, value);
+        if (comptime @hasDecl(SpeechSynthesisImpl, "set_onvoiceschanged")) return try SpeechSynthesisImpl.set_onvoiceschanged(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onvoiceschanged", value);
     }
 
     pub fn call_resume(instance: *runtime.Instance) anyerror!void {

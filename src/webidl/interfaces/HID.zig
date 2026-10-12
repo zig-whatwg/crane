@@ -190,20 +190,26 @@ pub const HID = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onconnect(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HIDImpl.get_onconnect(instance);
+        if (comptime @hasDecl(HIDImpl, "get_onconnect")) return try HIDImpl.get_onconnect(instance);
+        return event_handlers.value(EventHandler, instance, "onconnect");
     }
 
     pub fn set_onconnect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HIDImpl.set_onconnect(instance, value);
+        if (comptime @hasDecl(HIDImpl, "set_onconnect")) return try HIDImpl.set_onconnect(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onconnect", value);
     }
 
     pub fn get_ondisconnect(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HIDImpl.get_ondisconnect(instance);
+        if (comptime @hasDecl(HIDImpl, "get_ondisconnect")) return try HIDImpl.get_ondisconnect(instance);
+        return event_handlers.value(EventHandler, instance, "ondisconnect");
     }
 
     pub fn set_ondisconnect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HIDImpl.set_ondisconnect(instance, value);
+        if (comptime @hasDecl(HIDImpl, "set_ondisconnect")) return try HIDImpl.set_ondisconnect(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondisconnect", value);
     }
 
     pub fn call_getDevices(instance: *runtime.Instance) anyerror!runtime.JSValue {

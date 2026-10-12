@@ -282,28 +282,36 @@ pub const WebSocket = struct {
         return try WebSocketImpl.get_bufferedAmount(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onopen(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WebSocketImpl.get_onopen(instance);
+        if (comptime @hasDecl(WebSocketImpl, "get_onopen")) return try WebSocketImpl.get_onopen(instance);
+        return event_handlers.value(EventHandler, instance, "onopen");
     }
 
     pub fn set_onopen(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WebSocketImpl.set_onopen(instance, value);
+        if (comptime @hasDecl(WebSocketImpl, "set_onopen")) return try WebSocketImpl.set_onopen(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onopen", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WebSocketImpl.get_onerror(instance);
+        if (comptime @hasDecl(WebSocketImpl, "get_onerror")) return try WebSocketImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WebSocketImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(WebSocketImpl, "set_onerror")) return try WebSocketImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn get_onclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WebSocketImpl.get_onclose(instance);
+        if (comptime @hasDecl(WebSocketImpl, "get_onclose")) return try WebSocketImpl.get_onclose(instance);
+        return event_handlers.value(EventHandler, instance, "onclose");
     }
 
     pub fn set_onclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WebSocketImpl.set_onclose(instance, value);
+        if (comptime @hasDecl(WebSocketImpl, "set_onclose")) return try WebSocketImpl.set_onclose(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onclose", value);
     }
 
     pub fn get_extensions(instance: *runtime.Instance) anyerror!DOMString {
@@ -315,11 +323,13 @@ pub const WebSocket = struct {
     }
 
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WebSocketImpl.get_onmessage(instance);
+        if (comptime @hasDecl(WebSocketImpl, "get_onmessage")) return try WebSocketImpl.get_onmessage(instance);
+        return event_handlers.value(EventHandler, instance, "onmessage");
     }
 
     pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WebSocketImpl.set_onmessage(instance, value);
+        if (comptime @hasDecl(WebSocketImpl, "set_onmessage")) return try WebSocketImpl.set_onmessage(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
     }
 
     pub fn get_binaryType(instance: *runtime.Instance) anyerror!BinaryType {

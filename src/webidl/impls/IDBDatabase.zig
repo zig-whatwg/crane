@@ -135,46 +135,6 @@ pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!*runtime.Insta
     return dom.string_lists.create(instance.ctx, names);
 }
 
-/// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "abort");
-}
-
-/// Getter for onclose
-pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "close");
-}
-
-/// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "error");
-}
-
-/// Getter for onversionchange
-pub fn get_onversionchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "versionchange");
-}
-
-/// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "abort", value);
-}
-
-/// Setter for onclose
-pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "close", value);
-}
-
-/// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "error", value);
-}
-
-/// Setter for onversionchange
-pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "versionchange", value);
-}
-
 /// Operation: transaction
 ///
 /// Creates a new transaction on the database.

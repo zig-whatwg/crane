@@ -282,52 +282,66 @@ pub const FileReader = struct {
         return try FileReaderImpl.get_error(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onloadstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try FileReaderImpl.get_onloadstart(instance);
+        if (comptime @hasDecl(FileReaderImpl, "get_onloadstart")) return try FileReaderImpl.get_onloadstart(instance);
+        return event_handlers.value(EventHandler, instance, "onloadstart");
     }
 
     pub fn set_onloadstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try FileReaderImpl.set_onloadstart(instance, value);
+        if (comptime @hasDecl(FileReaderImpl, "set_onloadstart")) return try FileReaderImpl.set_onloadstart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onloadstart", value);
     }
 
     pub fn get_onprogress(instance: *runtime.Instance) anyerror!EventHandler {
-        return try FileReaderImpl.get_onprogress(instance);
+        if (comptime @hasDecl(FileReaderImpl, "get_onprogress")) return try FileReaderImpl.get_onprogress(instance);
+        return event_handlers.value(EventHandler, instance, "onprogress");
     }
 
     pub fn set_onprogress(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try FileReaderImpl.set_onprogress(instance, value);
+        if (comptime @hasDecl(FileReaderImpl, "set_onprogress")) return try FileReaderImpl.set_onprogress(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onprogress", value);
     }
 
     pub fn get_onload(instance: *runtime.Instance) anyerror!EventHandler {
-        return try FileReaderImpl.get_onload(instance);
+        if (comptime @hasDecl(FileReaderImpl, "get_onload")) return try FileReaderImpl.get_onload(instance);
+        return event_handlers.value(EventHandler, instance, "onload");
     }
 
     pub fn set_onload(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try FileReaderImpl.set_onload(instance, value);
+        if (comptime @hasDecl(FileReaderImpl, "set_onload")) return try FileReaderImpl.set_onload(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onload", value);
     }
 
     pub fn get_onabort(instance: *runtime.Instance) anyerror!EventHandler {
-        return try FileReaderImpl.get_onabort(instance);
+        if (comptime @hasDecl(FileReaderImpl, "get_onabort")) return try FileReaderImpl.get_onabort(instance);
+        return event_handlers.value(EventHandler, instance, "onabort");
     }
 
     pub fn set_onabort(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try FileReaderImpl.set_onabort(instance, value);
+        if (comptime @hasDecl(FileReaderImpl, "set_onabort")) return try FileReaderImpl.set_onabort(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onabort", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try FileReaderImpl.get_onerror(instance);
+        if (comptime @hasDecl(FileReaderImpl, "get_onerror")) return try FileReaderImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try FileReaderImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(FileReaderImpl, "set_onerror")) return try FileReaderImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn get_onloadend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try FileReaderImpl.get_onloadend(instance);
+        if (comptime @hasDecl(FileReaderImpl, "get_onloadend")) return try FileReaderImpl.get_onloadend(instance);
+        return event_handlers.value(EventHandler, instance, "onloadend");
     }
 
     pub fn set_onloadend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try FileReaderImpl.set_onloadend(instance, value);
+        if (comptime @hasDecl(FileReaderImpl, "set_onloadend")) return try FileReaderImpl.set_onloadend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onloadend", value);
     }
 
     pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {

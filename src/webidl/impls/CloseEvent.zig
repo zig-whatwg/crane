@@ -69,11 +69,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     state.base.own.type = try @"type".clone(ctx.allocator);
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-    state.base.own.isTrusted = false;
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = 0; // NONE
 
     // Get init dict values with defaults per spec
     if (eventInitDict.was_passed) {
@@ -177,11 +172,6 @@ pub fn createCloseEvent(
     // Set event type to "close" (Event fields in state.base.own)
     state.base.own.type = try allocator.dupe(u8, "close");
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-    state.base.own.isTrusted = true; // Internally created events are trusted
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = 0;
 
     // Event doesn't bubble and isn't cancelable
     state.base.own.bubbles = false;

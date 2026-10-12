@@ -32,7 +32,6 @@ const Window = interfaces.Window;
 
 // Import parent class impl for initialization chain
 // Window inherits from EventTarget per WebIDL
-const EventTargetImpl = @import("EventTarget.zig");
 
 // Import WindowOrWorkerGlobalScope mixin impl for shared global methods
 
@@ -1471,7 +1470,7 @@ pub fn get_documentPictureInPicture(instance: *runtime.Instance) anyerror!*runti
 /// "return this's current event" - the event whose listener is running in this
 /// Window's realm (set by EventTarget's inner invoke), else undefined.
 pub fn get_event(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const event = EventTargetImpl.currentEvent(instance) orelse return runtime.JSValue.jsUndefined;
+    const event = @import("dom").fire_event.currentEvent(instance) orelse return runtime.JSValue.jsUndefined;
     return .{ .instance = event };
 }
 
@@ -1644,23 +1643,6 @@ pub fn get_launchQueue(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_portalHost(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
-}
-
-// =============================================================================
-// Event handler IDL attributes (HTML §8.1.8.1)
-// =============================================================================
-//
-// The GlobalEventHandlers and WindowEventHandlers members are inherited
-// (impls/GlobalEventHandlers.zig, impls/WindowEventHandlers.zig). These
-// helpers are for Window's own - ondevicemotion, onorientationchange, ... -
-// whose target is the window, in its event handler map on EventTarget.
-
-fn getEventHandler(instance: *runtime.Instance, name: []const u8) typedefs.EventHandler {
-    return @import("EventTarget.zig").eventHandler(typedefs.EventHandler, instance, name);
-}
-
-fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typedefs.EventHandler) !void {
-    try @import("EventTarget.zig").setEventHandler(typedefs.EventHandler, instance, name, handler);
 }
 
 /// Set the secure context flag
@@ -2344,7 +2326,7 @@ fn fireMessageEvent(target: *runtime.Instance, event_type: []const u8, data: run
     };
     const generation = runtime.SlabAllocator.generationOf(event);
 
-    _ = EventTargetImpl.dispatchTrusted(target, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch {};
 
     // Who owns the event now. A GC during the dispatch may already have
     // collected it, once the last listener let go of the wrapper - then its

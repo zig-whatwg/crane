@@ -15,7 +15,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
 const AbortSignal = interfaces.AbortSignal;
-const EventTargetImpl = @import("EventTarget.zig");
 
 pub const State = AbortSignal.State;
 
@@ -197,16 +196,6 @@ pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // The signal keeps its reason; the binding gets a hold of its own.
     const reason = reasonOf(instance, internal) orelse return runtime.JSValue.jsUndefined;
     return reason.take();
-}
-
-/// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "abort");
-}
-
-/// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "abort", value);
 }
 
 /// Static operation: any(signals)
@@ -412,7 +401,7 @@ fn runAbortSteps(signal: *runtime.Instance) void {
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
     // "Signal abort" step 5 fires an event: trusted (DOM 2.10).
-    _ = EventTargetImpl.dispatchTrusted(signal, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(signal, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 

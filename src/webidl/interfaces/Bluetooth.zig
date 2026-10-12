@@ -232,12 +232,16 @@ pub const Bluetooth = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onavailabilitychanged(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BluetoothImpl.get_onavailabilitychanged(instance);
+        if (comptime @hasDecl(BluetoothImpl, "get_onavailabilitychanged")) return try BluetoothImpl.get_onavailabilitychanged(instance);
+        return event_handlers.value(EventHandler, instance, "onavailabilitychanged");
     }
 
     pub fn set_onavailabilitychanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BluetoothImpl.set_onavailabilitychanged(instance, value);
+        if (comptime @hasDecl(BluetoothImpl, "set_onavailabilitychanged")) return try BluetoothImpl.set_onavailabilitychanged(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onavailabilitychanged", value);
     }
 
     /// Extended attributes: [SameObject]

@@ -331,52 +331,66 @@ pub const WorkerGlobalScope = struct {
         return try WorkerGlobalScopeImpl.get_navigator(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onerror(instance: *runtime.Instance) anyerror!OnErrorEventHandler {
-        return try WorkerGlobalScopeImpl.get_onerror(instance);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "get_onerror")) return try WorkerGlobalScopeImpl.get_onerror(instance);
+        return event_handlers.value(OnErrorEventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: OnErrorEventHandler) anyerror!void {
-        try WorkerGlobalScopeImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "set_onerror")) return try WorkerGlobalScopeImpl.set_onerror(instance, value);
+        try event_handlers.setValue(OnErrorEventHandler, instance, "onerror", value);
     }
 
     pub fn get_onlanguagechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WorkerGlobalScopeImpl.get_onlanguagechange(instance);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "get_onlanguagechange")) return try WorkerGlobalScopeImpl.get_onlanguagechange(instance);
+        return event_handlers.value(EventHandler, instance, "onlanguagechange");
     }
 
     pub fn set_onlanguagechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WorkerGlobalScopeImpl.set_onlanguagechange(instance, value);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "set_onlanguagechange")) return try WorkerGlobalScopeImpl.set_onlanguagechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onlanguagechange", value);
     }
 
     pub fn get_onoffline(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WorkerGlobalScopeImpl.get_onoffline(instance);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "get_onoffline")) return try WorkerGlobalScopeImpl.get_onoffline(instance);
+        return event_handlers.value(EventHandler, instance, "onoffline");
     }
 
     pub fn set_onoffline(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WorkerGlobalScopeImpl.set_onoffline(instance, value);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "set_onoffline")) return try WorkerGlobalScopeImpl.set_onoffline(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onoffline", value);
     }
 
     pub fn get_ononline(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WorkerGlobalScopeImpl.get_ononline(instance);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "get_ononline")) return try WorkerGlobalScopeImpl.get_ononline(instance);
+        return event_handlers.value(EventHandler, instance, "ononline");
     }
 
     pub fn set_ononline(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WorkerGlobalScopeImpl.set_ononline(instance, value);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "set_ononline")) return try WorkerGlobalScopeImpl.set_ononline(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ononline", value);
     }
 
     pub fn get_onrejectionhandled(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WorkerGlobalScopeImpl.get_onrejectionhandled(instance);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "get_onrejectionhandled")) return try WorkerGlobalScopeImpl.get_onrejectionhandled(instance);
+        return event_handlers.value(EventHandler, instance, "onrejectionhandled");
     }
 
     pub fn set_onrejectionhandled(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WorkerGlobalScopeImpl.set_onrejectionhandled(instance, value);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "set_onrejectionhandled")) return try WorkerGlobalScopeImpl.set_onrejectionhandled(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onrejectionhandled", value);
     }
 
     pub fn get_onunhandledrejection(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WorkerGlobalScopeImpl.get_onunhandledrejection(instance);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "get_onunhandledrejection")) return try WorkerGlobalScopeImpl.get_onunhandledrejection(instance);
+        return event_handlers.value(EventHandler, instance, "onunhandledrejection");
     }
 
     pub fn set_onunhandledrejection(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WorkerGlobalScopeImpl.set_onunhandledrejection(instance, value);
+        if (comptime @hasDecl(WorkerGlobalScopeImpl, "set_onunhandledrejection")) return try WorkerGlobalScopeImpl.set_onunhandledrejection(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onunhandledrejection", value);
     }
 
     pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {

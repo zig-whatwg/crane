@@ -141,11 +141,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     state.base.own.type = try @"type".clone(ctx.allocator);
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-    state.base.own.isTrusted = false;
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = 0; // NONE
 
     // Get init dict values with defaults per spec
     if (eventInitDict.was_passed) {
@@ -430,11 +425,6 @@ pub fn createPostMessageEvent(
     // it borrows nothing that can go away.
     state.base.own.type = runtime.DOMString.initInterned(event_type);
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-    state.base.own.isTrusted = true; // Browser-initiated
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = 0;
 
     state.base.own.bubbles = false;
     state.base.own.cancelable = false;

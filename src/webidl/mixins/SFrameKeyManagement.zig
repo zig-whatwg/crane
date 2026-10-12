@@ -25,12 +25,16 @@ pub fn installHooks() void {
     }
 }
 
+const event_handlers = @import("dom").event_handlers;
+
 pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-    return try SFrameKeyManagementImpl.get_onerror(instance);
+    if (comptime @hasDecl(SFrameKeyManagementImpl, "get_onerror")) return try SFrameKeyManagementImpl.get_onerror(instance);
+    return event_handlers.value(EventHandler, instance, "onerror");
 }
 
 pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try SFrameKeyManagementImpl.set_onerror(instance, value);
+    if (comptime @hasDecl(SFrameKeyManagementImpl, "set_onerror")) return try SFrameKeyManagementImpl.set_onerror(instance, value);
+    try event_handlers.setValue(EventHandler, instance, "onerror", value);
 }
 
 pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!runtime.JSValue {

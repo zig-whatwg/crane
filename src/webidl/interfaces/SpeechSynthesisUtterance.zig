@@ -287,60 +287,76 @@ pub const SpeechSynthesisUtterance = struct {
         try SpeechSynthesisUtteranceImpl.set_pitch(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechSynthesisUtteranceImpl.get_onstart(instance);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "get_onstart")) return try SpeechSynthesisUtteranceImpl.get_onstart(instance);
+        return event_handlers.value(EventHandler, instance, "onstart");
     }
 
     pub fn set_onstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechSynthesisUtteranceImpl.set_onstart(instance, value);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "set_onstart")) return try SpeechSynthesisUtteranceImpl.set_onstart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstart", value);
     }
 
     pub fn get_onend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechSynthesisUtteranceImpl.get_onend(instance);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "get_onend")) return try SpeechSynthesisUtteranceImpl.get_onend(instance);
+        return event_handlers.value(EventHandler, instance, "onend");
     }
 
     pub fn set_onend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechSynthesisUtteranceImpl.set_onend(instance, value);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "set_onend")) return try SpeechSynthesisUtteranceImpl.set_onend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onend", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechSynthesisUtteranceImpl.get_onerror(instance);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "get_onerror")) return try SpeechSynthesisUtteranceImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechSynthesisUtteranceImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "set_onerror")) return try SpeechSynthesisUtteranceImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn get_onpause(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechSynthesisUtteranceImpl.get_onpause(instance);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "get_onpause")) return try SpeechSynthesisUtteranceImpl.get_onpause(instance);
+        return event_handlers.value(EventHandler, instance, "onpause");
     }
 
     pub fn set_onpause(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechSynthesisUtteranceImpl.set_onpause(instance, value);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "set_onpause")) return try SpeechSynthesisUtteranceImpl.set_onpause(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onpause", value);
     }
 
     pub fn get_onresume(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechSynthesisUtteranceImpl.get_onresume(instance);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "get_onresume")) return try SpeechSynthesisUtteranceImpl.get_onresume(instance);
+        return event_handlers.value(EventHandler, instance, "onresume");
     }
 
     pub fn set_onresume(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechSynthesisUtteranceImpl.set_onresume(instance, value);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "set_onresume")) return try SpeechSynthesisUtteranceImpl.set_onresume(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onresume", value);
     }
 
     pub fn get_onmark(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechSynthesisUtteranceImpl.get_onmark(instance);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "get_onmark")) return try SpeechSynthesisUtteranceImpl.get_onmark(instance);
+        return event_handlers.value(EventHandler, instance, "onmark");
     }
 
     pub fn set_onmark(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechSynthesisUtteranceImpl.set_onmark(instance, value);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "set_onmark")) return try SpeechSynthesisUtteranceImpl.set_onmark(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmark", value);
     }
 
     pub fn get_onboundary(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SpeechSynthesisUtteranceImpl.get_onboundary(instance);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "get_onboundary")) return try SpeechSynthesisUtteranceImpl.get_onboundary(instance);
+        return event_handlers.value(EventHandler, instance, "onboundary");
     }
 
     pub fn set_onboundary(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SpeechSynthesisUtteranceImpl.set_onboundary(instance, value);
+        if (comptime @hasDecl(SpeechSynthesisUtteranceImpl, "set_onboundary")) return try SpeechSynthesisUtteranceImpl.set_onboundary(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onboundary", value);
     }
 
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and

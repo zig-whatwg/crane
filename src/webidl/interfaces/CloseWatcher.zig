@@ -196,20 +196,26 @@ pub const CloseWatcher = struct {
         return try CloseWatcherImpl.call_constructor(ctx, options);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_oncancel(instance: *runtime.Instance) anyerror!EventHandler {
-        return try CloseWatcherImpl.get_oncancel(instance);
+        if (comptime @hasDecl(CloseWatcherImpl, "get_oncancel")) return try CloseWatcherImpl.get_oncancel(instance);
+        return event_handlers.value(EventHandler, instance, "oncancel");
     }
 
     pub fn set_oncancel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try CloseWatcherImpl.set_oncancel(instance, value);
+        if (comptime @hasDecl(CloseWatcherImpl, "set_oncancel")) return try CloseWatcherImpl.set_oncancel(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncancel", value);
     }
 
     pub fn get_onclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try CloseWatcherImpl.get_onclose(instance);
+        if (comptime @hasDecl(CloseWatcherImpl, "get_onclose")) return try CloseWatcherImpl.get_onclose(instance);
+        return event_handlers.value(EventHandler, instance, "onclose");
     }
 
     pub fn set_onclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try CloseWatcherImpl.set_onclose(instance, value);
+        if (comptime @hasDecl(CloseWatcherImpl, "set_onclose")) return try CloseWatcherImpl.set_onclose(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onclose", value);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {

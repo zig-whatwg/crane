@@ -180,11 +180,15 @@ pub const PresentationConnectionList = struct {
         return try PresentationConnectionListImpl.get_connections(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onconnectionavailable(instance: *runtime.Instance) anyerror!EventHandler {
-        return try PresentationConnectionListImpl.get_onconnectionavailable(instance);
+        if (comptime @hasDecl(PresentationConnectionListImpl, "get_onconnectionavailable")) return try PresentationConnectionListImpl.get_onconnectionavailable(instance);
+        return event_handlers.value(EventHandler, instance, "onconnectionavailable");
     }
 
     pub fn set_onconnectionavailable(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try PresentationConnectionListImpl.set_onconnectionavailable(instance, value);
+        if (comptime @hasDecl(PresentationConnectionListImpl, "set_onconnectionavailable")) return try PresentationConnectionListImpl.set_onconnectionavailable(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onconnectionavailable", value);
     }
 };

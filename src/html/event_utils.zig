@@ -15,8 +15,12 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 
-// Access to impls module for setting internal state
+// ErrorEvent's factory (createErrorEvent) is still reached through its impl:
+// impls batch B8 (owned sub-objects and factories).
 const impls = @import("impls");
+// The event's dispatch state (DOM 2.2), whose type Event shares with the
+// dispatcher.
+const event_dispatch = @import("dom").event_dispatch;
 
 // =============================================================================
 // Error Information
@@ -156,10 +160,7 @@ pub fn fireEvent(
     // Ensure event is cleaned up after dispatch
     defer interfaces.Event.deinit(event);
 
-    // Set isTrusted to true (fired by UA, not script)
-    impls.Event.setIsTrusted(event, true);
-
-    // Dispatch the event
+    // Dispatch the event, with isTrusted true (fired by UA, not script)
     return dispatchEvent(allocator, target, event);
 }
 
@@ -201,10 +202,7 @@ pub fn fireErrorEvent(
     // Ensure event is cleaned up after dispatch
     defer interfaces.ErrorEvent.deinit(event);
 
-    // Set isTrusted to true (fired by UA, not script)
-    impls.ErrorEvent.setIsTrusted(event, true);
-
-    // Dispatch the event
+    // Dispatch the event, with isTrusted true (fired by UA, not script)
     // Per spec: "Returning true in an event handler cancels the event"
     // So we return true if NOT cancelled (event handler returned false or was absent)
     return dispatchEvent(allocator, target, event);
@@ -234,16 +232,22 @@ fn dispatchEvent(
     event: *runtime.Instance,
 ) !bool {
     _ = allocator;
+    // An event with no dispatch state was never initialized, and dispatch
+    // would throw InvalidStateError: nothing is cancelled.
+    const state = event_dispatch.of(event) orelse return true;
+
+    // isTrusted: true, fired by the user agent (DOM 2.10).
+    state.is_trusted = true;
 
     // Set event's target
-    impls.Event.setTarget(event, target);
-    impls.Event.setCurrentTarget(event, target);
+    state.setTarget(event, target);
+    state.current_target = target;
 
     // Set dispatch flag
-    impls.Event.setDispatchFlag(event, true);
+    state.dispatch_flag = true;
 
     // Set event phase to AT_TARGET
-    impls.Event.setEventPhase(event, interfaces.Event.get_AT_TARGET());
+    state.phase = interfaces.Event.get_AT_TARGET();
 
     // TODO: Full event dispatch with event path propagation
     // For now, we're just invoking event listeners on the target directly
@@ -260,14 +264,12 @@ fn dispatchEvent(
     // after that frame ends. Wiring real dispatch in here means giving those
     // two functions a context that outlives the call.
 
-    // Unset dispatch flag
-    impls.Event.setDispatchFlag(event, false);
-
-    // Reset event phase
-    impls.Event.setEventPhase(event, interfaces.Event.get_NONE());
+    // Unset dispatch flag, reset event phase and currentTarget (dispatch
+    // steps 7-10)
+    state.endDispatch(event);
 
     // Return true if event was NOT cancelled
-    return !impls.Event.getCanceledFlag(event);
+    return !state.canceled_flag;
 }
 
 // =============================================================================

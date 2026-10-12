@@ -487,8 +487,12 @@ else:
   member is implemented ONCE, in the mixin's impl. Nothing calls a mixin on its
   own, and an includer's impl never implements or overrides a member it
   includes (WebIDL forbids redeclaring one); behaviour the spec keys on the
-  receiver, like a body element's window-reflecting handlers, is written in the
-  mixin impl. The move is under way: a mixin joins
+  receiver is written in the mixin impl. Event handler IDL attributes
+  (EventHandler, OnErrorEventHandler, OnBeforeUnloadEventHandler) are the
+  exception: codegen emits them through `dom.event_handlers`, which also holds
+  the receiver-keyed rule for body/frameset's window-reflecting handlers, so an
+  impl declares an `on*` accessor only to add behaviour (impls B5). The move is
+  under way: a mixin joins
   `src/webidl/codegen/inherited_mixins.zig` in the commit that moves its
   implementation out of its includers' impls, and until then its includers'
   delegates still call their own impls.

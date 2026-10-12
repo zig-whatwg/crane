@@ -228,12 +228,16 @@ pub const VideoEncoder = struct {
         return try VideoEncoderImpl.get_encodeQueueSize(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_ondequeue(instance: *runtime.Instance) anyerror!EventHandler {
-        return try VideoEncoderImpl.get_ondequeue(instance);
+        if (comptime @hasDecl(VideoEncoderImpl, "get_ondequeue")) return try VideoEncoderImpl.get_ondequeue(instance);
+        return event_handlers.value(EventHandler, instance, "ondequeue");
     }
 
     pub fn set_ondequeue(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try VideoEncoderImpl.set_ondequeue(instance, value);
+        if (comptime @hasDecl(VideoEncoderImpl, "set_ondequeue")) return try VideoEncoderImpl.set_ondequeue(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondequeue", value);
     }
 
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {

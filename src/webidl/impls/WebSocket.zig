@@ -40,7 +40,6 @@ const api_parser = @import("api_parser");
 
 // EventTarget is an ancestor: its impl owns the event listener list, the
 // event handlers in it, and trusted dispatch.
-const EventTargetImpl = @import("EventTarget.zig");
 
 const log = std.log.scoped(.websocket);
 
@@ -748,7 +747,7 @@ fn deliver(
     // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
     // ancestor, so its impl.
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(target, event) catch |err| {
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ type_string.asSlice(), @errorName(err) });
     };
 
@@ -1102,21 +1101,6 @@ pub fn get_bufferedAmount(instance: *runtime.Instance) anyerror!u64 {
     return internal.getBufferedAmount();
 }
 
-/// Getter for onopen (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onopen(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "open");
-}
-
-/// Getter for onerror (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "error");
-}
-
-/// Getter for onclose (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "close");
-}
-
 /// Getter for extensions
 /// Spec: https://websockets.spec.whatwg.org/#dom-websocket-extensions
 ///
@@ -1143,11 +1127,6 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initEmpty();
 }
 
-/// Getter for onmessage (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "message");
-}
-
 /// Getter for binaryType
 /// Spec: https://websockets.spec.whatwg.org/#dom-websocket-binarytype
 ///
@@ -1156,30 +1135,6 @@ pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler
 pub fn get_binaryType(instance: *runtime.Instance) anyerror!enums.BinaryType {
     const internal = getInternal(instance) orelse return ._blob_;
     return internal.binary_type;
-}
-
-/// Setter for onopen: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onopen(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "open", value);
-}
-
-/// Setter for onerror: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "error", value);
-}
-
-/// Setter for onclose: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "close", value);
-}
-
-/// Setter for onmessage: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "message", value);
 }
 
 /// Setter for binaryType

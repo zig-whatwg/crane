@@ -196,12 +196,16 @@ pub const WakeLockSentinel = struct {
         return try WakeLockSentinelImpl.get_type(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onrelease(instance: *runtime.Instance) anyerror!EventHandler {
-        return try WakeLockSentinelImpl.get_onrelease(instance);
+        if (comptime @hasDecl(WakeLockSentinelImpl, "get_onrelease")) return try WakeLockSentinelImpl.get_onrelease(instance);
+        return event_handlers.value(EventHandler, instance, "onrelease");
     }
 
     pub fn set_onrelease(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try WakeLockSentinelImpl.set_onrelease(instance, value);
+        if (comptime @hasDecl(WakeLockSentinelImpl, "set_onrelease")) return try WakeLockSentinelImpl.set_onrelease(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onrelease", value);
     }
 
     pub fn call_release(instance: *runtime.Instance) anyerror!runtime.JSValue {

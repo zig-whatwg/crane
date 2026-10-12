@@ -320,12 +320,16 @@ pub const BaseAudioContext = struct {
         return value;
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BaseAudioContextImpl.get_onstatechange(instance);
+        if (comptime @hasDecl(BaseAudioContextImpl, "get_onstatechange")) return try BaseAudioContextImpl.get_onstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onstatechange");
     }
 
     pub fn set_onstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BaseAudioContextImpl.set_onstatechange(instance, value);
+        if (comptime @hasDecl(BaseAudioContextImpl, "set_onstatechange")) return try BaseAudioContextImpl.set_onstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
 
     pub fn call_createScriptProcessor(instance: *runtime.Instance, bufferSize: webidl.Opt(u32), numberOfInputChannels: webidl.Opt(u32), numberOfOutputChannels: webidl.Opt(u32)) anyerror!*runtime.Instance {

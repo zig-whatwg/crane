@@ -371,28 +371,36 @@ pub const Animation = struct {
         return try AnimationImpl.get_finished(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onfinish(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AnimationImpl.get_onfinish(instance);
+        if (comptime @hasDecl(AnimationImpl, "get_onfinish")) return try AnimationImpl.get_onfinish(instance);
+        return event_handlers.value(EventHandler, instance, "onfinish");
     }
 
     pub fn set_onfinish(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AnimationImpl.set_onfinish(instance, value);
+        if (comptime @hasDecl(AnimationImpl, "set_onfinish")) return try AnimationImpl.set_onfinish(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onfinish", value);
     }
 
     pub fn get_oncancel(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AnimationImpl.get_oncancel(instance);
+        if (comptime @hasDecl(AnimationImpl, "get_oncancel")) return try AnimationImpl.get_oncancel(instance);
+        return event_handlers.value(EventHandler, instance, "oncancel");
     }
 
     pub fn set_oncancel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AnimationImpl.set_oncancel(instance, value);
+        if (comptime @hasDecl(AnimationImpl, "set_oncancel")) return try AnimationImpl.set_oncancel(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncancel", value);
     }
 
     pub fn get_onremove(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AnimationImpl.get_onremove(instance);
+        if (comptime @hasDecl(AnimationImpl, "get_onremove")) return try AnimationImpl.get_onremove(instance);
+        return event_handlers.value(EventHandler, instance, "onremove");
     }
 
     pub fn set_onremove(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AnimationImpl.set_onremove(instance, value);
+        if (comptime @hasDecl(AnimationImpl, "set_onremove")) return try AnimationImpl.set_onremove(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onremove", value);
     }
 
     pub fn get_trigger(instance: *runtime.Instance) anyerror!?*runtime.Instance {

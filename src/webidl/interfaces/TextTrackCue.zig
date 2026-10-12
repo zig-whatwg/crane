@@ -236,20 +236,26 @@ pub const TextTrackCue = struct {
         try TextTrackCueImpl.set_pauseOnExit(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onenter(instance: *runtime.Instance) anyerror!EventHandler {
-        return try TextTrackCueImpl.get_onenter(instance);
+        if (comptime @hasDecl(TextTrackCueImpl, "get_onenter")) return try TextTrackCueImpl.get_onenter(instance);
+        return event_handlers.value(EventHandler, instance, "onenter");
     }
 
     pub fn set_onenter(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try TextTrackCueImpl.set_onenter(instance, value);
+        if (comptime @hasDecl(TextTrackCueImpl, "set_onenter")) return try TextTrackCueImpl.set_onenter(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onenter", value);
     }
 
     pub fn get_onexit(instance: *runtime.Instance) anyerror!EventHandler {
-        return try TextTrackCueImpl.get_onexit(instance);
+        if (comptime @hasDecl(TextTrackCueImpl, "get_onexit")) return try TextTrackCueImpl.get_onexit(instance);
+        return event_handlers.value(EventHandler, instance, "onexit");
     }
 
     pub fn set_onexit(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try TextTrackCueImpl.set_onexit(instance, value);
+        if (comptime @hasDecl(TextTrackCueImpl, "set_onexit")) return try TextTrackCueImpl.set_onexit(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onexit", value);
     }
 
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
