@@ -91,44 +91,6 @@ pub const ParentNode = struct {
         },
     );
 
-    const delegates = .{
-        .get_childElementCount = &get_childElementCount,
-        .get_children = &get_children,
-        .get_firstElementChild = &get_firstElementChild,
-        .get_lastElementChild = &get_lastElementChild,
-
-        .call_append = &call_append,
-        .call_moveBefore = &call_moveBefore,
-        .call_prepend = &call_prepend,
-        .call_querySelector = &call_querySelector,
-        .call_querySelectorAll = &call_querySelectorAll,
-        .call_replaceChildren = &call_replaceChildren,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return ParentNodeImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return ParentNodeImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        ParentNodeImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {

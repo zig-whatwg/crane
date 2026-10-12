@@ -90,55 +90,6 @@ pub const HTMLHyperlinkElementUtils = struct {
         },
     );
 
-    const delegates = .{
-        .get_hash = &get_hash,
-        .get_host = &get_host,
-        .get_hostname = &get_hostname,
-        .get_href = &get_href,
-        .get_origin = &get_origin,
-        .get_password = &get_password,
-        .get_pathname = &get_pathname,
-        .get_port = &get_port,
-        .get_protocol = &get_protocol,
-        .get_search = &get_search,
-        .get_username = &get_username,
-
-        .set_hash = &set_hash,
-        .set_host = &set_host,
-        .set_hostname = &set_hostname,
-        .set_href = &set_href,
-        .set_password = &set_password,
-        .set_pathname = &set_pathname,
-        .set_port = &set_port,
-        .set_protocol = &set_protocol,
-        .set_search = &set_search,
-        .set_username = &set_username,
-
-        .deinit = &deinit,
-    };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
-
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return HTMLHyperlinkElementUtilsImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Initialize with custom state type (for subclasses)
-    /// Subclasses call this to properly initialize the base class state.
-    pub fn initWithState(
-        allocator: std.mem.Allocator,
-        comptime StateType: type,
-        vtable_ptr: *const runtime.VTable,
-        ctx: runtime.Context,
-    ) !*runtime.Instance {
-        return HTMLHyperlinkElementUtilsImpl.init(allocator, StateType, vtable_ptr, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        HTMLHyperlinkElementUtilsImpl.deinit(instance);
-    }
-
     /// The impl's process-wide hooks, installed once at process start
     /// (crane.Process, through the root's process_hooks).
     pub fn installHooks() void {
