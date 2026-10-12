@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/headers/"><code>headers/</code></a></li><li aria-current="page"><code>header-<wbr>values.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>header-<wbr>values.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/headers/header-values.any.js">
-<p class="figures-main"><span class="fg-pass">10</span><span class="fg-of"> / 12</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">12</span><span class="fg-of"> / 12</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-c2c4b851ff</code>, <span class="nowrap">12 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c2c4b851ff"><code>c2c4b851ff</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-bbedc4deaf</code>, <span class="nowrap">12 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/bbedc4deaf"><code>bbedc4deaf</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/headers/header-values.any.js"><code>fetch/<wbr>api/<wbr>headers/<wbr>header-<wbr>values.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,7 +34,7 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/fetch/api/headers/header-values.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>7</b> / 8</span></h3>
+<h3 class="run-head"><code>/fetch/api/headers/header-values.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 8</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-f8be4c64"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest with value x%00x needs to throw</span></div><a class="self" href="#s-f8be4c64" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-396a02bc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%00x needs to throw</span></div><a class="self" href="#s-396a02bc" aria-label="Link to this subtest">&para;</a></li>
@@ -43,16 +43,16 @@
 <li class="sub s-pass" id="s-6202dfaa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest with value x%0Dx needs to throw</span></div><a class="self" href="#s-6202dfaa" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2de126ab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%0Dx needs to throw</span></div><a class="self" href="#s-2de126ab" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2bf6d1f6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">XMLHttpRequest with all valid values</span></div><a class="self" href="#s-2bf6d1f6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6c81e71c"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetch() with all valid values</span></summary><pre class="msg">assert_equals: expected (string) &quot;x\x01x&quot; but got (object) null</pre></details><a class="self" href="#s-6c81e71c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6c81e71c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with all valid values</span></div><a class="self" href="#s-6c81e71c" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/fetch/api/headers/header-values.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 4</span></h3>
+<h3 class="run-head"><code>/fetch/api/headers/header-values.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-4a4c00a5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%00x needs to throw</span></div><a class="self" href="#s-4a4c00a5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-6edb0a45"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%0Ax needs to throw</span></div><a class="self" href="#s-6edb0a45" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c7ed39d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with value x%0Dx needs to throw</span></div><a class="self" href="#s-c7ed39d2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-96ad0385"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetch() with all valid values</span></summary><pre class="msg">assert_equals: expected (string) &quot;x\x01x&quot; but got (object) null</pre></details><a class="self" href="#s-96ad0385" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-96ad0385"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">fetch() with all valid values</span></div><a class="self" href="#s-96ad0385" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
