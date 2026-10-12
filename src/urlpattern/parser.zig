@@ -161,12 +161,14 @@ pub const PatternParser = struct {
         tokens: []const Token,
         options: Options,
         encoding_callback: EncodingCallback,
-    ) Self {
+    ) Allocator.Error!Self {
         return Self{
             .token_list = tokens,
             .encoding_callback = encoding_callback,
             .options = options,
-            .segment_wildcard_regexp = generateSegmentWildcardRegexp(options),
+            // Parse-a-pattern-string step 1: classification compares the
+            // exact spelling produced by the shared regexp generator.
+            .segment_wildcard_regexp = try @import("regex_generator.zig").generateSegmentWildcardRegexp(allocator, options),
             .part_list = .empty,
             .pending_fixed_value = .empty,
             .index = 0,
@@ -177,24 +179,12 @@ pub const PatternParser = struct {
 
     /// Free resources
     pub fn deinit(self: *Self) void {
+        self.allocator.free(self.segment_wildcard_regexp);
         for (self.part_list.items) |*part| {
             part.deinit();
         }
         self.part_list.deinit(self.allocator);
         self.pending_fixed_value.deinit(self.allocator);
-    }
-
-    /// Generate segment wildcard regexp based on options
-    fn generateSegmentWildcardRegexp(options: Options) []const u8 {
-        // In a full implementation, this would dynamically build [^<delimiter>]+?
-        // For now, we use common cases
-        if (std.mem.eql(u8, options.delimiter_code_point, "/")) {
-            return "[^/]+?";
-        }
-        if (std.mem.eql(u8, options.delimiter_code_point, ".")) {
-            return "[^.]+?";
-        }
-        return "[^]+?"; // Match anything but empty
     }
 
     /// Try to consume a token of given type
@@ -501,7 +491,7 @@ pub fn parsePatternString(
     defer tokens.deinit();
 
     // Parse the tokens
-    var pat_parser = PatternParser.init(allocator, tokens.tokens, options, encoding_callback);
+    var pat_parser = try PatternParser.init(allocator, tokens.tokens, options, encoding_callback);
     errdefer pat_parser.deinit();
 
     try pat_parser.parse();
