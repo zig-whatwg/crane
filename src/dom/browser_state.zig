@@ -15,9 +15,18 @@
 const runtime = @import("runtime");
 const storage = @import("storage");
 const file = @import("file");
+const html_core = @import("html_core");
 
 pub const UserAgentStorage = storage.UserAgentStorage;
 pub const BlobURLStore = file.BlobURLStore;
+pub const BrowsingContext = html_core.BrowsingContext;
+
+/// The browsing context whose active window is `window` (HTML: the
+/// Window's browsing context, while it is the active window of one).
+/// Interim: the next commit finds it on its Browser's list.
+pub fn browsingContextOf(window: *runtime.Instance) ?*BrowsingContext {
+    return BrowsingContext.ofWindow(@ptrCast(window));
+}
 
 /// The user agent's storage shed and bucket file systems (Storage 4.3) of
 /// the Browser `realm` belongs to, made on first use; null for a realm no

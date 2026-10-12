@@ -914,7 +914,7 @@ fn documentHasBrowsingContext(element: *runtime.Instance) bool {
 fn documentIsFullyActive(element: *runtime.Instance) bool {
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
-    const navigable = html_core.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    const navigable = dom.browser_state.browsingContextOf(window) orelse return false;
     return navigable.getActiveDocument() == @as(*anyopaque, @ptrCast(document));
 }
 

@@ -412,7 +412,7 @@ pub const ChildNavigable = struct {
 pub fn childNavigablesOf(document: *runtime.Instance, allocator: std.mem.Allocator) std.ArrayListUnmanaged(ChildNavigable) {
     var out: std.ArrayListUnmanaged(ChildNavigable) = .empty;
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return out;
-    const navigable = BrowsingContext.ofWindow(@ptrCast(window)) orelse return out;
+    const navigable = @import("browser_state.zig").browsingContextOf(window) orelse return out;
     if (navigable.children.items.len == 0) return out;
     const root = instance_bridge.getNodeBase(document) orelse return out;
     collectContainers(navigable, root, &out, allocator, 0);
