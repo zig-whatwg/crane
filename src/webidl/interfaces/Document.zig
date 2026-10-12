@@ -669,6 +669,14 @@ pub const Document = struct {
 
         pub const has_constructor = true;
 
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .named_getter = .{ .function = "call_getter", .implemented = @hasDecl(DocumentImpl, "call_getter") },
+            .legacy_override_built_ins = true,
+        };
+
         /// Members marked with [Unscopable] extended attribute
         pub const unscopables = .{
             "fullscreen",
@@ -2075,6 +2083,14 @@ pub const Document = struct {
     pub const get_onbeforexrselect = mixins.GlobalEventHandlers.get_onbeforexrselect;
     pub const set_onbeforexrselect = mixins.GlobalEventHandlers.set_onbeforexrselect;
 
+    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(DocumentImpl, "call_getter")) {
+            return try DocumentImpl.call_getter(instance, name);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
     pub fn call_clear(instance: *runtime.Instance) anyerror!void {
         return try DocumentImpl.call_clear(instance);
     }
@@ -2273,10 +2289,6 @@ pub const Document = struct {
 
     pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
         return try DocumentImpl.call_queryCommandEnabled(instance, commandId);
-    }
-
-    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
-        return try DocumentImpl.call_getter(instance, name);
     }
 
     /// Extended attributes: [NewObject]

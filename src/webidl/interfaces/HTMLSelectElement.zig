@@ -261,6 +261,14 @@ pub const HTMLSelectElement = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_item" },
+            .indexed_setter = .{ .function = "call_setter", .implemented = @hasDecl(HTMLSelectElementImpl, "call_setter") },
+        };
     };
 
     /// HTML 3.2.3 [HTMLConstructor]: the constructor's steps are HTML's "HTML
@@ -550,6 +558,19 @@ pub const HTMLSelectElement = struct {
         return try HTMLSelectElementImpl.get_labels(instance);
     }
 
+    /// Extended attributes: [CEReactions]
+    pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
+        if (comptime @hasDecl(HTMLSelectElementImpl, "call_setter")) {
+            // [CEReactions] - Trigger Custom Element lifecycle callbacks
+            const ce_scope = runtime.CEReactions.begin(instance);
+            defer runtime.CEReactions.end(ce_scope);
+
+            return try HTMLSelectElementImpl.call_setter(instance, index, option);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
         return try HTMLSelectElementImpl.call_item(instance, index);
     }
@@ -581,15 +602,6 @@ pub const HTMLSelectElement = struct {
 
     pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
         return try HTMLSelectElementImpl.call_showPicker(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        return try HTMLSelectElementImpl.call_setter(instance, index, option);
     }
 
     /// Extended attributes: [CEReactions]
@@ -637,8 +649,8 @@ pub const HTMLSelectElement = struct {
         "set_required",
         "set_size",
         "set_length",
-        "call_remove",
         "call_setter",
+        "call_remove",
         "call_add",
         "call_remove__1",
     };

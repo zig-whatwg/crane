@@ -331,32 +331,6 @@ fn setDetachedValue(internal: *InternalState, value: []const u8) !void {
 // Helper Functions
 // =============================================================================
 
-/// Create an Attr with the given properties
-pub fn createAttr(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    namespace_uri: ?[]const u8,
-    prefix: ?[]const u8,
-    local_name: []const u8,
-    value: []const u8,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &Attr.vtable, ctx);
-    errdefer deinit(instance);
-
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Set node type to ATTRIBUTE_NODE (2)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ATTRIBUTE_NODE);
-
-    // Set attribute properties
-    internal.namespace_uri = if (namespace_uri) |ns| try allocator.dupe(u8, ns) else null;
-    internal.prefix = if (prefix) |p| try allocator.dupe(u8, p) else null;
-    internal.local_name = try allocator.dupe(u8, local_name);
-    internal.value = try allocator.dupe(u8, value);
-
-    return instance;
-}
-
 /// Set the owner element
 ///
 /// An attribute's node document is its element's (DOM "attribute" concept):

@@ -471,6 +471,7 @@ else:
 | static attribute | `get_static_<name>`, `set_static_<name>` - accessors of the interface object |
 | static operation | `call_static_<name>` |
 | constant | none - the generated interface answers it (`get_<NAME>()`) |
+| special operation (indexed/named getter, setter, deleter) | bound from the generated `Meta.special_operations`, never by name; an anonymous one's delegate is `call_<keyword>`, or `call_<keyword>__<k>` for the k-th of its keyword |
 
 - **A private function never takes one of those prefixes.** Name helpers in
   camelCase.
@@ -548,7 +549,12 @@ zig build lint-impls -j2 --cache-dir ~/Library/Caches/crane-z16-cache -- --updat
 ```
 
 `tools/lint_impls_boundary.zig` counts references into impls per file AND per
-`Impl.member` against `tools/impls_boundary_baseline.txt`. A count that
+`Impl.member` against `tools/impls_boundary_baseline.txt`. Each use counts once,
+however many times its alias is declared in the file; src/ (outside the
+generated layers), tests/ and tools/ are scanned, and a file that imports
+`impls` but reaches nothing in it counts one `impls.@import`, because the
+module-graph step drops that edge too. `-- --list` prints every site as
+`path:line Impl.member`: the work list for a conversion batch. A count that
 rises fails; so does a pair the baseline lacks - which catches a swap. The
 `//! lint-impls: hook for <Owner>` line is documentation - it names who installs
 the hook; the tool does not parse it (its in-hierarchy hook check went with the

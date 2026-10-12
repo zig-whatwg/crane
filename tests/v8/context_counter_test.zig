@@ -273,10 +273,8 @@ test "the indexed property definer releases every handle it takes" {
     try expectNothingLeft("Object.defineProperty(select, '0', ...)", try leftBy("Object.defineProperty(allDefinedSelect, '0', { value: allDefinedOption, configurable: true, enumerable: true, writable: true });"));
     try expectNothingLeft("Object.defineProperty(nodeList, '0', ...)", try leftBy("try { Object.defineProperty(children, '0', { value: 1 }) } catch (e) {}"));
     // An HTMLCollection has no indexed setter: a strict-mode assignment to
-    // an index reaches the definer, which throws a TypeError whose message
-    // and error it made. (Object.defineProperty on it does not throw today,
-    // where WebIDL's [[DefineOwnProperty]] returns false - a conformance
-    // gap, queued.)
+    // an index reaches the definer, which answers false (WebIDL 3.9.3 step
+    // 1.2) and throws the TypeError whose message and error it made.
     try expectNothingLeft("'use strict'; htmlCollection[0] = 1", try leftBy("(() => { 'use strict'; try { readOnlyCollection[0] = 1 } catch (e) {} })();"));
 }
 

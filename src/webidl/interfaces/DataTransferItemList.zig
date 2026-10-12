@@ -61,9 +61,12 @@ pub const DataTransferItemList = struct {
 
         pub const has_constructor = false;
 
-        /// The anonymous indexed getter (`getter T (unsigned long index)`,
-        /// `call_getter`) is implemented: the binding installs indexed access.
-        pub const indexed_getter_implemented = @hasDecl(DataTransferItemListImpl, "call_getter");
+        /// WebIDL 2.5.6 special operations, own or inherited (the derived-most):
+        /// the function that runs each. The binding installs indexed and named
+        /// property handlers from this table (webidl.SpecialOperations).
+        pub const special_operations: webidl.SpecialOperations = .{
+            .indexed_getter = .{ .function = "call_getter", .implemented = @hasDecl(DataTransferItemListImpl, "call_getter") },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -120,16 +123,16 @@ pub const DataTransferItemList = struct {
         return try DataTransferItemListImpl.get_length(instance);
     }
 
-    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
-        return try DataTransferItemListImpl.call_clear(instance);
-    }
-
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         if (comptime @hasDecl(DataTransferItemListImpl, "call_getter")) {
             return try DataTransferItemListImpl.call_getter(instance, index);
         } else {
             return error.NotImplemented;
         }
+    }
+
+    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
+        return try DataTransferItemListImpl.call_clear(instance);
     }
 
     pub fn call_remove(instance: *runtime.Instance, index: u32) anyerror!void {

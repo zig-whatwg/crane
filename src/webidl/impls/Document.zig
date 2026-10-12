@@ -667,12 +667,6 @@ fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContain
     return &internal.policy_container;
 }
 
-/// Get the Node internal state from a Document instance
-/// Uses the registry pattern for proper inheritance chain
-pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
-    return NodeImpl.getInternalState(instance);
-}
-
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {

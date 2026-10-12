@@ -38,7 +38,7 @@ fn table(output: []const u8, name: []const u8) ![]const u8 {
 test "writable and read-only attributes alike are eager; nothing is lazy" {
     var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
     defer buffer.deinit();
-    try writer.writeMetadata(&buffer.writer, "HTMLElement", null, null, true, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, true, false, false, null, &attrs, null, &.{});
+    try writer.writeMetadata(&buffer.writer, "HTMLElement", null, null, true, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, true, false, false, null, &attrs, null, &.{}, null);
     const output = buffer.written();
 
     const eager = try table(output, "eager_properties");
