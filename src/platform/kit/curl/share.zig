@@ -1,4 +1,8 @@
-//! A connection share (kit/curl): curl's connection cache and DNS cache, one
+//! kit/curl's part of a Browser's network that src/fetch and src/websocket
+//! reach directly (module `kit_curl_share`): the connection share below, and
+//! the network options a transfer is made with (`options`).
+//!
+//! A connection share: curl's connection cache and DNS cache, one
 //! per Browser's network context (fetch.network.NetworkContext), which every
 //! transfer of that Browser joins (CURLOPT_SHARE) and no other Browser's
 //! does - so a Browser reuses its own connections and never observes
@@ -18,18 +22,25 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-/// curl.h's CURLSH, opaque.
+/// A Browser's network options on a curl easy handle: user agent, proxy,
+/// TLS verification (options.zig).
+pub const options = @import("options.zig");
+
+/// curl.h's CURLSH (`typedef void CURLSH`).
 const CURLSH = anyopaque;
 
+// Declared with the types translate-c gives curl.h's (CURLSH is void, the
+// options and results C enums), so they are the same externs as `fetch`'s
+// @cImport of them.
 extern fn curl_share_init() ?*CURLSH;
-extern fn curl_share_setopt(share: *CURLSH, option: c_int, ...) c_int;
-extern fn curl_share_cleanup(share: *CURLSH) c_int;
+extern fn curl_share_setopt(share: ?*CURLSH, option: c_uint, ...) c_uint;
+extern fn curl_share_cleanup(share: ?*CURLSH) c_uint;
 
 /// CURLSHoption.
-const CURLSHOPT_SHARE: c_int = 1;
-const CURLSHOPT_LOCKFUNC: c_int = 3;
-const CURLSHOPT_UNLOCKFUNC: c_int = 4;
-const CURLSHOPT_USERDATA: c_int = 5;
+const CURLSHOPT_SHARE: c_uint = 1;
+const CURLSHOPT_LOCKFUNC: c_uint = 3;
+const CURLSHOPT_UNLOCKFUNC: c_uint = 4;
+const CURLSHOPT_USERDATA: c_uint = 5;
 
 /// curl_lock_data: the kinds of data a share holds, each locked on its own.
 pub const LockData = enum(c_int) {
@@ -60,8 +71,8 @@ pub const Share = struct {
         _ = curl_share_setopt(handle, CURLSHOPT_USERDATA, @as(?*anyopaque, self));
         _ = curl_share_setopt(handle, CURLSHOPT_LOCKFUNC, @as(*const anyopaque, @ptrCast(&lock)));
         _ = curl_share_setopt(handle, CURLSHOPT_UNLOCKFUNC, @as(*const anyopaque, @ptrCast(&unlock)));
-        _ = curl_share_setopt(handle, CURLSHOPT_SHARE, @intFromEnum(LockData.connect));
-        _ = curl_share_setopt(handle, CURLSHOPT_SHARE, @intFromEnum(LockData.dns));
+        _ = curl_share_setopt(handle, CURLSHOPT_SHARE, @as(c_int, @intFromEnum(LockData.connect)));
+        _ = curl_share_setopt(handle, CURLSHOPT_SHARE, @as(c_int, @intFromEnum(LockData.dns)));
         return self;
     }
 

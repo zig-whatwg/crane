@@ -11,7 +11,10 @@
 //!   share handle), which every transfer of the Browser joins - so the
 //!   Browser reuses its own connections and never another Browser's, which
 //!   would let one profile observe another's;
-//! - the TLS options its transfers verify certificates with;
+//! - its options (BrowserConfig): the user agent string - Fetch's
+//!   "environment default `User-Agent` value" its requests send and
+//!   navigator.userAgent reads -, its proxy, and its TLS options
+//!   (accept_insecure_certs, a CA bundle it trusts);
 //! - WebSocket's CONNECTING gate (RFC 6455 4.1 step 2: "no more than one
 //!   connection in a CONNECTING state" to a host and port - per client, and a
 //!   Browser is the client, its workers included).
@@ -40,6 +43,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.network_context);
 const backend = @import("backend.zig");
+const user_agent = @import("../internal/user_agent.zig");
 const Share = @import("kit_curl_share").Share;
 
 pub const CertVerifyOptions = backend.CertVerifyOptions;
@@ -59,12 +63,48 @@ pub const NetworkContext = struct {
     tls: CertVerifyOptions = .{},
     /// WebSocket's CONNECTING gate: one holder per host and port.
     connecting: ConnectingGate = .{},
+    /// The user agent string `configure` set (OWNED); null: the default.
+    user_agent: ?[]u8 = null,
+    /// Where the Browser's requests go (`configure`; OWNED strings).
+    proxy: Proxy = .system,
 
     /// The options a Browser gives its network (BrowserConfig).
     pub const Options = struct {
         /// A certificate authority bundle the Browser trusts besides the
         /// system's - the WPT runner's cacert.pem. Copied.
         ca_bundle_path: ?[]const u8 = null,
+        /// The user agent string: the `User-Agent` its requests send and
+        /// navigator.userAgent. Null: the default (fetch.internal.user_agent).
+        /// Copied.
+        user_agent: ?[]const u8 = null,
+        /// Where its requests go. Copied.
+        proxy: Proxy = .system,
+        /// WebDriver's acceptInsecureCerts: certificates are not verified
+        /// (neither the chain nor the host name).
+        accept_insecure_certs: bool = false,
+    };
+
+    /// An explicit proxy configuration (docs/instances.md: explicit
+    /// proxies only for 0.1; a PAC file and auto-detection are refused by
+    /// Browser.init). WebDriver's proxyType "system", "direct" and "manual".
+    pub const Proxy = union(enum) {
+        /// What curl takes from the environment (http_proxy, https_proxy,
+        /// no_proxy) - the process's own proxy settings. The default.
+        system,
+        /// No proxy, whatever the environment says.
+        direct,
+        /// A proxy per scheme, and the hosts that bypass it.
+        manual: Manual,
+
+        pub const Manual = struct {
+            /// For http: and ws: URLs, e.g. "http://proxy.example:8080";
+            /// null: such requests go direct.
+            http: ?[]const u8 = null,
+            /// For https: and wss: URLs; null: they go direct.
+            https: ?[]const u8 = null,
+            /// Comma-separated hosts that bypass the proxy (curl's NOPROXY).
+            no_proxy: ?[]const u8 = null,
+        };
     };
 
     pub fn init(allocator: Allocator) NetworkContext {
@@ -83,6 +123,23 @@ pub const NetworkContext = struct {
         self.connecting.deinit(self.allocator);
         if (self.tls.ca_bundle_path) |path| self.allocator.free(path);
         self.tls = .{};
+        if (self.user_agent) |value| self.allocator.free(value);
+        self.user_agent = null;
+        self.freeProxy();
+    }
+
+    fn freeProxy(self: *NetworkContext) void {
+        switch (self.proxy) {
+            .manual => |manual| for ([_]?[]const u8{ manual.http, manual.https, manual.no_proxy }) |owned| {
+                if (owned) |value| self.allocator.free(value);
+            },
+            else => {},
+        }
+        self.proxy = .system;
+    }
+
+    fn dupeOptional(self: *NetworkContext, value: ?[]const u8) Allocator.Error!?[]const u8 {
+        return if (value) |v| try self.allocator.dupe(u8, v) else null;
     }
 
     /// Set the Browser's options, once, before any request.
@@ -92,6 +149,60 @@ pub const NetworkContext = struct {
             if (self.tls.ca_bundle_path) |old| self.allocator.free(old);
             self.tls.ca_bundle_path = copy;
         }
+        if (options.user_agent) |value| {
+            const copy = try self.allocator.dupe(u8, value);
+            if (self.user_agent) |old| self.allocator.free(old);
+            self.user_agent = copy;
+        }
+        const proxy: Proxy = switch (options.proxy) {
+            .system => .system,
+            .direct => .direct,
+            .manual => |manual| blk: {
+                const http = try self.dupeOptional(manual.http);
+                errdefer if (http) |v| self.allocator.free(v);
+                const https = try self.dupeOptional(manual.https);
+                errdefer if (https) |v| self.allocator.free(v);
+                const no_proxy = try self.dupeOptional(manual.no_proxy);
+                break :blk .{ .manual = .{ .http = http, .https = https, .no_proxy = no_proxy } };
+            },
+        };
+        self.freeProxy();
+        self.proxy = proxy;
+        // acceptInsecureCerts: neither the certificate chain nor the host
+        // name is checked (curl's VERIFYPEER and VERIFYHOST off).
+        if (options.accept_insecure_certs) {
+            self.tls.verify_peer = false;
+            self.tls.verify_host = false;
+        }
+    }
+
+    /// The Browser's user agent string: Fetch's "environment default
+    /// `User-Agent` value" for every environment settings object of the
+    /// Browser - the `User-Agent` its requests send, navigator.userAgent in
+    /// its windows and workers. BORROWED for the Browser's life.
+    pub fn userAgent(self: *const NetworkContext) []const u8 {
+        return self.user_agent orelse user_agent.default_user_agent;
+    }
+
+    /// HTML navigator.appVersion for this Browser's user agent string.
+    pub fn appVersion(self: *const NetworkContext) []const u8 {
+        return user_agent.appVersionOf(self.userAgent());
+    }
+
+    /// The proxy a request to `url` goes through: null for the system's
+    /// (curl reads the environment), a proxy with an empty URL for none -
+    /// curl's way to say "direct, whatever the environment says". Borrowed
+    /// for the Browser's life.
+    pub fn proxyFor(self: *const NetworkContext, url: []const u8) ?backend.ProxyConfig {
+        return switch (self.proxy) {
+            .system => null,
+            .direct => .{ .url = "" },
+            .manual => |manual| blk: {
+                const secure = std.ascii.startsWithIgnoreCase(url, "https:") or std.ascii.startsWithIgnoreCase(url, "wss:");
+                const chosen = if (secure) manual.https else manual.http;
+                break :blk .{ .url = chosen orelse "", .no_proxy = manual.no_proxy };
+            },
+        };
     }
 
     /// The certificate options a request of this Browser is verified with.
@@ -202,4 +313,30 @@ test "configure copies the trust it is given" {
     path[1] = 'X';
     try std.testing.expectEqualStrings("/certs/ca.pem", context.certOptions().ca_bundle_path.?);
     try std.testing.expect(context.certOptions().verify_peer);
+}
+
+test "a manual proxy per scheme, none for a scheme it names none, the system's by default" {
+    var context = NetworkContext.init(std.testing.allocator);
+    defer context.deinit();
+    try std.testing.expect(context.proxyFor("http://example.test/") == null);
+    try context.configure(.{ .proxy = .{ .manual = .{ .http = "http://proxy.test:3128", .no_proxy = "localhost,.internal" } } });
+    const http = context.proxyFor("http://example.test/").?;
+    try std.testing.expectEqualStrings("http://proxy.test:3128", http.url);
+    try std.testing.expectEqualStrings("localhost,.internal", http.no_proxy.?);
+    try std.testing.expectEqualStrings("http://proxy.test:3128", context.proxyFor("ws://example.test/").?.url);
+    // No https proxy: an https request goes direct.
+    try std.testing.expectEqualStrings("", context.proxyFor("https://example.test/").?.url);
+    try context.configure(.{ .proxy = .direct });
+    try std.testing.expectEqualStrings("", context.proxyFor("http://example.test/").?.url);
+}
+
+test "the user agent string and insecure certificates are the Browser's options" {
+    var context = NetworkContext.init(std.testing.allocator);
+    defer context.deinit();
+    try std.testing.expectEqualStrings(user_agent.default_user_agent, context.userAgent());
+    try context.configure(.{ .user_agent = "Mozilla/5.0 (Test) Crane/1", .accept_insecure_certs = true });
+    try std.testing.expectEqualStrings("Mozilla/5.0 (Test) Crane/1", context.userAgent());
+    try std.testing.expectEqualStrings("5.0 (Test) Crane/1", context.appVersion());
+    try std.testing.expect(!context.certOptions().verify_peer);
+    try std.testing.expect(!context.certOptions().verify_host);
 }

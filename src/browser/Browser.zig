@@ -110,6 +110,31 @@ pub const BrowserConfig = struct {
     /// A certificate authority bundle this Browser trusts besides the
     /// system's (PEM; the WPT runner's tools/certs/cacert.pem). Copied.
     ca_bundle_path: ?[]const u8 = null,
+    /// The Browser's user agent string: the `User-Agent` its requests send
+    /// and navigator.userAgent in its windows and workers (Fetch's
+    /// "environment default `User-Agent` value"). Null: Crane's default
+    /// (fetch.internal.user_agent). Copied.
+    user_agent: ?[]const u8 = null,
+    /// Where its requests go - WebDriver's proxy configuration. Explicit
+    /// proxies only (docs/instances.md): a PAC file and auto-detection make
+    /// `init` fail with error.NotSupported. Copied.
+    proxy: Proxy = .system,
+    /// WebDriver's acceptInsecureCerts: TLS certificates are not verified.
+    accept_insecure_certs: bool = false,
+
+    pub const Proxy = union(enum) {
+        /// The process's proxy settings (curl reads http_proxy, https_proxy
+        /// and no_proxy from the environment). The default.
+        system,
+        /// No proxy.
+        direct,
+        /// A proxy per scheme and the hosts that bypass it.
+        manual: @import("fetch").network.NetworkContext.Proxy.Manual,
+        /// A proxy auto-config file's URL: not supported.
+        pac: []const u8,
+        /// Proxy auto-detection (WPAD): not supported.
+        autodetect,
+    };
 };
 
 /// Browser instance managing a single V8 isolate
@@ -162,6 +187,11 @@ pub const Browser = struct {
         // is the process's, started once before any Browser (process.zig). A
         // host that has not started it gets it started here, for the
         // process's life.
+        // Explicit proxies only (docs/instances.md, the user's decision).
+        switch (config.proxy) {
+            .pac, .autodetect => return error.NotSupported,
+            else => {},
+        }
         Process.ensureStarted(.{ .snapshot_path = config.snapshot_path }) catch return error.V8InitFailed;
 
         // The platform objects of this Browser, and their side tables, come
@@ -239,7 +269,17 @@ pub const Browser = struct {
         (try scope.of(@import("dom").cookie_change_listeners.CookieChangeListeners)).hearJar(cookie_jar);
         // The Browser's network: its connections, its TLS options, its
         // WebSocket gate - every request of its realms carries it.
-        try (try scope.of(@import("fetch").network.NetworkContext)).configure(.{ .ca_bundle_path = config.ca_bundle_path });
+        try (try scope.of(@import("fetch").network.NetworkContext)).configure(.{
+            .ca_bundle_path = config.ca_bundle_path,
+            .user_agent = config.user_agent,
+            .proxy = switch (config.proxy) {
+                .system => .system,
+                .direct => .direct,
+                .manual => |manual| .{ .manual = manual },
+                .pac, .autodetect => unreachable, // refused by init
+            },
+            .accept_insecure_certs = config.accept_insecure_certs,
+        });
 
         // Allocate browser struct
         const browser = try allocator.create(Browser);

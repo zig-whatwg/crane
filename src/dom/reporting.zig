@@ -350,7 +350,9 @@ pub fn generate(global: *runtime.Instance, kind: []const u8, destination: []cons
         .url = report_url,
         .body_json = body_json,
         .timestamp_ms = platform.wallMillis(),
-        .user_agent = fetch.internal.user_agent.default_user_agent,
+        // §3.4.1 step 7: "the value of navigator.userAgent" - the global's
+        // Browser's user agent string.
+        .user_agent = if (@import("browser_state.zig").networkOf(global.ctx)) |network| network.userAgent() else fetch.internal.user_agent.default_user_agent,
     });
     defer record.release();
     // §4.2: the registered list is borrowed; addReport queues tasks but

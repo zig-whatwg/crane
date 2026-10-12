@@ -27,6 +27,7 @@ const curl = @import("curl_ffi.zig");
 const curl_options = @import("curl_options");
 const curl_error = @import("curl_error.zig");
 const clock = @import("clock");
+const kit_curl = @import("kit_curl_share");
 
 // =============================================================================
 // Global State Management
@@ -350,40 +351,21 @@ pub const LibcurlBackend = struct {
             _ = curl.easy_setopt(handle, curl.CURLOPT_MAXREDIRS, @as(c_long, @intCast(request.max_redirects)));
         }
 
-        // TLS options
-        _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYPEER, @as(c_long, if (request.cert_options.verify_peer) 1 else 0));
-        _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYHOST, @as(c_long, if (request.cert_options.verify_host) 2 else 0));
-
-        if (request.cert_options.ca_bundle_path) |ca_path| {
-            const ca_z = try ctx.allocator.dupeZ(u8, ca_path);
-            defer ctx.allocator.free(ca_z);
-            _ = curl.easy_setopt(handle, curl.CURLOPT_CAINFO, ca_z.ptr);
-        }
-
-        // Proxy
-        if (request.proxy) |proxy| {
-            const proxy_z = try ctx.allocator.dupeZ(u8, proxy.url);
-            defer ctx.allocator.free(proxy_z);
-            _ = curl.easy_setopt(handle, curl.CURLOPT_PROXY, proxy_z.ptr);
-
-            if (proxy.username != null and proxy.password != null) {
-                const userpwd = try std.fmt.allocPrint(ctx.allocator, "{s}:{s}", .{
-                    proxy.username.?,
-                    proxy.password.?,
-                });
-                defer ctx.allocator.free(userpwd);
-                // Create null-terminated copy for curl
-                const userpwd_z = try ctx.allocator.dupeZ(u8, userpwd);
-                defer ctx.allocator.free(userpwd_z);
-                _ = curl.easy_setopt(handle, curl.CURLOPT_PROXYUSERPWD, userpwd_z.ptr);
-            }
-
-            if (proxy.no_proxy) |no_proxy| {
-                const no_proxy_z = try ctx.allocator.dupeZ(u8, no_proxy);
-                defer ctx.allocator.free(no_proxy_z);
-                _ = curl.easy_setopt(handle, curl.CURLOPT_NOPROXY, no_proxy_z.ptr);
-            }
-        }
+        // The Browser's network options - TLS verification and trust, and
+        // its proxy - applied by the platform's kit (kit/curl options.zig),
+        // the same way for a WebSocket handshake. The `User-Agent` is in the
+        // request's own header list (HTTP-network-or-cache fetch 8.15).
+        try kit_curl.options.apply(handle, ctx.allocator, .{
+            .proxy = if (request.proxy) |proxy| .{
+                .url = proxy.url,
+                .username = proxy.username,
+                .password = proxy.password,
+                .no_proxy = proxy.no_proxy,
+            } else null,
+            .verify_peer = request.cert_options.verify_peer,
+            .verify_host = request.cert_options.verify_host,
+            .ca_bundle_path = request.cert_options.ca_bundle_path,
+        });
 
         // Accept gzip/deflate compression
         _ = curl.easy_setopt(handle, curl.CURLOPT_ACCEPT_ENCODING, "");

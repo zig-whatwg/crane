@@ -172,6 +172,11 @@ pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for appVersion
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    // HTML NavigatorID: from the worker's settings object's environment
+    // default `User-Agent` value - its Browser's.
+    if (@import("dom").browser_state.networkOf(instance.ctx)) |network| {
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, network.appVersion());
+    }
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getAppVersion());
@@ -221,6 +226,12 @@ pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// "Must return the default User-Agent value."
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    // HTML NavigatorID: the worker's settings object's environment default
+    // `User-Agent` value - its Browser's (a worker realm carries its
+    // creator's Browser scope).
+    if (@import("dom").browser_state.networkOf(instance.ctx)) |network| {
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, network.userAgent());
+    }
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getUserAgent());
