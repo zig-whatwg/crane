@@ -302,11 +302,11 @@ pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
     var result = std.ArrayListUnmanaged(u8).empty;
     errdefer result.deinit(allocator);
 
-    var child = NodeImpl.getFirstChild(instance);
-    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
-        const node_type = NodeImpl.getNodeType(c) orelse continue;
+    var child = interfaces.Node.get_firstChild(instance) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
+        const node_type = interfaces.Node.get_nodeType(c) catch continue;
         // A CDATASection is a Text node.
-        if (node_type != NodeImpl.NodeType.TEXT_NODE and node_type != NodeImpl.NodeType.CDATA_SECTION_NODE) continue;
+        if (node_type != interfaces.Node.get_TEXT_NODE() and node_type != interfaces.Node.get_CDATA_SECTION_NODE()) continue;
         var data = try interfaces.CharacterData.get_data(c);
         defer data.deinit(allocator);
         try result.appendSlice(allocator, data.asSlice());
@@ -750,7 +750,7 @@ fn attributeChangeSteps(
 
     // Step 2, for a src that is set.
     if (!std.mem.eql(u8, local_name, "src") or value == null) return;
-    if (!(NodeImpl.get_isConnected(element) catch false)) return;
+    if (!(interfaces.Node.get_isConnected(element) catch false)) return;
     // The post-connection steps: step 1 returns for a parser-inserted script,
     // and prepare step 1 for one that has started.
     if (internal.parser_document != null) return;

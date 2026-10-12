@@ -24,7 +24,6 @@ const same_object = @import("same_object.zig");
 const Element = interfaces.Element;
 
 // Import related impls
-const NodeImpl = @import("Node.zig");
 const DOMTokenListImpl = @import("DOMTokenList.zig");
 const NamedNodeMapImpl = @import("NamedNodeMap.zig");
 const ParentNodeImpl = @import("ParentNode.zig");
@@ -1275,7 +1274,7 @@ pub fn set_slot(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 fn isHtmlElementInHtmlDocument(instance: *runtime.Instance, internal: *const InternalState) bool {
     const ns = internal.namespace_uri orelse return false;
     if (!std.mem.eql(u8, ns.asSlice(), infra.namespaces.HTML_NAMESPACE)) return false;
-    const document = NodeImpl.getOwnerDocument(instance) orelse return false;
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return false;
     return dom.document_internals.getDocumentType(document) == .html;
 }
 
@@ -1650,7 +1649,7 @@ fn insertAdjacent(
     // Case-insensitive comparison per spec
     if (std.ascii.eqlIgnoreCase(where, "beforebegin")) {
         // Insert before this element (requires parent)
-        const parent = NodeImpl.getParent(element) orelse return null;
+        const parent = (interfaces.Node.get_parentNode(element) catch null) orelse return null;
 
         // Insert node into parent before element
         _ = interfaces.Node.call_insertBefore(parent, node, element) catch {
@@ -1659,7 +1658,7 @@ fn insertAdjacent(
         return node;
     } else if (std.ascii.eqlIgnoreCase(where, "afterbegin")) {
         // Insert as first child of this element
-        const first_child = NodeImpl.getFirstChild(element);
+        const first_child = interfaces.Node.get_firstChild(element) catch null;
 
         if (first_child) |fc| {
             _ = interfaces.Node.call_insertBefore(element, node, fc) catch {
@@ -1679,8 +1678,8 @@ fn insertAdjacent(
         return node;
     } else if (std.ascii.eqlIgnoreCase(where, "afterend")) {
         // Insert after this element (requires parent)
-        const parent = NodeImpl.getParent(element) orelse return null;
-        const next_sibling = NodeImpl.getNextSibling(element);
+        const parent = (interfaces.Node.get_parentNode(element) catch null) orelse return null;
+        const next_sibling = interfaces.Node.get_nextSibling(element) catch null;
 
         if (next_sibling) |ns| {
             _ = interfaces.Node.call_insertBefore(parent, node, ns) catch {

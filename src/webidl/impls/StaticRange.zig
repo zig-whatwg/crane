@@ -26,9 +26,6 @@ const AbstractRange = interfaces.AbstractRange;
 const range_boundaries = @import("dom").range_boundaries;
 const same_object = @import("same_object.zig");
 
-// Import related impls
-const NodeImpl = @import("Node.zig");
-
 pub const State = StaticRange.State;
 
 pub const ImplError = error{
@@ -148,14 +145,14 @@ pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.StaticRang
     const start_instance: *runtime.Instance = init_data.startContainer;
     const end_instance: *runtime.Instance = init_data.endContainer;
 
-    if (NodeImpl.getNodeType(start_instance)) |nt| {
-        if (nt == NodeImpl.NodeType.DOCUMENT_TYPE_NODE or nt == NodeImpl.NodeType.ATTRIBUTE_NODE) {
+    if (interfaces.Node.get_nodeType(start_instance) catch null) |nt| {
+        if (nt == interfaces.Node.get_DOCUMENT_TYPE_NODE() or nt == interfaces.Node.get_ATTRIBUTE_NODE()) {
             return error.InvalidNodeTypeError;
         }
     }
 
-    if (NodeImpl.getNodeType(end_instance)) |nt| {
-        if (nt == NodeImpl.NodeType.DOCUMENT_TYPE_NODE or nt == NodeImpl.NodeType.ATTRIBUTE_NODE) {
+    if (interfaces.Node.get_nodeType(end_instance) catch null) |nt| {
+        if (nt == interfaces.Node.get_DOCUMENT_TYPE_NODE() or nt == interfaces.Node.get_ATTRIBUTE_NODE()) {
             return error.InvalidNodeTypeError;
         }
     }

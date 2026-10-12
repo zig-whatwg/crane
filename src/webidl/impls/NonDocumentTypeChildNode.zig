@@ -17,9 +17,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 
-// Import impl modules for accessing internal state
-const NodeImpl = @import("Node.zig");
-
 pub const State = interfaces.NonDocumentTypeChildNode.State;
 
 pub const ImplError = error{
@@ -55,13 +52,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Returns the first preceding sibling that is an element, or null if none exists.
 pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    var sibling = NodeImpl.getPreviousSibling(instance);
+    var sibling = interfaces.Node.get_previousSibling(instance) catch null;
     while (sibling) |s| {
-        const node_type = NodeImpl.getNodeType(s) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = interfaces.Node.get_nodeType(s) catch 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             return s;
         }
-        sibling = NodeImpl.getPreviousSibling(s);
+        sibling = interfaces.Node.get_previousSibling(s) catch null;
     }
     return null;
 }
@@ -71,13 +68,13 @@ pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtim
 ///
 /// Returns the first following sibling that is an element, or null if none exists.
 pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    var sibling = NodeImpl.getNextSibling(instance);
+    var sibling = interfaces.Node.get_nextSibling(instance) catch null;
     while (sibling) |s| {
-        const node_type = NodeImpl.getNodeType(s) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = interfaces.Node.get_nodeType(s) catch 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             return s;
         }
-        sibling = NodeImpl.getNextSibling(s);
+        sibling = interfaces.Node.get_nextSibling(s) catch null;
     }
     return null;
 }

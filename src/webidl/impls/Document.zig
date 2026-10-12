@@ -39,7 +39,6 @@ const NodeImpl = @import("Node.zig");
 const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
-const SelectionImpl = @import("Selection.zig");
 const same_object = @import("same_object.zig");
 
 // Import ParentNode mixin for shared ParentNode interface methods
@@ -1574,7 +1573,7 @@ const svg_namespace = "http://www.w3.org/2000/svg";
 /// Whether `node` is an element in `namespace` whose local name is
 /// `local_name`.
 fn isElementNamed(node: *runtime.Instance, namespace: []const u8, local_name: []const u8) bool {
-    if ((NodeImpl.getNodeType(node) orelse 0) != NodeImpl.NodeType.ELEMENT_NODE) return false;
+    if ((interfaces.Node.get_nodeType(node) catch 0) != interfaces.Node.get_ELEMENT_NODE()) return false;
     const allocator = node.ctx.allocator;
     var name = interfaces.Element.get_localName(node) catch return false;
     defer name.deinit(allocator);
@@ -1587,8 +1586,8 @@ fn isElementNamed(node: *runtime.Instance, namespace: []const u8, local_name: []
 /// The first child of `parent` that is an element in `namespace` named
 /// `local_name`, or null.
 fn firstChildNamed(parent: *runtime.Instance, namespace: []const u8, local_name: []const u8) ?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(parent);
-    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+    var child = interfaces.Node.get_firstChild(parent) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
         if (isElementNamed(c, namespace, local_name)) return c;
     }
     return null;
@@ -1622,8 +1621,8 @@ fn titleElementOf(document: *runtime.Instance) ?*runtime.Instance {
 /// The first inclusive descendant of `root`'s children, in tree order, that
 /// is an element in `namespace` named `local_name`.
 fn firstDescendantNamed(root: *runtime.Instance, namespace: []const u8, local_name: []const u8) ?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(root);
-    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+    var child = interfaces.Node.get_firstChild(root) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
         if (isElementNamed(c, namespace, local_name)) return c;
         if (firstDescendantNamed(c, namespace, local_name)) |found| return found;
     }
@@ -1635,11 +1634,11 @@ fn firstDescendantNamed(root: *runtime.Instance, namespace: []const u8, local_na
 fn childTextContent(allocator: std.mem.Allocator, node: *runtime.Instance) ![]u8 {
     var text: std.ArrayListUnmanaged(u8) = .empty;
     errdefer text.deinit(allocator);
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
+    var child = interfaces.Node.get_firstChild(node) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
+        const node_type = interfaces.Node.get_nodeType(c) catch 0;
         // A CDATASection is a Text node too.
-        if (node_type != NodeImpl.NodeType.TEXT_NODE and node_type != NodeImpl.NodeType.CDATA_SECTION_NODE) continue;
+        if (node_type != interfaces.Node.get_TEXT_NODE() and node_type != interfaces.Node.get_CDATA_SECTION_NODE()) continue;
         var data = try interfaces.CharacterData.get_data(c);
         defer data.deinit(c.ctx.allocator);
         try text.appendSlice(allocator, data.asSlice());
@@ -2249,7 +2248,7 @@ pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror
         //    document element."
         const title = try createTitle(instance, svg_namespace);
         errdefer NodeImpl.deinitNodeByType(title);
-        _ = try interfaces.Node.call_insertBefore(svg, title, NodeImpl.getFirstChild(svg));
+        _ = try interfaces.Node.call_insertBefore(svg, title, interfaces.Node.get_firstChild(svg) catch null);
         break :blk title;
     } else if (documentElementInHtmlNamespace(instance)) blk: {
         // "If the document element is in the HTML namespace":
@@ -2279,7 +2278,7 @@ pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 /// Whether the document element is in the HTML namespace.
 fn documentElementInHtmlNamespace(document: *runtime.Instance) bool {
     const element = documentElementOf(document) orelse return false;
-    if ((NodeImpl.getNodeType(element) orelse 0) != NodeImpl.NodeType.ELEMENT_NODE) return false;
+    if ((interfaces.Node.get_nodeType(element) catch 0) != interfaces.Node.get_ELEMENT_NODE()) return false;
     const allocator = element.ctx.allocator;
     var namespace = (interfaces.Element.get_namespaceURI(element) catch return false) orelse return false;
     defer namespace.deinit(allocator);
@@ -2323,8 +2322,8 @@ pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror
     // Per WebIDL, undefined is converted to null for nullable types.
     // Per HTML spec, null is not a valid body element, so throw HierarchyRequestError.
     const actual_value = value orelse return error.HierarchyRequestError;
-    const value_node_type = NodeImpl.getNodeType(actual_value) orelse 0;
-    if (value_node_type != NodeImpl.NodeType.ELEMENT_NODE) {
+    const value_node_type = interfaces.Node.get_nodeType(actual_value) catch 0;
+    if (value_node_type != interfaces.Node.get_ELEMENT_NODE()) {
         return error.HierarchyRequestError;
     }
 
@@ -2955,7 +2954,7 @@ fn applyInlineFormatting(document: *runtime.Instance, internal: *InternalState, 
     const selection = selection_opt orelse return false;
 
     // Step 2: Check if selection has content (not collapsed)
-    const is_collapsed = SelectionImpl.get_isCollapsed(selection) catch return false;
+    const is_collapsed = interfaces.Selection.get_isCollapsed(selection) catch return false;
     if (is_collapsed) {
         // No content selected - nothing to format
         // TODO: Toggle "future typing" state
@@ -2963,7 +2962,7 @@ fn applyInlineFormatting(document: *runtime.Instance, internal: *InternalState, 
     }
 
     // Step 3: Get the range
-    const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
+    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
 
     // Step 4: Create the formatting element
     const element = call_createElement(document, runtime.DOMString.initInterned(tag_name), webidl.Opt(runtime.JSValue).notPassed()) catch return false;
@@ -2988,14 +2987,14 @@ fn applyCreateLink(document: *runtime.Instance, _: *InternalState, url: []const 
     const selection = selection_opt orelse return false;
 
     // Step 2: Check if selection has content
-    const is_collapsed = SelectionImpl.get_isCollapsed(selection) catch return false;
+    const is_collapsed = interfaces.Selection.get_isCollapsed(selection) catch return false;
     if (is_collapsed) {
         // No content selected - can't create link without text
         return false;
     }
 
     // Step 3: Get the range
-    const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
+    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
 
     // Step 4: Create anchor element
     const anchor = call_createElement(document, runtime.DOMString.initInterned("a"), webidl.Opt(runtime.JSValue).notPassed()) catch return false;
@@ -3017,10 +3016,10 @@ fn applyInsertText(document: *runtime.Instance, _: *InternalState, text: []const
     const selection = selection_opt orelse return false;
 
     // Step 2: Get the range (or create one if collapsed)
-    const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
+    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
 
     // Step 3: Delete selected content if any
-    const is_collapsed = SelectionImpl.get_isCollapsed(selection) catch false;
+    const is_collapsed = interfaces.Selection.get_isCollapsed(selection) catch false;
     if (!is_collapsed) {
         RangeImpl.call_deleteContents(range) catch return false;
     }
@@ -3032,7 +3031,7 @@ fn applyInsertText(document: *runtime.Instance, _: *InternalState, text: []const
     RangeImpl.call_insertNode(range, text_node) catch return false;
 
     // Step 6: Collapse selection after the inserted text
-    SelectionImpl.call_collapseToEnd(selection) catch {};
+    interfaces.Selection.call_collapseToEnd(selection) catch {};
 
     return true;
 }

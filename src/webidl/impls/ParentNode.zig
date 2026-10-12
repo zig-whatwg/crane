@@ -39,6 +39,29 @@ const live_collections = @import("dom").live_collections;
 const dom = @import("dom");
 const NodeBase = dom.NodeBase;
 
+// Node-tree reads go through Node's generated interface (AGENTS.md "The impls
+// boundary"). Each getter forwards verbatim to Node's own (no brand check, no
+// conversion, no reaction scope: interfaces/Node.zig), so these cost what the
+// impl helpers they replace did; a node with no Node state reads as null.
+fn firstChild(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_firstChild(node) catch null;
+}
+fn lastChild(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_lastChild(node) catch null;
+}
+fn nextSibling(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_nextSibling(node) catch null;
+}
+fn previousSibling(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_previousSibling(node) catch null;
+}
+fn parentNode(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_parentNode(node) catch null;
+}
+fn nodeType(node: *runtime.Instance) ?u16 {
+    return interfaces.Node.get_nodeType(node) catch null;
+}
+
 pub const ImplError = error{
     NotImplemented,
     InvalidStateError,
@@ -68,13 +91,13 @@ pub const InternalState = struct {};
 /// Get the first child that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
 pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(instance);
+    var child = firstChild(instance);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             return c;
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return null;
 }
@@ -84,13 +107,13 @@ pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Ins
 pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     var last_element: ?*runtime.Instance = null;
 
-    var child = NodeImpl.getFirstChild(instance);
+    var child = firstChild(instance);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             last_element = c;
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
 
     return last_element;
@@ -101,13 +124,13 @@ pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Inst
 pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
     var count: u32 = 0;
 
-    var child = NodeImpl.getFirstChild(instance);
+    var child = firstChild(instance);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             count += 1;
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
 
     return count;
@@ -273,10 +296,10 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
 
 /// Fast path: Find element by ID within subtree
 fn findElementById(root: *runtime.Instance, id: []const u8) ?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(root);
+    var child = firstChild(root);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             // Check ID
             if (ElementImpl.getInternal(c)) |internal| {
                 if (std.mem.eql(u8, internal.id.asSlice(), id)) {
@@ -288,17 +311,17 @@ fn findElementById(root: *runtime.Instance, id: []const u8) ?*runtime.Instance {
                 return found;
             }
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return null;
 }
 
 /// Fast path: Find first element with given class name
 fn findFirstElementByClass(root: *runtime.Instance, class_name: []const u8) ?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(root);
+    var child = firstChild(root);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             // Check class
             if (matchesClassSelector(c, class_name)) {
                 return c;
@@ -308,17 +331,17 @@ fn findFirstElementByClass(root: *runtime.Instance, class_name: []const u8) ?*ru
                 return found;
             }
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return null;
 }
 
 /// Fast path: Find first element with given tag name
 fn findFirstElementByTagName(root: *runtime.Instance, tag_name: []const u8) ?*runtime.Instance {
-    var child = NodeImpl.getFirstChild(root);
+    var child = firstChild(root);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             // Check tag name
             if (matchesTypeSelector(c, tag_name)) {
                 return c;
@@ -328,7 +351,7 @@ fn findFirstElementByTagName(root: *runtime.Instance, tag_name: []const u8) ?*ru
                 return found;
             }
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return null;
 }
@@ -392,10 +415,10 @@ fn findFirstMatch(
     selector_list: *const SelectorList,
 ) ?*runtime.Instance {
     // First check children (in tree order)
-    var child = NodeImpl.getFirstChild(node);
+    var child = firstChild(node);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             // Check if this element matches
             if (elementMatchesSelectorList(c, selector_list)) {
                 return c;
@@ -407,7 +430,7 @@ fn findFirstMatch(
             return found;
         }
 
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
 
     return null;
@@ -471,9 +494,9 @@ fn matchChildCombinator(
     element: *runtime.Instance,
     compound: *const selector_mod.CompoundSelector,
 ) ?*runtime.Instance {
-    const parent = NodeImpl.getParent(element) orelse return null;
-    const node_type = NodeImpl.getNodeType(parent) orelse 0;
-    if (node_type != NodeImpl.NodeType.ELEMENT_NODE) return null;
+    const parent = parentNode(element) orelse return null;
+    const node_type = nodeType(parent) orelse 0;
+    if (node_type != interfaces.Node.get_ELEMENT_NODE()) return null;
 
     if (elementMatchesCompoundSelector(parent, compound)) {
         return parent;
@@ -486,15 +509,15 @@ fn matchDescendantCombinator(
     element: *runtime.Instance,
     compound: *const selector_mod.CompoundSelector,
 ) ?*runtime.Instance {
-    var current = NodeImpl.getParent(element);
+    var current = parentNode(element);
     while (current) |ancestor| {
-        const node_type = NodeImpl.getNodeType(ancestor) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(ancestor) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (elementMatchesCompoundSelector(ancestor, compound)) {
                 return ancestor;
             }
         }
-        current = NodeImpl.getParent(ancestor);
+        current = parentNode(ancestor);
     }
     return null;
 }
@@ -504,16 +527,16 @@ fn matchNextSiblingCombinator(
     element: *runtime.Instance,
     compound: *const selector_mod.CompoundSelector,
 ) ?*runtime.Instance {
-    var sibling = NodeImpl.getPreviousSibling(element);
+    var sibling = previousSibling(element);
     while (sibling) |s| {
-        const node_type = NodeImpl.getNodeType(s) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(s) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (elementMatchesCompoundSelector(s, compound)) {
                 return s;
             }
             return null; // Only check immediately preceding element sibling
         }
-        sibling = NodeImpl.getPreviousSibling(s);
+        sibling = previousSibling(s);
     }
     return null;
 }
@@ -523,15 +546,15 @@ fn matchSubsequentSiblingCombinator(
     element: *runtime.Instance,
     compound: *const selector_mod.CompoundSelector,
 ) ?*runtime.Instance {
-    var sibling = NodeImpl.getPreviousSibling(element);
+    var sibling = previousSibling(element);
     while (sibling) |s| {
-        const node_type = NodeImpl.getNodeType(s) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(s) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (elementMatchesCompoundSelector(s, compound)) {
                 return s;
             }
         }
-        sibling = NodeImpl.getPreviousSibling(s);
+        sibling = previousSibling(s);
     }
     return null;
 }
@@ -794,49 +817,49 @@ fn matchAttributeDashMatch(value: []const u8, prefix: []const u8, case_sensitive
 // =============================================================================
 
 fn isRootElement(element: *runtime.Instance) bool {
-    const parent = NodeImpl.getParent(element) orelse return false;
-    const parent_type = NodeImpl.getNodeType(parent) orelse 0;
-    return parent_type == NodeImpl.NodeType.DOCUMENT_NODE;
+    const parent = parentNode(element) orelse return false;
+    const parent_type = nodeType(parent) orelse 0;
+    return parent_type == interfaces.Node.get_DOCUMENT_NODE();
 }
 
 fn isEmptyElement(element: *runtime.Instance) bool {
-    var child = NodeImpl.getFirstChild(element);
+    var child = firstChild(element);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        const node_type = nodeType(c) orelse 0;
         // Element has content if it has element or text children
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE or
-            node_type == NodeImpl.NodeType.TEXT_NODE)
+        if (node_type == interfaces.Node.get_ELEMENT_NODE() or
+            node_type == interfaces.Node.get_TEXT_NODE())
         {
             return false;
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return true;
 }
 
 fn isFirstChild(element: *runtime.Instance) bool {
-    const parent = NodeImpl.getParent(element) orelse return false;
-    var child = NodeImpl.getFirstChild(parent);
+    const parent = parentNode(element) orelse return false;
+    var child = firstChild(parent);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             return c == element;
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return false;
 }
 
 fn isLastChild(element: *runtime.Instance) bool {
-    const parent = NodeImpl.getParent(element) orelse return false;
+    const parent = parentNode(element) orelse return false;
     var last_element: ?*runtime.Instance = null;
-    var child = NodeImpl.getFirstChild(parent);
+    var child = firstChild(parent);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             last_element = c;
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return last_element == element;
 }
@@ -849,18 +872,18 @@ fn isFirstOfType(element: *runtime.Instance) bool {
     const internal = ElementImpl.getInternal(element) orelse return false;
     const tag_name = internal.local_name.asSlice();
 
-    const parent = NodeImpl.getParent(element) orelse return false;
-    var child = NodeImpl.getFirstChild(parent);
+    const parent = parentNode(element) orelse return false;
+    var child = firstChild(parent);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (ElementImpl.getInternal(c)) |c_internal| {
                 if (std.ascii.eqlIgnoreCase(c_internal.local_name.asSlice(), tag_name)) {
                     return c == element;
                 }
             }
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return false;
 }
@@ -869,19 +892,19 @@ fn isLastOfType(element: *runtime.Instance) bool {
     const internal = ElementImpl.getInternal(element) orelse return false;
     const tag_name = internal.local_name.asSlice();
 
-    const parent = NodeImpl.getParent(element) orelse return false;
+    const parent = parentNode(element) orelse return false;
     var last_of_type: ?*runtime.Instance = null;
-    var child = NodeImpl.getFirstChild(parent);
+    var child = firstChild(parent);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (ElementImpl.getInternal(c)) |c_internal| {
                 if (std.ascii.eqlIgnoreCase(c_internal.local_name.asSlice(), tag_name)) {
                     last_of_type = c;
                 }
             }
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return last_of_type == element;
 }
@@ -912,32 +935,32 @@ fn matchesNthLastOfType(element: *runtime.Instance, nth: selector_mod.NthPattern
 }
 
 fn getElementIndex(element: *runtime.Instance) u32 {
-    const parent = NodeImpl.getParent(element) orelse return 0;
+    const parent = parentNode(element) orelse return 0;
     var index: u32 = 0;
-    var child = NodeImpl.getFirstChild(parent);
+    var child = firstChild(parent);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             index += 1;
             if (c == element) return index;
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return 0;
 }
 
 fn getElementIndexFromEnd(element: *runtime.Instance) u32 {
-    const parent = NodeImpl.getParent(element) orelse return 0;
+    const parent = parentNode(element) orelse return 0;
     var total: u32 = 0;
     var elem_index: u32 = 0;
-    var child = NodeImpl.getFirstChild(parent);
+    var child = firstChild(parent);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             total += 1;
             if (c == element) elem_index = total;
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return if (elem_index > 0) total - elem_index + 1 else 0;
 }
@@ -946,12 +969,12 @@ fn getElementOfTypeIndex(element: *runtime.Instance) u32 {
     const internal = ElementImpl.getInternal(element) orelse return 0;
     const tag_name = internal.local_name.asSlice();
 
-    const parent = NodeImpl.getParent(element) orelse return 0;
+    const parent = parentNode(element) orelse return 0;
     var index: u32 = 0;
-    var child = NodeImpl.getFirstChild(parent);
+    var child = firstChild(parent);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (ElementImpl.getInternal(c)) |c_internal| {
                 if (std.ascii.eqlIgnoreCase(c_internal.local_name.asSlice(), tag_name)) {
                     index += 1;
@@ -959,7 +982,7 @@ fn getElementOfTypeIndex(element: *runtime.Instance) u32 {
                 }
             }
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return 0;
 }
@@ -968,13 +991,13 @@ fn getElementOfTypeIndexFromEnd(element: *runtime.Instance) u32 {
     const internal = ElementImpl.getInternal(element) orelse return 0;
     const tag_name = internal.local_name.asSlice();
 
-    const parent = NodeImpl.getParent(element) orelse return 0;
+    const parent = parentNode(element) orelse return 0;
     var total: u32 = 0;
     var elem_index: u32 = 0;
-    var child = NodeImpl.getFirstChild(parent);
+    var child = firstChild(parent);
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(c) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (ElementImpl.getInternal(c)) |c_internal| {
                 if (std.ascii.eqlIgnoreCase(c_internal.local_name.asSlice(), tag_name)) {
                     total += 1;
@@ -982,7 +1005,7 @@ fn getElementOfTypeIndexFromEnd(element: *runtime.Instance) u32 {
                 }
             }
         }
-        child = NodeImpl.getNextSibling(c);
+        child = nextSibling(c);
     }
     return if (elem_index > 0) total - elem_index + 1 else 0;
 }
@@ -1063,13 +1086,13 @@ pub fn closest(
     // Step 2: Walk up the tree from element (including self)
     var current: ?*runtime.Instance = instance;
     while (current) |node| {
-        const node_type = NodeImpl.getNodeType(node) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        const node_type = nodeType(node) orelse 0;
+        if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (elementMatchesSelectorList(node, &selector_list)) {
                 return node;
             }
         }
-        current = NodeImpl.getParent(node);
+        current = parentNode(node);
     }
 
     return null;
@@ -1087,7 +1110,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNod
     const node = try NodeImpl.convertNodesIntoNode(nodes, nodeDocument(instance));
 
     // Step 2: "Pre-insert node into this before this's first child."
-    _ = try NodeImpl.call_insertBefore(instance, node, NodeImpl.getFirstChild(instance));
+    _ = try NodeImpl.call_insertBefore(instance, node, firstChild(instance));
 }
 
 /// append(...nodes)
@@ -1127,15 +1150,15 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 
     // Step 2: If referenceChild is node, set to node's next sibling
     if (reference_child == node) {
-        reference_child = NodeImpl.getNextSibling(node);
+        reference_child = nextSibling(node);
     }
 
     // Validate: node must already be in a tree (have a parent)
-    const old_parent = NodeImpl.getParent(node) orelse return error.HierarchyRequestError;
+    const old_parent = parentNode(node) orelse return error.HierarchyRequestError;
 
     // Validate: child (if non-null) must be a child of parent
     if (reference_child) |rc| {
-        const rc_parent = NodeImpl.getParent(rc);
+        const rc_parent = parentNode(rc);
         if (rc_parent != instance) {
             return error.NotFoundError;
         }
@@ -1145,16 +1168,16 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
     var ancestor: ?*runtime.Instance = instance;
     while (ancestor) |anc| {
         if (anc == node) return error.HierarchyRequestError;
-        ancestor = NodeImpl.getParent(anc);
+        ancestor = parentNode(anc);
     }
 
     // Check if already at correct position
     if (old_parent == instance) {
         if (reference_child) |rc| {
-            const prev = NodeImpl.getPreviousSibling(rc);
+            const prev = previousSibling(rc);
             if (prev == node) return;
         } else {
-            const last = NodeImpl.getLastChild(instance);
+            const last = lastChild(instance);
             if (last == node) return;
         }
     }
@@ -1172,7 +1195,7 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 
 /// This's node document: a document is its own.
 fn nodeDocument(instance: *runtime.Instance) *runtime.Instance {
-    return NodeImpl.getOwnerDocument(instance) orelse instance;
+    return (interfaces.Node.get_ownerDocument(instance) catch null) orelse instance;
 }
 
 pub fn deinit(instance: *runtime.Instance) void {

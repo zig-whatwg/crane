@@ -17,12 +17,10 @@ const HTMLOptionElement = interfaces.HTMLOptionElement;
 const log = std.log.scoped(.option);
 
 const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
 // A Text node's data lives in CharacterData's inline/heap storage, NOT in
 // Node.InternalState.node_value - that field stays null for parsed and
-// created text alike, so reading it yields "" for every option. Node.zig's own
-// collectTextContent goes through here for the same reason.
-const CharacterDataImpl = @import("CharacterData.zig");
+// created text alike, so reading it yields "" for every option. It is read in
+// place through dom.character_data, as Node.zig's collectTextContent reads it.
 
 pub const State = HTMLOptionElement.State;
 
@@ -219,8 +217,8 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /// The element's local name, or null when `node` is not an element.
 fn localName(node: *runtime.Instance) ?[]const u8 {
-    const node_type = NodeImpl.getNodeType(node) orelse return null;
-    if (node_type != NodeImpl.NodeType.ELEMENT_NODE) return null;
+    const node_type = interfaces.Node.get_nodeType(node) catch return null;
+    if (node_type != interfaces.Node.get_ELEMENT_NODE()) return null;
     const elem_internal = ElementImpl.getInternal(node) orelse return null;
     return elem_internal.local_name.asSlice();
 }
@@ -256,7 +254,7 @@ const collectOptions = @import("html").forms.options.collect;
 /// elements that stop the forward walk so the two agree.
 pub fn ownerSelect(option: *runtime.Instance) ?*runtime.Instance {
     var optgroups: u32 = 0;
-    var parent = NodeImpl.getParent(option);
+    var parent = interfaces.Node.get_parentNode(option) catch null;
     while (parent) |node| {
         if (localName(node)) |name| {
             if (std.ascii.eqlIgnoreCase(name, "select")) {
@@ -270,7 +268,7 @@ pub fn ownerSelect(option: *runtime.Instance) ?*runtime.Instance {
             }
             if (std.ascii.eqlIgnoreCase(name, "optgroup")) optgroups += 1;
         }
-        parent = NodeImpl.getParent(node);
+        parent = interfaces.Node.get_parentNode(node) catch null;
     }
     return null;
 }
@@ -351,7 +349,7 @@ fn setSelectedness(option: *runtime.Instance, state: Selectedness) !void {
 /// too.
 pub fn optionIsDisabled(option: *runtime.Instance) bool {
     if (hasAttr(option, "disabled")) return true;
-    var parent = NodeImpl.getParent(option);
+    var parent = interfaces.Node.get_parentNode(option) catch null;
     while (parent) |node| {
         if (localName(node)) |name| {
             if (std.ascii.eqlIgnoreCase(name, "optgroup")) {
@@ -360,7 +358,7 @@ pub fn optionIsDisabled(option: *runtime.Instance) bool {
                 return false;
             }
         }
-        parent = NodeImpl.getParent(node);
+        parent = interfaces.Node.get_parentNode(node) catch null;
     }
     return false;
 }
@@ -456,19 +454,19 @@ fn collectHtmlAwareText(
     allocator: std.mem.Allocator,
     out: *std.ArrayListUnmanaged(u8),
 ) !void {
-    var child = NodeImpl.getFirstChild(node);
+    var child = interfaces.Node.get_firstChild(node) catch null;
     while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.TEXT_NODE or
-            node_type == NodeImpl.NodeType.CDATA_SECTION_NODE)
+        const node_type = interfaces.Node.get_nodeType(c) catch 0;
+        if (node_type == interfaces.Node.get_TEXT_NODE() or
+            node_type == interfaces.Node.get_CDATA_SECTION_NODE())
         {
-            if (CharacterDataImpl.getData(c)) |data| {
+            if (@import("dom").character_data.dataOf(c)) |data| {
                 try out.appendSlice(allocator, data);
             }
-        } else if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+        } else if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             if (!isOpaqueScript(c)) try collectHtmlAwareText(c, allocator, out);
         }
-        child = NodeImpl.getNextSibling(c);
+        child = interfaces.Node.get_nextSibling(c) catch null;
     }
 }
 
