@@ -25,6 +25,9 @@ pub const Implementation = struct {
     get: *const fn (*runtime.Instance, []const u8) ?usize,
     set: *const fn (*runtime.Instance, []const u8, ?usize) anyerror!void,
     erase: *const fn (*runtime.Instance) void,
+    /// Whether the target's event listener list holds a listener that is not
+    /// removed - an activated event handler's included.
+    has_listeners: *const fn (*runtime.Instance) bool,
 };
 
 // process-wide: hook table written once at process start by EventTarget.installHooks (B0); comptime in B9
@@ -142,6 +145,15 @@ pub inline fn get(comptime Handler: type, target: *runtime.Instance, event_type:
 pub inline fn set(comptime Handler: type, target: *runtime.Instance, event_type: []const u8, handler: Handler) !void {
     const steps = implementation orelse return error.NotSupported;
     return steps.set(target, event_type, toAddress(Handler, handler));
+}
+
+/// Whether `target` has an event listener registered: one in its event
+/// listener list whose removed is false, an activated event handler's
+/// included (XHR send() step 5, "one or more event listeners are registered
+/// on this's upload object").
+pub fn hasListeners(target: *runtime.Instance) bool {
+    const steps = implementation orelse return false;
+    return steps.has_listeners(target);
 }
 
 /// HTML "erase all event listeners and handlers", including activated IDL

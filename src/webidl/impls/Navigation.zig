@@ -48,7 +48,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Navigation = interfaces.Navigation;
-const EventTargetImpl = @import("EventTarget.zig");
 const same_object = @import("same_object.zig");
 const navigation_entries = @import("navigation_entries.zig");
 const html_core = @import("html_core");
@@ -1485,7 +1484,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     // Step 29: "Let dispatchResult be the result of dispatching event at
     // navigation."
     record.dispatching = true;
-    const dispatch_result = EventTargetImpl.dispatchTrusted(instance, event) catch true;
+    const dispatch_result = @import("dom").fire_event.dispatchTrusted(instance, event) catch true;
     record.dispatching = false;
     defer collect(internal);
 
@@ -2501,7 +2500,7 @@ fn fireCurrentEntryChange(navigation: *runtime.Instance, navigation_type: ?enums
         .{ .base = .{}, .navigationType = navigation_type, .from = from },
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(navigation, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(navigation, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
@@ -2521,7 +2520,7 @@ fn fireNavigateError(navigation: *runtime.Instance, info: ?engine.ErrorInfo, rea
         }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(navigation, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(navigation, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
@@ -2533,7 +2532,7 @@ fn fireSimple(target: *runtime.Instance, event_type: []const u8) void {
         webidl.Opt(dictionaries.EventInit).notPassed(),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(target, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 

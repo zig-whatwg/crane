@@ -15,7 +15,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
 const AbortSignal = interfaces.AbortSignal;
-const EventTargetImpl = @import("EventTarget.zig");
 
 pub const State = AbortSignal.State;
 
@@ -402,7 +401,7 @@ fn runAbortSteps(signal: *runtime.Instance) void {
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
     // "Signal abort" step 5 fires an event: trusted (DOM 2.10).
-    _ = EventTargetImpl.dispatchTrusted(signal, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(signal, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 

@@ -40,7 +40,6 @@ const api_parser = @import("api_parser");
 
 // EventTarget is an ancestor: its impl owns the event listener list, the
 // event handlers in it, and trusted dispatch.
-const EventTargetImpl = @import("EventTarget.zig");
 
 const log = std.log.scoped(.websocket);
 
@@ -748,7 +747,7 @@ fn deliver(
     // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
     // ancestor, so its impl.
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(target, event) catch |err| {
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ type_string.asSlice(), @errorName(err) });
     };
 

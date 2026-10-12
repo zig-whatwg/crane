@@ -36,7 +36,6 @@ const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
 const same_object = @import("same_object.zig");
@@ -3169,7 +3168,7 @@ pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMStrin
     // dispatchEvent never throws - which is exactly what "If the event's
     // initialized flag is not set, an InvalidStateError must be thrown"
     // checks. initEvent() sets it again.
-    EventImpl.setInitializedFlag(event, false);
+    if (@import("dom").event_dispatch.of(event)) |state| state.initialized_flag = false;
 
     // Step 10.
     return event;
@@ -4309,7 +4308,7 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     const generation = runtime.SlabAllocator.generationOf(event);
     defer event.releaseIfUnwrapped(generation);
     interfaces.Event.call_initEvent(event, runtime.DOMString.initInterned("beforeunload"), webidl.Opt(bool).passed(false), webidl.Opt(bool).passed(true)) catch return .{};
-    const not_canceled = @import("EventTarget.zig").dispatchTrusted(window, event) catch true;
+    const not_canceled = @import("dom").fire_event.dispatchTrusted(window, event) catch true;
     // Step 6's condition, less sticky activation: "eventFiringResult is
     // false, or the returnValue attribute of event is not the empty string".
     const return_value = interfaces.BeforeUnloadEvent.get_returnValue(event) catch runtime.DOMString.initEmpty();
@@ -4805,7 +4804,7 @@ fn fireEventWith(realm_of: *runtime.Instance, target: *runtime.Instance, event_t
         webidl.Opt(dictionaries.EventInit).passed(init_dict),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = @import("EventTarget.zig").dispatchTrusted(target, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch {};
     // A listener that kept the event keeps it alive; otherwise it is done.
     event.releaseIfUnwrapped(generation);
 }
@@ -4825,7 +4824,7 @@ fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, ev
         webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = persisted }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = @import("EventTarget.zig").dispatchTrusted(window, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 

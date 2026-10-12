@@ -44,11 +44,6 @@ pub fn init(
     state.own.returnValue = runtime.DOMString.initEmpty();
     state.base.own.type = runtime.DOMString.initEmpty();
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-    state.base.own.isTrusted = false;
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = 0; // NONE
     state.base.own.bubbles = false;
     state.base.own.cancelable = false;
     state.base.own.composed = false;

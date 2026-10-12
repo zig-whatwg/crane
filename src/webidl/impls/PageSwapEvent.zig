@@ -102,11 +102,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // each EventInit member initializing the attribute of its name.
     state.base.own.type = try @"type".clone(ctx.allocator);
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
-    state.base.own.isTrusted = false;
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = 0; // NONE
     state.base.own.bubbles = init_dict.base.bubbles orelse false;
     state.base.own.cancelable = init_dict.base.cancelable orelse false;
     state.base.own.composed = init_dict.base.composed orelse false;

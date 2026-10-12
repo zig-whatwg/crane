@@ -16,7 +16,6 @@ const callbacks = @import("callbacks");
 const cookiestore = @import("cookiestore");
 const engine = @import("engine");
 const webidl = @import("webidl");
-const EventTargetImpl = @import("EventTarget.zig");
 const log = std.log.scoped(.cookie_store);
 
 // The Promise-returning operations make their promises and values through
@@ -303,7 +302,7 @@ fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
     // Step 7: dispatch it - fired by the user agent, so trusted. EventTarget
     // is an ancestor, so its impl.
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(instance, event) catch |err| {
+    _ = @import("dom").fire_event.dispatchTrusted(instance, event) catch |err| {
         log.debug("change event not dispatched: {s}", .{@errorName(err)});
     };
     // An event no script saw is freed; a wrapped one belongs to its wrapper.

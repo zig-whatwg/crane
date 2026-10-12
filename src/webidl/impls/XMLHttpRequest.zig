@@ -45,8 +45,6 @@ const encoding = @import("encoding");
 /// An XMLHttpRequest is an XMLHttpRequestEventTarget, which is an EventTarget:
 /// its event handlers, `onreadystatechange` among them, live in EventTarget's
 /// event handler map, and its events are dispatched there.
-const EventTargetImpl = @import("EventTarget.zig");
-
 pub const State = XMLHttpRequest.State;
 
 pub const ImplError = error{
@@ -1569,10 +1567,7 @@ const PendingFetch = struct {
 fn uploadHasListeners(instance: *runtime.Instance) bool {
     const upload = uploadObjectIfCreated(instance) orelse return false;
     // Every listener, whether `addEventListener` or an event handler added it.
-    for (EventTargetImpl.getEventListenersForType(upload, "")) |listener| {
-        if (!listener.removed) return true;
-    }
-    return false;
+    return @import("dom").event_handlers.hasListeners(upload);
 }
 
 /// send()'s `body`: the argument converted to (Document or

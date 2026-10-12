@@ -23,7 +23,6 @@ const encoding = @import("encoding");
 const mimesniff = @import("mimesniff");
 const infra = @import("infra");
 const FileReader = interfaces.FileReader;
-const EventTargetImpl = @import("EventTarget.zig");
 const same_object = @import("same_object.zig");
 const blob_bytes = @import("dom").blob_bytes;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
@@ -556,6 +555,6 @@ fn fireProgressEvent(reader: *runtime.Instance, comptime name: []const u8) void 
         webidl.Opt(dictionaries.ProgressEventInit).notPassed(),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(reader, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrusted(reader, event) catch {};
     event.releaseIfUnwrapped(generation);
 }

@@ -91,14 +91,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.own.bubbles = event_init.bubbles orelse false;
     state.base.own.cancelable = event_init.cancelable orelse false;
     state.base.own.composed = event_init.composed orelse false;
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = interfaces.Event.get_NONE();
     state.base.own.cancelBubble = false;
     state.base.own.returnValue = true;
     state.base.own.defaultPrevented = false;
-    state.base.own.isTrusted = false;
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     internal.promise = try hold(ctx, eventInitDict.promise);
