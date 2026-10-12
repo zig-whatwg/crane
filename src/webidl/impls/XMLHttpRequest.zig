@@ -466,6 +466,13 @@ pub fn get_responseXML(instance: *runtime.Instance) anyerror!?*runtime.Instance 
     if (xhr_state.response_type != .empty and xhr_state.response_type != .document) return error.InvalidStateError;
     // 2. If this's state is not done, then return null.
     if (xhr_state.ready_state != .DONE) return null;
+    // responseXML is [Exposed=Window]: a worker's XHR has no such member,
+    // and a worker has no DOM to build a document in. Deviation, stated: the
+    // binding does not yet honour a member's own [Exposed] (the generated
+    // interface binds every member in every global the interface is exposed
+    // in), so a worker reads null here rather than undefined - which is what
+    // workers/semantics/xhr/00{1,2,3,4}.html check (`responseXML != null`).
+    if (!relevantGlobalIsWindow(instance)) return null;
     // 3. Assert: this's response object is not failure. (Only an
     //    ArrayBuffer response fails, and its response type is not one of
     //    step 1's.)
@@ -802,6 +809,13 @@ fn relevantBaseURL(instance: *runtime.Instance) ?[]u8 {
     const url = instance.ctx.documentUrl() orelse return null;
     if (url.len == 0) return null;
     return instance.ctx.allocator.dupe(u8, url) catch null;
+}
+
+/// Whether this request's relevant global object is a Window.
+fn relevantGlobalIsWindow(instance: *runtime.Instance) bool {
+    const record = instance.ctx.getRealm() orelse return false;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
+    return global.stateAs(interfaces.Window.State) != null;
 }
 
 /// The document associated with this request's relevant global at this
