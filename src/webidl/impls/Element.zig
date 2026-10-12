@@ -804,15 +804,16 @@ pub fn get_localName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 pub fn get_tagName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Per DOM spec §4.8:
-    // If the element's namespace is the HTML namespace and the element's node document
-    // is an HTML document, return the qualified name in ASCII uppercase.
-    // HTML elements typically have null namespace_uri (implicit HTML namespace) or
-    // explicit "http://www.w3.org/1999/xhtml"
+    // DOM 4.9 "HTML-uppercased qualified name": "If this is in the HTML
+    // namespace and its node document is an HTML document, then set
+    // qualifiedName to qualifiedName in ASCII uppercase." An element in no
+    // namespace, or one in an XML document, keeps its name as written
+    // (dom/nodes/Element-tagName.html, Document-createElement.html's XML
+    // and XHTML documents).
     const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
-    const is_html_element = internal.namespace_uri == null or
-        (internal.namespace_uri != null and
-            std.mem.eql(u8, internal.namespace_uri.?.asSlice(), HTML_NAMESPACE));
+    const is_html_element = internal.namespace_uri != null and
+        std.mem.eql(u8, internal.namespace_uri.?.asSlice(), HTML_NAMESPACE) and
+        nodeDocumentIsHtml(instance);
 
     // If there's a prefix, return "prefix:localName"
     if (internal.prefix) |p| {
@@ -850,6 +851,13 @@ pub fn get_tagName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // Non-HTML element: return as-is
     // Clone to transfer ownership to caller (interface layer will free)
     return try internal.local_name.clone(instance.ctx.allocator);
+}
+
+/// Whether `element`'s node document is an HTML document (DOM 4.5: its type
+/// is "html").
+fn nodeDocumentIsHtml(element: *runtime.Instance) bool {
+    const document = (interfaces.Node.get_ownerDocument(element) catch return true) orelse return true;
+    return dom.document_internals.getDocumentType(document) != .xml;
 }
 
 /// Getter for id

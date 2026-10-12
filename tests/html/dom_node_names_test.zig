@@ -68,3 +68,20 @@ test "nodeValue is null for an element, a document, a doctype and a fragment" {
     defer value.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("x", value.asSlice());
 }
+
+test "tagName is uppercased only for an HTML-namespace element in an HTML document" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    const html = try h.document(.html);
+    defer interfaces.Document.deinit(html);
+    const div = try elementNS(html, null, html_ns, "x:div");
+    try expectTagName(div, "X:DIV");
+    try expectTagName(try elementNS(html, div, null, "foo"), "foo");
+    try expectTagName(try elementNS(html, div, svg_ns, "foreignObject"), "foreignObject");
+
+    const xml = try h.document(.xml);
+    defer interfaces.Document.deinit(xml);
+    const root = try elementNS(xml, null, html_ns, "div");
+    try expectTagName(root, "div");
+}
