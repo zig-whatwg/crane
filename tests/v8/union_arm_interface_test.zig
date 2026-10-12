@@ -73,6 +73,45 @@ test "every interface arm of every generated union typedef maps to an interface"
     try std.testing.expect(checked > 40);
 }
 
+test "a union member of a union adds its interfaces to the outer union's" {
+    // WebIDL 2.13.29: the flattened member types of CanvasImageSource
+    // include HTMLOrSVGImageElement's members. Codegen keeps that member a
+    // nested union; an img given to drawImage() was a TypeError while the
+    // conversion looked only at the outer union's own interface arms.
+    const typedefs = conv.generated_typedefs;
+    try std.testing.expect(conv.isInterfaceUnion(typedefs.HTMLOrSVGImageElement));
+    try std.testing.expect(conv.isInterfaceUnion(typedefs.CanvasImageSource));
+    try std.testing.expectEqualStrings("HTMLImageElement", nameOf("htmlimage_element").?);
+    try std.testing.expectEqualStrings("SVGImageElement", nameOf("svgimage_element").?);
+    // A union with any other kind of member is not one.
+    try std.testing.expect(!conv.isInterfaceUnion(typedefs.BodyInit));
+    try std.testing.expect(!conv.isInterfaceUnion(*runtime.Instance));
+}
+
+test "every interface arm of every nested interface union maps to an interface" {
+    @setEvalBranchQuota(10_000_000);
+    const typedefs = conv.generated_typedefs;
+    var nested: usize = 0;
+    inline for (comptime std.meta.declarations(typedefs)) |decl| {
+        const T = @field(typedefs, decl.name);
+        if (@TypeOf(T) == type and @typeInfo(T) == .@"union") {
+            inline for (@typeInfo(T).@"union".fields) |field| {
+                if (comptime conv.isInterfaceUnion(field.type)) {
+                    inline for (@typeInfo(field.type).@"union".fields) |inner| {
+                        if (inner.type == *runtime.Instance and comptime nameOf(inner.name) == null) {
+                            std.debug.print("{s}.{s}.{s} names no interface\n", .{ decl.name, field.name, inner.name });
+                            return error.UnmappedUnionArm;
+                        }
+                    }
+                    nested += 1;
+                }
+            }
+        }
+    }
+    // CanvasImageSource's HTMLOrSVGImageElement at least.
+    try std.testing.expect(nested >= 1);
+}
+
 // =============================================================================
 // A callable, with and without a callback function arm (§3.2.24 step 11)
 // =============================================================================
