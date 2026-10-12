@@ -133,6 +133,9 @@ pub const character_data = @import("character_data.zig");
 pub const geometry_storage = @import("geometry_storage.zig");
 pub const names = @import("names.zig");
 pub const element_attributes = @import("element_attributes.zig");
+/// An element's attribute list, ID, classes and qualified name, read in
+/// place by the tree's own algorithms (WebKit's ElementData).
+pub const element_data = @import("element_data.zig");
 pub const observer_registrations = @import("observer_registrations.zig");
 pub const attr_nodes = @import("attr_nodes.zig");
 pub const traversal = @import("traversal.zig");

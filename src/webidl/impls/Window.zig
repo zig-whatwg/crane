@@ -3672,8 +3672,10 @@ pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSVal
 // Named Property Access Support (for WindowProperties object)
 // ============================================================================
 
-// Import Element's impl for internal state access
-const ElementImpl = @import("Element.zig");
+// An element's ID, name attribute and local name, read in place
+// (dom.element_data, which Element installs).
+const element_data = @import("dom").element_data;
+const ElementData = element_data.ElementData;
 const clock = @import("clock");
 
 /// HTML "named objects" of a Window (§7.2.2.3) that a name attribute makes:
@@ -3697,8 +3699,8 @@ fn isNamedElementType(local_name: []const u8) bool {
 }
 
 /// Get the "name" attribute value from an element, if it has one
-fn getElementName(elem_internal: *const ElementImpl.InternalState) ?[]const u8 {
-    if (elem_internal.findAttribute(null, "name")) |entry| {
+fn getElementName(data: *const ElementData) ?[]const u8 {
+    if (element_data.getAttributeByNamespaceAndLocalName(data, null, "name")) |entry| {
         if (entry.value.len > 0) {
             return entry.value;
         }
@@ -3718,13 +3720,13 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
     while (child) |c| {
         const node_type = interfaces.Node.get_nodeType(c) catch 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const local_name = elem_internal.local_name.asSlice();
+            if (element_data.of(c)) |data| {
+                const local_name = data.local_name.asSlice();
 
                 // An HTML element whose id is the name is a named object -
                 // the element itself, an iframe as much as any other: only a
                 // navigable's target name makes the property a WindowProxy.
-                const elem_id = elem_internal.id.asSlice();
+                const elem_id = data.id.asSlice();
                 if (elem_id.len > 0 and std.mem.eql(u8, elem_id, target_name)) {
                     return runtime.JSValue.fromInstance(c);
                 }
@@ -3732,7 +3734,7 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
                 // So is an embed, form, img or object element whose name
                 // attribute is the name.
                 if (isNamedElementType(local_name)) {
-                    if (getElementName(elem_internal)) |element_name| {
+                    if (getElementName(data)) |element_name| {
                         if (std.mem.eql(u8, element_name, target_name)) {
                             return runtime.JSValue.fromInstance(c);
                         }
@@ -3752,17 +3754,17 @@ fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?
 }
 
 /// Check if an element matches the target name (by id or name attribute)
-fn elementMatchesName(elem_internal: *const ElementImpl.InternalState, target_name: []const u8) bool {
+fn elementMatchesName(data: *const ElementData, target_name: []const u8) bool {
     // Check id attribute
-    const elem_id = elem_internal.id.asSlice();
+    const elem_id = data.id.asSlice();
     if (elem_id.len > 0 and std.mem.eql(u8, elem_id, target_name)) {
         return true;
     }
 
     // Check name attribute for specific element types
-    const local_name = elem_internal.local_name.asSlice();
+    const local_name = data.local_name.asSlice();
     if (isNamedElementType(local_name)) {
-        if (getElementName(elem_internal)) |element_name| {
+        if (getElementName(data)) |element_name| {
             if (std.mem.eql(u8, element_name, target_name)) {
                 return true;
             }
@@ -3778,8 +3780,8 @@ fn hasNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) bo
     while (child) |c| {
         const node_type = interfaces.Node.get_nodeType(c) catch 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                if (elementMatchesName(elem_internal, target_name)) {
+            if (element_data.of(c)) |data| {
+                if (elementMatchesName(data, target_name)) {
                     return true;
                 }
             }
@@ -3801,18 +3803,18 @@ fn collectNamedElementNames(node: *runtime.Instance, names: *std.ArrayList(runti
     while (child) |c| {
         const node_type = interfaces.Node.get_nodeType(c) catch 0;
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
-            if (ElementImpl.getInternal(c)) |elem_internal| {
+            if (element_data.of(c)) |data| {
                 // Add id if present
-                const elem_id = elem_internal.id.asSlice();
+                const elem_id = data.id.asSlice();
                 if (elem_id.len > 0) {
                     const name = try runtime.DOMString.initDupe(allocator, elem_id);
                     try names.append(allocator, name);
                 }
 
                 // Add name attribute if element type participates
-                const local_name = elem_internal.local_name.asSlice();
+                const local_name = data.local_name.asSlice();
                 if (isNamedElementType(local_name)) {
-                    if (getElementName(elem_internal)) |element_name| {
+                    if (getElementName(data)) |element_name| {
                         const name = try runtime.DOMString.initDupe(allocator, element_name);
                         try names.append(allocator, name);
                     }

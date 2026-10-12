@@ -24,7 +24,9 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLHyperlinkElementUtils = interfaces.HTMLHyperlinkElementUtils;
 
-const ElementImpl = @import("Element.zig");
+// The element's href attribute, read in place (dom.element_data, which
+// Element installs).
+const element_data = @import("dom").element_data;
 const html = @import("html");
 
 pub const State = HTMLHyperlinkElementUtils.State;
@@ -58,8 +60,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// The href content attribute's value, borrowed from the attribute, or null.
 fn hrefAttribute(element: *runtime.Instance) ?[]const u8 {
-    const internal = ElementImpl.getInternal(element) orelse return null;
-    const entry = internal.findAttribute(null, "href") orelse return null;
+    const data = element_data.of(element) orelse return null;
+    const entry = element_data.getAttributeByNamespaceAndLocalName(data, null, "href") orelse return null;
     return entry.value;
 }
 

@@ -22,8 +22,10 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLElement = interfaces.HTMLElement;
 
-// Import parent impl for chaining initialization
-const ElementImpl = @import("Element.zig");
+const dom = @import("dom");
+// An element's attributes and local name, read in place (dom.element_data,
+// which Element installs); written through dom.element_attributes.
+const element_data = dom.element_data;
 
 // Import CSSStyleDeclaration impl for inline style creation
 const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
@@ -84,18 +86,16 @@ pub const InternalState = struct {
 
     // === Style ===
     /// Cached inline CSSStyleDeclaration wrapper for this element
-    /// Note: This may be garbage collected by V8, but the properties are stored
-    /// separately in inline_style_properties below
+    /// Note: This may be garbage collected by V8, but the declarations are
+    /// kept separately, in `inline_style` below
     /// Spec: https://drafts.csswg.org/cssom/#dom-elementcssinlinestyle-style
     style_declaration: ?*runtime.Instance = null,
 
-    /// Inline style properties storage (property name -> value)
-    /// These are stored here (not in CSSStyleDeclaration) so they survive V8 GC
-    /// of the CSSStyleDeclaration wrapper. Properties persist as long as the element exists.
-    inline_style_properties: std.StringHashMapUnmanaged([]const u8) = .{},
-
-    /// Cached inline style cssText
-    inline_style_css_text: ?[]const u8 = null,
+    /// The element's inline style declarations (dom.cssom.InlineStyle, which
+    /// the CSSOM reads through `inlineStyleOf`, installed below). Kept here,
+    /// not in the CSSStyleDeclaration, so they survive V8 GC of its wrapper:
+    /// they persist as long as the element exists.
+    inline_style: dom.cssom.InlineStyle,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -107,112 +107,13 @@ pub const InternalState = struct {
             .internals_attached = false,
             .is_dragging = false,
             .style_declaration = null,
-            .inline_style_properties = .{},
-            .inline_style_css_text = null,
+            .inline_style = dom.cssom.InlineStyle.init(allocator),
         };
     }
 
     pub fn deinit(self: *InternalState) void {
-        // Clean up inline style properties
-        var iter = self.inline_style_properties.iterator();
-        while (iter.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            self.allocator.free(entry.value_ptr.*);
-        }
-        self.inline_style_properties.deinit(self.allocator);
-        if (self.inline_style_css_text) |text| {
-            self.allocator.free(text);
-        }
+        self.inline_style.deinit();
         // Note: style_declaration runtime.Instance is owned by the GC layer, don't deinit here
-    }
-
-    /// Get inline style property value
-    pub fn getInlineStyleProperty(self: *InternalState, name: []const u8) ?[]const u8 {
-        return self.inline_style_properties.get(name);
-    }
-
-    /// Set inline style property value
-    pub fn setInlineStyleProperty(self: *InternalState, name: []const u8, value: []const u8) !void {
-        // Check if property already exists
-        if (self.inline_style_properties.get(name)) |old_value| {
-            // Free old value
-            self.allocator.free(old_value);
-            // Update with new value (key already exists, no need to dup key)
-            const value_copy = try self.allocator.dupe(u8, value);
-            self.inline_style_properties.putAssumeCapacity(name, value_copy);
-        } else {
-            // New property - need to allocate both key and value
-            const name_copy = try self.allocator.dupe(u8, name);
-            errdefer self.allocator.free(name_copy);
-            const value_copy = try self.allocator.dupe(u8, value);
-            try self.inline_style_properties.put(self.allocator, name_copy, value_copy);
-        }
-        // Invalidate cssText cache
-        if (self.inline_style_css_text) |old_text| {
-            self.allocator.free(old_text);
-            self.inline_style_css_text = null;
-        }
-    }
-
-    /// Remove inline style property
-    pub fn removeInlineStyleProperty(self: *InternalState, name: []const u8) void {
-        if (self.inline_style_properties.fetchRemove(name)) |entry| {
-            self.allocator.free(entry.key);
-            self.allocator.free(entry.value);
-            // Invalidate cssText cache
-            if (self.inline_style_css_text) |old_text| {
-                self.allocator.free(old_text);
-                self.inline_style_css_text = null;
-            }
-        }
-    }
-
-    /// Get inline style cssText
-    pub fn getInlineStyleCssText(self: *InternalState) []const u8 {
-        return self.inline_style_css_text orelse "";
-    }
-
-    /// Set inline style cssText (parses and updates properties)
-    pub fn setInlineStyleCssText(self: *InternalState, text: []const u8) !void {
-        // Clear existing properties
-        var iter = self.inline_style_properties.iterator();
-        while (iter.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            self.allocator.free(entry.value_ptr.*);
-        }
-        self.inline_style_properties.clearRetainingCapacity();
-
-        if (self.inline_style_css_text) |old_text| {
-            self.allocator.free(old_text);
-        }
-
-        // Store the cssText
-        self.inline_style_css_text = try self.allocator.dupe(u8, text);
-
-        // Parse simple "property: value" pairs separated by semicolons
-        var declarations = std.mem.splitScalar(u8, text, ';');
-        while (declarations.next()) |decl| {
-            const trimmed = std.mem.trim(u8, decl, " \t\n\r");
-            if (trimmed.len == 0) continue;
-
-            // Find the colon
-            if (std.mem.indexOf(u8, trimmed, ":")) |colon_pos| {
-                const prop_name = std.mem.trim(u8, trimmed[0..colon_pos], " \t");
-                const prop_value = std.mem.trim(u8, trimmed[colon_pos + 1 ..], " \t");
-
-                if (prop_name.len > 0) {
-                    const name_copy = try self.allocator.dupe(u8, prop_name);
-                    errdefer self.allocator.free(name_copy);
-                    const value_copy = try self.allocator.dupe(u8, prop_value);
-                    try self.inline_style_properties.put(self.allocator, name_copy, value_copy);
-                }
-            }
-        }
-    }
-
-    /// Get count of inline style properties
-    pub fn getInlineStylePropertyCount(self: *InternalState) u32 {
-        return @intCast(self.inline_style_properties.count());
     }
 };
 
@@ -267,21 +168,21 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// The value of this element's content attribute `name` (no namespace), or
 /// null when it has none.
 fn getContentAttribute(instance: *runtime.Instance, name: []const u8) ?runtime.DOMString {
-    const elem_internal = ElementImpl.getInternalState(instance) orelse return null;
-    const attr = elem_internal.findAttribute(null, name) orelse return null;
+    const data = element_data.of(instance) orelse return null;
+    const attr = element_data.getAttributeByNamespaceAndLocalName(data, null, name) orelse return null;
     return runtime.DOMString.initInterned(attr.value);
 }
 
 /// Set content attribute `name` - DOM "set an attribute value", the setter
 /// steps of a reflected attribute - so the change is observed like any other.
 fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: runtime.DOMString) !void {
-    try ElementImpl.setAttributeValue(instance, name, value.asSlice(), null, null);
+    try dom.element_attributes.set(instance, name, value.asSlice(), .{});
 }
 
 /// Remove content attribute `name` - DOM "remove an attribute by namespace
 /// and local name" with a null namespace.
 fn removeContentAttribute(instance: *runtime.Instance, name: []const u8) void {
-    ElementImpl.removeAttributeByNamespaceAndLocalName(instance, null, name);
+    dom.element_attributes.remove(instance, null, name);
 }
 
 // =============================================================================
@@ -908,11 +809,11 @@ fn fireSyntheticPointerEvent(target: *runtime.Instance, comptime event_type: []c
 /// textarea with a disabled attribute. Deviation, stated: a control disabled
 /// only through a disabled fieldset ancestor is not recognised here.
 fn isDisabledFormControl(instance: *runtime.Instance) bool {
-    const element = ElementImpl.getInternal(instance) orelse return false;
-    const name = element.local_name.asSlice();
+    const data = element_data.of(instance) orelse return false;
+    const name = data.local_name.asSlice();
     const controls = [_][]const u8{ "button", "input", "select", "textarea" };
     for (controls) |control| {
-        if (std.mem.eql(u8, name, control)) return element.findAttribute(null, "disabled") != null;
+        if (std.mem.eql(u8, name, control)) return element_data.hasAttribute(data, "disabled");
     }
     return false;
 }
@@ -1024,8 +925,15 @@ fn ensureInternals(instance: *runtime.Instance) !*runtime.Instance {
 pub fn installHooks() void {
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.html_elements, &sweepRemaining);
+    // Its inline style declarations, which the CSSOM reads and writes.
+    dom.cssom.installInlineStyle(.{ .of = &inlineStyleOf });
     @import("dom").html_pseudo_classes.install(.{ .matches = &@import("html").pseudo_classes.matches, .popover_showing = &popoverShowing });
     @import("dom").custom_elements.installHTMLElement(.{ .internals = &attachedInternals, .ensure_internals = &ensureInternals });
+}
+
+/// `dom.cssom.inlineStyleOf`: this element's inline style declarations.
+fn inlineStyleOf(instance: *runtime.Instance) ?*dom.cssom.InlineStyle {
+    return &(getInternalState(instance) orelse return null).inline_style;
 }
 
 fn popoverShowing(instance: *runtime.Instance) bool {

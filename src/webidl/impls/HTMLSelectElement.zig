@@ -16,7 +16,9 @@ const webidl = @import("webidl");
 const engine = @import("engine");
 const HTMLSelectElement = interfaces.HTMLSelectElement;
 
-const ElementImpl = @import("Element.zig");
+// The element's attributes, read in place (dom.element_data, which Element
+// installs).
+const element_data = @import("dom").element_data;
 const collections = @import("dom").live_collections;
 const controls = @import("dom").form_controls;
 const form_associated = @import("html").form_associated;
@@ -158,8 +160,8 @@ pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.In
 // ---------------------------------------------------------------------------
 
 fn reflectBool(instance: *runtime.Instance, comptime attr: []const u8) anyerror!bool {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    return elem_internal.findAttribute(null, attr) != null;
+    const data = element_data.of(instance) orelse return error.InvalidState;
+    return element_data.hasAttribute(data, attr);
 }
 
 /// The list of options, owned by the caller.
@@ -183,8 +185,8 @@ pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString 
     // TODO: the full autofill mantle also exposes field names ("email",
     // "street-address", ...). Only on/off are recognised here, matching
     // HTMLInputElement; anything else reads back "".
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
-    const entry = elem_internal.findAttribute(null, "autocomplete") orelse
+    const data = element_data.of(instance) orelse return error.InvalidState;
+    const entry = element_data.getAttributeByNamespaceAndLocalName(data, null, "autocomplete") orelse
         return runtime.DOMString.initEmpty();
     inline for ([_][]const u8{ "on", "off" }) |candidate| {
         if (std.ascii.eqlIgnoreCase(entry.value, candidate)) {

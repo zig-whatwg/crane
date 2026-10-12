@@ -16,7 +16,9 @@ const callbacks = @import("callbacks");
 const HTMLOptionElement = interfaces.HTMLOptionElement;
 const log = std.log.scoped(.option);
 
-const ElementImpl = @import("Element.zig");
+// An element's local name, namespace and attributes, read in place
+// (dom.element_data, which Element installs).
+const element_data = @import("dom").element_data;
 // A Text node's data lives in CharacterData's inline/heap storage, NOT in
 // Node.InternalState.node_value - that field stays null for parsed and
 // created text alike, so reading it yields "" for every option. It is read in
@@ -219,8 +221,8 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 fn localName(node: *runtime.Instance) ?[]const u8 {
     const node_type = interfaces.Node.get_nodeType(node) catch return null;
     if (node_type != interfaces.Node.get_ELEMENT_NODE()) return null;
-    const elem_internal = ElementImpl.getInternal(node) orelse return null;
-    return elem_internal.local_name.asSlice();
+    const data = element_data.of(node) orelse return null;
+    return data.local_name.asSlice();
 }
 
 fn isElementNamed(node: *runtime.Instance, name: []const u8) bool {
@@ -229,13 +231,13 @@ fn isElementNamed(node: *runtime.Instance, name: []const u8) bool {
 }
 
 fn hasAttr(instance: *runtime.Instance, comptime attr: []const u8) bool {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return false;
-    return elem_internal.findAttribute(null, attr) != null;
+    const data = element_data.of(instance) orelse return false;
+    return element_data.hasAttribute(data, attr);
 }
 
 fn attrValue(instance: *runtime.Instance, comptime attr: []const u8) ?[]const u8 {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return null;
-    const entry = elem_internal.findAttribute(null, attr) orelse return null;
+    const data = element_data.of(instance) orelse return null;
+    const entry = element_data.getAttributeByNamespaceAndLocalName(data, null, attr) orelse return null;
     return entry.value;
 }
 
@@ -430,7 +432,7 @@ fn isAsciiWhitespace(c: u8) bool {
 ///
 /// HTML `script` and SVG `script`, but not MathML `script`. Note that an element
 /// created by `createElementNS(null, "script")` is indistinguishable from an
-/// HTML one here: `Element.InternalState.namespace_uri` is null for HTML
+/// HTML one here: `dom.element_data`'s `namespace_uri` is null for HTML
 /// elements (see `Element.get_tagName`, which treats null as HTML), so the null
 /// namespace cannot be told apart. The common case wins; the one WPT subtest
 /// asserting the null-namespace script DOES recurse stays red until Element
@@ -438,8 +440,8 @@ fn isAsciiWhitespace(c: u8) bool {
 fn isOpaqueScript(element: *runtime.Instance) bool {
     const local = localName(element) orelse return false;
     if (!std.ascii.eqlIgnoreCase(local, "script")) return false;
-    const elem_internal = ElementImpl.getInternal(element) orelse return false;
-    const ns = elem_internal.namespace_uri orelse return true; // implicit HTML
+    const data = element_data.of(element) orelse return false;
+    const ns = data.namespace_uri orelse return true; // implicit HTML
     const slice = ns.asSlice();
     return std.mem.eql(u8, slice, HTML_NAMESPACE) or std.mem.eql(u8, slice, SVG_NAMESPACE);
 }
