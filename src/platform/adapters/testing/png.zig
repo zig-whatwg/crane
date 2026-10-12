@@ -35,7 +35,9 @@
 //!   decoded and then ends the datastream, corrupt. A bad filter type, a
 //!   zlib stream that is invalid or holds too few scanlines, and an invalid
 //!   chunk after the image data are corrupt; a datastream that ends before
-//!   the image data does is truncated.
+//!   the image data does is truncated. Of an interlaced image, the pixels of
+//!   the passes decoded so far (not blown up to fill the gaps, as Gecko's
+//!   ADAM7 interpolation shows a progressive load).
 
 const std = @import("std");
 const platform = @import("platform");
