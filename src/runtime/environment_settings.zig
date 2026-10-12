@@ -33,9 +33,12 @@ pub const Origin = struct {
     host: []const u8,
     port: ?u16,
 
-    /// document.domain's opt-in, null by default. BORROWED from its owner,
-    /// even for initOwned: deinit frees only the owned scheme and host.
-    /// A view with a domain is valid only until its owner changes it.
+    /// document.domain's opt-in, null by default. Set it with `setDomain`,
+    /// which follows the origin's ownership: an `initOwned` origin owns a
+    /// copy (deinit frees it, as it frees the scheme and host), an `init`
+    /// one borrows, as it borrows its scheme and host. The origin a
+    /// document shares, domain included, is dom.origin_record's record;
+    /// this value is a copy of one for a settings object.
     domain: ?[]const u8 = null,
 
     /// Opaque origin marker (unique, never same-origin with anything)
@@ -85,11 +88,25 @@ pub const Origin = struct {
         };
     }
 
+    /// Set (or, with null, clear) the domain: a copy for an owned origin -
+    /// the caller's slice may go at once - and the slice itself for a
+    /// borrowed one.
+    pub fn setDomain(self: *Self, domain: ?[]const u8) Allocator.Error!void {
+        const alloc = self.allocator orelse {
+            self.domain = domain;
+            return;
+        };
+        const copy: ?[]const u8 = if (domain) |d| try alloc.dupe(u8, d) else null;
+        if (self.domain) |old| alloc.free(old);
+        self.domain = copy;
+    }
+
     /// Free owned strings if any
     pub fn deinit(self: *Self) void {
         if (self.allocator) |alloc| {
             if (self.scheme.len > 0) alloc.free(self.scheme);
             if (self.host.len > 0) alloc.free(self.host);
+            if (self.domain) |domain| alloc.free(domain);
         }
         self.* = undefined;
     }
