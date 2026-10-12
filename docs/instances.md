@@ -36,6 +36,20 @@ put these on the Browser before workers had threads). curl's global init is cran
 BrowserConfig takes `user_agent`, `proxy` (explicit: system, direct, manual; a PAC file and
 auto-detection are NotSupported) and `accept_insecure_certs`, read by navigator and WorkerNavigator,
 fetch's `User-Agent`, the WebSocket handshake and report bodies.
+B2's rest (2026-10-12, lane inst6): the V8 adapter's per-isolate state is each isolate's own, kept
+where V8 keeps an embedder's per-isolate data (Blink's V8PerIsolateData): the template registry is
+a second map of the isolate's template storage (data slot 1) - no process-wide table, lock or
+generation counter, so one agent's end no longer rebuilds another's templates; the JSON modules
+awaiting evaluation are in v8_wrapper.cpp's per-isolate record (slot 2), which also holds a
+snapshot isolate's StartupData; the ObservableArray states are on the agent record beside the Intl
+objects; a namespace operation (console, CSS, TestUtils) is handed the current realm, so console's
+count map, timer table and group stack are each realm's; the isolate teardown steps are a constant
+table; the ShadowRealm dispatcher is set once by initializeEngine; each isolate's ArrayBuffer
+allocator is V8's to free (CreateParams::array_buffer_allocator_shared). The weak-callback and
+realm-tag maps stay process-wide under their mutexes (`// process-wide:`): a release names only its
+handle. Dead legacy paths with globals of their own (the CallbackManager, the pre-protocol module,
+import.meta, dynamic import and promise-rejection callbacks, the C++ async iterator template)
+are deleted.
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.
