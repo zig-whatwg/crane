@@ -271,6 +271,9 @@ pub fn parserAssociationsAfterMutation(node: *Instance, new_parent: ?*Instance) 
 /// element": its parser association, if any, goes for good.
 pub fn parserAssociationAttributeChanged(element: *Instance, local_name: []const u8) void {
     if (!std.mem.eql(u8, local_name, "form")) return;
+    // HTML's reset trigger applies only to listed form-associated elements;
+    // an img's otherwise inert form attribute must preserve its parser owner.
+    if (!isListed(element)) return;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
     const list = @import("dom").document_internals.parserFormAssociations(document) orelse return;
     var index: usize = 0;
