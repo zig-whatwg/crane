@@ -4375,42 +4375,30 @@ pub fn set_height(instance: *runtime.Instance, value: runtime.DOMString) anyerro
 
 /// Getter for referrerPolicy
 pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.referrer_policy_attr) |rp| {
-        return runtime.DOMString.initInterned(rp);
-    }
-    return runtime.DOMString.initInterned("");
+    return dom_module.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "referrerpolicy",
+        .keywords = dom_module.reflection.referrer_policy_keywords,
+    });
 }
 
 /// Setter for referrerPolicy
 pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.referrer_policy_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.referrer_policy_attr = try internal.allocator.dupe(u8, value.asSlice());
+    try dom_module.reflection.set(runtime.DOMString, instance, .{ .name = "referrerpolicy" }, value);
 }
 
 /// Getter for loading
 pub fn get_loading(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("eager");
-
-    if (internal.loading_attr) |loading| {
-        return runtime.DOMString.initInterned(loading);
-    }
-    return runtime.DOMString.initInterned("eager");
+    return dom_module.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "loading",
+        .keywords = &.{ "eager", "lazy" },
+        .missing = "eager",
+        .invalid = "eager",
+    });
 }
 
 /// Setter for loading
 pub fn set_loading(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.loading_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.loading_attr = try internal.allocator.dupe(u8, value.asSlice());
+    try dom_module.reflection.set(runtime.DOMString, instance, .{ .name = "loading" }, value);
 }
 
 /// Getter for browsingTopics

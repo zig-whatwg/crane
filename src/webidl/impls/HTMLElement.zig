@@ -492,7 +492,10 @@ pub fn get_contentEditable(instance: *runtime.Instance) anyerror!runtime.DOMStri
 /// Getter for enterKeyHint
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#attr-enterkeyhint
 pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "enterkeyhint") orelse runtime.DOMString.initEmpty();
+    return dom.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "enterkeyhint",
+        .keywords = &.{ "enter", "done", "go", "next", "previous", "search", "send" },
+    });
 }
 
 /// Getter for isContentEditable
@@ -552,7 +555,10 @@ pub fn get_isContentEditable(instance: *runtime.Instance) anyerror!bool {
 /// Getter for inputMode
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#attr-inputmode
 pub fn get_inputMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "inputmode") orelse runtime.DOMString.initEmpty();
+    return dom.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "inputmode",
+        .keywords = &.{ "none", "text", "tel", "url", "email", "numeric", "decimal", "search" },
+    });
 }
 
 /// Getter for virtualKeyboardPolicy

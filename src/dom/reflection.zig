@@ -22,9 +22,9 @@
 //!
 //! Not here: an ElementInternals reflected target (its element's internal
 //! content attribute map - codegen reflects nothing on it), `Element?` and
-//! `FrozenArray<Element>?` (they hold explicitly set attr-elements), and
-//! "limited to only known values" (no [Reflect*] attribute in the IDL is an
-//! enumerated one; those are written out by hand).
+//! `FrozenArray<Element>?` (they hold explicitly set attr-elements).
+//! Enumerated members call `getEnumerated` with their canonical keywords
+//! and defaults; the current generated [Reflect*] defaults are not enums.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -63,6 +63,48 @@ pub const Spec = struct {
     /// [ReflectRange] (unsigned long): "clamped to the range [min, max]".
     range: ?[2]u32 = null,
 };
+
+/// The canonical keywords and getter results for a limited-to-known-values
+/// attribute. Defaults describe the resulting state: "" for a nonnullable
+/// attribute with no keyword, null for a nullable attribute with no keyword.
+pub const EnumeratedSpec = struct {
+    name: []const u8,
+    keywords: []const []const u8,
+    missing: ?[]const u8 = "",
+    invalid: ?[]const u8 = "",
+};
+
+/// Referrer Policy section 3, including the empty-string policy.
+pub const referrer_policy_keywords: []const []const u8 = &.{
+    "",
+    "no-referrer",
+    "no-referrer-when-downgrade",
+    "same-origin",
+    "origin",
+    "strict-origin",
+    "origin-when-cross-origin",
+    "strict-origin-when-cross-origin",
+    "unsafe-url",
+};
+
+/// HTML 2.6.1 DOMString/DOMString? getter steps 1-4: resolve the enumerated
+/// state, then return its canonical keyword. These bytes are comptime
+/// constants, so the returned DOMString does not borrow attribute storage.
+pub fn getEnumerated(comptime T: type, instance: *runtime.Instance, comptime spec: EnumeratedSpec) !T {
+    if (T != DOMString and T != ?DOMString) @compileError("An enumerated reflector returns DOMString or DOMString?");
+    if (T == DOMString and (spec.missing == null or spec.invalid == null)) @compileError("A nonnullable enumerated reflector needs string defaults");
+    const attribute = try getContentAttribute(instance, spec.name);
+    const keyword: ?[]const u8 = if (attribute) |value| blk: {
+        // HTML 2.3.2: keywords match ASCII case-insensitively, without
+        // trimming whitespace. An unknown keyword selects the invalid state.
+        for (spec.keywords) |known| {
+            if (std.ascii.eqlIgnoreCase(value.asSlice(), known)) break :blk known;
+        }
+        break :blk spec.invalid;
+    } else spec.missing;
+    if (T == ?DOMString) return if (keyword) |text| DOMString.initInterned(text) else null;
+    return DOMString.initInterned(keyword.?);
+}
 
 /// The getter steps of a reflected IDL attribute of Zig type `T`.
 ///
@@ -124,8 +166,8 @@ fn deleteContentAttribute(instance: *runtime.Instance, comptime name: []const u8
 // DOMString, DOMString?, USVString
 // ---------------------------------------------------------------------------
 
-/// DOMString getter. Steps 3-4 (enumerated, limited to only known values) do
-/// not apply: see the module comment.
+/// DOMString getter for a generated [Reflect*] default. Enumerated members
+/// use getEnumerated for steps 3-4.
 fn getString(instance: *runtime.Instance, comptime spec: Spec) !DOMString {
     const allocator = instance.ctx.allocator;
     // [ReflectURL] on a DOMString (HTMLObjectElement.codeBase, which the IDL
