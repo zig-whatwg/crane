@@ -105,7 +105,8 @@ pub fn queryCookies(
         result.deinit(allocator);
     }
 
-    // Normalize name if provided
+    // Query cookies step 3.2.1: normalize a provided name, including an
+    // empty one. A null name alone means no filter.
     const normalized_name = if (name) |n| normalizeCookieNameOrValue(n) else null;
 
     // Retrieve cookies from jar (non-HTTP API, so HttpOnly filtered out) -
@@ -425,9 +426,12 @@ pub fn createCookieListItem(allocator: std.mem.Allocator, cookie: Cookie) !Cooki
 /// Normalize a cookie name or value
 /// https://cookiestore.spec.whatwg.org/#normalize-a-cookie-name-or-value
 ///
-/// Per the spec, this is currently the identity function (no transformation).
+/// Remove only U+0009 TAB and U+0020 SPACE at either edge. The returned
+/// slice borrows input; interior whitespace and other characters stay intact.
 pub fn normalizeCookieNameOrValue(input: []const u8) []const u8 {
-    return input;
+    // Concepts, "normalize a cookie name or value": the single step runs
+    // before set steps 3-9 validate characters, prefixes and encoded size.
+    return std.mem.trim(u8, input, " \t");
 }
 
 // ============================================================================
@@ -611,7 +615,6 @@ test "createCookieListItem" {
 }
 
 test "normalizeCookieNameOrValue" {
-    // Currently identity function
     try std.testing.expectEqualStrings("test", normalizeCookieNameOrValue("test"));
     try std.testing.expectEqualStrings("", normalizeCookieNameOrValue(""));
 }
