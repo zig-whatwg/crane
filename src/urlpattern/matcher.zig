@@ -211,7 +211,10 @@ pub fn execInput(
     base_url: ?[]const u8,
 ) MatchError!?URLPatternResult {
     // Step 1: Parse the input URL or extract components
-    var url_parts = try parseInput(allocator, input, base_url);
+    var url_parts = parseInput(allocator, input, base_url) catch |err| switch (err) {
+        error.InvalidURL => return null,
+        else => return err,
+    };
     defer url_parts.deinit(allocator);
 
     // Step 2: Match each component
@@ -313,213 +316,71 @@ pub fn execInput(
     };
 }
 
-/// Parsed URL parts for matching
+/// URL matching, steps 1-13. All parsed strings live until this match ends.
 const URLParts = struct {
-    protocol: []const u8,
-    username: []const u8,
-    password: []const u8,
-    hostname: []const u8,
-    port: []const u8,
-    pathname: []const u8,
-    search: []const u8,
-    hash: []const u8,
+    protocol: []const u8 = "",
+    username: []const u8 = "",
+    password: []const u8 = "",
+    hostname: []const u8 = "",
+    port: []const u8 = "",
+    pathname: []const u8 = "",
+    search: []const u8 = "",
+    hash: []const u8 = "",
+    arena: std.heap.ArenaAllocator,
 
-    _allocator: ?Allocator,
-    _owned_slices: std.ArrayListUnmanaged([]u8),
-
-    pub fn deinit(self: *URLParts, allocator: Allocator) void {
-        _ = allocator;
-        // Free owned slices
-        if (self._allocator) |alloc| {
-            for (self._owned_slices.items) |slice| {
-                alloc.free(slice);
-            }
-            self._owned_slices.deinit(alloc);
-        }
+    pub fn deinit(self: *URLParts, _: Allocator) void {
+        self.arena.deinit();
     }
 };
 
-/// Simple URL component decomposition for actual URLs (not patterns)
-/// Parses URLs like "https://user:pass@example.com:8080/path?query#hash"
-fn parseURLComponents(url: []const u8) URLParts {
-    var result = URLParts{
-        .protocol = "",
-        .username = "",
-        .password = "",
-        .hostname = "",
-        .port = "",
-        .pathname = "",
-        .search = "",
-        .hash = "",
-        ._allocator = null,
-        ._owned_slices = .empty,
-    };
-
-    var remaining = url;
-
-    // Extract hash/fragment first (everything after #)
-    if (std.mem.indexOf(u8, remaining, "#")) |hash_pos| {
-        result.hash = remaining[hash_pos + 1 ..];
-        remaining = remaining[0..hash_pos];
-    }
-
-    // Extract search/query (everything after ?)
-    if (std.mem.indexOf(u8, remaining, "?")) |query_pos| {
-        result.search = remaining[query_pos + 1 ..];
-        remaining = remaining[0..query_pos];
-    }
-
-    // Extract protocol (everything before ://)
-    if (std.mem.indexOf(u8, remaining, "://")) |proto_end| {
-        result.protocol = remaining[0..proto_end];
-        remaining = remaining[proto_end + 3 ..];
-    } else if (std.mem.indexOf(u8, remaining, ":")) |colon_pos| {
-        // Check for single colon (file:, data:, etc.)
-        if (colon_pos > 0 and (colon_pos + 1 >= remaining.len or remaining[colon_pos + 1] != '/')) {
-            // Opaque scheme like "data:text/plain,hello"
-            result.protocol = remaining[0..colon_pos];
-            result.pathname = remaining[colon_pos + 1 ..];
-            return result;
-        }
-    }
-
-    // Extract pathname (from first / to end)
-    if (std.mem.indexOf(u8, remaining, "/")) |path_start| {
-        result.pathname = remaining[path_start..];
-        remaining = remaining[0..path_start];
-    }
-
-    // Now remaining should be: [user[:pass]@]host[:port]
-    // Extract credentials if present (look for @)
-    if (std.mem.indexOf(u8, remaining, "@")) |at_pos| {
-        const credentials = remaining[0..at_pos];
-        remaining = remaining[at_pos + 1 ..];
-
-        // Split credentials by : for username:password
-        if (std.mem.indexOf(u8, credentials, ":")) |colon_pos| {
-            result.username = credentials[0..colon_pos];
-            result.password = credentials[colon_pos + 1 ..];
-        } else {
-            result.username = credentials;
-        }
-    }
-
-    // Extract port (look for : in remaining host:port)
-    // Need to handle IPv6 addresses like [::1]:8080
-    if (remaining.len > 0 and remaining[0] == '[') {
-        // IPv6 address
-        if (std.mem.indexOf(u8, remaining, "]")) |bracket_end| {
-            if (bracket_end + 1 < remaining.len and remaining[bracket_end + 1] == ':') {
-                result.hostname = remaining[0 .. bracket_end + 1];
-                result.port = remaining[bracket_end + 2 ..];
-            } else {
-                result.hostname = remaining;
-            }
-        } else {
-            result.hostname = remaining;
-        }
-    } else {
-        // Regular hostname, find last colon for port
-        if (std.mem.lastIndexOf(u8, remaining, ":")) |colon_pos| {
-            result.hostname = remaining[0..colon_pos];
-            result.port = remaining[colon_pos + 1 ..];
-        } else {
-            result.hostname = remaining;
-        }
-    }
-
-    return result;
-}
-
-/// Parse input to extract URL parts
-fn parseInput(
-    allocator: Allocator,
-    input: URLPatternInput,
-    base_url_str: ?[]const u8,
-) MatchError!URLParts {
+fn parseInput(allocator: Allocator, input: URLPatternInput, base_url_string: ?[]const u8) MatchError!URLParts {
+    const url = @import("url");
+    const basic_parser = url.parser.basic_url_parser;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+    const temporary = arena.allocator();
+    var result = URLParts{ .arena = undefined };
     switch (input) {
-        .string => |s| {
-            // Parse URL string into components using simple URL decomposition
-            // This handles actual URLs (not patterns), e.g., "https://user:pass@example.com:8080/path?query#hash"
-            const parsed = parseURLComponents(s);
-
-            // If we have a base URL and the input is relative, merge them
-            var protocol = parsed.protocol;
-            var hostname = parsed.hostname;
-            var port = parsed.port;
-
-            if (base_url_str) |base| {
-                if (protocol.len == 0) {
-                    const base_parsed = parseURLComponents(base);
-                    protocol = base_parsed.protocol;
-                    if (hostname.len == 0) {
-                        hostname = base_parsed.hostname;
-                        port = base_parsed.port;
-                    }
-                }
-            }
-
-            _ = allocator;
-            return URLParts{
-                .protocol = protocol,
-                .username = parsed.username,
-                .password = parsed.password,
-                .hostname = hostname,
-                .port = port,
-                .pathname = parsed.pathname,
-                .search = parsed.search,
-                .hash = parsed.hash,
-                ._allocator = null,
-                ._owned_slices = .empty,
-            };
-        },
         .init => |init| {
-            // If baseURL is provided, parse it and use its components as defaults
-            // Spec: For exec(), the input's baseURL (if any) provides default values
-            const effective_base = init.baseURL orelse base_url_str;
-            if (effective_base) |base| {
-                const base_parsed = parseURLComponents(base);
-
-                // Use provided values or fall back to base URL components
-                const protocol = init.protocol orelse base_parsed.protocol;
-                const hostname = init.hostname orelse base_parsed.hostname;
-                const port = init.port orelse base_parsed.port;
-                const pathname_default: []const u8 = if (isSpecialScheme(protocol)) "/" else "";
-                // For pathname, use init value, then base value (if not empty), then default
-                const pathname = init.pathname orelse (if (base_parsed.pathname.len > 0) base_parsed.pathname else pathname_default);
-
-                return URLParts{
-                    .protocol = protocol,
-                    .username = init.username orelse base_parsed.username,
-                    .password = init.password orelse base_parsed.password,
-                    .hostname = hostname,
-                    .port = port,
-                    .pathname = pathname,
-                    .search = init.search orelse base_parsed.search,
-                    .hash = init.hash orelse base_parsed.hash,
-                    ._allocator = null,
-                    ._owned_slices = .empty,
-                };
+            // Step 12.1 throws for a dictionary plus a separate base URL;
+            // step 12.2 turns invalid component values into no match.
+            if (base_url_string != null) return error.InvalidInput;
+            var processed = @import("process_init.zig").process(temporary, .{
+                .protocol = init.protocol,
+                .username = init.username,
+                .password = init.password,
+                .hostname = init.hostname,
+                .port = init.port,
+                .pathname = init.pathname,
+                .search = init.search,
+                .hash = init.hash,
+                .base_url = init.baseURL,
+            }, .url) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidURL;
+            defer processed.deinit();
+            inline for (@import("process_init.zig").names) |name| {
+                @field(result, name) = try temporary.dupe(u8, @field(processed.init, name).?);
             }
-
-            // No base URL - use provided component values directly
-            // For special schemes, pathname defaults to "/" if not provided
-            const protocol = init.protocol orelse "";
-            const pathname_default: []const u8 = if (isSpecialScheme(protocol)) "/" else "";
-            return URLParts{
-                .protocol = protocol,
-                .username = init.username orelse "",
-                .password = init.password orelse "",
-                .hostname = init.hostname orelse "",
-                .port = init.port orelse "",
-                .pathname = init.pathname orelse pathname_default,
-                .search = init.search orelse "",
-                .hash = init.hash orelse "",
-                ._allocator = null,
-                ._owned_slices = .empty,
-            };
+        },
+        .string => |value| {
+            // Step 13 uses the URL parser, including relative resolution and
+            // canonicalization; constructor pattern parsing is not URL parsing.
+            const base = if (base_url_string) |base_value|
+                basic_parser.parse(temporary, base_value, null) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidURL
+            else
+                null;
+            const record = basic_parser.parse(temporary, value, if (base) |*b| b else null) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidURL;
+            result.protocol = record.scheme();
+            result.username = record.username();
+            result.password = record.password();
+            result.hostname = if (record.host) |host| url.host_serializer.serializeHost(temporary, host) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidURL else "";
+            result.port = if (record.port) |port| try std.fmt.allocPrint(temporary, "{d}", .{port}) else "";
+            result.pathname = try @import("canonicalize.zig").serializePath(temporary, &record);
+            result.search = record.query() orelse "";
+            result.hash = record.fragment() orelse "";
         },
     }
+    result.arena = arena;
+    return result;
 }
 
 /// Match a single component against its pattern

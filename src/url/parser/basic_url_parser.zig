@@ -1058,16 +1058,12 @@ fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
         if (ctx.buffer.items().len > 0) {
             // Step 2.1.1 (line 1290): Parse port
             const port = std.fmt.parseInt(u16, ctx.buffer.items(), 10) catch {
-                // Port number overflow (e.g., 65536)
-                // When state override is given (setter mode), browser behavior is to:
-                // - Keep the host change (already applied in host state)
-                // - Not update the port (leave it unchanged)
-                // - Return successfully
-                // This matches WPT test expectations for "Port numbers are 16 bit integers"
+                // Port state 2.1.2: overflow is a parser failure even with a
+                // state override. Setters ignore that failure, but callers
+                // such as URLPattern need to observe it. Preserve the host
+                // already set by host state before reporting the failure.
                 if (ctx.hasStateOverride()) {
-                    ctx.buffer.clear();
-                    ctx.state_override_complete = true;
-                    return;
+                    if (ctx.url_mut) |url| try applyContextToURL(ctx, url);
                 }
                 return ParseError.PortOutOfRange;
             };
@@ -1090,14 +1086,11 @@ fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
             }
         }
 
-        // Step 2.2 (line 1300): If state override is given, then return
-        // NOTE: This is a successful return, NOT a failure!
-        // Per spec: "If state override is given, then return."
-        // When the host setter is called with "example.com:invalid", the port buffer
-        // is empty (no valid digits), so we return successfully without changing the port.
+        // Port state 2.2: with no digits and a state override, return failure.
+        // A host setter still keeps the host parsed before the invalid port.
         if (ctx.hasStateOverride()) {
-            ctx.state_override_complete = true;
-            return;
+            if (ctx.url_mut) |url| try applyContextToURL(ctx, url);
+            return ParseError.PortInvalid;
         }
 
         // Step 2.3 (line 1302): Set state to path start, decrease pointer
