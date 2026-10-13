@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../html/"><code>html/</code></a></li><li><a href="../../../html/dom/"><code>dom/</code></a></li><li aria-current="page"><code>reflection-<wbr>forms-<wbr>weekmonth.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>reflection-<wbr>forms-<wbr>weekmonth.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="html/dom/reflection-forms-weekmonth.html">
-<p class="figures-main"><span class="fg-pass">1,603</span><span class="fg-of"> / 1,618</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>15</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1,618</span><span class="fg-of"> / 1,618</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-3983369b29</code>, <span class="nowrap">12 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/3983369b29"><code>3983369b29</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-969e8dc964</code>, <span class="nowrap">13 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/969e8dc964"><code>969e8dc964</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/dom/reflection-forms-weekmonth.html"><code>html/<wbr>dom/<wbr>reflection-<wbr>forms-<wbr>weekmonth.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -34,24 +34,7 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-bd083484"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.hidden: typeof IDL attribute</span></summary><pre class="msg">assert_equals: expected &quot;boolean&quot; but got &quot;object&quot;</pre></details><a class="self" href="#s-bd083484" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5dc5d8d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.hidden: IDL get with DOM attribute unset</span></summary><pre class="msg">assert_equals: expected (boolean) false but got (object) null</pre></details><a class="self" href="#s-5dc5d8d8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ffb0039f"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.hidden: IDL set to &quot;&quot;</span></summary><pre class="msg">assert_equals: hasAttribute() expected false but got true</pre></details><a class="self" href="#s-ffb0039f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-944610e6"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.hidden: IDL set to undefined</span></summary><pre class="msg">assert_equals: hasAttribute() expected false but got true</pre></details><a class="self" href="#s-944610e6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5ec88794"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.hidden: IDL set to null</span></summary><pre class="msg">assert_equals: hasAttribute() expected false but got true</pre></details><a class="self" href="#s-5ec88794" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f66f1f69"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.hidden: IDL set to false</span></summary><pre class="msg">assert_equals: hasAttribute() expected false but got true</pre></details><a class="self" href="#s-f66f1f69" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-adf8efb7"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.hidden: IDL set to NaN</span></summary><pre class="msg">assert_equals: hasAttribute() expected false but got true</pre></details><a class="self" href="#s-adf8efb7" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1a76fea0"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.tabIndex: setAttribute() to &quot;\t7&quot;</span></summary><pre class="msg">assert_equals: IDL get expected 7 but got -1</pre></details><a class="self" href="#s-1a76fea0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-243a5039"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.tabIndex: setAttribute() to &quot;\f7&quot;</span></summary><pre class="msg">assert_equals: IDL get expected 7 but got -1</pre></details><a class="self" href="#s-243a5039" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-04d2cee3"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.tabIndex: setAttribute() to &quot; 7&quot;</span></summary><pre class="msg">assert_equals: IDL get expected 7 but got -1</pre></details><a class="self" href="#s-04d2cee3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cf9f49f4"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.tabIndex: setAttribute() to &quot;\n7&quot;</span></summary><pre class="msg">assert_equals: IDL get expected 7 but got -1</pre></details><a class="self" href="#s-cf9f49f4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5723412b"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.tabIndex: setAttribute() to &quot;\r7&quot;</span></summary><pre class="msg">assert_equals: IDL get expected 7 but got -1</pre></details><a class="self" href="#s-5723412b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6771e734"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.tabIndex: setAttribute() to &quot;7\v&quot;</span></summary><pre class="msg">assert_equals: IDL get expected 7 but got -1</pre></details><a class="self" href="#s-6771e734" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2dc7d141"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.tabIndex: setAttribute() to 1.5</span></summary><pre class="msg">assert_equals: IDL get expected 1 but got -1</pre></details><a class="self" href="#s-2dc7d141" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b94eb852"><details><summary><span class="mark">FAIL</span><span class="sub-name">input.tabIndex: setAttribute() to &quot;5%&quot;</span></summary><pre class="msg">assert_equals: IDL get expected 5 but got -1</pre></details><a class="self" href="#s-b94eb852" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<p class="omitted">1,603 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">1,618 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 </section>
 <footer class="foot">
