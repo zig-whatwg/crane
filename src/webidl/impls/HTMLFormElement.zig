@@ -20,9 +20,7 @@ const url_serializer = @import("url_serializer");
 const encode_sets = @import("encode_sets");
 const log = std.log.scoped(.forms);
 
-// Import related impls for attribute access
-const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
+const dom = @import("dom");
 const form_associated = @import("html").form_associated;
 const attributeValue = form_associated.attributeValue;
 const hasAttribute = form_associated.hasAttribute;
@@ -44,6 +42,7 @@ const Registry = runtime.InstanceRegistry(.html_form_element, InternalState);
 
 /// Internal state for HTMLFormElement implementation
 pub const InternalState = struct {
+    names: SupportedNames = .{},
     elements: ?*runtime.Instance = null,
     elements_generation: u64 = 0,
     elements_traced: bool = false,
@@ -64,8 +63,28 @@ pub const InternalState = struct {
     locked_for_reset: bool = false,
 
     pub fn deinit(self: *InternalState) void {
+        self.names.deinit();
         if (self.pending_allocator) |allocator| self.pending_navigations.deinit(allocator);
         self.pending_navigations = .empty;
+    }
+};
+
+/// Strings only: a lookup never keeps a control alive through a raw pointer.
+/// Document identity is compared numerically and is never dereferenced later.
+const SupportedNames = struct {
+    values: std.ArrayListUnmanaged(runtime.DOMString) = .empty,
+    allocator: ?std.mem.Allocator = null,
+    document_address: usize = 0,
+    document_generation: u64 = 0,
+    version: ?u64 = null,
+    parser_association_count: usize = 0,
+
+    fn deinit(self: *SupportedNames) void {
+        if (self.allocator) |allocator| {
+            for (self.values.items) |*name| name.deinit(allocator);
+            self.values.deinit(allocator);
+        }
+        self.* = .{};
     }
 };
 
@@ -149,7 +168,7 @@ fn reflectEnumerated(
     comptime missing_default: []const u8,
     comptime invalid_default: []const u8,
 ) anyerror!runtime.DOMString {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    const elem_internal = dom.element_data.of(instance) orelse return error.InvalidState;
     const entry = elem_internal.findAttribute(null, attr) orelse
         return runtime.DOMString.initInterned(missing_default);
 
@@ -167,7 +186,7 @@ pub fn get_action(instance: *runtime.Instance) anyerror!runtime.USVString {
     // content attribute, EXCEPT that on getting, a missing attribute OR an
     // empty one returns the node document's URL instead. The empty-string case
     // is the one that surprises: action="" is not "", it is the document URL.
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    const elem_internal = dom.element_data.of(instance) orelse return error.InvalidState;
 
     if (elem_internal.findAttribute(null, "action")) |entry| {
         if (entry.value.len != 0) {
@@ -176,8 +195,7 @@ pub fn get_action(instance: *runtime.Instance) anyerror!runtime.USVString {
     }
 
     // Fall back to the document URL.
-    const node_internal = NodeImpl.getInternalState(instance) orelse return error.InvalidState;
-    if (node_internal.owner_document) |doc| {
+    if (try interfaces.Node.get_ownerDocument(instance)) |doc| {
         return interfaces.Document.get_URL(doc) catch
             try instance.ctx.allocator.dupe(u8, "");
     }
@@ -247,6 +265,175 @@ fn liveChild(child: ?*runtime.Instance, generation: u64) ?*runtime.Instance {
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const collection = try get_elements(instance);
     return interfaces.HTMLCollection.get_length(collection);
+}
+
+/// HTML "the form element", determining the value of an indexed property:
+/// the corresponding item of form.elements. The binding checks support first.
+pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    return (try interfaces.HTMLCollection.call_item(try get_elements(instance), index)) orelse error.IndexSizeError;
+}
+
+/// HTML "the form element", determining the value of a named property.
+/// Like WebKit HTMLFormElement::namedItem, current controls precede images.
+pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+    if (name.asSlice().len == 0) return runtime.JSValue.jsUndefined;
+    const supported = try supportedNames(instance);
+    var present = false;
+    for (supported) |candidate| {
+        if (std.mem.eql(u8, candidate.asSlice(), name.asSlice())) {
+            present = true;
+            break;
+        }
+    }
+    if (!present) return runtime.JSValue.jsUndefined;
+
+    // Steps 1–2: resolve current candidates in one walk. The collection's
+    // namedItem currently refills once per item (Q14's upgrade-version gap).
+    // Cache strings, then resolve elements on a named hit; never cache nodes.
+    const root = form_associated.rootOf(instance);
+    var node: ?*runtime.Instance = root;
+    var first_control: ?*runtime.Instance = null;
+    var first_image: ?*runtime.Instance = null;
+    var multiple_images = false;
+    while (node) |element| : (node = nextInTree(element, root, false)) {
+        const data = dom.element_data.of(element) orelse continue;
+        if (!std.mem.eql(u8, dom.element_data.getAttributeValue(data, "id", null), name.asSlice()) and
+            !std.mem.eql(u8, dom.element_data.getAttributeValue(data, "name", null), name.asSlice())) continue;
+        const image = element.stateAs(interfaces.HTMLImageElement.State) != null;
+        if (!image and !isNamedControl(element)) continue;
+        if (form_associated.formOwner(element) != instance) continue;
+        if (image) {
+            if (first_image == null) first_image = element else multiple_images = true;
+            continue;
+        }
+        if (first_control == null) {
+            first_control = element;
+            continue;
+        }
+        // Step 4: the existing live control list holds the form's owned
+        // collection; controls take precedence even if images came first.
+        const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
+        errdefer runtime.Instance.deinit(list);
+        try dom.node_lists.namedControls(list, try get_elements(instance), name.asSlice());
+        return .{ .instance = list };
+    }
+    if (first_control) |element| {
+        // Steps 5–6: record the single candidate, then return it.
+        // TODO(past names map): routed to a Claude lane, codex-lpo Q2
+        return .{ .instance = element };
+    }
+    if (multiple_images) {
+        // Step 4: the live image list holds the form (codex-lpo Q6).
+        const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
+        errdefer runtime.Instance.deinit(list);
+        try dom.node_lists.namedFormImages(list, instance, name.asSlice());
+        return .{ .instance = list };
+    }
+    if (first_image) |element| {
+        // Steps 5–6: record the single candidate, then return it.
+        // TODO(past names map): routed to a Claude lane, codex-lpo Q2
+        return .{ .instance = element };
+    }
+    // Step 3: consult historical names only when no current candidate exists.
+    // TODO(past names map): routed to a Claude lane, codex-lpo Q2
+    return runtime.JSValue.jsUndefined;
+}
+
+/// HTML "the form element", supported property names, steps 1–8.
+/// Browser deviation (codex-lpo Q7): WebKit's
+/// HTMLFormElement::supportedPropertyNames and Gecko's GetSupportedNames are
+/// empty; Blink has NamedPropertyQuery but no enumerator. See
+/// https://github.com/whatwg/html/issues/1731. The generated
+/// Meta.named_properties_in_own_keys = false excludes these names from ownKeys;
+/// this full list supports named lookup. [LegacyUnenumerableNamedProperties]
+/// also makes each named property's descriptor non-enumerable.
+pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+    const cached = try supportedNames(instance);
+    // The caller owns the array. Like Element.getAttribute, its strings
+    // borrow owned storage: valid until the next invalidation/rebuild or
+    // teardown. The binding consumes them synchronously, without script.
+    const result = try allocator.alloc(runtime.DOMString, cached.len);
+    for (result, cached) |*out, name| out.* = runtime.DOMString.initInterned(name.asSlice());
+    return result;
+}
+
+fn isNamedControl(element: *runtime.Instance) bool {
+    if (!form_associated.isListed(element)) return false;
+    if (form_associated.isInput(element)) {
+        var buffer: [16]u8 = undefined;
+        if (std.mem.eql(u8, form_associated.inputType(element, &buffer), "image")) return false;
+    }
+    return true;
+}
+
+/// HTML's supported names, rebuilt only after an observable invalidation.
+/// WebKit's HTMLFormElement::isSupportedPropertyName and Blink's
+/// HTMLFormElement::HasNamedElements likewise query cached collection data.
+fn supportedNames(instance: *runtime.Instance) ![]const runtime.DOMString {
+    const internal = Registry.get(instance) orelse return error.InvalidState;
+    const document = dom.live_collections.nodeDocument(instance);
+    const address = if (document) |doc| @intFromPtr(doc) else 0;
+    const generation = if (document) |doc| runtime.SlabAllocator.generationOf(doc) else 0;
+    const version = if (document) |doc| dom.live_collections.treeVersion(doc) else null;
+    // The inert parser records associations after insertion. Appending one
+    // does not move treeVersion; removals accompany a versioned mutation.
+    const association_count = if (document) |doc| count: {
+        const associations = dom.document_internals.parserFormAssociations(doc) orelse break :count 0;
+        break :count associations.items.len;
+    } else 0;
+    const cache = &internal.names;
+    if (version != null and version == cache.version and address == cache.document_address and
+        generation == cache.document_generation and association_count == cache.parser_association_count) return cache.values.items;
+
+    // Step 1: build a replacement before discarding the old allocation, so
+    // a failed allocation never publishes a partial list under a fresh key.
+    const allocator = instance.ctx.allocator;
+    var replacement: SupportedNames = .{
+        .allocator = allocator,
+        .document_address = address,
+        .document_generation = generation,
+        .version = version,
+        .parser_association_count = association_count,
+    };
+    errdefer replacement.deinit();
+    const root = form_associated.rootOf(instance);
+    var node: ?*runtime.Instance = root;
+    // Steps 2–3, 5: walk both kinds together in tree order, id before name.
+    while (node) |element| : (node = nextInTree(element, root, false)) {
+        const data = dom.element_data.of(element) orelse continue;
+        // Q14: upgrade can add a listed FACE without moving treeVersion.
+        // Do not cache while a future upgrade could change this tree's list.
+        // Once the elements are custom/failed, ordinary mutations cover it.
+        if (dom.custom_elements.get(element)) |custom| {
+            if ((custom.state == .undefined or custom.state == .precustomized) and
+                (custom.is_value != null or dom.names.isValidCustomElementName(data.local_name.asSlice()))) replacement.version = null;
+        }
+        const image = element.stateAs(interfaces.HTMLImageElement.State) != null;
+        if (!image and !isNamedControl(element)) continue;
+        if (form_associated.formOwner(element) != instance) continue;
+        for ([_][]const u8{ "id", "name" }) |attribute| {
+            const value = dom.element_data.getAttributeValue(data, attribute, null);
+            // Steps 6–7: omit empty strings and later duplicates.
+            if (value.len == 0) continue;
+            var seen = false;
+            for (replacement.values.items) |previous| {
+                if (std.mem.eql(u8, previous.asSlice(), value)) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (seen) continue;
+            var copy = try runtime.DOMString.initDupe(allocator, value);
+            errdefer copy.deinit(allocator);
+            try replacement.values.append(allocator, copy);
+        }
+    }
+    // Step 4: merge past names at their element's tree position and age.
+    // TODO(past names map): routed to a Claude lane, codex-lpo Q2
+    // Step 8: retain strings, never elements, under the completed version.
+    cache.deinit();
+    cache.* = replacement;
+    return cache.values.items;
 }
 
 /// Setter for autocomplete
