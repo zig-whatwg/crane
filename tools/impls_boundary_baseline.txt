@@ -139,7 +139,6 @@ tests/cookiestore/integration_test.zig CookieStore.queryItems 2
 tests/cookiestore/integration_test.zig CookieStoreManager.CookieSubscription 3
 tests/cookiestore/integration_test.zig CookieStoreManager.InternalState 6
 tests/cookiestore/query_items_test.zig CookieStore.freeItems 6
-tests/cookiestore/query_items_test.zig CookieStore.nameFilter 2
 tests/cookiestore/query_items_test.zig CookieStore.queryItems 6
 tests/dom/characterdata_sso_test.zig CharacterData.INLINE_TEXT_CAPACITY 1
 tests/dom/characterdata_sso_test.zig CharacterData.InternalState 1
