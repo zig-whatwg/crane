@@ -36,3 +36,5 @@ two brand checks.
 **Takeaway**: **A generated default is a spec algorithm the generated layer calls: put it in src/dom, decide what
 the IDL fixes at compile time, and hook only what needs an impl's own state.** impls/reflection.zig is the same
 debt, waiting to move.
+
+**Status (2026-10-13)**: the reflection debt is paid - Codex row 28 moved impls/reflection.zig to src/dom/reflection.zig and the [Reflect] default now calls dom.reflection (merge e2671295b9).

@@ -7,7 +7,7 @@
 //! name" - DOM's "associated element" and "associated attribute", which no IDL
 //! member sets. So DOMTokenList installs the step here when it creates a list
 //! - necessarily before anyone holds one to associate - and the generated
-//! reflection (`src/webidl/impls/reflection.zig`) creates a list through
+//! reflection (`src/webidl/dom/reflection.zig`) creates a list through
 //! `interfaces.DOMTokenList.init` and asks for it to be associated. The same
 //! shape as `live_collections.zig`.
 //!

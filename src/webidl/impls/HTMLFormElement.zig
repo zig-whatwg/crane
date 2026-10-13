@@ -152,7 +152,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 //
 // Plain [Reflect] attributes (acceptCharset, name, noValidate, target, rel)
 // and the [ReflectSetter] action setter are the generated interface's own
-// (src/webidl/impls/reflection.zig). What is left here is not plain:
+// (src/webidl/dom/reflection.zig). What is left here is not plain:
 //   * action     - a URL getter with the document URL as its fallback
 //   * enumerated - "limited to only known values": an unrecognised value maps
 //                  to the INVALID VALUE DEFAULT, and a missing attribute to the

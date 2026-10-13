@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A helper move must follow the production module graph](architecture-a-helper-move-must-follow-the-production-module-graph.md) - Check the destination module's actual dependency table; a matching import elsewhere does not make a move compile.
 - [A tree version does not cover custom-element upgrades](architecture-a-tree-version-does-not-cover-custom-element-upgrades.md) - Cache validity follows every input to the answer, including classification changes that do not mutate the tree.
 - [A live list needs a native owner for its backing object](architecture-a-live-list-needs-a-native-owner-for-its-backing-object.md) - An engine edge and a generation check do not replace a native owner for a non-node backing object.
 - [An IDL string getter copies; a tree read borrows](architecture-an-idl-string-getter-copies-a-tree-read-borrows.md) - Before moving a call onto the generated interface, read the generated member and the impl member side by side: a link getter forwards, a string getter copies, a setter runs the IDL algorithm.
@@ -281,6 +282,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A shared, mutable spec object is a reference-counted record its sharers hold](architecture-a-shared-mutable-spec-object-is-a-refcounted-record.md) - Shared and mutable in the spec means one reference-counted record held by every sharer: copies diverge on the first mutation, and a walk to the creator breaks when the mutation comes from the other side or the creator is gone.
 
 ### Spec Compliance
+- [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
 - [Cookie normalization precedes validation](spec-compliance-cookie-normalization-precedes-validation.md) - Normalize before validation and distinguish empty names from omitted filters.
 - [Capture cookie changes before queueing](spec-compliance-capture-cookie-changes-before-queueing.md) - Capture each notification's records before queueing and free them on execution or drop.
 - [Form named lookup and own-key enumeration differ](spec-compliance-form-named-lookup-and-own-key-enumeration-differ.md) - Check lookup, descriptors, enumerable keys and all own keys separately; one enumeration flag does not establish all four behaviors.
