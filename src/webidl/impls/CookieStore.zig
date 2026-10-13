@@ -343,18 +343,6 @@ pub fn freeItems(
     items.deinit(allocator);
 }
 
-/// Turn the `name` argument of get()/getAll() into a query filter.
-///
-/// An omitted argument and an empty string arrive here identically: the
-/// binding defaults a missing `USVString` to an empty slice (see
-/// `getDefaultArgValue` in src/runtime/engines/v8/interface.zig), and only the
-/// `CookieStoreGetOptions` overload - which codegen has not produced - could
-/// tell them apart. `getAll()` with no argument is the common case and means
-/// "every cookie", so the empty string is read as the wildcard.
-pub fn nameFilter(name: runtime.USVString) ?[]const u8 {
-    return if (name.len > 0) name else null;
-}
-
 // ============================================================================
 // Promise plumbing
 //
@@ -387,8 +375,9 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!r
         return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
     if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
 
-    // Step 6.1: run query cookies with url and name.
-    var items = queryItems(internal.allocator, client.jar, client.url, nameFilter(name)) catch
+    // Step 6.1: query with the given name, even when it is empty. Only the
+    // dictionary overload can omit the filter (get(options) step 8.1).
+    var items = queryItems(internal.allocator, client.jar, client.url, name) catch
         return cookie_values.rejectedInTaskWithTypeError(realm, "Failed to read cookies");
     defer freeItems(internal.allocator, &items);
 
@@ -414,7 +403,9 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
         return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
     if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
 
-    var items = queryItems(internal.allocator, client.jar, client.url, nameFilter(name)) catch
+    // Step 6.1: an empty string selects nameless cookies. getAll() without
+    // arguments uses the dictionary overload's null name (step 7.1).
+    var items = queryItems(internal.allocator, client.jar, client.url, name) catch
         return cookie_values.rejectedInTaskWithTypeError(realm, "Failed to read cookies");
     defer freeItems(internal.allocator, &items);
 
@@ -542,7 +533,7 @@ fn queryWithOptions(instance: *runtime.Instance, realm: runtime.Context, options
     }
 
     // Step 8.1 (getAll: 7.1): query cookies with url and options["name"],
-    // default null. (Normalizing a name is the identity.)
+    // default null. Query cookies normalizes a provided name.
     var items = queryItems(allocator, client.jar, chosen orelse client.url, options.name) catch
         return cookie_values.rejectedInTaskWithTypeError(realm, "Failed to read cookies");
     defer freeItems(allocator, &items);
