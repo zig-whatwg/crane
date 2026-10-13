@@ -1893,41 +1893,65 @@ pub fn get_visibilityState(instance: *runtime.Instance) anyerror!enums.DocumentV
 /// Getter for fgColor
 /// HTML §14.3.11 (obsolete) - Returns document's text color
 pub fn get_fgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.fg_color.clone(instance.ctx.allocator);
+    const dom = @import("dom");
+    // HTML's obsolete Document colors: only the current HTML body reflects;
+    // no body or a frameset returns "". Then DOMString getter steps 1-6.
+    const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "text" });
+    defer value.deinit(body.ctx.allocator);
+    // An adopted body's realm can differ; this getter's caller frees with
+    // the Document's allocator, not the body's.
+    return value.clone(instance.ctx.allocator);
 }
 
 /// Getter for linkColor
 /// HTML §14.3.11 (obsolete) - Returns document's link color
 pub fn get_linkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.link_color.clone(instance.ctx.allocator);
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "link" });
+    defer value.deinit(body.ctx.allocator);
+    return value.clone(instance.ctx.allocator);
 }
 
 /// Getter for vlinkColor
 /// HTML §14.3.11 (obsolete) - Returns document's visited link color
 pub fn get_vlinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.vlink_color.clone(instance.ctx.allocator);
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "vlink" });
+    defer value.deinit(body.ctx.allocator);
+    return value.clone(instance.ctx.allocator);
 }
 
 /// Getter for alinkColor
 /// HTML §14.3.11 (obsolete) - Returns document's active link color
 pub fn get_alinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.alink_color.clone(instance.ctx.allocator);
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "alink" });
+    defer value.deinit(body.ctx.allocator);
+    return value.clone(instance.ctx.allocator);
 }
 
 /// Getter for bgColor
 /// HTML §14.3.11 (obsolete) - Returns document's background color
 pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.bg_color.clone(instance.ctx.allocator);
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "bgcolor" });
+    defer value.deinit(body.ctx.allocator);
+    return value.clone(instance.ctx.allocator);
 }
 
 /// Getter for anchors
@@ -2358,41 +2382,53 @@ pub fn set_designMode(instance: *runtime.Instance, value: runtime.DOMString) any
 /// Setter for fgColor
 /// HTML §14.3.11 (obsolete) - Sets document's text color
 pub fn set_fgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.fg_color.deinit(internal.allocator);
-    internal.fg_color = value.clone(internal.allocator) catch return error.OutOfMemory;
+    const dom = @import("dom");
+    // No body or a frameset is a no-op. Otherwise run the DOMString
+    // reflection setter: set the corresponding content attribute on body.
+    const body = (try interfaces.Document.get_body(instance)) orelse return;
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    try dom.reflection.set(runtime.DOMString, body, .{ .name = "text" }, value);
 }
 
 /// Setter for linkColor
 /// HTML §14.3.11 (obsolete) - Sets document's link color
 pub fn set_linkColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.link_color.deinit(internal.allocator);
-    internal.link_color = value.clone(internal.allocator) catch return error.OutOfMemory;
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return;
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    try dom.reflection.set(runtime.DOMString, body, .{ .name = "link" }, value);
 }
 
 /// Setter for vlinkColor
 /// HTML §14.3.11 (obsolete) - Sets document's visited link color
 pub fn set_vlinkColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.vlink_color.deinit(internal.allocator);
-    internal.vlink_color = value.clone(internal.allocator) catch return error.OutOfMemory;
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return;
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    try dom.reflection.set(runtime.DOMString, body, .{ .name = "vlink" }, value);
 }
 
 /// Setter for alinkColor
 /// HTML §14.3.11 (obsolete) - Sets document's active link color
 pub fn set_alinkColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.alink_color.deinit(internal.allocator);
-    internal.alink_color = value.clone(internal.allocator) catch return error.OutOfMemory;
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return;
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    try dom.reflection.set(runtime.DOMString, body, .{ .name = "alink" }, value);
 }
 
 /// Setter for bgColor
 /// HTML §14.3.11 (obsolete) - Sets document's background color
 pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.bg_color.deinit(internal.allocator);
-    internal.bg_color = value.clone(internal.allocator) catch return error.OutOfMemory;
+    const dom = @import("dom");
+    const body = (try interfaces.Document.get_body(instance)) orelse return;
+    const data = dom.element_data.of(body) orelse return error.InvalidStateError;
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    try dom.reflection.set(runtime.DOMString, body, .{ .name = "bgcolor" }, value);
 }
 
 /// Setter for adoptedStyleSheets

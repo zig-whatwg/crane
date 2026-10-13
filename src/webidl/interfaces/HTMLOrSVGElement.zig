@@ -103,7 +103,7 @@ pub const HTMLOrSVGElement = struct {
         try HTMLOrSVGElementImpl.set_nonce(instance, value);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {

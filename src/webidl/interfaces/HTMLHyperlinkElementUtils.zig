@@ -99,7 +99,7 @@ pub const HTMLHyperlinkElementUtils = struct {
         }
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {

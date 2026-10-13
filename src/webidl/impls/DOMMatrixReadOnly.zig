@@ -27,7 +27,7 @@ const engine = @import("engine");
 const geometry = @import("css").geometry;
 const geometry_storage = @import("dom").geometry_storage;
 const DOMMatrixReadOnly = interfaces.DOMMatrixReadOnly;
-const reflection = @import("reflection.zig");
+const reflection = @import("dom").reflection;
 
 pub const State = DOMMatrixReadOnly.State;
 

@@ -5660,6 +5660,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
 
     // Add html_core and csp to dom for document_internals
     dom_mod.addImport("html_core", html_core_mod);
+    dom_mod.addImport("api_parser", url_parser_api_mod);
     dom_mod.addImport("csp", csp_mod);
     dom_mod.addImport("trusted_types", trusted_types_mod);
     // A settings object is a request's client: global_settings.requestClient

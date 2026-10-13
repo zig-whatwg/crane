@@ -326,7 +326,7 @@ pub const HTMLDListElement = struct {
         return try HTMLDListElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_compact(instance: *runtime.Instance) anyerror!bool {
