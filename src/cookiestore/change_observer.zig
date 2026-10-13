@@ -166,7 +166,8 @@ pub const CookieChangeObserver = struct {
             return;
         }
 
-        const change = try CookieChange.init(self.allocator, change_type, cookie);
+        var change = try CookieChange.init(self.allocator, change_type, cookie);
+        errdefer change.deinit();
         try self.pending_changes.append(self.allocator, change);
     }
 

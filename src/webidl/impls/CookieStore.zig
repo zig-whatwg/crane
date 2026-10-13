@@ -45,12 +45,9 @@ pub const ImplError = error{
 pub const InternalState = struct {
     /// Whether this store is in a secure context
     is_secure_context: bool,
-    /// The jar's changes since this store last fired `change` - every one,
-    /// from any API; which are observable for its URL is decided when it
-    /// fires (`fireChangeEvent`).
+    /// Owned jar changes awaiting transfer to their event task. Each
+    /// delivery transfers its records before another delivery can arrive.
     change_observer: CookieChangeObserver,
-    /// A task to fire `change` is queued (`scheduleChangeEvent`).
-    change_task_queued: bool = false,
     /// Allocator for internal allocations
     allocator: std.mem.Allocator,
 
@@ -175,19 +172,25 @@ fn deliverChange(instance: *runtime.Instance, change_type: cookiestore.CookieCha
     scheduleChangeEvent(instance, internal);
 }
 
-/// Step 1.4: queue a global task on the DOM manipulation task source to
-/// fire `change` - one task for however many changes arrive before it runs.
+/// Steps 1.2-1.4: capture this notification's changes before queueing its
+/// global task. WebKit CookieStore::cookiesAdded/cookiesDeleted likewise
+/// prepares each event's lists before queueTaskToDispatchEvent.
 fn scheduleChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
-    if (internal.change_task_queued) return;
-    const task = internal.allocator.create(ChangeTask) catch return;
+    var changes = internal.change_observer.pending_changes;
+    internal.change_observer.pending_changes = .empty;
+    const task = internal.allocator.create(ChangeTask) catch {
+        for (changes.items) |*change| change.deinit();
+        changes.deinit(internal.allocator);
+        return;
+    };
     task.* = .{
         .instance = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
         .allocator = internal.allocator,
+        .changes = changes,
         // Read now, while the store is alive: the task may find it gone.
         .listeners = CookieChangeListeners.existingOf(instance.ctx),
     };
-    internal.change_task_queued = true;
     // A CookieStore's realm is a Window's ([Exposed=(ServiceWorker,Window)],
     // and no ServiceWorkerGlobalScope realm is made), and a window or frame
     // realm has its loop and its timers together or neither
@@ -210,30 +213,33 @@ const ChangeTask = struct {
     /// The store's Browser's listeners: whether it still listens says
     /// whether it is still there. They outlive every task of the Browser.
     listeners: ?*CookieChangeListeners,
+    /// Captured before queueing; no later mutation can join this event.
+    changes: std.ArrayListUnmanaged(cookiestore.CookieChange),
 
     fn run(context: ?*anyopaque) void {
         const self: *ChangeTask = @ptrCast(@alignCast(context.?));
+        defer self.destroy();
         const instance = self.instance;
-        const listeners = self.listeners orelse {
-            self.allocator.destroy(self);
-            return;
-        };
-        const alive = listeners.isListening(instance, self.generation);
-        self.allocator.destroy(self);
-        if (!alive) return;
+        const listeners = self.listeners orelse return;
+        if (!listeners.isListening(instance, self.generation)) return;
         // Entered from the event loop, not from script: the realm's task.
-        engine.runTaskInRealm(instance.ctx, steps, instance) catch {};
+        engine.runTaskInRealm(instance.ctx, steps, self) catch {};
     }
 
     fn steps(data: ?*anyopaque) void {
-        const instance: *runtime.Instance = @ptrCast(@alignCast(data.?));
-        const internal = getInternalState(instance) orelse return;
-        internal.change_task_queued = false;
-        fireChangeEvent(instance, internal);
+        const self: *ChangeTask = @ptrCast(@alignCast(data.?));
+        const internal = getInternalState(self.instance) orelse return;
+        fireChangeEvent(self.instance, internal, self.changes.items);
     }
 
     fn drop(context: ?*anyopaque) void {
         const self: *ChangeTask = @ptrCast(@alignCast(context.?));
+        self.destroy();
+    }
+
+    fn destroy(self: *ChangeTask) void {
+        for (self.changes.items) |*change| change.deinit();
+        self.changes.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 };
@@ -242,22 +248,10 @@ const ChangeTask = struct {
 /// recorded changes observable for its creation URL (those the URL's
 /// cookie-list for a "non-HTTP" API would hold), prepared as lists - a
 /// deleted cookie's item has no value - in a CookieChangeEvent, trusted.
-fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
+fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState, changes: []const cookiestore.CookieChange) void {
     const allocator = internal.allocator;
-    const observer = &internal.change_observer;
-    // The changes this event reports, taken out of the store's list NOW:
-    // dispatching runs script, and the microtasks it releases run before
-    // the dispatch returns - a listener that sets or deletes a cookie adds
-    // to the list mid-event, and schedules the next task. Those changes are
-    // that task's. (Clearing the list after the dispatch dropped them, so
-    // their event never came: change_eventhandler_for_already_expired's
-    // second test waited forever for one.)
-    var changes = observer.pending_changes;
-    observer.pending_changes = .empty;
-    defer {
-        for (changes.items) |*change| change.deinit();
-        changes.deinit(observer.allocator);
-    }
+    // The task owns these records through dispatch, including reentrant
+    // script and microtasks. A listener's writes queue independent tasks.
     const client = clientOf(instance) orelse return;
     const url = cookiestore.RequestUrl.of(client.url) orelse return;
     const options: cookiestore.RetrieveOptions = .{
@@ -274,7 +268,7 @@ fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
     defer changed.deinit(allocator);
     var deleted: std.ArrayListUnmanaged(dictionaries.CookieListItem) = .empty;
     defer deleted.deinit(allocator);
-    for (changes.items) |*change| {
+    for (changes) |*change| {
         if (!CookieJar.cookieMatches(&change.cookie, options)) continue;
         const list = if (change.change_type == .changed) &changed else &deleted;
         list.append(allocator, .{
