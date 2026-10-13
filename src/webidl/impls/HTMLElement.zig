@@ -583,10 +583,41 @@ pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for tabIndex
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-tabindex
 pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
+    // Getter steps 1-2: HTML's integer prefix parser, then the IDL long range.
     if (getContentAttribute(instance, "tabindex")) |value| {
-        return std.fmt.parseInt(i32, value.asSlice(), 10) catch -1;
+        if (dom.reflection.parseInteger(value.asSlice())) |parsed| {
+            if (parsed >= std.math.minInt(i32) and parsed <= std.math.maxInt(i32)) return @intCast(parsed);
+        }
     }
-    // Default depends on element type; -1 for most
+    // Step 3: historical defaults depend on the element's name, not its
+    // current focusability (disabled and hidden inputs still default to 0).
+    const data = element_data.of(instance) orelse return -1;
+    const namespace = data.namespaceSlice() orelse return -1;
+    const name = data.local_name.asSlice();
+    const html_namespace = "http://www.w3.org/1999/xhtml";
+    if (std.mem.eql(u8, namespace, html_namespace)) {
+        inline for (.{ "a", "area", "button", "frame", "iframe", "input", "object", "select", "textarea" }) |tag| {
+            if (std.mem.eql(u8, name, tag)) return 0;
+        }
+        if (std.mem.eql(u8, name, "summary")) {
+            const parent = (try interfaces.Node.get_parentElement(instance)) orelse return -1;
+            const parent_data = element_data.of(parent) orelse return -1;
+            if (!std.mem.eql(u8, parent_data.namespaceSlice() orelse "", html_namespace) or
+                !std.mem.eql(u8, parent_data.local_name.asSlice(), "details")) return -1;
+            // A summary for its parent details is its first summary child.
+            var child = try interfaces.Node.get_firstChild(parent);
+            while (child) |node| : (child = try interfaces.Node.get_nextSibling(node)) {
+                const child_data = element_data.of(node) orelse continue;
+                if (std.mem.eql(u8, child_data.namespaceSlice() orelse "", html_namespace) and
+                    std.mem.eql(u8, child_data.local_name.asSlice(), "summary")) return if (node == instance) 0 else -1;
+            }
+        }
+    } else if (std.mem.eql(u8, name, "a") and
+        (std.mem.eql(u8, namespace, "http://www.w3.org/2000/svg") or
+            std.mem.eql(u8, namespace, "http://www.w3.org/1998/Math/MathML")))
+    {
+        return 0;
+    }
     return -1;
 }
 
