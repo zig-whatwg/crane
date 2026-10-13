@@ -13,13 +13,12 @@
 //! [ReflectPositive], [ReflectPositiveWithFallback], [ReflectDefault] and
 //! [ReflectRange] modifiers.
 //!
-//! The element's attributes are reached through its interface, never an impl
-//! (AGENTS.md "The impls boundary"). "Get the content attribute" is "get an
-//! attribute by namespace and local name" with a null namespace, so it is
-//! `getAttributeNS(null, name)` - not `getAttribute(name)`, which matches on
-//! qualified name and would find a namespaced attribute whose qualified name
-//! happens to be `name`. Setting and deleting are `setAttributeNS(null, ...)`
-//! and `removeAttributeNS(null, ...)` for the same reason.
+//! Reads use ElementData; writes use the DOM attribute algorithms, which
+//! run attribute change steps and queue mutations and custom element
+//! reactions. The generated accessor owns the CEReactions scope.
+//! "Get the content attribute" matches namespace and local name, with a
+//! null namespace, never a qualified name that could name an attribute in
+//! another namespace. Setting and deleting use that same null namespace.
 //!
 //! Not here: an ElementInternals reflected target (its element's internal
 //! content attribute map - codegen reflects nothing on it), `Element?` and
@@ -30,8 +29,10 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const dom = @import("dom");
-const html = @import("html");
+const element_data = @import("element_data.zig");
+const element_attributes = @import("element_attributes.zig");
+const encoding_parse = @import("encoding_parse.zig");
+const token_lists = @import("token_lists.zig");
 
 const DOMString = runtime.DOMString;
 const USVString = runtime.USVString;
@@ -100,22 +101,23 @@ pub fn set(comptime T: type, instance: *runtime.Instance, comptime spec: Spec, v
 // ---------------------------------------------------------------------------
 
 /// "Get the content attribute": the value of the attribute whose namespace is
-/// null and local name is `name`, or null. The returned DOMString is released
-/// with `instance.ctx.allocator` (a no-op for the borrowed view the DOM hands
-/// out today; correct should it ever hand out a copy).
+/// null and local name is `name`, or null. Borrows the attribute's bytes;
+/// string getters copy them for their caller before returning.
 fn getContentAttribute(instance: *runtime.Instance, comptime name: []const u8) !?DOMString {
-    return interfaces.Element.call_getAttributeNS(instance, null, DOMString.initInterned(name));
+    const data = element_data.of(instance) orelse return error.InvalidStateError;
+    const attribute = element_data.getAttributeByNamespaceAndLocalName(data, null, name) orelse return null;
+    return DOMString.initInterned(attribute.value);
 }
 
 /// "Set the content attribute" with `value`: set an attribute value given
 /// the element, `name` and `value`. The DOM copies `value`.
 fn setContentAttribute(instance: *runtime.Instance, comptime name: []const u8, value: []const u8) !void {
-    try interfaces.Element.call_setAttributeNS(instance, null, DOMString.initInterned(name), .{ .domstring = DOMString.initInterned(value) });
+    try element_attributes.set(instance, name, value, .{});
 }
 
 /// "Delete the content attribute".
 fn deleteContentAttribute(instance: *runtime.Instance, comptime name: []const u8) !void {
-    try interfaces.Element.call_removeAttributeNS(instance, null, DOMString.initInterned(name));
+    element_attributes.remove(instance, null, name);
 }
 
 // ---------------------------------------------------------------------------
@@ -199,11 +201,11 @@ fn urlString(instance: *runtime.Instance, comptime spec: Spec) ![]const u8 {
 }
 
 /// HTML "encoding-parsing-and-serializing a URL" given `input`, relative to
-/// `element`'s node document - html.encoding_parse, with the document's base
+/// `element`'s node document - encoding_parse, with the document's base
 /// URL and character encoding - or null for failure. Owned by
 /// `element.ctx.allocator`.
 fn encodingParseAndSerialize(element: *runtime.Instance, input: []const u8) !?[]const u8 {
-    return html.encoding_parse.encodingParseAndSerialize(element, input);
+    return encoding_parse.encodingParseAndSerialize(element, input);
 }
 
 /// Infra "convert to a scalar value string": every lone surrogate - WTF-8 in
@@ -225,7 +227,7 @@ fn scalarValueString(allocator: std.mem.Allocator, value: []const u8) ![]const u
 /// boolean getter: "If contentAttributeValue is null, then return false.
 /// Return true." Presence is all that counts - `disabled="false"` is true.
 fn getBoolean(instance: *runtime.Instance, comptime spec: Spec) !bool {
-    return interfaces.Element.call_hasAttributeNS(instance, null, DOMString.initInterned(spec.name));
+    return (try getContentAttribute(instance, spec.name)) != null;
 }
 
 /// boolean setter.
@@ -404,7 +406,7 @@ fn getTokenList(instance: *runtime.Instance, comptime spec: Spec) !*runtime.Inst
     const list = try interfaces.DOMTokenList.init(instance.ctx.allocator, instance.ctx);
     errdefer interfaces.DOMTokenList.deinit(list);
     // DOMTokenList.init installed the association this needs.
-    try dom.token_lists.associate(list, instance, spec.name);
+    try token_lists.associate(list, instance, spec.name);
     return list;
 }
 

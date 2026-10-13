@@ -140,6 +140,8 @@ pub const element_attributes = @import("element_attributes.zig");
 /// An element's attribute list, ID, classes and qualified name, read in
 /// place by the tree's own algorithms (WebKit's ElementData).
 pub const element_data = @import("element_data.zig");
+/// HTML's algorithms for reflecting content attributes in IDL attributes.
+pub const reflection = @import("reflection.zig");
 pub const observer_registrations = @import("observer_registrations.zig");
 pub const attr_nodes = @import("attr_nodes.zig");
 pub const traversal = @import("traversal.zig");

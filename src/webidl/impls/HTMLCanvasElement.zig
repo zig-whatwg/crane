@@ -12,7 +12,7 @@ const HTMLCanvasElement = interfaces.HTMLCanvasElement;
 const engine = @import("engine");
 const dom = @import("dom");
 const same_object = @import("same_object.zig");
-const reflection = @import("reflection.zig");
+const reflection = @import("dom").reflection;
 
 pub const State = HTMLCanvasElement.State;
 

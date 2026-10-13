@@ -326,7 +326,7 @@ pub const HTMLHtmlElement = struct {
         return try HTMLHtmlElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_version(instance: *runtime.Instance) anyerror!DOMString {

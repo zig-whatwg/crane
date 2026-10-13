@@ -994,7 +994,7 @@ pub const Element = struct {
         return try ElementImpl.get_currentCSSZoom(instance);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_elementTiming(instance: *runtime.Instance) anyerror!DOMString {

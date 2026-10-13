@@ -435,7 +435,7 @@ pub const HTMLLinkElement = struct {
         return try HTMLLinkElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {

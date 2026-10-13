@@ -55,7 +55,7 @@ const same_object = @import("same_object.zig");
 const platform = @import("platform");
 const mimesniff = @import("mimesniff");
 const dom = @import("dom");
-const reflection = @import("reflection.zig");
+const reflection = @import("dom").reflection;
 
 // Event loop for microtask/task queuing
 const event_loop_mod = @import("streams_event_loop");
