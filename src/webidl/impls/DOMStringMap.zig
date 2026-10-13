@@ -73,8 +73,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Per HTML spec §2.4.2.4: data-* attributes converted to camelCase.
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     const internal = getInternalState(instance) orelse return &[_]runtime.DOMString{};
-    const ElementImpl = @import("Element.zig");
-    const elem_internal = ElementImpl.getInternalState(internal.element) orelse return &[_]runtime.DOMString{};
+    const elem_internal = @import("dom").element_data.of(internal.element) orelse return &[_]runtime.DOMString{};
 
     var names: std.ArrayListUnmanaged(runtime.DOMString) = .empty;
     errdefer {
@@ -196,7 +195,6 @@ pub fn call_setter(instance: *runtime.Instance, name: runtime.DOMString, value: 
 /// Per HTML spec §2.4.2.4: Removes the data-* attribute with the given camelCase name.
 pub fn call_deleter(instance: *runtime.Instance, name: runtime.DOMString) !void {
     const internal = getInternalState(instance) orelse return error.InvalidState;
-    const ElementImpl = @import("Element.zig");
 
     // Convert camelCase name to hyphenated attribute name
     const allocator = internal.allocator;
@@ -205,5 +203,5 @@ pub fn call_deleter(instance: *runtime.Instance, name: runtime.DOMString) !void 
 
     // Remove the attribute from the element
     const attr_dom_str = runtime.DOMString.initInterned(attr_name);
-    try ElementImpl.call_removeAttribute(internal.element, attr_dom_str);
+    try interfaces.Element.call_removeAttribute(internal.element, attr_dom_str);
 }

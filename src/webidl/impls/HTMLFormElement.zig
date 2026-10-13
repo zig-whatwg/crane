@@ -20,8 +20,7 @@ const url_serializer = @import("url_serializer");
 const encode_sets = @import("encode_sets");
 const log = std.log.scoped(.forms);
 
-// Import related impls for attribute access
-const ElementImpl = @import("Element.zig");
+const dom = @import("dom");
 const form_associated = @import("html").form_associated;
 const attributeValue = form_associated.attributeValue;
 const hasAttribute = form_associated.hasAttribute;
@@ -148,7 +147,7 @@ fn reflectEnumerated(
     comptime missing_default: []const u8,
     comptime invalid_default: []const u8,
 ) anyerror!runtime.DOMString {
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    const elem_internal = dom.element_data.of(instance) orelse return error.InvalidState;
     const entry = elem_internal.findAttribute(null, attr) orelse
         return runtime.DOMString.initInterned(missing_default);
 
@@ -166,7 +165,7 @@ pub fn get_action(instance: *runtime.Instance) anyerror!runtime.USVString {
     // content attribute, EXCEPT that on getting, a missing attribute OR an
     // empty one returns the node document's URL instead. The empty-string case
     // is the one that surprises: action="" is not "", it is the document URL.
-    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+    const elem_internal = dom.element_data.of(instance) orelse return error.InvalidState;
 
     if (elem_internal.findAttribute(null, "action")) |entry| {
         if (entry.value.len != 0) {
