@@ -281,6 +281,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A shared, mutable spec object is a reference-counted record its sharers hold](architecture-a-shared-mutable-spec-object-is-a-refcounted-record.md) - Shared and mutable in the spec means one reference-counted record held by every sharer: copies diverge on the first mutation, and a walk to the creator breaks when the mutation comes from the other side or the creator is gone.
 
 ### Spec Compliance
+- [Cookie normalization precedes validation](spec-compliance-cookie-normalization-precedes-validation.md) - Normalize before validation and distinguish empty names from omitted filters.
+- [Capture cookie changes before queueing](spec-compliance-capture-cookie-changes-before-queueing.md) - Capture each notification's records before queueing and free them on execution or drop.
 - [Form named lookup and own-key enumeration differ](spec-compliance-form-named-lookup-and-own-key-enumeration-differ.md) - Check lookup, descriptors, enumerable keys and all own keys separately; one enumeration flag does not establish all four behaviors.
 - [Form-associated does not mean listed](spec-compliance-form-associated-does-not-mean-listed.md) - Use the category named by each form algorithm; membership in a broader category does not grant the narrower category's behavior.
 - [A pattern serializer must preserve the parse](spec-compliance-a-pattern-serializer-must-preserve-the-parse.md) - Preserve part boundaries and syntax when serializing a pattern.
