@@ -218,15 +218,10 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for src
-/// Spec: [CEReactions, ReflectURL] attribute USVString src;
-/// Reflects the src content attribute (URL-valued).
+/// HTML 2.6.1 URL getter. The Trusted Types binding override calls this
+/// accessor directly rather than emitting a ReflectURL fallback.
 pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    // For ReflectURL, we should return the resolved URL, but for now return raw value
-    // IMPORTANT: Clone the value - the interface layer will free the returned slice
-    if (getContentAttribute(instance, "src")) |attr| {
-        return try instance.ctx.allocator.dupe(u8, attr.asSlice());
-    }
-    return "";
+    return dom_module.reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
 }
 
 /// Getter for noModule

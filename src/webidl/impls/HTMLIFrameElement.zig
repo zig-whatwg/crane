@@ -4103,20 +4103,7 @@ pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
 /// that fails, the attribute's value as given; "" without one. Owned: the
 /// binding frees what a getter returns.
 pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const ElementImpl = @import("Element.zig");
-    const value = (try ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("src"))) orelse return "";
-    const raw = value.asSlice();
-    if (raw.len == 0) return instance.ctx.allocator.dupe(u8, "");
-    const base = interfaces.Node.get_baseURI(instance) catch return instance.ctx.allocator.dupe(u8, raw);
-    defer instance.ctx.allocator.free(base);
-    const base_arg = if (base.len > 0)
-        webidl.Opt(runtime.USVString).passed(base)
-    else
-        webidl.Opt(runtime.USVString).notPassed();
-    const url = (interfaces.URL.call_static_parse(instance, raw, base_arg) catch null) orelse
-        return instance.ctx.allocator.dupe(u8, raw);
-    defer runtime.Instance.deinit(url);
-    return interfaces.URL.get_href(url);
+    return dom_module.reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
 }
 
 /// Setter for src
@@ -4519,30 +4506,6 @@ pub fn set_frameBorder(instance: *runtime.Instance, value: runtime.DOMString) an
         internal.allocator.free(old);
     }
     internal.frame_border_attr = try internal.allocator.dupe(u8, value.asSlice());
-}
-
-/// Getter for longDesc
-/// Returns a newly allocated copy of the longDesc attribute.
-/// The V8 interface layer will free the returned string after converting to V8.
-pub fn get_longDesc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const internal = getInternal(instance) orelse return "";
-
-    if (internal.long_desc_attr) |ld| {
-        // Must dupe - V8 interface layer frees getter results
-        return try internal.allocator.dupe(u8, ld);
-    }
-    return "";
-}
-
-/// Setter for longDesc
-pub fn set_longDesc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.long_desc_attr) |old| {
-        internal.allocator.free(old);
-    }
-    // USVString is []const u8
-    internal.long_desc_attr = try internal.allocator.dupe(u8, value);
 }
 
 /// Getter for marginHeight

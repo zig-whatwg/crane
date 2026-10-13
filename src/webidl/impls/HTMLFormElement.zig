@@ -190,11 +190,13 @@ pub fn get_action(instance: *runtime.Instance) anyerror!runtime.USVString {
 
     if (elem_internal.findAttribute(null, "action")) |entry| {
         if (entry.value.len != 0) {
-            return try instance.ctx.allocator.dupe(u8, entry.value);
+            // action getter steps 3-5: encoding-parse/serialize, or return
+            // the original content converted to a scalar value string.
+            return dom.reflection.get(runtime.USVString, instance, .{ .name = "action", .url = true });
         }
     }
 
-    // Fall back to the document URL.
+    // Step 2: missing/empty means the document URL, not its base URL.
     if (try interfaces.Node.get_ownerDocument(instance)) |doc| {
         return interfaces.Document.get_URL(doc) catch
             try instance.ctx.allocator.dupe(u8, "");
