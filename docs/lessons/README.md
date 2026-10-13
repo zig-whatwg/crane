@@ -9,6 +9,8 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A tree version does not cover custom-element upgrades](architecture-a-tree-version-does-not-cover-custom-element-upgrades.md) - Cache validity follows every input to the answer, including classification changes that do not mutate the tree.
+- [A live list needs a native owner for its backing object](architecture-a-live-list-needs-a-native-owner-for-its-backing-object.md) - An engine edge and a generation check do not replace a native owner for a non-node backing object.
 - [An IDL string getter copies; a tree read borrows](architecture-an-idl-string-getter-copies-a-tree-read-borrows.md) - Before moving a call onto the generated interface, read the generated member and the impl member side by side: a link getter forwards, a string getter copies, a setter runs the IDL algorithm.
 - [A union result is owned as its active member is](architecture-a-union-result-is-owned-as-its-active-member.md) - An ownership rule keyed on a type is wrong for a union: ask the value which member it holds, and keep the safe default for every member you cannot prove fresh.
 - [A curl multi handle is its agent's; the connections are its Browser's](architecture-a-multi-handle-is-the-agent-s-the-connections-are-the-browser-s.md) - Choose a network object's owner by its thread rule: single-threaded handles go to the agent that pumps them; shared, locked state goes to the Browser - never to a thread, and never to the process.
@@ -279,6 +281,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A shared, mutable spec object is a reference-counted record its sharers hold](architecture-a-shared-mutable-spec-object-is-a-refcounted-record.md) - Shared and mutable in the spec means one reference-counted record held by every sharer: copies diverge on the first mutation, and a walk to the creator breaks when the mutation comes from the other side or the creator is gone.
 
 ### Spec Compliance
+- [Form named lookup and own-key enumeration differ](spec-compliance-form-named-lookup-and-own-key-enumeration-differ.md) - Check lookup, descriptors, enumerable keys and all own keys separately; one enumeration flag does not establish all four behaviors.
+- [Form-associated does not mean listed](spec-compliance-form-associated-does-not-mean-listed.md) - Use the category named by each form algorithm; membership in a broader category does not grant the narrower category's behavior.
 - [A pattern serializer must preserve the parse](spec-compliance-a-pattern-serializer-must-preserve-the-parse.md) - Preserve part boundaries and syntax when serializing a pattern.
 - [Parser failure and setter success are distinct](spec-compliance-parser-failure-and-setter-success-are-distinct.md) - Return the parser's failure; let forgiving setters decide whether to expose it.
 - [Pattern encoding and init processing are different steps](spec-compliance-pattern-encoding-and-init-processing-are-different-steps.md) - Keep preprocessing, fragment encoding and matching separate.
@@ -412,6 +416,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
+- [A named interceptor changes ordinary property reads](testing-a-named-interceptor-changes-ordinary-property-reads.md) - The cost of registering an interceptor includes ordinary operations that fall through it. Exercise those operations explicitly.
+- [A failed assertion can hide a later operation](testing-a-failed-assertion-can-hide-a-later-operation.md) - Coverage follows executed operations, not assertions written below an earlier failure.
 - [A passing parent test may omit the popup assertion](testing-a-passing-parent-test-may-omit-the-popup-assertion.md) - A browser result proves only the assertions it actually reports.
 - [A use-after-free that reads stale bytes passes - allocate from pages unmapped on free](testing-a-use-after-free-that-reads-stale-bytes-passes-unmap-on-free.md) - A green result over freed memory proves nothing: when the bug is a read after a free, run the red test on an allocator that unmaps on free, and count its allocations so leaks still fail.
 - [Reading a torn-down node's state in an engine-less realm reads freed memory](testing-reading-a-torn-down-nodes-state-in-an-engine-less-realm-reads-freed-memory.md) - A green test that reads an object after its teardown is reading freed memory unless the teardown is documented to keep it - check which branch of the storage release the test's realm takes.
