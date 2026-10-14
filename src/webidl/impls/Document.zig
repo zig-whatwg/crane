@@ -5517,30 +5517,13 @@ pub fn isInlineScriptAllowedByCSP(
     parser_inserted: bool,
 ) bool {
     const internal = getInternal(instance) orelse return true; // No document = allow
-    // The violation's global: the current settings object's - the
-    // document's window, for a script its parser or its script inserted.
-    const window: ?*runtime.Instance = get_defaultView(instance) catch null;
-    // 2. Let result be "Allowed".
-    var allowed = true;
-    // 3. For each policy of the CSP list:
-    for (internal.policy_container.csp_list.policies.items) |*policy| {
-        // 3.1.1. A directive whose inline check allows it is skipped.
-        const directive = csp.inline_check.blockingDirective(policy, .{ .nonce = nonce, .parser_inserted = parser_inserted }, .script, source) orelse continue;
-        // 3.1.2-3.1.7. A violation of the effective directive for inline
-        // checks, resource "inline", the element, and a sample when the
-        // directive asks for one, reported.
-        if (window) |w| @import("dom").csp_violations.reportViolation(w, &.{
-            .policy = policy,
-            .effective_directive = csp.inline_check.effectiveDirectiveForInlineCheck(.script),
-            .resource = .@"inline",
-            .element = element,
-            .sample = csp.violation_events.sampleFor(directive, source),
-        });
-        // 3.1.8. An enforced policy blocks.
-        if (policy.disposition == .enforce) allowed = false;
-    }
-    // 4. Return result.
-    return allowed;
+    if (internal.policy_container.csp_list.policies.items.len == 0) return true;
+    // CSP §4.2.3 uses the same nonce eligibility and violation-reporting
+    // algorithm for inline scripts as for the other inline behaviors.
+    return !@import("dom").csp_violations.shouldBlockInline(element, .script, source, .{
+        .nonce = nonce,
+        .parser_inserted = parser_inserted,
+    });
 }
 
 // =============================================================================
