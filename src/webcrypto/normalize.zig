@@ -59,10 +59,18 @@ pub fn algorithm(realm: runtime.Context, input: Input, operation: registry.Opera
     var result: Algorithm = .{ .allocator = realm.allocator, .id = registration.id };
     errdefer result.deinit();
 
-    // Step 6: a SECOND dictionary conversion reads name again, even for a
-    // bare Algorithm. Step 7 ultimately uses the canonical first name.
-    const converted_name = try stringMember(realm, object, "name", true);
-    realm.allocator.free(converted_name.?);
+    // Step 6: derived dictionaries convert their inherited name again.
+    // Browser deviation for plain Algorithm: reuse step 2's conversion.
+    // Chrome and Safari read it once (wpt.fyi WebCryptoAPI/digest/digest,
+    // stable runs 6218298311311360 / 5164107446878208, 2026-10-06).
+    // WebKit SubtleCrypto.cpp's normalizeCryptoAlgorithmParameters reuses
+    // params for plain Algorithm but reconverts derived dictionaries; this
+    // avoids calling a buffer-transferring getter twice for digest/HMAC.
+    // Step 7 ultimately uses the canonical first name in either case.
+    if (registration.dictionary != .algorithm) {
+        const converted_name = try stringMember(realm, object, "name", true);
+        realm.allocator.free(converted_name.?);
+    }
     var converted: Converted = .{ .realm = realm };
     defer converted.deinit();
 
