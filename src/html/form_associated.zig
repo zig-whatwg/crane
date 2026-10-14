@@ -163,13 +163,25 @@ pub fn firstElementWithId(root: *Instance, id: []const u8) ?*Instance {
 /// 5. Otherwise, if element has an ancestor form element, then associate
 ///    element with the nearest such ancestor form element.
 pub fn formOwner(element: *Instance) ?*Instance {
+    return resolveFormOwner(element, false);
+}
+
+/// Reset the owner of a target already validated as listed. In particular,
+/// HTML upgrade step 11 resets a form-associated custom element before step
+/// 12 sets its state to custom, so isListed cannot establish that fact yet.
+/// The caller must validate the target's form-associated definition first.
+pub fn formOwnerForListedElement(element: *Instance) ?*Instance {
+    return resolveFormOwner(element, true);
+}
+
+fn resolveFormOwner(element: *Instance, comptime known_listed: bool) ?*Instance {
     if (parserFormOwner(element)) |form| return form;
     const connected = interfaces.Node.get_isConnected(element) catch false;
     if (connected and hasAttribute(element, "form")) {
         // HTML "reset the form owner", step 4: only listed elements use
         // this attribute. An img falls through to its nearest ancestor form
         // (step 5); elements without the attribute take the existing path.
-        if (isListed(element)) {
+        if (known_listed or isListed(element)) {
             var value = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("form")) catch null) orelse return null;
             defer value.deinit(element.ctx.allocator);
             const found = firstElementWithId(rootOf(element), value.asSlice()) orelse return null;
