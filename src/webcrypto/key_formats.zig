@@ -26,6 +26,18 @@ pub const Element = struct { tag: u8, content: []const u8 };
 pub const Envelope = struct { oid: []const u8, parameters: ?Element, material: []const u8 };
 pub const EcPrivate = struct { secret: []const u8, public: ?[]const u8 };
 
+test "EC PKCS8 inner key omits redundant parameters as browsers encode it" {
+    const encoded = try ecPrivate(std.testing.allocator, "secret", "point");
+    defer std.testing.allocator.free(encoded);
+    var reader = try der.sequence(encoded);
+    try std.testing.expectEqualSlices(u8, &.{1}, try reader.integer());
+    try std.testing.expectEqualStrings("secret", try reader.read(4));
+    var public: der.Reader = .{ .remaining = try reader.read(0xa1) };
+    try std.testing.expectEqualStrings("point", try public.bits());
+    try public.finish();
+    try reader.finish();
+}
+
 pub fn parseSpki(bytes: []const u8) !Envelope {
     // RFC 5280 §4.1: AlgorithmIdentifier followed by one public-key BIT STRING.
     var reader = try der.sequence(bytes);
@@ -94,18 +106,18 @@ pub fn pkcs8(allocator: std.mem.Allocator, algorithm: []const u8, parameters: ?E
     return der.encode(allocator, 0x30, &.{ "\x02\x01\x00", identifier, private });
 }
 
-pub fn ecPrivate(allocator: std.mem.Allocator, curve: keys.Curve, secret: []const u8, public: []const u8) ![]u8 {
+pub fn ecPrivate(allocator: std.mem.Allocator, secret: []const u8, public: []const u8) ![]u8 {
+    // Browser deviation from §§23.7.5/24.4.4, pkcs8 step 2: all three
+    // browsers omit the redundant inner parameters, keeping the curve in
+    // PrivateKeyInfo. BoringSSL's eckey_priv_encode sets EC_PKEY_NO_PARAMETERS.
+    // WPT import_export/ec_importKey verifies this encoding byte for byte.
     const private = try der.encode(allocator, 4, &.{secret});
     defer erase(allocator, private);
-    const curve_oid = try der.encode(allocator, 6, &.{Oid.curve(curve)});
-    defer erase(allocator, curve_oid);
-    const parameters = try der.encode(allocator, 0xa0, &.{curve_oid});
-    defer erase(allocator, parameters);
     const bits = try der.encode(allocator, 3, &.{ &.{0}, public });
     defer erase(allocator, bits);
     const point = try der.encode(allocator, 0xa1, &.{bits});
     defer erase(allocator, point);
-    return der.encode(allocator, 0x30, &.{ "\x02\x01\x01", private, parameters, point });
+    return der.encode(allocator, 0x30, &.{ "\x02\x01\x01", private, point });
 }
 
 fn algorithmIdentifier(bytes: []const u8) !Envelope {
@@ -278,12 +290,17 @@ fn checkEnvelopeAllocation(allocator: std.mem.Allocator) anyerror!void {
     const private = try pkcs8(allocator, Oid.ed25519, null, "private");
     defer allocator.free(private);
     try std.testing.expectEqualStrings("private", (try parsePkcs8(private)).material);
-    const ec = try ecPrivate(allocator, .p384, "secret", "point");
+    const ec = try ecPrivate(allocator, "secret", "point");
     defer allocator.free(ec);
     const parsed_ec = try parseEcPrivate(ec, .p384);
     try std.testing.expectEqualStrings("secret", parsed_ec.secret);
     try std.testing.expectEqualStrings("point", parsed_ec.public.?);
-    try std.testing.expectError(error.DataError, parseEcPrivate(ec, .p256));
+    // Absent inner parameters use the enclosing PrivateKeyInfo's curve.
+    _ = try parseEcPrivate(ec, .p256);
+    // Explicit inner parameters must still agree with the enclosing curve.
+    const explicit = "\x30\x10\x02\x01\x01\x04\x02ab\xa0\x07\x06\x05" ++ Oid.p384;
+    _ = try parseEcPrivate(explicit, .p384);
+    try std.testing.expectError(error.DataError, parseEcPrivate(explicit, .p256));
 }
 
 test "DER key export erases all intermediate allocations on failure" {

@@ -150,7 +150,7 @@ pub fn exportKey(allocator: std.mem.Allocator, key: *const keys.Slots, format: k
             const inner = if (isEc(key.algorithm.id)) inner: {
                 const public = try publicBytes(allocator, key.algorithm, key.material);
                 defer erase(allocator, public);
-                break :inner try formats.ecPrivate(allocator, key.algorithm.named_curve.?, key.material, public);
+                break :inner try formats.ecPrivate(allocator, key.material, public);
             } else try der.encode(allocator, 4, &.{key.material});
             defer erase(allocator, inner);
             break :blk try formats.pkcs8(allocator, identifier, parameters, inner);
