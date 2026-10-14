@@ -81,9 +81,11 @@ pub fn get_extractable(instance: *runtime.Instance) anyerror!bool {
 
 /// Getter for algorithm
 pub fn get_algorithm(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    // §9 cached-object conversion, §13.4: construct in the key's realm.
-    // TODO(Q8): cache through the adapter's forthcoming traced-value operation.
-    // A retained Owned here would keep realm/owner cycles alive.
+    // §9 steps 1–2, §13.4: convert once in the key's realm and return the
+    // same object. The wrapper traces the value; a back-reference to this
+    // key is a collectible cycle, not a native root keeping its realm alive.
+    const slot: engine.TracedSlot = .{ .name = "CryptoKey.algorithm" };
+    if (engine.tracedValue(instance, slot)) |cached| return cached.take();
     const algorithm = (keySlots(instance) orelse return error.InvalidStateError).algorithm;
     var members: [6]engine.DictionaryMember = undefined;
     var count: usize = 1;
@@ -121,12 +123,16 @@ pub fn get_algorithm(instance: *runtime.Instance) anyerror!runtime.JSValue {
         members[count] = .{ .name = "namedCurve", .value = runtime.JSValue.fromStringRef(value.name()) };
         count += 1;
     }
-    return (try engine.createDictionaryObject(instance.ctx, members[0..count])).take();
+    const cached = try engine.createDictionaryObject(instance.ctx, members[0..count]);
+    engine.traceValue(instance, cached.borrow(), slot);
+    return cached.take();
 }
 
 /// Getter for usages
 pub fn get_usages(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    // §9 and §13.4: reflect normalized usages, with the same Q8 cache gap.
+    // §9 steps 1–2, §13.4: cache the converted sequence, not its native slots.
+    const slot: engine.TracedSlot = .{ .name = "CryptoKey.usages" };
+    if (engine.tracedValue(instance, slot)) |cached| return cached.take();
     const slots = keySlots(instance) orelse return error.InvalidStateError;
     var values: [std.meta.tags(keys.Usage).len]runtime.JSValue = undefined;
     var count: usize = 0;
@@ -135,7 +141,9 @@ pub fn get_usages(instance: *runtime.Instance) anyerror!runtime.JSValue {
         values[count] = runtime.JSValue.fromStringRef(@tagName(usage));
         count += 1;
     }
-    return (try engine.createSequenceOfValues(instance.ctx, values[0..count])).take();
+    const cached = try engine.createSequenceOfValues(instance.ctx, values[0..count]);
+    engine.traceValue(instance, cached.borrow(), slot);
+    return cached.take();
 }
 
 // ============================================================================
@@ -153,10 +161,9 @@ pub fn get_usages(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// 4. Set serialized.[[Usages]] to the sub-serialization of value.[[usages]].
 /// 5. Set serialized.[[Handle]] to value.[[handle]].
 ///
-/// Deviation (steps 3-4): this key keeps no [[algorithm]] or [[usages]]
-/// object to sub-serialize - its getters make them from its native slots
-/// each time (the cache is Codex's WebCrypto Q8) - so the record carries
-/// those slots, from which the copy's getters make the same objects. Step 5
+/// Steps 3-4 serialize the native [[algorithm]] and [[usages]], not the
+/// script-mutable [[algorithm_cached]] and [[usages_cached]] objects. The
+/// copy converts its own native slots when a getter first runs. Step 5
 /// is the key material, copied: the handle of this agent's key cannot cross
 /// to another (a worker, an IndexedDB record). Every enum is written by
 /// name, so a stored key reads back after the enums are reordered.
