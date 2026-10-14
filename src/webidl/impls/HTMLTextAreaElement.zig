@@ -170,6 +170,8 @@ pub const InternalState = struct {
     /// value (§ 4.10.20); clamped on read because the value can shrink
     /// underneath it.
     selection: form_associated.TextSelection = .{},
+    /// Selection API: this control's has-scheduled-selectionchange-event flag.
+    selectionchange_scheduled: bool = false,
     /// Select event tasks still queued (form_associated.queueSelectEvent).
     pending_select_tasks: u32 = 0,
 
@@ -489,10 +491,16 @@ fn pendingSelectTasks(instance: *runtime.Instance) ?*u32 {
     return &internal.pending_select_tasks;
 }
 
-/// "Set the selection range", and on a change, queue the select event.
+fn selectionchangeScheduled(instance: *runtime.Instance) ?*bool {
+    const internal = StateMap.get(instance) orelse return null;
+    return &internal.selectionchange_scheduled;
+}
+
+/// "Set the selection range": changes queue selectionchange and select.
 fn setSelectionRange(instance: *runtime.Instance, start: ?u32, end: ?u32, direction: ?[]const u8) !void {
     const internal = try StateMap.getOrPut(instance);
     if (internal.selection.setRange(start, end, direction, apiValueLength(instance))) {
+        dom.selection.scheduleTextControlSelectionchange(instance, &selectionchangeScheduled) catch {};
         form_associated.queueSelectEvent(instance, &pendingSelectTasks);
     }
 }

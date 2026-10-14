@@ -210,7 +210,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Install the association hook once, at process startup.
 pub fn installHooks() void {
-    dom.selection.install(.{ .bind_document = &bindDocument, .range_mutated = &rangeMutated });
+    dom.selection.install(.{ .bind_document = &bindDocument, .range_mutated = &rangeMutated, .schedule_change = &scheduleSelectionchange });
 }
 
 fn rangeMutated(selection: *runtime.Instance, range: *runtime.Instance, containers_changed: bool) void {
