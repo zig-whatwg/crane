@@ -124,9 +124,13 @@ pub const ReportBody = struct {
 pub fn stripUrlForReports(allocator: std.mem.Allocator, url: []const u8) error{OutOfMemory}![]u8 {
     const colon = std.mem.indexOfScalar(u8, url, ':') orelse return allocator.dupe(u8, url);
     const scheme = url[0..colon];
-    // 1. "If url's scheme is not an HTTP(S) scheme, then return url's
-    // scheme."
-    if (!std.ascii.eqlIgnoreCase(scheme, "http") and !std.ascii.eqlIgnoreCase(scheme, "https")) {
+    // §5.4 step 1 says HTTP(S), but all three browsers also preserve WS(S):
+    // Blink StripURLForUseInReport, Gecko StripURIForReporting (CSP issue
+    // #735), and WebKit createURLForReporting. Keep their credentials and
+    // fragment stripping below. Firefox/WebKit retain the query too.
+    if (!std.ascii.eqlIgnoreCase(scheme, "http") and !std.ascii.eqlIgnoreCase(scheme, "https") and
+        !std.ascii.eqlIgnoreCase(scheme, "ws") and !std.ascii.eqlIgnoreCase(scheme, "wss"))
+    {
         return allocator.dupe(u8, scheme);
     }
     // 2. "Set url's fragment to the empty string": the serializer then
@@ -200,7 +204,7 @@ pub fn blockedUriForPolicy(
 
     const Url = @import("request_check.zig").Url;
     const target = Url.ofSerialized(resource.url);
-    // §5.4 step 1 still reduces non-HTTP(S) URLs to the scheme.
+    // The frame/object navigation privacy rule applies to HTTP(S) URLs.
     if (!std.ascii.eqlIgnoreCase(target.scheme, "http") and
         !std.ascii.eqlIgnoreCase(target.scheme, "https"))
         return blockedUri(allocator, resource);
@@ -237,7 +241,7 @@ pub fn sampleFor(directive: *const types.Directive, source: []const u8) []const 
     return source[0..it.i];
 }
 
-test "strip URL for use in reports: HTTP(S) URLs lose fragment and credentials, others are their scheme" {
+test "strip URL for use in reports: HTTP(S) and WS(S) lose fragment and credentials, others are their scheme" {
     const allocator = std.testing.allocator;
     const cases = [_][2][]const u8{
         .{ "https://user:pw@a.test:8443/x/y.js?q=1#frag", "https://a.test:8443/x/y.js?q=1" },
@@ -245,7 +249,7 @@ test "strip URL for use in reports: HTTP(S) URLs lose fragment and credentials, 
         .{ "http://a.test/p?u=x@y#f", "http://a.test/p?u=x@y" },
         .{ "data:text/javascript,1", "data" },
         .{ "blob:https://a.test/0b2c", "blob" },
-        .{ "wss://a.test/echo", "wss" },
+        .{ "wss://a.test/echo", "wss://a.test/echo" },
     };
     for (cases) |case| {
         const stripped = try stripUrlForReports(allocator, case[0]);
