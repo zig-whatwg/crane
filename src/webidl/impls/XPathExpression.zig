@@ -180,11 +180,23 @@ const Parser = struct {
         if (c >= 0x80 or std.ascii.isAlphabetic(c) or c == '_') {
             p.offset = start;
             try p.ncname();
+            const prefix_end = p.offset;
+            // XPath §3.7 [37], browser compatibility: Blink/WebKit skip XML
+            // space around QName colons, while the axis separator stays "::".
+            while (p.offset < p.source.len and xmlSpace(p.source[p.offset])) p.offset += 1;
+            var name = p.source[start..prefix_end];
             if (p.offset < p.source.len and p.source[p.offset] == ':' and !(p.offset + 1 < p.source.len and p.source[p.offset + 1] == ':')) {
+                const colon = p.offset;
                 p.offset += 1;
+                while (p.offset < p.source.len and xmlSpace(p.source[p.offset])) p.offset += 1;
+                const local_start = p.offset;
                 if (p.offset < p.source.len and p.source[p.offset] == '*') p.offset += 1 else try p.ncname();
+                name = if (colon == prefix_end and local_start == colon + 1)
+                    p.source[start..p.offset]
+                else
+                    try std.fmt.allocPrint(p.allocator, "{s}:{s}", .{ p.source[start..prefix_end], p.source[local_start..p.offset] });
             }
-            p.token = .{ .kind = .name, .text = p.source[start..p.offset] };
+            p.token = .{ .kind = .name, .text = name };
             return;
         }
         p.token = .{ .kind = switch (c) {

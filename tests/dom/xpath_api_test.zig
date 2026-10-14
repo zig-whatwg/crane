@@ -17,8 +17,13 @@ test "XPath compiled grammar releases native allocations on success and syntax e
         const expression = try interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(??*runtime.CallbackWrapper).notPassed());
         runtime.Instance.deinit(expression);
     }
-    for ([_][]const u8{ "(", "///x", "a[", "1e2", "unknown()", "last(1)", "$v" }) |text| {
+    for ([_][]const u8{ "(", "///x", "a[", "1e2", "unknown()", "last(1)", "$v", "p :", "p : : item", "child : : item" }) |text| {
         try std.testing.expectError(error.SyntaxError, interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(??*runtime.CallbackWrapper).notPassed()));
+    }
+    // Browser lexers admit XML whitespace around the QName colon. A missing
+    // resolver must therefore be a namespace error, not malformed syntax.
+    for ([_][]const u8{ "p : item", "p: item", "p :item", "@p : *", "child :: p : item", "p\t:\ritem" }) |text| {
+        try std.testing.expectError(error.NamespaceError, interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(??*runtime.CallbackWrapper).notPassed()));
     }
 }
 
