@@ -476,8 +476,9 @@ fn apiValueLength(instance: *runtime.Instance) u32 {
     const allocator = instance.ctx.allocator;
     const text = currentApiValue(instance) catch return 0;
     defer allocator.free(text);
-    const units = std.unicode.calcUtf16LeLen(text) catch return @intCast(text.len);
-    return @intCast(units);
+    // HTML 4.10.20 counts code units of the API value, including lone
+    // surrogates. That DOMString is WTF-8, not necessarily valid UTF-8.
+    return form_associated.utf16Length(text);
 }
 
 /// The selection as it reads now.
