@@ -809,7 +809,9 @@ fn filteredContentCoding(headers: *const @import("../internal/header_list.zig").
     if (codings == 0) return "";
     if (codings > 1) return "multiple";
     if (first.len == 0) return "";
-    const supported = [_][]const u8{ "gzip", "deflate", "br", "zstd", "identity" };
+    // HTTP-network fetch 18.1.1.1.6 requires a registered content coding.
+    // "identity" is not one (WPT content-encoding, Chrome subtest 9).
+    const supported = [_][]const u8{ "gzip", "deflate", "br", "zstd" };
     for (supported) |coding| {
         if (std.ascii.eqlIgnoreCase(first, coding)) return coding;
     }
