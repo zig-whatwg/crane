@@ -235,13 +235,6 @@ pub const InternalState = struct {
     /// Whether document is hidden
     hidden: bool,
 
-    // === Legacy color properties (deprecated but still supported) ===
-    fg_color: runtime.DOMString,
-    link_color: runtime.DOMString,
-    vlink_color: runtime.DOMString,
-    alink_color: runtime.DOMString,
-    bg_color: runtime.DOMString,
-
     // === Fullscreen state ===
     fullscreen_enabled: bool,
     fullscreen_element: ?*runtime.Instance,
@@ -443,12 +436,6 @@ pub const InternalState = struct {
             .design_mode = runtime.DOMString.initInterned("off"),
             .visibility_state = ._visible_,
             .hidden = false,
-            // Legacy colors (empty = not set)
-            .fg_color = runtime.DOMString.initEmpty(),
-            .link_color = runtime.DOMString.initEmpty(),
-            .vlink_color = runtime.DOMString.initEmpty(),
-            .alink_color = runtime.DOMString.initEmpty(),
-            .bg_color = runtime.DOMString.initEmpty(),
             // Fullscreen
             // Per Fullscreen spec, fullscreenEnabled returns true only if fullscreen is supported
             // and the document's fullscreen flag is set. For a new Document, default to false.
@@ -556,11 +543,6 @@ pub const InternalState = struct {
         self.content_type.deinit(self.allocator);
         self.encoding.deinit(self.allocator);
         self.design_mode.deinit(self.allocator);
-        self.fg_color.deinit(self.allocator);
-        self.link_color.deinit(self.allocator);
-        self.vlink_color.deinit(self.allocator);
-        self.alink_color.deinit(self.allocator);
-        self.bg_color.deinit(self.allocator);
 
         // Event handlers
 
