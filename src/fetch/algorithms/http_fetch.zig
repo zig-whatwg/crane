@@ -155,12 +155,8 @@ fn taoCheckPasses(request: *const InternalRequest, response: *const InternalResp
     //    request that never had one serializes as "null").
     // 2. If request's timing allow failed flag is set, then return failure.
     if (request.timing_allow_failed) return false;
-    // 3-5. `Timing-Allow-Origin`, gotten, decoded and split: `*`, or the
-    //    serialization of the request's origin, is success.
-    const origin: []const u8 = switch (request.origin) {
-        .origin => |o| o,
-        .client => "null",
-    };
+    // 3-4. `Timing-Allow-Origin`, gotten, decoded and split: `*` succeeds
+    // without serializing an origin.
     if (response.header_list.getFirstValue("Timing-Allow-Origin") != null) {
         for (response.header_list.entries.items) |header| {
             if (!std.ascii.eqlIgnoreCase(header.name, "Timing-Allow-Origin")) continue;
@@ -168,12 +164,26 @@ fn taoCheckPasses(request: *const InternalRequest, response: *const InternalResp
             while (values.next()) |raw| {
                 const value = std.mem.trim(u8, raw, " \t");
                 if (std.mem.eql(u8, value, "*")) return true;
-                if (std.mem.eql(u8, value, origin)) return true;
+            }
+        }
+        // 5. Serialize the REQUEST origin: a redirect-tainted chain yields
+        // "null", even when the stored original origin is a tuple origin.
+        const serialized = request.serializeOrigin(request.allocator) catch return false;
+        defer request.allocator.free(serialized);
+        for (response.header_list.entries.items) |header| {
+            if (!std.ascii.eqlIgnoreCase(header.name, "Timing-Allow-Origin")) continue;
+            var values = std.mem.splitScalar(u8, header.value, ',');
+            while (values.next()) |raw| {
+                if (std.mem.eql(u8, std.mem.trim(u8, raw, " \t"), serialized)) return true;
             }
         }
     }
     // 6. A navigation of a nested navigable to another origin than its
-    //    request's: failure.
+    //    request's ORIGINAL origin: failure (not the serialization above).
+    const origin: []const u8 = switch (request.origin) {
+        .origin => |o| o,
+        .client => "null",
+    };
     if (request.mode == .navigate and !sameHttpOrigin(request.currentUrl(), origin)) return false;
     // 7. If request's response tainting is "basic", then return success.
     // 8. Return failure.
