@@ -89,19 +89,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     interfaces.EventTarget.deinit(instance);
 }
 
-/// Getter for onlayoutchange (Keyboard Map): not implemented.
-pub fn get_onlayoutchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for onlayoutchange (Keyboard Map): not implemented.
-pub fn set_onlayoutchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
 /// unlock(): "1. Enqueue the following steps to the keyboard lock task
 /// queue: 1. If enable keyboard lock is true, then run the following
 /// substeps: 1. Unregister the system key press handler. 2. Set enable

@@ -49,7 +49,7 @@ pub inline fn value(comptime Handler: type, this: *runtime.Instance, comptime na
     const target = targetOf(this, name) orelse return null;
     // 3. Return the result of getting the current value of the event handler
     //    given eventTarget and name. The map is keyed by the event handler
-    //    event type: the name without its "on".
+    //    event type (including the legacy mixed-case event types).
     return get(Handler, target, eventType(name));
 }
 
@@ -67,10 +67,14 @@ pub inline fn setValue(comptime Handler: type, this: *runtime.Instance, comptime
     try set(Handler, target, eventType(name), handler);
 }
 
-/// An event handler's event type: its IDL attribute's name without "on"
-/// (HTML 8.1.8.1: an event handler's name "always starts with 'on'").
+/// The event type from HTML 8.1.8.2's event handler table. The four legacy
+/// WebKit-prefixed attributes use lowercase names but mixed-case event types.
 fn eventType(comptime name: []const u8) []const u8 {
     comptime std.debug.assert(name.len > 2 and std.mem.startsWith(u8, name, "on"));
+    if (comptime std.mem.eql(u8, name, "onwebkitanimationend")) return "webkitAnimationEnd";
+    if (comptime std.mem.eql(u8, name, "onwebkitanimationiteration")) return "webkitAnimationIteration";
+    if (comptime std.mem.eql(u8, name, "onwebkitanimationstart")) return "webkitAnimationStart";
+    if (comptime std.mem.eql(u8, name, "onwebkittransitionend")) return "webkitTransitionEnd";
     return name[2..];
 }
 
@@ -193,6 +197,13 @@ test "the window-reflecting set is WindowEventHandlers plus six" {
 test "an event handler's event type is its name without on" {
     try std.testing.expectEqualStrings("load", eventType("onload"));
     try std.testing.expectEqualStrings("beforeunload", eventType("onbeforeunload"));
+}
+
+test "legacy WebKit handler attributes use mixed-case event types" {
+    try std.testing.expectEqualStrings("webkitAnimationEnd", eventType("onwebkitanimationend"));
+    try std.testing.expectEqualStrings("webkitAnimationIteration", eventType("onwebkitanimationiteration"));
+    try std.testing.expectEqualStrings("webkitAnimationStart", eventType("onwebkitanimationstart"));
+    try std.testing.expectEqualStrings("webkitTransitionEnd", eventType("onwebkittransitionend"));
 }
 
 test "event handler representation - null and callable round trip" {
