@@ -2502,10 +2502,11 @@ pub fn call_exitPictureInPicture(instance: *runtime.Instance) anyerror!runtime.J
 
 /// Operation: createExpression
 pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = expression;
-    _ = resolver;
-    return error.NotImplemented;
+    // DOM XPath: compile once; namespace callbacks run during construction.
+    return interfaces.XPathExpression.initWith(instance.ctx.allocator, instance.ctx, .{
+        .expression = expression,
+        .resolver = resolver,
+    });
 }
 
 /// Operation: elementFromPoint
@@ -3433,13 +3434,14 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
 
 /// Operation: evaluate
 pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = expression;
-    _ = contextNode;
-    _ = resolver;
-    _ = @"type";
-    _ = result;
-    return error.NotImplemented;
+    // DOM Level 3 XPath §1.4: compile, evaluate and convert to the requested type.
+    const compiled = try interfaces.XPathExpression.initWith(instance.ctx.allocator, instance.ctx, .{
+        .expression = expression,
+        .resolver = resolver,
+    });
+    // This private, unwrapped temporary owns both its grammar and instance storage.
+    defer runtime.Instance.deinit(compiled);
+    return interfaces.XPathExpression.call_evaluate(compiled, contextNode, @"type", result);
 }
 
 /// Operation: hasStorageAccess
@@ -5009,8 +5011,8 @@ pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(dict
 /// Operation: createNSResolver
 pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
-    _ = nodeResolver;
-    return error.NotImplemented;
+    // DOM §8.3: return nodeResolver (the legacy method is an identity).
+    return nodeResolver;
 }
 
 /// Operation: createNodeIterator
