@@ -398,6 +398,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Text control selectionchange coalesces per target](spec-compliance-text-control-selectionchange-coalesces-per-target.md) - Coalesce the selectionchange target; keep select scheduling and DOM Range representation separate.
 - [RequestInit refills headers under the final guard](spec-compliance-request-init-refills-headers-under-the-final-guard.md) - Copying input state does not replace validation under the destination object's final settings.
 - [Response.redirect parses before validating status](spec-compliance-response-redirect-parses-before-validating-status.md) - The algorithm's input processing, ordering and object guard are observable API behavior.
+- [Handler registration does not require the event source](spec-compliance-handler-registration-does-not-require-the-event-source.md) - Separate callback registration from the event source, and take event names from the handler table rather than a spelling rule.
 
 ### Codegen
 
@@ -581,6 +582,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Missing CSP events can be upstream capability failures](debugging-missing-csp-events-can-be-upstream-capability-failures.md) - A missing event is an observation, not a diagnosis; prove that the operation reached the relevant CSP check.
 - [A reuse test can open fresh connections](debugging-a-reuse-test-can-open-fresh-connections.md) - Measure the transport path and distinguish a hypothesis from a reproduced cause.
 - [A format enum error never reaches the codec](debugging-a-format-enum-error-never-reaches-the-codec.md) - An enum failure precedes the implementation: a shared message is not evidence of a shared codec defect.
+- [Check the binding receiver before changing the impl](debugging-check-the-binding-receiver-before-changing-the-impl.md) - Trace the actual receiver through the binding; an impl cannot reconstruct an argument the binding discarded.
 
 ### Workflow
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.
