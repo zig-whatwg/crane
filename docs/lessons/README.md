@@ -392,6 +392,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [WebCrypto dictionary reconversion depends on the operation](spec-compliance-webcrypto-dictionary-reconversion-depends-on-the-operation.md) - A shared failure message does not imply one browser-compatible fix across every registered dictionary.
 - [EC private export omits redundant parameters](spec-compliance-ec-private-export-omits-redundant-parameters.md) - Import validation and export canonicalization are separate rules; relaxing one to match the other loses validation.
 - [Validate a CSP directive before splitting its sources](spec-compliance-csp-directive-validation-precedes-source-tokenization.md) - Validate the container before interpreting its pieces; a convenient language whitespace predicate may implement a different grammar.
+- [Reused connection times copy fetch start](spec-compliance-reused-connection-times-copy-fetch-start.md) - Copy the fetch clock and keep cleartext TLS zero; preserve fresh measurements.
+- [Resource Timing opacity is field-specific](spec-compliance-resource-timing-opacity-is-field-specific.md) - Apply filtered-response rules per field and retain completion time.
+- [TAO serializes the redirected request origin](spec-compliance-tao-serializes-the-redirected-request-origin.md) - Redirect taint can serialize a stored tuple origin as null.
 
 ### Codegen
 
@@ -424,6 +427,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [An enum-returning operation reached script as undefined](codegen-an-enum-returning-operation-reached-script-as-undefined.md) - A conversion whose fallback is `undefined` needs a test that enumerates what reaches it: walk the generated operations' return types at comptime, pin the predicate's default as unhandled, and count what the walk saw.
 - [A typedef registered without its type is no type at all](codegen-a-typedef-registered-without-its-type-is-no-type.md) - When a generated table classifies types, grep it for the fallback category (`.other`) after every change: each hit is a type the classifier could not see.
 - [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
+- [Event-handler fallbacks need ancestor state](codegen-event-handler-fallbacks-need-ancestor-state.md) - Check legacy construction/destruction before enabling generated fallbacks.
 
 ### Testing
 - [A named interceptor changes ordinary property reads](testing-a-named-interceptor-changes-ordinary-property-reads.md) - The cost of registering an interceptor includes ordinary operations that fall through it. Exercise those operations explicitly.
@@ -572,6 +576,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A signature range error is not an operation failure](debugging-a-signature-range-error-is-not-an-operation-failure.md) - Classify the algorithm's invalid inputs before broadly translating a backend's error codes.
 - [A range test can start a giant derivation](debugging-a-range-test-can-start-a-giant-derivation.md) - A tiny negative test input can become valid, expensive work after binding conversion; isolate it with a bounded operation before blaming the primitive or harness.
 - [Missing CSP events can be upstream capability failures](debugging-missing-csp-events-can-be-upstream-capability-failures.md) - A missing event is an observation, not a diagnosis; prove that the operation reached the relevant CSP check.
+- [A reuse test can open fresh connections](debugging-a-reuse-test-can-open-fresh-connections.md) - Measure the transport path and distinguish a hypothesis from a reproduced cause.
 
 ### Workflow
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.
