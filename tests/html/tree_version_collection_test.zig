@@ -42,6 +42,24 @@ test "an XPath iterator stays valid when a collection frees unrelated garbage of
     try onFreshThread(iteratorSurvivesCollection);
 }
 
+fn iteratorSurvivesNodeCreation() !void {
+    const page = try Page.open();
+    defer page.close();
+    try page.run(
+        \\const root = document.body.appendChild(document.createElement('ul'));
+        \\root.innerHTML = '<li>a</li><li>b</li>';
+        \\const it = document.evaluate('./li', root, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE);
+        \\// Making nodes while iterating is no mutation: browsers keep the iterator.
+        \\const made = [];
+        \\for (let n = it.iterateNext(); n; n = it.iterateNext()) made.push(document.createElement('li'), document.createTextNode(n.textContent));
+        \\if (made.length !== 4) throw new Error('made ' + made.length);
+    );
+}
+
+test "an XPath iterator stays valid while script makes nodes it does not insert" {
+    try onFreshThread(iteratorSurvivesNodeCreation);
+}
+
 fn collectionsReadLiveNodesAcrossCollections() !void {
     const page = try Page.open();
     defer page.close();

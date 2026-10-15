@@ -245,3 +245,20 @@ test "an XPath iterator is invalid after an insertion or an attribute change" {
     try interfaces.Element.call_setAttribute(f.section, runtime.DOMString.initInterned("data-x"), .{ .domstring = runtime.DOMString.initInterned("1") });
     try std.testing.expectError(error.InvalidStateError, interfaces.XPathResult.call_iterateNext(attributed));
 }
+
+test "an XPath iterator stays valid while nodes are created and not inserted" {
+    var f: IteratorFixture = undefined;
+    try f.init();
+    defer f.deinit();
+    const result = try f.iterator();
+    defer runtime.Instance.deinit(result);
+    // Making a node is not a mutation of the document (Blink and WebKit move
+    // no version for it): `while (n = it.iterateNext()) make(n)` works in
+    // browsers.
+    const item = try f.element("li");
+    defer dom.node_creation.destroyUninserted(item);
+    const text = try interfaces.Document.call_createTextNode(f.document, runtime.DOMString.initInterned("t"));
+    defer dom.node_creation.destroyUninserted(text);
+    try std.testing.expect(!try interfaces.XPathResult.get_invalidIteratorState(result));
+    try std.testing.expect((try interfaces.XPathResult.call_iterateNext(result)) != null);
+}

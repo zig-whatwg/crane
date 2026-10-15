@@ -201,3 +201,22 @@ test "a character data change moves the version, with a parent or without" {
     try interfaces.CharacterData.call_insertData(comment, 0, runtime.DOMString.initInterned("x"));
     _ = try expectMoves(f.document, v);
 }
+
+test "creating a node does not move the version" {
+    var f: Fixture = undefined;
+    try f.init();
+    defer f.deinit();
+    const v = version(f.document);
+    // A node's first node document is not a mutation of the document: no
+    // tree changes, and neither Blink nor WebKit moves the version when a
+    // node is made (only ChildrenChanged, attribute and character data
+    // changes call IncDOMTreeVersion / incDOMTreeVersion).
+    const made = [_]*runtime.Instance{
+        try Fixture.element(f.document, "li"),
+        try interfaces.Document.call_createTextNode(f.document, runtime.DOMString.initInterned("t")),
+        try interfaces.Document.call_createComment(f.document, runtime.DOMString.initInterned("c")),
+        try interfaces.Document.call_createDocumentFragment(f.document),
+    };
+    defer for (made) |node| dom.node_creation.destroyUninserted(node);
+    try std.testing.expectEqual(v, version(f.document));
+}
