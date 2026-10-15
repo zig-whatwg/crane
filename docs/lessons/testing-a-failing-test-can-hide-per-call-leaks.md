@@ -3,6 +3,8 @@
 **Date**: 2026-10-15
 **Lesson**: Compare equal call counts as well as equal test files when a feature fix lets tests execute more of their bodies.
 
+**Status**: 2026-10-15 - the adapter leak is fixed (lane setterleak): an `any` setter value is released once the setter returns (`setterValueIsBorrowed`); crane/ar-internals-array-replacement.html went 102 -> 2 leaks. See [A setter borrows an `any` and takes a callback - on every path](architecture-a-setter-borrows-an-any-and-takes-a-callback-on-every-path.md).
+
 **Why**: The same file list is not always the same workload. A missing setter can stop each test at its first assignment, hiding leaks on later calls that a working implementation reaches.
 
 **What Happened**: ElementInternals' ten-file fixture run reported 37 leaks on BASE and 131 on TIP. Both stacks named v8_FunctionCallbackInfo_GetArgument. A regression fixture that attempts all 100 array replacements before reporting its first error measured exactly 102 leaks and 2,704,992 bytes on both builds: two snapshot allocations and 100 argument handles. The getter's final snapshot assertions failed on BASE and passed on TIP.
