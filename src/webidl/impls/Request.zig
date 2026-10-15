@@ -470,24 +470,37 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         base_request.keepalive = keepalive;
     }
 
-    // Step 31-34: Handle headers from init BEFORE creating instance
-    // This ensures all headers are added while base_request is still the owner
-    if (init_opts.headers) |headers_init| {
-        // Step 32.2: this's headers' guard is "request-no-cors" when the
-        // mode is "no-cors", otherwise "request".
+    // Steps 31-33: a nonempty init sanitizes headers under the final guard.
+    // init.headers replaces the copied input list; otherwise that list is
+    // refilled (not simply retained), since init.mode may have changed.
+    // WebKit FetchRequest::initializeWith(FetchRequest&, Init&&) likewise
+    // selects init.headers or input.headers() before filling the new list.
+    if (!init_is_empty) {
+        // Step 33.1: keep the already-owned copy while building its replacement.
+        var input_headers = base_request.header_list;
+        base_request.header_list = fetch.internal.HeaderList.init(ctx.allocator);
+        defer input_headers.deinit();
+
+        // Step 32.2: request-no-cors when the mode is no-cors, otherwise request.
         const guard: fetch.internal.HeaderGuard = if (base_request.mode == .no_cors) .request_no_cors else .request;
-        // Step 32.3 / 34: fill this's headers with headers_init - "fill" is
-        // Headers' "append" for each pair, under that guard.
         const headers_class = fetch.webidl.headers;
-        switch (headers_init) {
-            .sequence_byte_string_sequence => |outer_seq| {
-                try headers_class.fillFromSequence(ctx.allocator, &base_request.header_list, guard, outer_seq);
-            },
-            .byte_string_byte_string_record => |entries| {
-                for (entries) |entry| {
-                    try headers_class.append(ctx.allocator, &base_request.header_list, guard, entry.key, entry.value);
-                }
-            },
+        if (init_opts.headers) |headers_init| {
+            // Steps 33.2-3,33.5: the supplied headers fill an empty list.
+            switch (headers_init) {
+                .sequence_byte_string_sequence => |outer_seq| {
+                    try headers_class.fillFromSequence(ctx.allocator, &base_request.header_list, guard, outer_seq);
+                },
+                .byte_string_byte_string_record => |entries| {
+                    for (entries) |entry| {
+                        try headers_class.append(ctx.allocator, &base_request.header_list, guard, entry.key, entry.value);
+                    }
+                },
+            }
+        } else {
+            // Steps 33.3-4: append each inherited pair under the new guard.
+            for (input_headers.iterator()) |header| {
+                try headers_class.append(ctx.allocator, &base_request.header_list, guard, header.name, header.value);
+            }
         }
     }
 
