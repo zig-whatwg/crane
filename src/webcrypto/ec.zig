@@ -72,7 +72,13 @@ pub fn publicKey(allocator: std.mem.Allocator, curve: Curve, secret: []const u8)
 
 pub fn normalizePublic(allocator: std.mem.Allocator, curve: Curve, bytes: []const u8) ![]u8 {
     switch (curve) {
-        .p521 => return p521Public(allocator, bytes, false),
+        .p521 => {
+            if (bytes.len == 67) {
+                const public = try decompressP521(bytes[0..67]);
+                return p521Public(allocator, &public, false);
+            }
+            return p521Public(allocator, bytes, false);
+        },
         inline .p256, .p384 => |named| {
             const C = Implementation(named);
             // §§23.7.4/24.4.3: SEC 1 §2.3.4 decode and §3.2.2 validation.
@@ -196,6 +202,43 @@ fn p521Public(allocator: std.mem.Allocator, bytes: []const u8, private: bool) ![
     return allocator.dupe(u8, &public);
 }
 
+fn decompressP521(bytes: *const [67]u8) ![133]u8 {
+    if (!mbed.available) return error.NotSupportedError;
+    // SEC 1 §2.3.4 steps 2.1–2.3: canonical field element and parity tag.
+    // PSA accepts only uncompressed points. Follow BoringSSL's
+    // ec_point_set_compressed_coordinates design before PSA validation:
+    // recover y, check its square, then choose the encoded parity.
+    if (bytes[0] != 2 and bytes[0] != 3) return error.DataError;
+    const F = std.crypto.ff.Modulus(521);
+    const field = comptime blk: {
+        @setEvalBranchQuota(100_000);
+        break :blk F.fromPrimitive(u521, std.math.maxInt(u521)) catch unreachable;
+    };
+    // P-521's domain parameter b, also mbedTLS ecp_curves.c:secp521r1_b.
+    const b = comptime F.Fe.fromPrimitive(u521, field, 0x0051953eb9618e1c9a1f929a21a0b68540eea2da725b99b315f3b8b489918ef109e156193951ec7e937b1652c0bd3bb1bf073573df883d2c34f1ef451fd46b503f00) catch unreachable;
+    var x = F.Fe.fromBytes(field, bytes[1..], .big) catch return error.DataError;
+    field.toMontgomery(&x) catch unreachable;
+    // Step 2.4.1: y² = x³ - 3x + b (mod p), with allocation-free field
+    // arithmetic from std.crypto rather than another retained native context.
+    const rhs = field.add(field.sub(field.mul(field.sq(x), x), field.add(field.add(x, x), x)), b);
+    // p = 2^521 - 1 is 3 mod 4: a candidate square root is rhs^((p+1)/4),
+    // or rhs^(2^519). Keep Montgomery form for the 519 squarings, then verify
+    // the candidate before converting back and selecting its parity.
+    var y = rhs;
+    for (0..519) |_| y = field.sq(y);
+    if (!field.sq(y).eql(rhs)) return error.DataError;
+    field.fromMontgomery(&y) catch unreachable;
+    if (y.isOdd() != (bytes[0] == 3)) {
+        if (y.isZero()) return error.DataError;
+        y = field.sub(field.zero, y);
+    }
+    var public: [133]u8 = undefined;
+    public[0] = 4;
+    @memcpy(public[1..67], bytes[1..]);
+    y.toBytes(public[67..], .big) catch unreachable;
+    return public;
+}
+
 fn hashMessage(hash: Hash, message: []const u8, buffer: *[64]u8) []const u8 {
     switch (hash) {
         inline else => |algorithm| {
@@ -268,6 +311,46 @@ test "ECDH matches RFC 5903 section 8 on all three curves" {
         try std.testing.expectEqualSlices(u8, &.{ vector.shared[0], vector.shared[1] & 0x80 }, prefix);
         try std.testing.expectError(error.OperationError, derive(std.testing.allocator, vector.curve, vector.secret, vector.peer, @intCast(vector.shared.len * 8 + 1)));
     }
+}
+
+test "P-521 compressed SEC1 points decode both parities and reject non-field coordinates" {
+    if (!@import("mbed.zig").available) return error.SkipZigTest;
+    const a = std.testing.allocator;
+    // RFC 6979 A.2.7's public point, already checked by the ECDSA vector.
+    const point = hex("0401894550d0785932e00eaa23b694f213f8c3121f86dc97a04e5a7167db4e5bcd371123d46e45db6b5d5370a7f20fb633155d38ffa16d2bd761dcac474b9a2f5023a400493101c962cd4d2fddf782285e64584139c2f91b47f87ff82354d6630f746a28a0db25741b5b34a828008b22acc23f924faafbd4d33f81ea66956dfeaa2bfdfcf5");
+    var compressed: [67]u8 = undefined;
+    compressed[0] = 2 | (point[132] & 1);
+    @memcpy(compressed[1..], point[1..67]);
+    const decoded = try normalizePublic(a, .p521, &compressed);
+    defer a.free(decoded);
+    try std.testing.expectEqualSlices(u8, &point, decoded);
+    try std.testing.checkAllAllocationFailures(a, checkCompressedAllocation, .{&compressed});
+    compressed[0] ^= 1;
+    const opposite = try normalizePublic(a, .p521, &compressed);
+    defer a.free(opposite);
+    try std.testing.expectEqualSlices(u8, point[1..67], opposite[1..67]);
+    try std.testing.expectEqual(compressed[0] & 1, opposite[132] & 1);
+    const validated = try normalizePublic(a, .p521, opposite);
+    defer a.free(validated);
+    try std.testing.expectEqualSlices(u8, opposite, validated);
+    compressed[0] = 5;
+    try std.testing.expectError(error.DataError, normalizePublic(a, .p521, &compressed));
+    compressed[0] = 2;
+    @memset(compressed[1..], 0xff);
+    compressed[1] = 1; // x = p, not a field element; must not reduce modulo p.
+    try std.testing.expectError(error.DataError, normalizePublic(a, .p521, &compressed));
+    try std.testing.expectError(error.DataError, normalizePublic(a, .p521, compressed[0..66]));
+    @memset(compressed[1..], 0);
+    compressed[66] = 3; // x³ - 3x + b is a quadratic non-residue for x = 3.
+    try std.testing.expectError(error.DataError, normalizePublic(a, .p521, &compressed));
+    compressed[0] = 3;
+    try std.testing.expectError(error.DataError, normalizePublic(a, .p521, &compressed));
+}
+
+fn checkCompressedAllocation(allocator: std.mem.Allocator, bytes: *const [67]u8) !void {
+    const decoded = try normalizePublic(allocator, .p521, bytes);
+    defer allocator.free(decoded);
+    try std.testing.expectEqual(@as(usize, 133), decoded.len);
 }
 
 test "EC key decoding rejects identity, off-curve points and invalid private scalars" {
