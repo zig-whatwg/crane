@@ -561,14 +561,67 @@ pub fn getterValueIsOwned(comptime T: type) bool {
 ///   anything - so nothing was made that could refer to the handle.
 ///
 /// Everything else keeps the conservative answer (false: the value may
-/// refer to the handle). An object assigned to an `any` attribute is one:
-/// whether a setter keeps it has not been read setter by setter, as the
-/// operations' `any` arguments were (`releaseAnyArgument`).
+/// refer to the handle). An object assigned to an `any` attribute is one
+/// here; `setterValueIsBorrowed` releases it once the setter has returned.
 pub fn setterValueLeavesHandle(comptime T: type, value: T) bool {
     if (comptime argHandleIsCopied(T)) return false;
     if (comptime argumentHandleIsKeptInValue(T)) return keptArgumentHandle(T, value) == null;
     if (comptime @typeInfo(T) == .optional) return value == null;
     return false;
+}
+
+/// Does an attribute setter whose value is a `T` BORROW the value for the
+/// call, so that the binding releases the handle `info.get(0)` made once the
+/// setter has returned - or failed, or its conversion failed?
+///
+/// True exactly for the `any` shapes, `anyHandleIsKeptOnlyAsHandle`: an
+/// `any` (`runtime.JSValue`, nullable or a `webidl.Opt`), or a union whose
+/// only non-copying arm is `object`. Their conversion makes an object,
+/// function or symbol into a `.handle` over that very Global and copies every
+/// other value out, so nothing outlives the call that refers to it - once
+/// the impl keeps nothing. The engine protocol says it keeps nothing: "A
+/// `JSValue` parameter is BORROWED for the call" (engine_protocol.zig; recipe
+/// 0.4: "to keep it past the call: engine.retainValue"), which is the rule
+/// `releaseAnyArgument` already relies on for an operation's arguments.
+///
+/// Every attribute setter of such a type was read for a keeper (lane
+/// setterleak, 2026-10-15: 110 generated setters, all `runtime.JSValue` or
+/// `?runtime.JSValue`; no setter takes a union with an `object` arm):
+/// - ShadowRoot.adoptedStyleSheets keeps its own hold (engine.retainValue).
+/// - ElementInternals' seven ARIA element arrays read the input through
+///   engine.typeOf and engine.iterate and keep their own holds of the items
+///   (engine.retainValue) and a frozen array of their own.
+/// - HTMLElement.hidden converts with engine.convertToDOMString,
+///   HTMLInputElement.valueAsDate reads engine.thisTimeValue, and
+///   Window.opener asks only isNull - each borrows for the call.
+/// - The [Replaceable] setters (Window, WindowOrWorkerGlobalScope and the
+///   worker and ShadowRealm global scopes) call engine.defineOwnProperty,
+///   which makes a Global of its own (protocol_values.defineOwnProperty,
+///   support.ownGlobal).
+/// - The [LegacyLenientSetter] setters (Document's fullscreenEnabled,
+///   fullscreen and fullscreenElement; ShadowRoot's and
+///   DocumentOrShadowRoot's fullscreenElement), Document's
+///   adoptedStyleSheets and Element's seven ARIA element arrays do nothing.
+/// - The rest are NotImplemented stubs that read nothing: the 2D contexts'
+///   fillStyle and strokeStyle, Animation's and AnimationTrigger's ranges,
+///   ARIAMixin's arrays, the permission results' devices and scans, DataCue,
+///   Global.value, MediaMetadata.artwork, the encoded frames' data,
+///   SpeechRecognition.phrases, WaveShaperNode.curve,
+///   RemoteDocument.document, CSSColor.channels, SVGPathSegment.values,
+///   XRPermissionStatus.granted and DocumentOrShadowRoot.adoptedStyleSheets.
+/// So a setter that implements one of these keeps a hold of its own, as an
+/// operation does. Kept, each assignment of an object was a Global for the
+/// agent's life, and every ElementInternals ARIA array assignment rooted its
+/// input iterable for good.
+///
+/// An ALLOWLIST: a callback (EventHandler hands its handle over to the event
+/// handler map), a buffer source, a dictionary or sequence that merely
+/// contains an `any`, and every type nobody named answer FALSE - the value
+/// stays handed over and, if nothing takes it, leaks, which costs memory and
+/// never correctness. A copied type (`argHandleIsCopied`) answers false too:
+/// the binding releases it whatever the value.
+pub fn setterValueIsBorrowed(comptime T: type) bool {
+    return comptime anyHandleIsKeptOnlyAsHandle(T);
 }
 
 /// Whether an attribute getter's result of type `T` is a number or a boolean
@@ -895,10 +948,11 @@ pub fn anyArgumentHandle(comptime T: type, value: T) ?*anyopaque {
 /// (2026-10-02): AlgorithmIdentifier's, which SubtleCrypto reads during the
 /// call (normalize an algorithm) and never keeps.
 ///
-/// Arguments only: an attribute setter's value, a dictionary's `any` member
-/// and a sequence's element keep today's conservative answer (kept) until
-/// their keepers are read the same way. A buffer source is released with the
-/// value instead, by `freeConvertedArg`.
+/// Arguments only. An attribute setter's `any` value is released by its
+/// binding once the setter returns (`setterValueIsBorrowed`, whose keepers
+/// were read the same way); a dictionary's `any` member and a sequence's
+/// element keep today's conservative answer (kept) until theirs are. A
+/// buffer source is released with the value instead, by `freeConvertedArg`.
 pub fn releaseAnyArgument(comptime T: type, value: T) void {
     if (comptime !anyHandleIsKeptOnlyAsHandle(T)) return;
     if (anyArgumentHandle(T, value)) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
@@ -1229,7 +1283,15 @@ fn ArgView(comptime mask: u32) type {
 /// CrossOriginGet / CrossOriginSet, the Location members' first step), so it
 /// is made in the entered realm, where the caller's try/catch and
 /// `instanceof DOMException` expect it - as the attribute getters already do.
+///
+/// ExceptionPending is not an error to make: the member's steps ran script
+/// that threw (an iterator, a toString, a callback) and the engine has that
+/// exception pending (engine.Error: "return without throwing another"). It
+/// throws nothing, so script catches its own object. Thrown over, it became
+/// `Error("ExceptionPending")` - an attribute setter's catch called this
+/// where an operation's caught it first (review-codex-aria D7).
 fn throwMemberError(isolate: *v8.Isolate, member_context: *v8.Context, err: anyerror) void {
+    if (err == error.ExceptionPending) return;
     if (err == error.SecurityError) {
         if (v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate)) |entered| {
             // Owned: a fresh Global<Context>, used only to pick the realm.
@@ -8019,6 +8081,17 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (fi.params.len < 2) break :blk true;
                         break :blk argHandleIsCopied(fi.params[1].type orelse break :blk false);
                     };
+                    // An `any` value is BORROWED by the setter
+                    // (`setterValueIsBorrowed`): never handed over, so the defer
+                    // releases it once the setter has returned or failed - and
+                    // when its conversion fails, which made nothing that refers
+                    // to it. Every other kept type is handed over to its
+                    // conversion below.
+                    const value_is_borrowed = comptime blk: {
+                        const fi = @typeInfo(@TypeOf(zig_setter)).@"fn";
+                        if (fi.params.len < 2) break :blk false;
+                        break :blk setterValueIsBorrowed(fi.params[1].type orelse break :blk false);
+                    };
                     var value_handed_over = false;
                     defer if (value_is_copied or !value_handed_over) v8.v8_Value_Dispose(new_value_v8);
 
@@ -8222,7 +8295,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Per WebIDL spec, for enumeration types, if the value is not a valid
                     // enum value, the setter should be a no-op (silently return without error).
                     // https://webidl.spec.whatwg.org/#idl-enums
-                    value_handed_over = true;
+                    value_handed_over = comptime !value_is_borrowed;
                     // An [EnforceRange] or [Clamp] attribute (`enforce_range` /
                     // `clamp`, bit 0): its branch of ConvertToInt, on the number.
                     const setter_integer: conv.IntegerConversion = comptime if (integerConversionMask(Interface, setter_name_param, .enforce_range) & 1 != 0)
@@ -8281,6 +8354,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     const return_type_info = @typeInfo(ReturnType);
 
                     if (return_type_info == .error_union) {
+                        // ExceptionPending - script's own exception, which
+                        // the impl's conversion left pending (an iterator, a
+                        // toString) - is rethrown as it is: throwMemberError
+                        // throws nothing over it.
                         zig_setter(instance, zig_value) catch |err| {
                             throwMemberError(isolate_inner, setter_context, err);
                             return;
@@ -8485,10 +8562,12 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
                     },
                     .handle => |h| {
-                        // Engine handles may need disposal
-                        // Note: We can't dispose here as we don't have the isolate
-                        // and the handle may still be in use. The handle will be
-                        // cleaned up when the context is destroyed.
+                        // The argument's own handle, not this value's: its
+                        // owner releases it - an attribute setter's binding
+                        // once the setter has returned (`setterValueIsBorrowed`).
+                        // Releasing it here too would free it twice. Nothing
+                        // else cleans it up - not the context's end: a Global
+                        // outlives its context.
                         _ = h;
                     },
                     else => {}, // Other variants don't need cleanup

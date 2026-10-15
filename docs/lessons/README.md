@@ -283,6 +283,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Window callback errors use the HTML reporter](architecture-window-callback-errors-use-the-html-reporter.md) - The context override alone is not a general exception-reporting API.
 - [A nesting limit does not bound a left-associative chain](architecture-a-nesting-limit-does-not-bound-a-left-associative-chain.md) - Bound recursion by the height of the tree you walk, not by the parser's nesting depth - any left-associative operator loop builds a tree as high as its input is long.
 - [A pending script exception is not a new host error](architecture-a-pending-script-exception-is-not-a-new-host-error.md) - Test the identity of a thrown object across each binding path, not merely that some exception was thrown.
+- [A setter borrows an `any` and takes a callback - on every path](architecture-a-setter-borrows-an-any-and-takes-a-callback-on-every-path.md) - Ownership of an argument is decided once, by its conversion, and holds on the error path too: release what the callee borrows whatever it returned, and leave what it takes to the taker even when it fails.
 
 ### Spec Compliance
 - [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
