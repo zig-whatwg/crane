@@ -205,6 +205,8 @@ pub const InternalState = struct {
     indeterminate: bool = false,
     /// The selection or text entry cursor (§ 4.10.20).
     selection: form_associated.TextSelection = .{},
+    /// Selection API: this control's has-scheduled-selectionchange-event flag.
+    selectionchange_scheduled: bool = false,
     /// Select event tasks still queued (form_associated.queueSelectEvent).
     pending_select_tasks: u32 = 0,
     /// What the legacy-pre-activation behaviour saved for the
@@ -2013,11 +2015,17 @@ fn pendingSelectTasks(instance: *runtime.Instance) ?*u32 {
     return &internal.pending_select_tasks;
 }
 
-/// "Set the selection range", and on a change, queue the select event.
+fn selectionchangeScheduled(instance: *runtime.Instance) ?*bool {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.selectionchange_scheduled;
+}
+
+/// "Set the selection range": changes queue selectionchange and select.
 fn setSelectionRange(instance: *runtime.Instance, start: ?u32, end: ?u32, direction: ?[]const u8) void {
     const internal = getInternal(instance) orelse return;
     const length = relevantValueLength(instance);
     if (internal.selection.setRange(start, end, direction, length)) {
+        dom.selection.scheduleTextControlSelectionchange(instance, &selectionchangeScheduled) catch {};
         form_associated.queueSelectEvent(instance, &pendingSelectTasks);
     }
 }
