@@ -330,12 +330,18 @@ fn setAriaString(instance: *runtime.Instance, comptime member: []const u8, value
 }
 
 // An internals reference is an explicit default, not an ID lookup through the
-// target's public content attributes. Blink and Gecko do not scope-filter these
-// references, unlike HTML 2.6.1's general reflected-element algorithm:
+// target's public content attributes. Crane does not scope-filter these
+// references (integrator ruling on D3, 2026-10-15): the SHIPPED browsers do not
+// - Chrome (Blink ElementInternals::GetElementAttribute/GetElementArrayAttribute)
+// and Firefox 157 stable - and the pinned WPT checks that. Engine heads are 2-1
+// for filtering by shared shadow-including root: current Gecko
+// (mozilla-firefox/firefox dom/html/ElementInternals.cpp, bug 2077803, landed
+// 2026-10-12) and WebKit (CustomElementDefaultARIA.cpp), following
+// whatwg/html#8932; upstream WPT
+// element-internals-aria-element-reflection-shadow-including-root.tentative.html.
+// Revisit when tests/wpt is next updated (tmp/plans/feature-queue.md).
+// (github.com/mozilla/gecko-dev is an archived mirror since 2025-07.)
 // https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/custom/element_internals.cc
-//   ElementInternals::GetElementAttribute/GetElementArrayAttribute
-// https://github.com/mozilla/gecko-dev/blob/master/dom/html/ElementInternals.cpp
-//   ElementInternals::GetAttrElement/GetAttrElements
 const aria_array_members = .{
     "ariaControlsElements",     "ariaDescribedByElements", "ariaDetailsElements",
     "ariaErrorMessageElements", "ariaFlowToElements",      "ariaLabelledByElements",
@@ -343,6 +349,10 @@ const aria_array_members = .{
 };
 const aria_single_slot: engine.TracedSlot = .{ .name = "ariaActiveDescendantElement" };
 
+// Deviation: HTML 2.6.1 holds explicitly set attr-elements as WEAK references,
+// as Gecko and WebKit do. Crane holds them strongly for the internals' lifetime,
+// as Blink does, through the traced frozen arrays below (and the MemberHold for
+// ariaActiveDescendantElement); a cleared or replaced value releases them.
 // The traced frozen arrays keep the wrappers; these native entries are only
 // generation-checked identities for HTML's cached-array content comparison.
 // No borrowed JS handle is retained, and the two arrays have distinct slots.
@@ -739,6 +749,8 @@ pub fn set_role(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror
 }
 
 /// Setter for ariaActiveDescendantElement
+/// Holds `value` strongly (MemberHold), as Blink does; HTML, Gecko and WebKit
+/// hold it weakly - see the deviation note above aria_array_members.
 pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     if (value) |node| if (node.stateAs(interfaces.Element.State) == null) return error.TypeError;
     const held = &(try getInternal(instance)).aria_active_descendant;
