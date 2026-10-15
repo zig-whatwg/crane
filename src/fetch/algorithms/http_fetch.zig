@@ -155,12 +155,8 @@ fn taoCheckPasses(request: *const InternalRequest, response: *const InternalResp
     //    request that never had one serializes as "null").
     // 2. If request's timing allow failed flag is set, then return failure.
     if (request.timing_allow_failed) return false;
-    // 3-5. `Timing-Allow-Origin`, gotten, decoded and split: `*`, or the
-    //    serialization of the request's origin, is success.
-    const origin: []const u8 = switch (request.origin) {
-        .origin => |o| o,
-        .client => "null",
-    };
+    // 3-4. `Timing-Allow-Origin`, gotten, decoded and split: `*` succeeds
+    // without serializing an origin.
     if (response.header_list.getFirstValue("Timing-Allow-Origin") != null) {
         for (response.header_list.entries.items) |header| {
             if (!std.ascii.eqlIgnoreCase(header.name, "Timing-Allow-Origin")) continue;
@@ -168,12 +164,26 @@ fn taoCheckPasses(request: *const InternalRequest, response: *const InternalResp
             while (values.next()) |raw| {
                 const value = std.mem.trim(u8, raw, " \t");
                 if (std.mem.eql(u8, value, "*")) return true;
-                if (std.mem.eql(u8, value, origin)) return true;
+            }
+        }
+        // 5. Serialize the REQUEST origin: a redirect-tainted chain yields
+        // "null", even when the stored original origin is a tuple origin.
+        const serialized = request.serializeOrigin(request.allocator) catch return false;
+        defer request.allocator.free(serialized);
+        for (response.header_list.entries.items) |header| {
+            if (!std.ascii.eqlIgnoreCase(header.name, "Timing-Allow-Origin")) continue;
+            var values = std.mem.splitScalar(u8, header.value, ',');
+            while (values.next()) |raw| {
+                if (std.mem.eql(u8, std.mem.trim(u8, raw, " \t"), serialized)) return true;
             }
         }
     }
     // 6. A navigation of a nested navigable to another origin than its
-    //    request's: failure.
+    //    request's ORIGINAL origin: failure (not the serialization above).
+    const origin: []const u8 = switch (request.origin) {
+        .origin => |o| o,
+        .client => "null",
+    };
     if (request.mode == .navigate and !sameHttpOrigin(request.currentUrl(), origin)) return false;
     // 7. If request's response tainting is "basic", then return success.
     // 8. Return failure.
@@ -783,7 +793,7 @@ pub fn httpNetworkFetchFinish(
     // (the request was ready to go) and the final network-response start
     // time (its first byte).
     const end_time = getCurrentTimeMs();
-    params.timing_info.final_connection_timing_info = connectionTimingInfo(request, network_response, start_time);
+    params.timing_info.final_connection_timing_info = connectionTimingInfo(request, network_response, start_time, params.timing_info.post_redirect_start_time);
     params.timing_info.final_network_request_start_time = start_time + @as(f64, @floatFromInt(network_response.pretransfer_time_ms));
     params.timing_info.final_network_response_start_time = start_time + @as(f64, @floatFromInt(network_response.time_to_first_byte_ms));
     params.timing_info.end_time = end_time;
@@ -809,7 +819,9 @@ fn filteredContentCoding(headers: *const @import("../internal/header_list.zig").
     if (codings == 0) return "";
     if (codings > 1) return "multiple";
     if (first.len == 0) return "";
-    const supported = [_][]const u8{ "gzip", "deflate", "br", "zstd", "identity" };
+    // HTTP-network fetch 18.1.1.1.6 requires a registered content coding.
+    // "identity" is not one (WPT content-encoding, Chrome subtest 9).
+    const supported = [_][]const u8{ "gzip", "deflate", "br", "zstd" };
     for (supported) |coding| {
         if (std.ascii.eqlIgnoreCase(first, coding)) return coding;
     }
@@ -818,18 +830,26 @@ fn filteredContentCoding(headers: *const @import("../internal/header_list.zig").
 
 /// Fetch "record connection timing info" for the connection that answered
 /// `network_response`, from the network's measurements (ms after
-/// `start_time`). A reused connection was not obtained for this request:
-/// every time is `start_time` ("clamp and coarsen connection timing info"
-/// step 1 gives the same).
-fn connectionTimingInfo(request: *const InternalRequest, network_response: *const NetworkResponse, start_time: f64) @import("../internal/fetch_timing.zig").ConnectionTimingInfo {
+/// `start_time`). HTTP-network fetch step 8.2 clamps a reused connection to
+/// this fetch's post-redirect start time, not the later network start.
+fn connectionTimingInfo(request: *const InternalRequest, network_response: *const NetworkResponse, start_time: f64, post_redirect_start_time: f64) @import("../internal/fetch_timing.zig").ConnectionTimingInfo {
     const alpn: []const u8 = switch (network_response.http_version) {
         .http_1_0 => "http/1.0",
         .http_1_1 => "http/1.1",
         .http_2 => "h2",
         .http_3 => "h3",
     };
+    const secure = std.mem.startsWith(u8, request.currentUrl(), "https:");
     if (network_response.connection_reused) {
-        var reused = @import("../internal/fetch_timing.zig").ConnectionTimingInfo.forReusedConnection(start_time);
+        // Fetch "clamp and coarsen connection timing info", step 1: copy
+        // the same moment fetchStart will convert. Another clock read can
+        // cross a coarsening boundary, even when no connection was made.
+        var reused = @import("../internal/fetch_timing.zig").ConnectionTimingInfo.forReusedConnection(post_redirect_start_time);
+        // Browsers keep cleartext secureConnectionStart at zero, unlike
+        // clamp step 1's unconditional timestamp. Blink:
+        // core/timing/performance_resource_timing.cc, secureConnectionStart;
+        // WPT resource-timing/connection-reuse.html (Chrome/Firefox pass).
+        if (!secure) reused.secure_connection_start_time = 0;
         reused.alpn_negotiated_protocol = alpn;
         return reused;
     }
@@ -840,7 +860,6 @@ fn connectionTimingInfo(request: *const InternalRequest, network_response: *cons
     }.after;
     const lookup_end = ms(start_time, network_response.dns_lookup_time_ms);
     const tcp_end = @max(lookup_end, ms(start_time, network_response.connect_time_ms));
-    const secure = std.mem.startsWith(u8, request.currentUrl(), "https:");
     // connectEnd includes the TLS handshake, which starts when TCP is up.
     const connect_end = if (secure) @max(tcp_end, ms(start_time, network_response.app_connect_time_ms)) else tcp_end;
     return .{
@@ -1898,8 +1917,9 @@ test "HTTP-network fetch: the connection timing info and the request and respons
     try std.testing.expectEqual(@as(f64, 110), timing.final_network_response_start_time);
 
     // A reused connection took no time to obtain: every connection time is
-    // the request's start.
+    // the fetch's post-redirect start.
     answer.connection_reused = true;
+    timing.post_redirect_start_time = 200;
     const reused = try httpNetworkFetchFinish(allocator, params, &answer, 200, null);
     reused.deinit();
     const again = timing.final_connection_timing_info.?;

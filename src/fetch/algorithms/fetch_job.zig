@@ -412,6 +412,7 @@ pub const FetchJob = struct {
             .validated => "validated",
         };
         var body_info = response.body_info;
+        const opaque_response = response.response_type == .@"opaque" or response.response_type == .opaqueredirect;
         // 4.2.5. A response whose timing allow passed flag is not set (a
         // network error too) is reported with an opaque timing info and no
         // cache state.
@@ -422,22 +423,28 @@ pub const FetchJob = struct {
             opaque_timing = @import("../internal/fetch_timing.zig").createOpaqueTimingInfo(self.allocator, &self.timing_info);
             timing_info = &opaque_timing.?;
             cache_state = "";
-            // Nor its sizes (Resource Timing 3.5.1: transferSize is TAO-
-            // protected; encodedBodySize, decodedBodySize and contentType
-            // with it).
-            body_info = .{};
+            // Browser deviation from Fetch 4.2.4 / Resource Timing 3.5.1:
+            // Chrome and Safari still hide body sizes without TAO, even
+            // for CORS responses (WPT body-size-cross-origin). Metadata
+            // such as a CORS response's content encoding stays visible.
+            body_info.encoded_size = 0;
+            body_info.decoded_size = 0;
         }
-        // A CORS-cross-origin response (opaque tainting) exposes no body
-        // sizes, content type or encoding (Resource Timing 3.5.1).
-        if (request.response_tainting == .@"opaque") body_info = .{};
+        // 4.2.4 reads the filtered response's body info. Both opaque and
+        // opaque-redirect filters hide it, including a same-origin manual
+        // redirect whose request tainting is still basic.
+        if (opaque_response) body_info = .{};
         // 4.2.6-4.2.7. responseStatus and the minimized content type, unless
         // this is a navigation redirected across origins.
         var response_status: u16 = 0;
         var content_type: ?[]const u8 = null;
         defer if (content_type) |c| self.allocator.free(c);
         if (request.mode != .navigate or response.redirect_taint == .same_origin) {
-            response_status = response.status;
-            if (request.response_tainting != .@"opaque") {
+            // 4.2.7.1 reads the filtered response's status, not its
+            // internal response. TAO exposes timing, never an opaque
+            // response's status (including same-origin manual redirects).
+            response_status = if (opaque_response) 0 else response.status;
+            if (!opaque_response) {
                 if (@import("../internal/mime.zig").extractMimeType(self.allocator, &response.header_list) catch null) |mime_type| {
                     var parsed = mime_type;
                     defer parsed.deinit();
