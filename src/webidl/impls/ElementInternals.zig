@@ -122,7 +122,9 @@ fn resetControl(element: *runtime.Instance) void {
 fn refreshForm(instance: *runtime.Instance) void {
     const target = formAssociatedTarget(instance) catch return;
     const internal = getInternal(instance) catch return;
-    const form = form_associated.formOwner(target);
+    // HTML upgrade step 11 runs before step 12 sets custom state. The
+    // definition validated above already makes this a listed target here.
+    const form = form_associated.formOwnerForListedElement(target);
     const generation = if (form) |owner| runtime.SlabAllocator.generationOf(owner) else 0;
     const data = ce.get(target) orelse return;
     const definition = data.definition orelse return;
