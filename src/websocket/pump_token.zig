@@ -4,8 +4,8 @@
 //! time: a one-shot timer on the realm's timer manager runs a turn, and the
 //! turn arms the next one while the socket is live
 //! (src/webidl/impls/WebSocket.zig, `pumpCallback`). A timer outlives the page
-//! that armed it - the timer manager is the browser's - so what it carries
-//! must not be the socket itself: the socket can be freed at any time between
+//! that armed it - a window's timer manager is the browser's, a worker's its
+//! loop's - so what it carries must not be the socket itself: the socket can be freed at any time between
 //! turns (its realm ends, its wrapper is collected) and its address reissued.
 //!
 //! So a turn points at a token: a small allocation of its own, pointing at
