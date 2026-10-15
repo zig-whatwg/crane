@@ -408,6 +408,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [SVG href selects its target before policy reentry](spec-compliance-svg-href-selects-its-target-before-policy-reentry.md) - Read the callers around a policy callback: the browsers may already have selected the object or attribute that the callback's result will update.
 - [ElementInternals reflection is private state](spec-compliance-element-internals-reflection-is-private-state.md) - A shared IDL member does not imply a shared reflected target or identical browser algorithms.
 - [A reflection cache is separate from the last assignment](spec-compliance-reflection-cache-is-separate-from-the-last-assignment.md) - Keep the spec's explicit value and observation cache separate, and validate before replacing either.
+- [Convert unions before running WebSocket steps](spec-compliance-convert-unions-before-running-websocket-steps.md) - Test conversion exceptions and side effects before testing the API's state or validation steps; JSValue is a representation, not proof that WebIDL conversion already happened.
 
 ### Codegen
 
@@ -544,6 +545,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Check benchmark noise with identical binaries](testing-check-benchmark-noise-with-identical-binaries.md) - Measure A/A variation and preserve every sample before attributing a slowdown.
 - [A DOM evaluator needs a scale probe](testing-a-dom-evaluator-needs-a-scale-probe.md) - Gate a DOM query engine on its growth rate - time it at doubling sizes up to 10k nodes - because no correctness fixture is large enough to show a quadratic merge or sort.
 - [A failing test can hide per-call leaks](testing-a-failing-test-can-hide-per-call-leaks.md) - A passing test can expose more of an old leak; equal-call controls distinguish that from a new allocation leak.
+- [An obsolete WebSocket assertion can reward a bug](testing-an-obsolete-websocket-assertion-can-reward-a-bug.md) - A browser-aligned change can lower the WPT score; retain the evidence and report the loss without changing the test or concealing the new blocker.
 
 ### Debugging
 
