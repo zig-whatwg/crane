@@ -778,6 +778,14 @@ pub fn hostGone(hosted_root: *NodeBase) void {
 /// counted by `new` (a node's first document, and adopt): it moves its
 /// reference, and - a detached root - its holds. Null counts are a document
 /// already freed, or none.
+///
+/// Adoption moves both documents' tree versions. A node's first node
+/// document - its creation, `old` null - moves none: making a node mutates
+/// no tree, and neither Blink nor WebKit moves the version for it (only
+/// their ChildrenChanged, attribute and character data paths do), so
+/// `document.createElement()` between `evaluate()` and `iterateNext()`
+/// leaves an XPath iterator valid. No cache can hold a node no tree has
+/// held yet; its insertion moves the version.
 pub fn nodeDocumentChanged(node: *NodeBase, old: ?*DocumentCounts, new: ?*DocumentCounts) void {
     if (node.node_type == NodeBase.DOCUMENT_NODE) return;
     if (old) |counts| {
@@ -786,7 +794,7 @@ pub fn nodeDocumentChanged(node: *NodeBase, old: ?*DocumentCounts, new: ?*Docume
     }
     if (new) |counts| {
         addTo(&counts.referencing_nodes, 1, "referencing_nodes");
-        bumpTreeVersion(counts);
+        if (old != null) bumpTreeVersion(counts);
     }
     if (node.parent_node != null or node.rc_flags.hosted) return;
     const holds: i64 = node.subtree_holds;

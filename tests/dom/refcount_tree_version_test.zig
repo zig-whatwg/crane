@@ -4,9 +4,9 @@
 //! under it and an XPath iterator is invalid once it moves, so it moves on
 //! every mutation of the document - insert, remove, replace, move, adoption
 //! (both documents), any attribute set or removal, any character data change
-//! - and on nothing else: freeing a node no tree holds any more is not a
-//! mutation (neither engine moves it then). It is null for anything that is
-//! not a live Document.
+//! - and on nothing else: making a node, and freeing one no tree holds any
+//! more, are not mutations (neither engine moves it then). It is null for
+//! anything that is not a live Document.
 const std = @import("std");
 const dom = @import("dom");
 const runtime = @import("runtime");
