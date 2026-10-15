@@ -1,10 +1,11 @@
 //! A document associates its one Selection through its owner's startup hook.
-//! lint-impls: hook for Selection, Range, HTMLInputElement, HTMLTextAreaElement
+//! lint-impls: hook for Selection, Range
 const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const process_start = @import("process_start.zig");
+const fire_event = @import("fire_event.zig");
 
 /// Each owner supplies its association or notification step; callers never
 /// reach into another interface's state.
@@ -133,7 +134,7 @@ const TextControlSelectionchangeTask = struct {
         defer event.releaseIfUnwrapped(generation);
         const hold = engine.retainValue(self.element.ctx, .{ .instance = event }) catch return;
         defer hold.release();
-        _ = @import("fire_event.zig").dispatchTrusted(self.element, event) catch {};
+        _ = fire_event.dispatchTrusted(self.element, event) catch {};
     }
 
     fn drop(context: ?*anyopaque) void {
