@@ -93,15 +93,19 @@ inline fn targetOf(this: *runtime.Instance, comptime name: []const u8) ?*runtime
 /// exposes but whose target is its Window.
 const window_reflecting = [_][]const u8{
     // Window-reflecting body element event handler set
-    "onblur",         "onerror",              "onfocus",
-    "onload",         "onresize",             "onscroll",
+    "onblur",              "onerror",              "onfocus",
+    "onload",              "onresize",             "onscroll",
     // WindowEventHandlers
-    "onafterprint",   "onbeforeprint",        "onbeforeunload",
-    "onhashchange",   "onlanguagechange",     "onmessage",
-    "onmessageerror", "onoffline",            "ononline",
-    "onpagehide",     "onpagereveal",         "onpageshow",
-    "onpageswap",     "onpopstate",           "onrejectionhandled",
-    "onstorage",      "onunhandledrejection", "onunload",
+    "onafterprint",        "onbeforeprint",        "onbeforeunload",
+    "onhashchange",        "onlanguagechange",     "onmessage",
+    "onmessageerror",      "onoffline",            "ononline",
+    "onpagehide",          "onpagereveal",         "onpageshow",
+    "onpageswap",          "onpopstate",           "onrejectionhandled",
+    "onstorage",           "onunhandledrejection", "onunload",
+    // Compat partial HTMLBodyElement. Browser deviation from the Compat
+    // text, which leaves it on the body: Blink (html_body_element.h) and
+    // Gecko (EventNameList.h, WINDOW_EVENT) forward it to the Window.
+    "onorientationchange",
 };
 
 /// Whether a body or frameset element's handler `name` is its Window's.
@@ -184,10 +188,13 @@ fn toAddress(comptime Handler: type, maybe: Handler) ?usize {
     return address;
 }
 
-test "the window-reflecting set is WindowEventHandlers plus six" {
+test "the window-reflecting set is WindowEventHandlers plus six, and orientationchange" {
     try std.testing.expect(isWindowReflecting("onload"));
     try std.testing.expect(isWindowReflecting("onhashchange"));
     try std.testing.expect(isWindowReflecting("onbeforeunload"));
+    // Blink html_body_element.h and Gecko EventNameList.h (WINDOW_EVENT)
+    // forward body.onorientationchange to the Window.
+    try std.testing.expect(isWindowReflecting("onorientationchange"));
     try std.testing.expect(!isWindowReflecting("onclick"));
     try std.testing.expect(!isWindowReflecting("load"));
     // Decided at compile time for a generated accessor's name.
