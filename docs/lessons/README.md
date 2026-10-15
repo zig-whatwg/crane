@@ -577,6 +577,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A range test can start a giant derivation](debugging-a-range-test-can-start-a-giant-derivation.md) - A tiny negative test input can become valid, expensive work after binding conversion; isolate it with a bounded operation before blaming the primitive or harness.
 - [Missing CSP events can be upstream capability failures](debugging-missing-csp-events-can-be-upstream-capability-failures.md) - A missing event is an observation, not a diagnosis; prove that the operation reached the relevant CSP check.
 - [A reuse test can open fresh connections](debugging-a-reuse-test-can-open-fresh-connections.md) - Measure the transport path and distinguish a hypothesis from a reproduced cause.
+- [A format enum error never reaches the codec](debugging-a-format-enum-error-never-reaches-the-codec.md) - An enum failure precedes the implementation: a shared message is not evidence of a shared codec defect.
 
 ### Workflow
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.
