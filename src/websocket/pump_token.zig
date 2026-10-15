@@ -13,7 +13,9 @@
 //! which is freed exactly once, by whoever owns it at that moment:
 //!
 //!   armed      a turn is scheduled against it: THAT TURN owns it, and frees
-//!              it when it fires (`beginTurn`) if the socket went meanwhile.
+//!              it when it fires (`beginTurn`) if the socket went meanwhile -
+//!              or, if its timer ends with it unfired, when the timer drops
+//!              it (`dropTurn`).
 //!   in a turn  the turn owns it: a socket freed by the script the turn runs
 //!              (`detach` inside the turn) leaves the free to the turn's end.
 //!   neither    the socket owns it: `detach` frees it.
@@ -22,12 +24,22 @@
 //! the next turn, and then ends the socket's realm, which detaches the token.
 //! Its end must then leave the token to the turn it armed - freeing it there
 //! left that turn firing into freed memory.
+//!
+//! A scheduled turn may also never fire: a worker's end makes its sockets
+//! disappear (`detach`, with a turn scheduled) and then ends its loop's
+//! timers without running them. So a turn is armed as an OWNED timer
+//! (`setTimeoutOwned`), whose drop is the turn's end without its steps: a
+//! token whose socket went is freed there, and one whose socket lives goes
+//! back to the socket - with nothing armed on the ended timer again. Armed
+//! as a plain timer, the token leaked with every worker that ended with a
+//! socket's turn pending (2 x 64 B per socket in leaks --atExit).
 
 const std = @import("std");
 
 /// A pump token for a `Target` (the socket), armed on a `Timer` - anything
-/// with `setTimeout(ms: u64, callback: *const fn (?*anyopaque) void,
-/// user_data: ?*anyopaque) u32`, as the runtime's TimerInterface has.
+/// with `setTimeoutOwned(ms: u64, callback: *const fn (?*anyopaque) void,
+/// user_data: ?*anyopaque, drop: *const fn (?*anyopaque) void)` returning a
+/// nonzero id when it armed one, as the runtime's TimerInterface has.
 pub fn PumpToken(comptime Target: type, comptime Timer: type) type {
     return struct {
         const Self = @This();
@@ -46,6 +58,9 @@ pub fn PumpToken(comptime Target: type, comptime Timer: type) type {
         armed: bool = false,
         /// True while a turn runs (`beginTurn` to `endTurn`).
         in_turn: bool = false,
+        /// Set by `dropTurn`: the timer ended (its manager is freed), so
+        /// nothing may be armed on it again.
+        timer_ended: bool = false,
 
         pub fn create(allocator: std.mem.Allocator, target: *Target, timer: Timer) !*Self {
             const self = try allocator.create(Self);
@@ -54,11 +69,27 @@ pub fn PumpToken(comptime Target: type, comptime Timer: type) type {
         }
 
         /// Schedule the next turn in `ms`. A no-op if one is scheduled already,
-        /// or if the socket is gone.
+        /// if the socket is gone, or if the timer has ended. A timer that arms
+        /// nothing (it failed, or cannot promise the drop) leaves the token
+        /// the socket's, unarmed: no turn owns it then.
         pub fn arm(self: *Self, ms: u64, callback: Callback) void {
-            if (self.armed or self.cancelled) return;
+            if (self.armed or self.cancelled or self.timer_ended) return;
             self.armed = true;
-            _ = self.timer.setTimeout(ms, callback, @ptrCast(self));
+            if (self.timer.setTimeoutOwned(ms, callback, @ptrCast(self), dropTurn) == 0) {
+                self.armed = false;
+            }
+        }
+
+        /// The timer ended with the scheduled turn unfired (a worker's loop
+        /// ends its timers without running them): the turn's end, without its
+        /// steps. The token is freed if the socket went and no turn is running
+        /// (one that is frees it at its end); a live socket gets it back, and
+        /// its `detach` frees it. Called by the timer, with the token.
+        pub fn dropTurn(data: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(data orelse return));
+            self.armed = false;
+            self.timer_ended = true;
+            if (self.cancelled and !self.in_turn) self.allocator.destroy(self);
         }
 
         /// The socket is going: give it up. Frees the token unless a turn owns
