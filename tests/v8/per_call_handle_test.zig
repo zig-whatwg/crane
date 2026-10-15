@@ -329,3 +329,53 @@ test "an attribute getter returning a union keeps the handle its interface or an
     try page.expectNoHandleLeftBy(image ++ ".data");
     try page.run("(() => { for (let k = 0; k < 64; k++) if (image.data !== image.data || image.data.length !== 16) return 'changed'; return 'ok'; })()");
 }
+
+// ---- an attribute setter's object value (lane setterleak) ----
+//
+// An `any` setter - runtime.JSValue, nullable or not - converts an object to
+// a `.handle` over the very Global `info.get(0)` made, which the impl borrows
+// for the call (engine protocol: a JSValue parameter is BORROWED). The setter
+// binding kept it on every path: once the setter returned, once it failed,
+// and once its conversion failed - 16 B per assignment for the agent's life,
+// and each kept handle rooted its object (an ElementInternals ARIA array
+// assignment rooted its input iterable for good). Red before the fix.
+
+test "an any-typed attribute set to an object releases the value once the setter returns" {
+    const page = try Page.open();
+    defer page.close();
+    // Element.ariaControlsElements: FrozenArray<Element>?, typed ?any; the
+    // Element impl's setter keeps nothing.
+    try page.expectNoHandleLeftBy("e.ariaControlsElements = [e]");
+    // HTMLElement.hidden: an object converts to DOMString in the impl.
+    try page.expectNoHandleLeftBy("e.hidden = (globalThis.object ||= {})");
+    // Document.fullscreen: a plain `any` [LegacyLenientSetter], whose setter
+    // steps are to return.
+    try page.expectNoHandleLeftBy("(globalThis.doc ||= new Document()).fullscreen = (globalThis.object ||= {})");
+}
+
+test "an any-typed attribute whose setter fails releases the value" {
+    const page = try Page.open();
+    defer page.close();
+    // HTMLInputElement.valueAsDate on a text input: InvalidStateError before
+    // the value is read.
+    try page.expectNoHandleLeftBy(
+        \\try { (globalThis.input ||= e.ownerDocument.createElement("input")).valueAsDate = (globalThis.date ||= new Date()); } catch (err) {}
+    );
+}
+
+test "an any-typed attribute whose setter rethrows script's exception releases the value and keeps the exception" {
+    const page = try Page.open();
+    defer page.close();
+    // HTMLElement.hidden converts an object with ToString in the impl
+    // (engine.convertToDOMString); a throwing toString leaves script's
+    // exception pending (ExceptionPending). The binding must neither replace
+    // it with a new Error("ExceptionPending") nor keep the value's handle.
+    try page.expectNoHandleLeftBy(
+        \\try {
+        \\  e.hidden = (globalThis.thrower ||= { toString() { throw globalThis.thrower; } });
+        \\  throw new Error("the setter did not throw");
+        \\} catch (err) {
+        \\  if (err !== globalThis.thrower) throw err;
+        \\}
+    );
+}

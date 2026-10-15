@@ -65,9 +65,9 @@ caller's own.
 
 ### 0.4 A `.handle` from the binding is a Global, and borrowed
 
-The binding hands an impl object/function values (arguments, dictionary
-members) as `JSValue.handle` - the pointer is ALWAYS a `Global<Value>*` the
-binding owns ("One handle kind per layer";
+The binding hands an impl object/function values (arguments, attribute
+setter values, dictionary members) as `JSValue.handle` - the pointer is ALWAYS
+a `Global<Value>*` the binding owns ("One handle kind per layer";
 docs/lessons/architecture-a-local-tagged-handle-is-a-borrowed-global.md), and
 the impl borrows it for the call. So:
 - never read it as a Local slot (`v8_Value_ToGlobal`, `*_Local` FFI) - that is
