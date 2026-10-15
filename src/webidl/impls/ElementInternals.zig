@@ -47,6 +47,8 @@ pub const InternalState = struct {
     labels: ?*runtime.Instance = null,
     labels_generation: u64 = 0,
     labels_traced: bool = false,
+    aria_active_descendant: @import("dom").node_holds.MemberHold = .{},
+    aria_elements: [aria_array_members.len]AriaElements = @splat(.{}),
 };
 
 /// A [SameObject] child kept beside the owner's traced edge to it: the
@@ -203,6 +205,21 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (internal.form_state_traced) engine.forgetTracedChild(instance, .{ .name = "formState" });
     internal.submission.deinit(internal.allocator);
     internal.form_state.deinit(internal.allocator);
+    internal.aria_active_descendant.release(instance, aria_single_slot);
+    inline for (aria_array_members, 0..) |member, i| {
+        internal.aria_elements[i].deinit(internal.allocator);
+        engine.forgetTracedChild(instance, .{ .name = member ++ ":explicit" });
+        engine.forgetTracedChild(instance, .{ .name = member ++ ":cached" });
+    }
+    // ARIA's generated string fields own the internal default values.
+    inline for (std.meta.fields(@TypeOf(state.own))) |field| {
+        if (comptime field.type == ?runtime.DOMString and
+            (std.mem.eql(u8, field.name, "role") or std.mem.startsWith(u8, field.name, "aria")))
+        {
+            if (@field(state.own, field.name)) |*value| value.deinit(internal.allocator);
+            @field(state.own, field.name) = null;
+        }
+    }
     internal.allocator.destroy(internal);
     state.own._internal = null;
 }
@@ -292,680 +309,694 @@ pub fn get_states(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return states;
 }
 
+// HTML 2.6.1's ElementInternals reflected target uses internal content
+// attributes, never the target's public attribute list (4.13.7.4). The
+// generated nullable string fields are that private map's fixed keys.
+// WAI-ARIA 6.3.2/6.3.4: preserve case and invalid values; do not apply defaults.
+fn getAriaString(instance: *runtime.Instance, comptime member: []const u8) !?runtime.DOMString {
+    // Nullable DOMString getter steps 2 and 5: return the internal value.
+    const value = @field(instance.getState(State).own, member) orelse return null;
+    return try value.clone(instance.ctx.allocator);
+}
+
+fn setAriaString(instance: *runtime.Instance, comptime member: []const u8, value: ?runtime.DOMString) !void {
+    const internal = try getInternal(instance);
+    const stored = &@field(instance.getState(State).own, member);
+    // Setter steps 1-2: null deletes the entry, otherwise store a copy.
+    // Allocate before replacing so an OOM leaves the previous value intact.
+    const replacement = if (value) |text| try text.clone(internal.allocator) else null;
+    if (stored.*) |*old| old.deinit(internal.allocator);
+    stored.* = replacement;
+}
+
+// An internals reference is an explicit default, not an ID lookup through the
+// target's public content attributes. Blink and Gecko do not scope-filter these
+// references, unlike HTML 2.6.1's general reflected-element algorithm:
+// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/html/custom/element_internals.cc
+//   ElementInternals::GetElementAttribute/GetElementArrayAttribute
+// https://github.com/mozilla/gecko-dev/blob/master/dom/html/ElementInternals.cpp
+//   ElementInternals::GetAttrElement/GetAttrElements
+const aria_array_members = .{
+    "ariaControlsElements",     "ariaDescribedByElements", "ariaDetailsElements",
+    "ariaErrorMessageElements", "ariaFlowToElements",      "ariaLabelledByElements",
+    "ariaOwnsElements",
+};
+const aria_single_slot: engine.TracedSlot = .{ .name = "ariaActiveDescendantElement" };
+
+// The traced frozen arrays keep the wrappers; these native entries are only
+// generation-checked identities for HTML's cached-array content comparison.
+// No borrowed JS handle is retained, and the two arrays have distinct slots.
+const AriaElements = struct {
+    explicit: ?[]ce.KeptInstance = null,
+    cached: ?[]ce.KeptInstance = null,
+
+    fn deinit(self: *AriaElements, allocator: std.mem.Allocator) void {
+        if (self.explicit) |values| allocator.free(values);
+        if (self.cached) |values| allocator.free(values);
+        self.* = .{};
+    }
+};
+
+fn ariaArrayIndex(comptime member: []const u8) usize {
+    inline for (aria_array_members, 0..) |name, i| {
+        if (comptime std.mem.eql(u8, name, member)) return i;
+    }
+    @compileError("Unknown ARIA element-reference array");
+}
+
+fn getAriaElements(instance: *runtime.Instance, comptime member: []const u8) !?runtime.JSValue {
+    const internal = try getInternal(instance);
+    const state = &internal.aria_elements[comptime ariaArrayIndex(member)];
+    const slot: engine.TracedSlot = .{ .name = member ++ ":cached" };
+    // HTML 2.6.1 getter step 1: the explicit list, or null for an unset value.
+    const explicit = state.explicit orelse {
+        if (state.cached) |previous| internal.allocator.free(previous);
+        state.cached = null;
+        engine.forgetTracedChild(instance, slot);
+        return null;
+    };
+    var count: usize = 0;
+    var unchanged = state.cached != null;
+    for (explicit) |kept| {
+        const node = kept.get() orelse continue;
+        if (state.cached) |cached| {
+            if (count >= cached.len or cached[count].get() != node) unchanged = false;
+        }
+        count += 1;
+    }
+    if (state.cached) |cached| unchanged = unchanged and cached.len == count;
+    // Step 2: equal contents reuse the same frozen array object, even after
+    // assigning a new iterable with the same elements.
+    if (unchanged) if (engine.tracedValue(instance, slot)) |cached| return cached.take();
+
+    const values = try internal.allocator.alloc(runtime.JSValue, count);
+    defer internal.allocator.free(values);
+    const cached = try internal.allocator.alloc(ce.KeptInstance, count);
+    errdefer internal.allocator.free(cached);
+    var index: usize = 0;
+    for (explicit) |kept| {
+        const node = kept.get() orelse continue;
+        values[index] = .{ .instance = node };
+        cached[index] = kept;
+        index += 1;
+    }
+    // Steps 3-6: freeze the snapshot, replace the cached contents/object,
+    // and transfer a separate owned result to the getter's caller.
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const array = try engine.createFrozenArray(realm, values);
+    engine.traceValue(instance, array.borrow(), slot);
+    if (state.cached) |previous| internal.allocator.free(previous);
+    state.cached = cached;
+    return array.take();
+}
+
+fn setAriaElements(instance: *runtime.Instance, comptime member: []const u8, value: ?runtime.JSValue) !void {
+    const internal = try getInternal(instance);
+    const allocator = internal.allocator;
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    const owner_realm = instance.ctx;
+    const slot: engine.TracedSlot = .{ .name = member ++ ":explicit" };
+    // HTML 2.6.1 setter step 1: clear the explicit value. Leave the cached
+    // value until the next get, as required by the independent getter steps.
+    const input = value orelse {
+        const state = &internal.aria_elements[comptime ariaArrayIndex(member)];
+        if (state.explicit) |previous| allocator.free(previous);
+        state.explicit = null;
+        engine.forgetTracedChild(instance, slot);
+        return;
+    };
+    const realm = engine.currentRealm() orelse instance.ctx;
+    if (engine.typeOf(realm, input) != .object) return error.TypeError;
+
+    const Collect = struct {
+        realm: runtime.Context,
+        values: @import("infra").List(engine.Owned),
+        nodes: @import("infra").List(ce.KeptInstance),
+
+        fn item(data: ?*anyopaque, next: runtime.JSValue) engine.Error!void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            // WebIDL 3.2.21.1 step 3.3: convert each item to Element before
+            // advancing the iterator. Retain it across any later script/GC.
+            const node = engine.convertToPlatformObject(self.realm, next) orelse return error.TypeError;
+            if (node.stateAs(interfaces.Element.State) == null) return error.TypeError;
+            const owned = try engine.retainValue(node.ctx, .{ .instance = node });
+            errdefer owned.release();
+            try self.nodes.append(ce.KeptInstance.of(node));
+            try self.values.append(owned);
+        }
+    };
+    var collect: Collect = .{
+        .realm = realm,
+        .values = .init(allocator),
+        .nodes = .init(allocator),
+    };
+    defer {
+        for (collect.values.toSlice()) |owned| owned.release();
+        collect.values.deinit();
+        collect.nodes.deinit();
+    }
+    if (!try engine.iterate(realm, input, Collect.item, &collect)) return error.TypeError;
+    if (runtime.SlabAllocator.generationOf(instance) != generation or
+        runtime.instance_lifecycle.isCleanedUp(instance) or !owner_realm.hasEngine()) return error.InvalidStateError;
+    const state = &(try getInternal(instance)).aria_elements[comptime ariaArrayIndex(member)];
+    // Conversion can run script (including a reentrant setter). Only replace
+    // the current member after conversion and every allocation have succeeded.
+    const nodes = try allocator.dupe(ce.KeptInstance, collect.nodes.toSlice());
+    errdefer allocator.free(nodes);
+    const values = try allocator.alloc(runtime.JSValue, collect.values.len);
+    defer allocator.free(values);
+    for (collect.values.toSlice(), values) |owned, *out| out.* = owned.borrow();
+    const array = try engine.createFrozenArray(realm, values);
+    defer array.release();
+    engine.traceValue(instance, array.borrow(), slot);
+    if (state.explicit) |previous| allocator.free(previous);
+    state.explicit = nodes;
+}
+
 /// Getter for role
 pub fn get_role(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "role");
 }
 
 /// Getter for ariaActiveDescendantElement
 pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    return (try getInternal(instance)).aria_active_descendant.get();
 }
 
 /// Getter for ariaAtomic
 pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaAtomic");
 }
 
 /// Getter for ariaAutoComplete
 pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaAutoComplete");
 }
 
 /// Getter for ariaBrailleLabel
 pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaBrailleLabel");
 }
 
 /// Getter for ariaBrailleRoleDescription
 pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaBrailleRoleDescription");
 }
 
 /// Getter for ariaBusy
 pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaBusy");
 }
 
 /// Getter for ariaChecked
 pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaChecked");
 }
 
 /// Getter for ariaColCount
 pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaColCount");
 }
 
 /// Getter for ariaColIndex
 pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaColIndex");
 }
 
 /// Getter for ariaColIndexText
 pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaColIndexText");
 }
 
 /// Getter for ariaColSpan
 pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaColSpan");
 }
 
 /// Getter for ariaControlsElements
 pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    return null;
+    return getAriaElements(instance, "ariaControlsElements");
 }
 
 /// Getter for ariaCurrent
 pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaCurrent");
 }
 
 /// Getter for ariaDescribedByElements
 pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    return null;
+    return getAriaElements(instance, "ariaDescribedByElements");
 }
 
 /// Getter for ariaDescription
 pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaDescription");
 }
 
 /// Getter for ariaDetailsElements
 pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    return null;
+    return getAriaElements(instance, "ariaDetailsElements");
 }
 
 /// Getter for ariaDisabled
 pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaDisabled");
 }
 
 /// Getter for ariaErrorMessageElements
 pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    return null;
+    return getAriaElements(instance, "ariaErrorMessageElements");
 }
 
 /// Getter for ariaExpanded
 pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaExpanded");
 }
 
 /// Getter for ariaFlowToElements
 pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    return null;
+    return getAriaElements(instance, "ariaFlowToElements");
 }
 
 /// Getter for ariaHasPopup
 pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaHasPopup");
 }
 
 /// Getter for ariaHidden
 pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaHidden");
 }
 
 /// Getter for ariaInvalid
 pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaInvalid");
 }
 
 /// Getter for ariaKeyShortcuts
 pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaKeyShortcuts");
 }
 
 /// Getter for ariaLabel
 pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaLabel");
 }
 
 /// Getter for ariaLabelledByElements
 pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    return null;
+    return getAriaElements(instance, "ariaLabelledByElements");
 }
 
 /// Getter for ariaLevel
 pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaLevel");
 }
 
 /// Getter for ariaLive
 pub fn get_ariaLive(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaLive");
 }
 
 /// Getter for ariaModal
 pub fn get_ariaModal(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaModal");
 }
 
 /// Getter for ariaMultiLine
 pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaMultiLine");
 }
 
 /// Getter for ariaMultiSelectable
 pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaMultiSelectable");
 }
 
 /// Getter for ariaOrientation
 pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaOrientation");
 }
 
 /// Getter for ariaOwnsElements
 pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    return null;
+    return getAriaElements(instance, "ariaOwnsElements");
 }
 
 /// Getter for ariaPlaceholder
 pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaPlaceholder");
 }
 
 /// Getter for ariaPosInSet
 pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaPosInSet");
 }
 
 /// Getter for ariaPressed
 pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaPressed");
 }
 
 /// Getter for ariaReadOnly
 pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaReadOnly");
 }
 
 /// Getter for ariaRelevant
 pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaRelevant");
 }
 
 /// Getter for ariaRequired
 pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaRequired");
 }
 
 /// Getter for ariaRoleDescription
 pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaRoleDescription");
 }
 
 /// Getter for ariaRowCount
 pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaRowCount");
 }
 
 /// Getter for ariaRowIndex
 pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaRowIndex");
 }
 
 /// Getter for ariaRowIndexText
 pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaRowIndexText");
 }
 
 /// Getter for ariaRowSpan
 pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaRowSpan");
 }
 
 /// Getter for ariaSelected
 pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaSelected");
 }
 
 /// Getter for ariaSetSize
 pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaSetSize");
 }
 
 /// Getter for ariaSort
 pub fn get_ariaSort(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaSort");
 }
 
 /// Getter for ariaValueMax
 pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaValueMax");
 }
 
 /// Getter for ariaValueMin
 pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaValueMin");
 }
 
 /// Getter for ariaValueNow
 pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaValueNow");
 }
 
 /// Getter for ariaValueText
 pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
-    return null;
+    return getAriaString(instance, "ariaValueText");
 }
 
 /// Setter for role
 pub fn set_role(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "role", value);
 }
 
 /// Setter for ariaActiveDescendantElement
 pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    if (value) |node| if (node.stateAs(interfaces.Element.State) == null) return error.TypeError;
+    const held = &(try getInternal(instance)).aria_active_descendant;
+    if (value != null and held.get() == value) return;
+    // HTML 2.6.1 setter steps 1 and 3: clear or replace the explicit value.
+    // The existing member hold supplies the counted node and traced edge.
+    held.release(instance, aria_single_slot);
+    if (value) |node| held.take(instance, node, aria_single_slot);
 }
 
 /// Setter for ariaAtomic
 pub fn set_ariaAtomic(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaAtomic", value);
 }
 
 /// Setter for ariaAutoComplete
 pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaAutoComplete", value);
 }
 
 /// Setter for ariaBrailleLabel
 pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaBrailleLabel", value);
 }
 
 /// Setter for ariaBrailleRoleDescription
 pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaBrailleRoleDescription", value);
 }
 
 /// Setter for ariaBusy
 pub fn set_ariaBusy(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaBusy", value);
 }
 
 /// Setter for ariaChecked
 pub fn set_ariaChecked(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaChecked", value);
 }
 
 /// Setter for ariaColCount
 pub fn set_ariaColCount(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaColCount", value);
 }
 
 /// Setter for ariaColIndex
 pub fn set_ariaColIndex(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaColIndex", value);
 }
 
 /// Setter for ariaColIndexText
 pub fn set_ariaColIndexText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaColIndexText", value);
 }
 
 /// Setter for ariaColSpan
 pub fn set_ariaColSpan(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaColSpan", value);
 }
 
 /// Setter for ariaControlsElements
 pub fn set_ariaControlsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaElements(instance, "ariaControlsElements", value);
 }
 
 /// Setter for ariaCurrent
 pub fn set_ariaCurrent(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaCurrent", value);
 }
 
 /// Setter for ariaDescribedByElements
 pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaElements(instance, "ariaDescribedByElements", value);
 }
 
 /// Setter for ariaDescription
 pub fn set_ariaDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaDescription", value);
 }
 
 /// Setter for ariaDetailsElements
 pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaElements(instance, "ariaDetailsElements", value);
 }
 
 /// Setter for ariaDisabled
 pub fn set_ariaDisabled(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaDisabled", value);
 }
 
 /// Setter for ariaErrorMessageElements
 pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaElements(instance, "ariaErrorMessageElements", value);
 }
 
 /// Setter for ariaExpanded
 pub fn set_ariaExpanded(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaExpanded", value);
 }
 
 /// Setter for ariaFlowToElements
 pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaElements(instance, "ariaFlowToElements", value);
 }
 
 /// Setter for ariaHasPopup
 pub fn set_ariaHasPopup(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaHasPopup", value);
 }
 
 /// Setter for ariaHidden
 pub fn set_ariaHidden(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaHidden", value);
 }
 
 /// Setter for ariaInvalid
 pub fn set_ariaInvalid(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaInvalid", value);
 }
 
 /// Setter for ariaKeyShortcuts
 pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaKeyShortcuts", value);
 }
 
 /// Setter for ariaLabel
 pub fn set_ariaLabel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaLabel", value);
 }
 
 /// Setter for ariaLabelledByElements
 pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaElements(instance, "ariaLabelledByElements", value);
 }
 
 /// Setter for ariaLevel
 pub fn set_ariaLevel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaLevel", value);
 }
 
 /// Setter for ariaLive
 pub fn set_ariaLive(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaLive", value);
 }
 
 /// Setter for ariaModal
 pub fn set_ariaModal(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaModal", value);
 }
 
 /// Setter for ariaMultiLine
 pub fn set_ariaMultiLine(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaMultiLine", value);
 }
 
 /// Setter for ariaMultiSelectable
 pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaMultiSelectable", value);
 }
 
 /// Setter for ariaOrientation
 pub fn set_ariaOrientation(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaOrientation", value);
 }
 
 /// Setter for ariaOwnsElements
 pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaElements(instance, "ariaOwnsElements", value);
 }
 
 /// Setter for ariaPlaceholder
 pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaPlaceholder", value);
 }
 
 /// Setter for ariaPosInSet
 pub fn set_ariaPosInSet(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaPosInSet", value);
 }
 
 /// Setter for ariaPressed
 pub fn set_ariaPressed(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaPressed", value);
 }
 
 /// Setter for ariaReadOnly
 pub fn set_ariaReadOnly(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaReadOnly", value);
 }
 
 /// Setter for ariaRelevant
 pub fn set_ariaRelevant(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaRelevant", value);
 }
 
 /// Setter for ariaRequired
 pub fn set_ariaRequired(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaRequired", value);
 }
 
 /// Setter for ariaRoleDescription
 pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaRoleDescription", value);
 }
 
 /// Setter for ariaRowCount
 pub fn set_ariaRowCount(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaRowCount", value);
 }
 
 /// Setter for ariaRowIndex
 pub fn set_ariaRowIndex(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaRowIndex", value);
 }
 
 /// Setter for ariaRowIndexText
 pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaRowIndexText", value);
 }
 
 /// Setter for ariaRowSpan
 pub fn set_ariaRowSpan(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaRowSpan", value);
 }
 
 /// Setter for ariaSelected
 pub fn set_ariaSelected(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaSelected", value);
 }
 
 /// Setter for ariaSetSize
 pub fn set_ariaSetSize(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaSetSize", value);
 }
 
 /// Setter for ariaSort
 pub fn set_ariaSort(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaSort", value);
 }
 
 /// Setter for ariaValueMax
 pub fn set_ariaValueMax(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaValueMax", value);
 }
 
 /// Setter for ariaValueMin
 pub fn set_ariaValueMin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaValueMin", value);
 }
 
 /// Setter for ariaValueNow
 pub fn set_ariaValueNow(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaValueNow", value);
 }
 
 /// Setter for ariaValueText
 pub fn set_ariaValueText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setAriaString(instance, "ariaValueText", value);
 }
 
 /// Operation: setValidity
