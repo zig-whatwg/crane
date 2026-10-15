@@ -404,6 +404,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [XPath predicates use axis order before union](spec-compliance-xpath-predicates-use-axis-order-before-union.md) - Filter each axis before merging and sorting node sets.
 - [XPath browser strings use UTF-16 units](spec-compliance-xpath-browser-string-units.md) - Match browser string units and preserve WTF-8 surrogate seams.
 - [XPath QNames accept browser whitespace](spec-compliance-xpath-qname-whitespace.md) - Normalize spaced QNames while keeping axis separators contiguous.
+- [SVG href selects its target before policy reentry](spec-compliance-svg-href-selects-its-target-before-policy-reentry.md) - Read the callers around a policy callback: the browsers may already have selected the object or attribute that the callback's result will update.
 
 ### Codegen
 
