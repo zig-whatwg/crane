@@ -113,6 +113,8 @@ const Step = struct { axis: Axis, test_node: Test, predicates: []const *const Ex
 const Expr = union(enum) {
     number: f64,
     string: []const u8,
+    /// XPath §3.1 VariableReference, by its QName (never resolved: no bindings).
+    variable: []const u8,
     unary: *const Expr,
     binary: struct { op: Op, left: *const Expr, right: *const Expr },
     function: struct { name: []const u8, args: []const *const Expr },
@@ -123,7 +125,7 @@ const Expr = union(enum) {
 // XPath §3.7: the lexer returns longest tokens; the parser distinguishes
 // operator names from NameTests according to their grammatical position.
 const Token = struct {
-    kind: enum { end, name, number, string, slash, slash2, dot, dot2, at, axis, lp, rp, lb, rb, comma, star, plus, minus, eq, ne, lt, le, gt, ge, pipe },
+    kind: enum { end, name, variable, number, string, slash, slash2, dot, dot2, at, axis, lp, rp, lb, rb, comma, star, plus, minus, eq, ne, lt, le, gt, ge, pipe },
     text: []const u8 = "",
 };
 const Parser = struct {
@@ -177,26 +179,16 @@ const Parser = struct {
             p.token = .{ .kind = .number, .text = p.source[start..p.offset] };
             return;
         }
+        if (c == '$') {
+            // XPath §3.7 [36] VariableReference ::= '$' QName, the QName lexed
+            // as a NameTest's is, with nothing between it and '$' (WebKit and
+            // Blink lexQName after '$'; a space there is an error in all three).
+            p.token = .{ .kind = .variable, .text = try p.qname(false) };
+            return;
+        }
         if (c >= 0x80 or std.ascii.isAlphabetic(c) or c == '_') {
             p.offset = start;
-            try p.ncname();
-            const prefix_end = p.offset;
-            // XPath §3.7 [37], browser compatibility: Blink/WebKit skip XML
-            // space around QName colons, while the axis separator stays "::".
-            while (p.offset < p.source.len and xmlSpace(p.source[p.offset])) p.offset += 1;
-            var name = p.source[start..prefix_end];
-            if (p.offset < p.source.len and p.source[p.offset] == ':' and !(p.offset + 1 < p.source.len and p.source[p.offset + 1] == ':')) {
-                const colon = p.offset;
-                p.offset += 1;
-                while (p.offset < p.source.len and xmlSpace(p.source[p.offset])) p.offset += 1;
-                const local_start = p.offset;
-                if (p.offset < p.source.len and p.source[p.offset] == '*') p.offset += 1 else try p.ncname();
-                name = if (colon == prefix_end and local_start == colon + 1)
-                    p.source[start..p.offset]
-                else
-                    try std.fmt.allocPrint(p.allocator, "{s}:{s}", .{ p.source[start..prefix_end], p.source[local_start..p.offset] });
-            }
-            p.token = .{ .kind = .name, .text = name };
+            p.token = .{ .kind = .name, .text = try p.qname(true) };
             return;
         }
         p.token = .{ .kind = switch (c) {
@@ -217,6 +209,29 @@ const Parser = struct {
             '|' => .pipe,
             else => return error.SyntaxError,
         }, .text = p.source[start..p.offset] };
+    }
+
+    /// The QName at the current offset (XPath §3.7 [37] and [36]); `*` may be
+    /// the local part only of a NameTest.
+    fn qname(p: *Parser, star_local: bool) ![]const u8 {
+        const start = p.offset;
+        try p.ncname();
+        const prefix_end = p.offset;
+        // XPath §3.7 [37], browser compatibility: Blink/WebKit skip XML
+        // space around QName colons, while the axis separator stays "::".
+        while (p.offset < p.source.len and xmlSpace(p.source[p.offset])) p.offset += 1;
+        if (p.offset < p.source.len and p.source[p.offset] == ':' and !(p.offset + 1 < p.source.len and p.source[p.offset + 1] == ':')) {
+            const colon = p.offset;
+            p.offset += 1;
+            while (p.offset < p.source.len and xmlSpace(p.source[p.offset])) p.offset += 1;
+            const local_start = p.offset;
+            if (star_local and p.offset < p.source.len and p.source[p.offset] == '*') p.offset += 1 else try p.ncname();
+            return if (colon == prefix_end and local_start == colon + 1)
+                p.source[start..p.offset]
+            else
+                try std.fmt.allocPrint(p.allocator, "{s}:{s}", .{ p.source[start..prefix_end], p.source[local_start..p.offset] });
+        }
+        return p.source[start..prefix_end];
     }
 
     fn ncname(p: *Parser) !void {
@@ -279,7 +294,7 @@ const Parser = struct {
             if (isStep(p.token)) try steps.append(try p.step()) else if (descendant_path) return error.SyntaxError;
         } else {
             const saved = p.*;
-            var is_primary = p.token.kind == .string or p.token.kind == .number or p.token.kind == .lp;
+            var is_primary = p.token.kind == .variable or p.token.kind == .string or p.token.kind == .number or p.token.kind == .lp;
             if (p.token.kind == .name) {
                 const name = p.token.text;
                 try p.advance();
@@ -307,6 +322,7 @@ const Parser = struct {
         try p.advance();
         switch (token.kind) {
             .string => return p.make(.{ .string = token.text }),
+            .variable => return p.make(.{ .variable = token.text }),
             .number => return p.make(.{ .number = std.fmt.parseFloat(f64, token.text) catch return error.SyntaxError }),
             .lp => {
                 const result = try p.expression(0);
@@ -514,6 +530,11 @@ const Evaluation = struct {
         return switch (expr.*) {
             .number => |value| .{ .number = value },
             .string => |value| .{ .string = value },
+            // XPath §3.1 makes an unbound variable an evaluation error, and
+            // there are no bindings here. Browser majority: WebKit and Blink
+            // VariableReference::evaluate return "" for an unbound name (Blink
+            // xpath_variable_reference.cc); Gecko's getVariable throws.
+            .variable => .{ .string = "" },
             .unary => |operand| .{ .number = -try e.number(try e.evaluate(operand, ctx)) },
             .function => |call| try e.function(call.name, call.args, ctx),
             .filter => |selection| .{ .nodes = try e.filter(try nodeSet(try e.evaluate(selection.base, ctx)), selection.predicates) },

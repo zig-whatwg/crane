@@ -13,11 +13,11 @@ test "XPath compiled grammar releases native allocations on success and syntax e
     defer ctx.deinit();
     const evaluator = try interfaces.XPathEvaluator.init(a, &ctx);
     defer interfaces.XPathEvaluator.deinit(evaluator);
-    for ([_][]const u8{ "1 + 2 * 3", "//div[@id='x'][1]", "preceding-sibling::*[last()]", "substring('12345', 1.5, 2.6)", "(//x | //y)[1]", "processing-instruction('target')" }) |text| {
+    for ([_][]const u8{ "1 + 2 * 3", "//div[@id='x'][1]", "preceding-sibling::*[last()]", "substring('12345', 1.5, 2.6)", "(//x | //y)[1]", "processing-instruction('target')", "$v", "concat($p : v, 'b')" }) |text| {
         const expression = try interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(??*runtime.CallbackWrapper).notPassed());
         runtime.Instance.deinit(expression);
     }
-    for ([_][]const u8{ "(", "///x", "a[", "1e2", "unknown()", "last(1)", "$v", "p :", "p : : item", "child : : item" }) |text| {
+    for ([_][]const u8{ "(", "///x", "a[", "1e2", "unknown()", "last(1)", "$ v", "$p:*", "$1", "p :", "p : : item", "child : : item" }) |text| {
         try std.testing.expectError(error.SyntaxError, interfaces.XPathEvaluator.call_createExpression(evaluator, runtime.DOMString.initInterned(text), webidl.Opt(??*runtime.CallbackWrapper).notPassed()));
     }
     // Browser lexers admit XML whitespace around the QName colon. A missing
@@ -80,6 +80,9 @@ test "XPath string operations preserve browser UTF-16 units and surrogate seams"
         .{ "contains('😀', '\xED\xB8\x80')", "true" },
         .{ "concat('\xED\xA0\xBD', '\xED\xB8\x80') = '😀'", "true" },
         .{ "sum(3)", "0" },
+        // XPath §3.1: an unbound variable is an evaluation error; WebKit and
+        // Blink evaluate it to "" (Gecko throws), so the browser majority wins.
+        .{ "concat($unbound, 'b')", "b" },
     };
     for (cases) |case| {
         const result = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned(case[0]), document, webidl.Opt(??*runtime.CallbackWrapper).notPassed(), webidl.Opt(u16).passed(2), webidl.Opt(?*runtime.Instance).notPassed());
