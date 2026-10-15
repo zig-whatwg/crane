@@ -1,10 +1,12 @@
-//! The DOM tree version (Blink `Document::dom_tree_version_`), kept beside the
-//! reference counts (src/dom/refcount.zig, `treeVersion`): a live collection
-//! caches its walk under it, so it must move on every change a collection can
-//! see - insert, remove, replace, move, adoption (both documents), any
-//! attribute set or removal, and a free that bypasses the mutation
-//! algorithms (a tree's teardown) - and be null for anything that is not a
-//! live Document.
+//! The DOM tree version (Blink `Document::dom_tree_version_`, WebKit
+//! `Document::domTreeVersion`), kept beside the reference counts
+//! (src/dom/refcount.zig, `treeVersion`): a live collection caches its walk
+//! under it and an XPath iterator is invalid once it moves, so it moves on
+//! every mutation of the document - insert, remove, replace, move, adoption
+//! (both documents), any attribute set or removal, any character data change
+//! - and on nothing else: freeing a node no tree holds any more is not a
+//! mutation (neither engine moves it then). It is null for anything that is
+//! not a live Document.
 const std = @import("std");
 const dom = @import("dom");
 const runtime = @import("runtime");
@@ -149,15 +151,53 @@ test "any attribute set or removal moves the version" {
     _ = try expectMoves(f.document, v);
 }
 
-test "a teardown that bypasses mutation moves the version" {
+test "freeing a detached tree does not move the version" {
     var f: Fixture = undefined;
     try f.init();
     defer f.deinit();
     const fragment = try interfaces.Document.call_createDocumentFragment(f.document);
     _ = try interfaces.Node.call_appendChild(fragment, try Fixture.smallTree(f.document));
     const v = version(f.document);
-    // The fragment and its subtree are freed by the tree's teardown, with no
-    // removal: every node freed moves the version.
+    // The fragment and its subtree leave no tree: they were never in the
+    // document's, and nothing of theirs is mutated. Their free is not a
+    // mutation of the document (Blink and WebKit move the version only in
+    // ChildrenChanged, attribute changes and character data changes), so an
+    // XPath iterator over the document stays valid through a collection.
     dom.node_creation.destroyUninserted(fragment);
+    try std.testing.expectEqual(v, version(f.document));
+}
+
+test "freeing a removed node moves the version only at its removal" {
+    var f: Fixture = undefined;
+    try f.init();
+    defer f.deinit();
+    const div = try Fixture.smallTree(f.document);
+    _ = try interfaces.Node.call_appendChild(f.body, div);
+    const before = version(f.document);
+    _ = try interfaces.Node.call_removeChild(f.body, div);
+    const removed = try expectMoves(f.document, before);
+    dom.node_creation.destroyUninserted(div);
+    try std.testing.expectEqual(removed, version(f.document));
+}
+
+test "a character data change moves the version, with a parent or without" {
+    var f: Fixture = undefined;
+    try f.init();
+    defer f.deinit();
+    const text = try interfaces.Document.call_createTextNode(f.document, runtime.DOMString.initInterned("one"));
+    _ = try interfaces.Node.call_appendChild(f.body, text);
+    var v = version(f.document);
+    // WebKit CharacterData::notifyParentAfterChange and Blink
+    // CharacterData::SetDataAndUpdate move it on every change of the data.
+    try interfaces.CharacterData.set_data(text, runtime.DOMString.initInterned("two"));
+    v = try expectMoves(f.document, v);
+    try interfaces.CharacterData.call_appendData(text, runtime.DOMString.initInterned("!"));
+    v = try expectMoves(f.document, v);
+    try interfaces.CharacterData.call_deleteData(text, 0, 1);
+    v = try expectMoves(f.document, v);
+    const comment = try interfaces.Document.call_createComment(f.document, runtime.DOMString.initInterned("c"));
+    defer dom.node_creation.destroyUninserted(comment);
+    v = version(f.document);
+    try interfaces.CharacterData.call_insertData(comment, 0, runtime.DOMString.initInterned("x"));
     _ = try expectMoves(f.document, v);
 }

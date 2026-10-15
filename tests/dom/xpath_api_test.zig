@@ -3,6 +3,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
+const dom = @import("dom");
 const a = std.testing.allocator;
 
 test "XPath compiled grammar releases native allocations on success and syntax errors" {
@@ -152,4 +153,95 @@ test "XPath evaluates a 200,000-operator chain without native recursion" {
         defer runtime.Instance.deinit(truth);
         try std.testing.expect(try interfaces.XPathResult.get_booleanValue(truth));
     }
+}
+
+/// A document with `<section><span>one</span><span>two</span></section>`,
+/// the section in its tree, for the iterator tests below.
+const IteratorFixture = struct {
+    ctx: runtime.ContextData,
+    document: *runtime.Instance,
+    section: *runtime.Instance,
+    text: *runtime.Instance,
+
+    fn init(self: *IteratorFixture) !void {
+        interfaces.process_hooks.startHooksForTest();
+        runtime.initializeRuntime(a);
+        self.ctx = try runtime.ContextData.init(a, .{});
+        self.document = try interfaces.Document.init(a, &self.ctx);
+        self.section = try self.element("section");
+        _ = try interfaces.Node.call_appendChild(self.document, self.section);
+        for ([_][]const u8{ "one", "two" }) |data| {
+            const span = try self.element("span");
+            _ = try interfaces.Node.call_appendChild(self.section, span);
+            self.text = try interfaces.Document.call_createTextNode(self.document, runtime.DOMString.initInterned(data));
+            _ = try interfaces.Node.call_appendChild(span, self.text);
+        }
+    }
+
+    fn deinit(self: *IteratorFixture) void {
+        interfaces.Document.deinit(self.document);
+        self.ctx.deinit();
+        runtime.deinitializeRuntime();
+    }
+
+    fn element(self: *IteratorFixture, name: []const u8) !*runtime.Instance {
+        return interfaces.Document.call_createElement(self.document, runtime.DOMString.initInterned(name), .{ .was_passed = false, .value = undefined });
+    }
+
+    /// `.//span` from the section, as an ORDERED_NODE_ITERATOR_TYPE result.
+    fn iterator(self: *IteratorFixture) !*runtime.Instance {
+        return interfaces.Document.call_evaluate(self.document, runtime.DOMString.initInterned(".//span"), self.section, webidl.Opt(??*runtime.CallbackWrapper).notPassed(), webidl.Opt(u16).passed(5), webidl.Opt(?*runtime.Instance).notPassed());
+    }
+};
+
+test "an XPath iterator stays valid when an unrelated detached tree of its document is freed" {
+    var f: IteratorFixture = undefined;
+    try f.init();
+    defer f.deinit();
+    // A tree of the same document that was never in its tree, built BEFORE
+    // the evaluation (building it mutates a detached tree of the document,
+    // which browsers count too) and freed after it, as the collector frees
+    // garbage (crane/xp2-result-gc.html: TestUtils.gc() between evaluate and
+    // iterateNext). Its free mutates nothing: DOM Level 3 XPath invalidates
+    // an iterator only when "the document has been mutated", and Blink and
+    // WebKit move the version an iterator checks only on mutations.
+    const garbage = try f.element("div");
+    _ = try interfaces.Node.call_appendChild(garbage, try f.element("p"));
+    const result = try f.iterator();
+    defer runtime.Instance.deinit(result);
+    dom.node_creation.destroyUninserted(garbage);
+    try std.testing.expect(!try interfaces.XPathResult.get_invalidIteratorState(result));
+    const first = (try interfaces.XPathResult.call_iterateNext(result)) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(interfaces.Node.get_firstChild(f.section) catch null, first);
+    try std.testing.expect((try interfaces.XPathResult.call_iterateNext(result)) != null);
+    try std.testing.expectEqual(null, try interfaces.XPathResult.call_iterateNext(result));
+}
+
+test "an XPath iterator is invalid after a character data change in its document" {
+    var f: IteratorFixture = undefined;
+    try f.init();
+    defer f.deinit();
+    const result = try f.iterator();
+    defer runtime.Instance.deinit(result);
+    try std.testing.expect((try interfaces.XPathResult.call_iterateNext(result)) != null);
+    // Blink CharacterData::SetDataAndUpdate and WebKit
+    // CharacterData::notifyParentAfterChange move the DOM tree version, and
+    // Gecko's XPathResult::CharacterDataChanged invalidates the result.
+    try interfaces.CharacterData.set_data(f.text, runtime.DOMString.initInterned("changed"));
+    try std.testing.expect(try interfaces.XPathResult.get_invalidIteratorState(result));
+    try std.testing.expectError(error.InvalidStateError, interfaces.XPathResult.call_iterateNext(result));
+}
+
+test "an XPath iterator is invalid after an insertion or an attribute change" {
+    var f: IteratorFixture = undefined;
+    try f.init();
+    defer f.deinit();
+    const inserted = try f.iterator();
+    defer runtime.Instance.deinit(inserted);
+    _ = try interfaces.Node.call_appendChild(f.section, try f.element("span"));
+    try std.testing.expectError(error.InvalidStateError, interfaces.XPathResult.call_iterateNext(inserted));
+    const attributed = try f.iterator();
+    defer runtime.Instance.deinit(attributed);
+    try interfaces.Element.call_setAttribute(f.section, runtime.DOMString.initInterned("data-x"), .{ .domstring = runtime.DOMString.initInterned("1") });
+    try std.testing.expectError(error.InvalidStateError, interfaces.XPathResult.call_iterateNext(attributed));
 }
