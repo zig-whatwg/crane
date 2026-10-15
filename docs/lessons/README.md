@@ -391,6 +391,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Meter midpoints must remain finite](spec-compliance-meter-midpoints-must-remain-finite.md) - Test arithmetic defaults at both ends of the finite range.
 - [WebCrypto dictionary reconversion depends on the operation](spec-compliance-webcrypto-dictionary-reconversion-depends-on-the-operation.md) - A shared failure message does not imply one browser-compatible fix across every registered dictionary.
 - [EC private export omits redundant parameters](spec-compliance-ec-private-export-omits-redundant-parameters.md) - Import validation and export canonicalization are separate rules; relaxing one to match the other loses validation.
+- [Validate a CSP directive before splitting its sources](spec-compliance-csp-directive-validation-precedes-source-tokenization.md) - Validate the container before interpreting its pieces; a convenient language whitespace predicate may implement a different grammar.
 
 ### Codegen
 
@@ -570,6 +571,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A document that only a detached node holds is freed under that node](debugging-a-document-only-a-detached-node-holds-is-freed-under-it.md) - A windowless document's node removed from it is its own tree: nothing keeps the document, and `node.ownerDocument` reads a freed instance; write a design decision's test against the current build first.
 - [A signature range error is not an operation failure](debugging-a-signature-range-error-is-not-an-operation-failure.md) - Classify the algorithm's invalid inputs before broadly translating a backend's error codes.
 - [A range test can start a giant derivation](debugging-a-range-test-can-start-a-giant-derivation.md) - A tiny negative test input can become valid, expensive work after binding conversion; isolate it with a bounded operation before blaming the primitive or harness.
+- [Missing CSP events can be upstream capability failures](debugging-missing-csp-events-can-be-upstream-capability-failures.md) - A missing event is an observation, not a diagnosis; prove that the operation reached the relevant CSP check.
 
 ### Workflow
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.
