@@ -396,6 +396,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Resource Timing opacity is field-specific](spec-compliance-resource-timing-opacity-is-field-specific.md) - Apply filtered-response rules per field and retain completion time.
 - [TAO serializes the redirected request origin](spec-compliance-tao-serializes-the-redirected-request-origin.md) - Redirect taint can serialize a stored tuple origin as null.
 - [Text control selectionchange coalesces per target](spec-compliance-text-control-selectionchange-coalesces-per-target.md) - Coalesce the selectionchange target; keep select scheduling and DOM Range representation separate.
+- [RequestInit refills headers under the final guard](spec-compliance-request-init-refills-headers-under-the-final-guard.md) - Copying input state does not replace validation under the destination object's final settings.
+- [Response.redirect parses before validating status](spec-compliance-response-redirect-parses-before-validating-status.md) - The algorithm's input processing, ordering and object guard are observable API behavior.
 
 ### Codegen
 
