@@ -110,11 +110,27 @@ pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return crypto(instance);
 }
 
-/// Operation: reportError
+/// HTML 8.1.4.6 reportError(e): report an exception e for this global.
+/// https://html.spec.whatwg.org/multipage/webappapis.html#dom-reporterror
+/// As WebKit's WindowOrWorkerGlobalScope::reportError does, pass the value
+/// to the existing exception reporter for the receiver's relevant global.
 pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = e;
-    return error.NotImplemented;
+    // Report an exception, step 2: extract error information. The strings
+    // belong to this call; error_value stays borrowed from e.
+    const allocator = instance.ctx.allocator;
+    const info = try engine.extractErrorInformation(instance.ctx, e, allocator);
+    defer allocator.free(info.message);
+    defer allocator.free(info.filename);
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = info.error_value,
+    };
+    // Steps 4–7: the host reporter applies the reporting-mode guard, fires
+    // the ErrorEvent, and forwards unhandled worker errors to their owner.
+    _ = @import("html").report_exception.reportErrorInfo(instance, &extracted, .{});
 }
 
 /// Operation: setInterval

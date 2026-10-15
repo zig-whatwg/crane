@@ -46,18 +46,6 @@ pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMStrin
     return error.NotImplemented;
 }
 
-/// Getter for onmessage
-pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onmessageerror
-pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for src
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
@@ -67,20 +55,6 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
 
 /// Setter for referrerPolicy
 pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onmessage
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onmessageerror
-pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

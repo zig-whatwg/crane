@@ -631,28 +631,6 @@ pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime
     return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.get();
 }
 
-/// Getter for onfullscreenchange
-/// Fullscreen API - Event handler for fullscreen changes
-/// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenchange
-///
-/// Note: Returns null - fullscreen API requires browser integration.
-pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    // Return null event handler (no fullscreen support without browser)
-    return null;
-}
-
-/// Getter for onfullscreenerror
-/// Fullscreen API - Event handler for fullscreen errors
-/// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenerror
-///
-/// Note: Returns null - fullscreen API requires browser integration.
-pub fn get_onfullscreenerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    // Return null event handler (no fullscreen support without browser)
-    return null;
-}
-
 /// Getter for part
 /// CSS Shadow Parts - Returns the DOMTokenList for the part attribute
 /// Spec: https://drafts.csswg.org/css-shadow-parts/#dom-element-part
@@ -1455,28 +1433,6 @@ fn setAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8, element
     }
     // Element is null or has no ID - remove the attribute
     removeAttributeByNamespaceAndLocalName(instance, null, aria_attr);
-}
-
-/// Setter for onfullscreenchange
-/// Fullscreen API - Sets the event handler for fullscreen changes
-/// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenchange
-///
-/// Note: No-op without fullscreen API support
-pub fn set_onfullscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - fullscreen API requires browser integration
-}
-
-/// Setter for onfullscreenerror
-/// Fullscreen API - Sets the event handler for fullscreen errors
-/// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenerror
-///
-/// Note: No-op without fullscreen API support
-pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - fullscreen API requires browser integration
 }
 
 /// Setter for innerHTML
