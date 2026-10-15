@@ -395,6 +395,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Reused connection times copy fetch start](spec-compliance-reused-connection-times-copy-fetch-start.md) - Copy the fetch clock and keep cleartext TLS zero; preserve fresh measurements.
 - [Resource Timing opacity is field-specific](spec-compliance-resource-timing-opacity-is-field-specific.md) - Apply filtered-response rules per field and retain completion time.
 - [TAO serializes the redirected request origin](spec-compliance-tao-serializes-the-redirected-request-origin.md) - Redirect taint can serialize a stored tuple origin as null.
+- [Text control selectionchange coalesces per target](spec-compliance-text-control-selectionchange-coalesces-per-target.md) - Coalesce the selectionchange target; keep select scheduling and DOM Range representation separate.
 
 ### Codegen
 
