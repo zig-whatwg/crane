@@ -244,6 +244,11 @@ const Parser = struct {
     }
 
     // XPath §§3.3–3.5, productions [18], [21]–[27]. Union binds above unary -.
+    // `depth` bounds NESTING (parentheses, predicates, arguments, unary minus),
+    // which is all this recursion follows: an operator chain is built by the
+    // loop below into a left-deep tree, so its length costs no parser frames,
+    // evaluation folds it iteratively (Evaluation.operators), and the grammar
+    // arena frees it without walking it.
     fn expression(p: *Parser, minimum: u8) anyerror!*const Expr {
         if (p.depth >= 256) return error.SyntaxError;
         p.depth += 1;
@@ -534,42 +539,64 @@ const Evaluation = struct {
                 }
                 break :blk .{ .nodes = nodes };
             },
-            .binary => |binary| blk: {
-                const left = try e.evaluate(binary.left, ctx);
-                // XPath §3.4: boolean operators short circuit.
-                if (binary.op == .or_op and boolean(left)) break :blk .{ .boolean = true };
-                if (binary.op == .and_op and !boolean(left)) break :blk .{ .boolean = false };
-                const right = try e.evaluate(binary.right, ctx);
-                switch (binary.op) {
-                    .or_op, .and_op => break :blk .{ .boolean = boolean(right) },
-                    .eq, .ne, .lt, .le, .gt, .ge => break :blk .{ .boolean = try e.compare(left, right, binary.op) },
-                    .union_op => {
-                        var list = List(*Node).init(e.allocator);
-                        defer list.deinit();
-                        for (try nodeSet(left)) |node| try appendUnique(&list, node);
-                        for (try nodeSet(right)) |node| try appendUnique(&list, node);
-                        const nodes = try list.toOwnedSlice();
-                        try e.sort(nodes);
-                        break :blk .{ .nodes = nodes };
-                    },
-                    else => {
-                        const a = try e.number(left);
-                        const b = try e.number(right);
-                        break :blk .{
-                            .number = switch (binary.op) {
-                                .add => a + b,
-                                .sub => a - b,
-                                .mul => a * b,
-                                .div => a / b,
-                                // XPath §3.5: remainder from TRUNCATING division.
-                                .mod => if (b == 0 or std.math.isInf(a)) std.math.nan(f64) else if (std.math.isInf(b)) a else @rem(a, b),
-                                else => unreachable,
-                            },
-                        };
-                    },
-                }
-            },
+            .binary => try e.operators(expr, ctx),
         };
+    }
+
+    /// XPath §§3.3–3.5 binary operators. All are left-associative, so a chain
+    /// of N of them (`1+1+…`) is a left-deep tree N levels high at nesting
+    /// depth one: the parser's nesting limit does not bound it, and recursing
+    /// on `left` overflowed the native stack at 200,000 terms (review M1).
+    /// Walk the left spine iteratively and fold upward, innermost first. Each
+    /// right operand was parsed one nesting level deeper (`expression(prec+1)`),
+    /// so recursion through right operands stays within the nesting limit.
+    fn operators(e: *Evaluation, top: *const Expr, ctx: Context) anyerror!Value {
+        var spine: std.ArrayListUnmanaged(*const Expr) = .empty;
+        var leftmost = top;
+        while (leftmost.* == .binary) : (leftmost = leftmost.binary.left) try spine.append(e.allocator, leftmost);
+        var value = try e.evaluate(leftmost, ctx);
+        var index = spine.items.len;
+        while (index != 0) {
+            index -= 1;
+            const operation = spine.items[index].binary;
+            // A fresh result location: `value = switch` would let Zig write the
+            // new union tag into `value` before an operand still reads it
+            // (`.{ .boolean = compare(value, ...) }` saw a corrupted left side).
+            const folded: Value = switch (operation.op) {
+                // XPath §3.4: boolean operators short circuit.
+                .or_op => if (boolean(value)) .{ .boolean = true } else .{ .boolean = boolean(try e.evaluate(operation.right, ctx)) },
+                .and_op => if (!boolean(value)) .{ .boolean = false } else .{ .boolean = boolean(try e.evaluate(operation.right, ctx)) },
+                .eq, .ne, .lt, .le, .gt, .ge => .{ .boolean = try e.compare(value, try e.evaluate(operation.right, ctx), operation.op) },
+                .union_op => blk: {
+                    var list = List(*Node).init(e.allocator);
+                    defer list.deinit();
+                    const right = try e.evaluate(operation.right, ctx);
+                    for (try nodeSet(value)) |node| try appendUnique(&list, node);
+                    for (try nodeSet(right)) |node| try appendUnique(&list, node);
+                    const nodes = try list.toOwnedSlice();
+                    try e.sort(nodes);
+                    break :blk .{ .nodes = nodes };
+                },
+                .add, .sub, .mul, .div, .mod => blk: {
+                    const right = try e.evaluate(operation.right, ctx);
+                    const a = try e.number(value);
+                    const b = try e.number(right);
+                    break :blk .{
+                        .number = switch (operation.op) {
+                            .add => a + b,
+                            .sub => a - b,
+                            .mul => a * b,
+                            .div => a / b,
+                            // XPath §3.5: remainder from TRUNCATING division.
+                            .mod => if (b == 0 or std.math.isInf(a)) std.math.nan(f64) else if (std.math.isInf(b)) a else @rem(a, b),
+                            else => unreachable,
+                        },
+                    };
+                },
+            };
+            value = folded;
+        }
+        return value;
     }
 
     fn singleton(e: *Evaluation, node: *Node) ![]const *Node {

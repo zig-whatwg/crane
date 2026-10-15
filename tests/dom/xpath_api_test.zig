@@ -117,3 +117,36 @@ fn constructResults(allocator: std.mem.Allocator, document: *runtime.Instance) !
     defer text.deinit(a);
     try std.testing.expectEqualStrings("an independently owned result string", text.asSlice());
 }
+
+test "XPath evaluates a 200,000-operator chain without native recursion" {
+    interfaces.process_hooks.startHooksForTest();
+    runtime.initializeRuntime(a);
+    defer runtime.deinitializeRuntime();
+    var ctx = try runtime.ContextData.init(a, .{});
+    defer ctx.deinit();
+    const document = try interfaces.Document.init(a, &ctx);
+    defer interfaces.Document.deinit(document);
+    // XPath §3.5: `+` is left-associative, so these terms make a left-deep tree
+    // 200,000 levels high at nesting depth one. Evaluation used to recurse once
+    // per level and overflowed the native stack (review M1).
+    const terms = 200_000;
+    const text = try a.alloc(u8, 1 + 2 * terms);
+    defer a.free(text);
+    text[0] = '1';
+    for (0..terms) |i| @memcpy(text[1 + 2 * i ..][0..2], "+1");
+    const result = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned(text), document, webidl.Opt(??*runtime.CallbackWrapper).notPassed(), webidl.Opt(u16).notPassed(), webidl.Opt(?*runtime.Instance).notPassed());
+    defer runtime.Instance.deinit(result);
+    try std.testing.expectEqual(@as(f64, terms + 1), try interfaces.XPathResult.get_numberValue(result));
+    // Folding reads the left value while building the next one: a comparison
+    // must see its left operand intact. (1 = 1) = 1 = ... stays true.
+    const comparisons = 1_000;
+    const chain = try a.alloc(u8, 1 + 4 * comparisons);
+    defer a.free(chain);
+    chain[0] = '1';
+    for (0..comparisons) |i| @memcpy(chain[1 + 4 * i ..][0..4], " = 1");
+    for ([_][]const u8{ chain, "'ab' = concat('a', 'b')", "3 > 2 = true()" }) |expression| {
+        const truth = try interfaces.Document.call_evaluate(document, runtime.DOMString.initInterned(expression), document, webidl.Opt(??*runtime.CallbackWrapper).notPassed(), webidl.Opt(u16).passed(3), webidl.Opt(?*runtime.Instance).notPassed());
+        defer runtime.Instance.deinit(truth);
+        try std.testing.expect(try interfaces.XPathResult.get_booleanValue(truth));
+    }
+}
