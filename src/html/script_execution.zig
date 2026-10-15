@@ -927,14 +927,8 @@ pub fn executeScriptsWhenParsingFinished(
 ) void {
     // Lifecycle notifications reached by a running script must not re-enter
     // the same document's drain or finish its load before the script returns.
-    if (draining_document == document or drain_depth >= max_drain_depth) return;
-    const previous = draining_document;
-    draining_document = document;
-    drain_depth += 1;
-    defer {
-        draining_document = previous;
-        drain_depth -= 1;
-    }
+    const scope = DrainScope.enter(document) orelse return;
+    defer scope.leave();
     // Step 5.1 waits for the HEAD to be ready. Fetch completion calls the
     // document lifecycle hook to resume this loop; async scripts meanwhile
     // run only when their own networking tasks deliver their results.
@@ -958,7 +952,7 @@ pub fn executeScriptsWhenParsingFinished(
 
 /// Whether "the end" must still wait at step 5 before DOMContentLoaded.
 pub fn parsingFinishedScriptsPending(document: *runtime.Instance) bool {
-    if (draining_document == document) return true;
+    if (isDraining(document)) return true;
     const lists = document_scripts.of(document) orelse return false;
     return lists.scripts_to_execute_when_parsing_finished.items.len != 0;
 }
@@ -1092,25 +1086,78 @@ pub fn installFetchHooks() void {
     });
 }
 
-/// The document whose ready-script queues a drain is currently walking.
+/// A drain of a document's ready-script queues, entered on the agent that
+/// runs it (`AgentHost.script_drain`, html_core agent_host.ScriptDrain).
 ///
 /// A script that runs from a drain can insert another script, which re-enters
 /// `handleScriptScheduling` and asks for a drain of its own. Letting that
 /// recurse would nest arbitrarily deep on a page that appends a script per
 /// script, and would run the inner script BEFORE the outer loop had finished
-/// its own list.
+/// its own list. So the agent records the document its innermost drain walks,
+/// and a drain of that document does not start.
 ///
 /// It records the DOCUMENT rather than a bare boolean, because a script in one
 /// document can insert a script into another - an iframe's, or one from
-/// `createHTMLDocument` - and a global flag would suppress that document's
-/// drain while nobody was walking its queues, stranding the script forever.
-/// The outer loop only ever rescans the document it was given.
-var draining_document: ?*runtime.Instance = null;
-
-/// Backstop for a mutually-recursive pair of documents inserting into each
+/// `createHTMLDocument` - and a flag would suppress that document's drain
+/// while nobody was walking its queues, stranding the script forever. The
+/// outer loop only ever rescans the document it was given. The depth is the
+/// backstop for a mutually-recursive pair of documents inserting into each
 /// other, which the per-document guard alone does not stop.
-var drain_depth: usize = 0;
+///
+/// Both are the AGENT's, never the process's: the nesting is on the agent's
+/// own stack. As process-wide variables, two Browsers' drains on two threads
+/// interleaved on them - the drain that ended second put back the document the
+/// other Browser's drain had been walking, so that document's every later
+/// drain returned at once and its scripts never ran, and two unguarded
+/// decrements at once underflowed the depth
+/// (tests/html/instances_script_drain_test.zig).
+const DrainScope = struct {
+    /// The agent's drain state; null for an agent with no host - an
+    /// engine-less test's, which runs no script and so cannot re-enter.
+    state: ?*ScriptDrain,
+    /// What `enter` found, which `leave` puts back.
+    previous: ?*const anyopaque,
+
+    /// Enter a drain of `document` on its agent - null when it must not
+    /// start: the agent's innermost drain is already walking `document`, or
+    /// drains are nested `max_drain_depth` deep.
+    ///
+    /// The state is found HERE, once, and `leave` uses the pointer: the
+    /// scripts the drain runs can end the document's realm (a frame's script
+    /// removing its frame), but not its agent, which ends with its Browser.
+    fn enter(document: *runtime.Instance) ?DrainScope {
+        const state = drainStateOf(document) orelse return .{ .state = null, .previous = null };
+        if (state.document == @as(*const anyopaque, document)) return null;
+        if (state.depth >= max_drain_depth) return null;
+        const scope: DrainScope = .{ .state = state, .previous = state.document };
+        state.document = document;
+        state.depth += 1;
+        return scope;
+    }
+
+    fn leave(self: DrainScope) void {
+        const state = self.state orelse return;
+        state.document = self.previous;
+        state.depth -= 1;
+    }
+};
+
+const ScriptDrain = @import("html_core").agent_host.ScriptDrain;
 const max_drain_depth = 16;
+
+/// The drain state of the agent `document`'s realm belongs to (a document's
+/// realm is a window realm: its agent is its Browser's window agent).
+fn drainStateOf(document: *runtime.Instance) ?*ScriptDrain {
+    const agent = document.ctx.agent orelse return null;
+    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    return &host.script_drain;
+}
+
+/// Whether the innermost drain on `document`'s agent is walking `document`.
+fn isDraining(document: *runtime.Instance) bool {
+    const state = drainStateOf(document) orelse return false;
+    return state.document == @as(*const anyopaque, document);
+}
 
 /// Run the document's ready scripts from both "as soon as possible" queues.
 ///
@@ -1123,16 +1170,8 @@ const max_drain_depth = 16;
 /// force-async script - which is every `<script src>` that script inserted -
 /// was queued and then simply forgotten.
 fn drainReadyScripts(allocator: std.mem.Allocator, document: *runtime.Instance) void {
-    if (draining_document == document) return;
-    if (drain_depth >= max_drain_depth) return;
-
-    const previous = draining_document;
-    draining_document = document;
-    drain_depth += 1;
-    defer {
-        draining_document = previous;
-        drain_depth -= 1;
-    }
+    const scope = DrainScope.enter(document) orelse return;
+    defer scope.leave();
 
     // Bounded so a script that reinserts itself cannot spin forever.
     var guard: usize = 0;

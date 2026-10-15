@@ -31,6 +31,11 @@ pub const AgentHost = struct {
     /// agent's loop, on its thread only; reached from a realm through its
     /// agent (dom.agent_fetches). Its realms' ends swept what they left.
     fetches: @import("fetch").algorithms.AgentFetches,
+    /// The script-queue drains nested on the agent's stack
+    /// (html.script_execution: the "as soon as possible" queues and the
+    /// scripts that run when parsing finishes). Read and written only on the
+    /// agent's thread, inside a drain.
+    script_drain: ScriptDrain = .{},
 
     pub fn init(allocator: std.mem.Allocator) AgentHost {
         return .{
@@ -59,4 +64,22 @@ pub const AgentHost = struct {
         // touches no engine.
         self.fetches.deinit();
     }
+};
+
+/// One agent's nested script-queue drains (html.script_execution
+/// `DrainScope`). A drain runs scripts on its agent's thread, and a script it
+/// runs can insert another script and ask for a drain of its own - which
+/// nests on the same agent's stack, whatever document it is for. So the
+/// state is the agent's: V8 keeps "is running microtasks" and the microtasks
+/// scope depth on each MicrotaskQueue (src/execution/microtask-queue.h,
+/// `is_running_microtasks_`, `microtasks_depth_`), the queue Blink's
+/// per-agent EventLoop owns (platform/scheduler/public/event_loop.h). It was
+/// one pair of process-wide variables, and two Browsers' drains on two
+/// threads interleaved on them (docs/instances.md).
+pub const ScriptDrain = struct {
+    /// The document the innermost drain walks - an identity, compared and
+    /// never read through: a script the drain runs can end it.
+    document: ?*const anyopaque = null,
+    /// How many drains are nested on the agent's stack.
+    depth: usize = 0,
 };

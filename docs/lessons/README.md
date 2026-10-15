@@ -546,6 +546,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A DOM evaluator needs a scale probe](testing-a-dom-evaluator-needs-a-scale-probe.md) - Gate a DOM query engine on its growth rate - time it at doubling sizes up to 10k nodes - because no correctness fixture is large enough to show a quadratic merge or sort.
 - [A failing test can hide per-call leaks](testing-a-failing-test-can-hide-per-call-leaks.md) - A passing test can expose more of an old leak; equal-call controls distinguish that from a new allocation leak.
 - [An obsolete WebSocket assertion can reward a bug](testing-an-obsolete-websocket-assertion-can-reward-a-bug.md) - A browser-aligned change can lower the WPT score; retain the evidence and report the loss without changing the test or concealing the new blocker.
+- [A shared nesting guard races first as a stale restore, not an underflow](testing-a-shared-nesting-guard-races-first-as-a-stale-restore-not-an-underflow.md) - To make a cross-thread race on shared guard state reproducible, hold both critical sections open for milliseconds and assert what the restore leaves behind, not the crash a lost update causes.
 
 ### Debugging
 
