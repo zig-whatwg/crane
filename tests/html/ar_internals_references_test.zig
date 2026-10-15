@@ -38,7 +38,9 @@ fn scriptHolders() !void {
         \\  const single = document.createElement('span'); single.id = 'single';
         \\  const many = document.createElement('div'); many.id = 'many';
         \\  ariaHolder.ariaActiveDescendantElement = single;
-        \\  ariaHolder.ariaControlsElements = [many, many];
+        \\  const input = [many, many];
+        \\  ariaHolder.ariaControlsElements = input;
+        \\  input.length = 0; // Exclude the existing binding-argument leak as a keeper.
         \\  many.holder = ariaHolder;
         \\})();
     );
