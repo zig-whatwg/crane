@@ -521,9 +521,10 @@ fn isQuirksMode(root: *runtime.Instance) bool {
 }
 
 /// Bring a live collection up to date with its root. True when its
-/// elements are known to match an unmoved tree version - every one of them
-/// alive (live_collections.Link.getUnchanged) - false when they must each be
-/// checked in full.
+/// elements are known to match an unmoved tree version
+/// (live_collections.IndexCache.fresh), false when they must each be
+/// checked in full. Either way an element is read through
+/// live_collections.Link.get.
 fn refresh(instance: *runtime.Instance, internal: *InternalState) bool {
     const refill = internal.refill orelse return false;
     const root = internal.root orelse return false;
@@ -636,10 +637,10 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Returns the element at the given index, or null if out of bounds.
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    const unchanged = refresh(instance, internal);
+    _ = refresh(instance, internal);
     // Return null for out of bounds per spec
     const link = internal.elements.get(index) orelse return null;
-    if (if (unchanged) link.getUnchanged() else link.get()) |element| {
+    if (link.get()) |element| {
         internal.cache.remember(index, element);
         return element;
     }
