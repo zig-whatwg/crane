@@ -1,7 +1,7 @@
 const std = @import("std");
 const fetch = @import("fetch");
 
-test "resource timing does not treat identity as a registered content coding" {
+test "resource timing reports no content coding for identity, as browsers do" {
     const allocator = std.testing.allocator;
     const request = try fetch.internal.InternalRequest.init(allocator, "http://example.test/resource");
     defer request.deinit();
