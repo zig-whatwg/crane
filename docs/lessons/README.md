@@ -389,6 +389,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Upgrade form ownership precedes custom state](spec-compliance-upgrade-form-ownership-precedes-custom-state.md) - Check when an algorithm establishes the state required by a predicate.
 - [Base href uses the fallback URL](spec-compliance-base-href-uses-the-fallback-url.md) - Read each URL property's own getter and mutation algorithms.
 - [Meter midpoints must remain finite](spec-compliance-meter-midpoints-must-remain-finite.md) - Test arithmetic defaults at both ends of the finite range.
+- [WebCrypto dictionary reconversion depends on the operation](spec-compliance-webcrypto-dictionary-reconversion-depends-on-the-operation.md) - A shared failure message does not imply one browser-compatible fix across every registered dictionary.
+- [EC private export omits redundant parameters](spec-compliance-ec-private-export-omits-redundant-parameters.md) - Import validation and export canonicalization are separate rules; relaxing one to match the other loses validation.
 
 ### Codegen
 
@@ -566,6 +568,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [The network library's URL is not the response's URL](debugging-the-network-library-s-url-is-not-the-response-s.md) - Take URLs from the request's URL list, which the URL parser wrote; a transport-provided URL is its re-serialization.
 - [A value that reads back only on the object it was set on is an expando](debugging-a-value-that-reads-back-only-on-the-object-it-was-set-on-is-an-expando.md) - When state set through a property "disappears" across objects, write it with the method form first: if the method survives and the property does not, the binding never called the setter.
 - [A document that only a detached node holds is freed under that node](debugging-a-document-only-a-detached-node-holds-is-freed-under-it.md) - A windowless document's node removed from it is its own tree: nothing keeps the document, and `node.ownerDocument` reads a freed instance; write a design decision's test against the current build first.
+- [A signature range error is not an operation failure](debugging-a-signature-range-error-is-not-an-operation-failure.md) - Classify the algorithm's invalid inputs before broadly translating a backend's error codes.
+- [A range test can start a giant derivation](debugging-a-range-test-can-start-a-giant-derivation.md) - A tiny negative test input can become valid, expensive work after binding conversion; isolate it with a bounded operation before blaming the primitive or harness.
 
 ### Workflow
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.
