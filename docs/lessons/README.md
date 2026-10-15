@@ -280,6 +280,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A masking V8 interceptor runs before the holder's own properties](architecture-a-masking-v8-interceptor-runs-before-own-properties.md) - Before an interceptor skips a step of the spec's algorithm because "V8 already did it", check the order: with kNonMasking V8 has looked at own properties and the prototype chain, and without it V8 has looked at nothing.
 - [A named property enumerator returns names only](architecture-a-named-property-enumerator-returns-names-only.md) - An interceptor returns the key type its kind names, and a proxy in front of an object can hide what the object's own callbacks do wrong: test an unproxied object of every interceptor shape.
 - [A shared, mutable spec object is a reference-counted record its sharers hold](architecture-a-shared-mutable-spec-object-is-a-refcounted-record.md) - Shared and mutable in the spec means one reference-counted record held by every sharer: copies diverge on the first mutation, and a walk to the creator breaks when the mutation comes from the other side or the creator is gone.
+- [Window callback errors use the HTML reporter](architecture-window-callback-errors-use-the-html-reporter.md) - The context override alone is not a general exception-reporting API.
+- [A nesting limit does not bound a left-associative chain](architecture-a-nesting-limit-does-not-bound-a-left-associative-chain.md) - Bound recursion by the height of the tree you walk, not by the parser's nesting depth - any left-associative operator loop builds a tree as high as its input is long.
 
 ### Spec Compliance
 - [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
@@ -399,6 +401,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [RequestInit refills headers under the final guard](spec-compliance-request-init-refills-headers-under-the-final-guard.md) - Copying input state does not replace validation under the destination object's final settings.
 - [Response.redirect parses before validating status](spec-compliance-response-redirect-parses-before-validating-status.md) - The algorithm's input processing, ordering and object guard are observable API behavior.
 - [Handler registration does not require the event source](spec-compliance-handler-registration-does-not-require-the-event-source.md) - Separate callback registration from the event source, and take event names from the handler table rather than a spelling rule.
+- [XPath predicates use axis order before union](spec-compliance-xpath-predicates-use-axis-order-before-union.md) - Filter each axis before merging and sorting node sets.
+- [XPath browser strings use UTF-16 units](spec-compliance-xpath-browser-string-units.md) - Match browser string units and preserve WTF-8 surrogate seams.
+- [XPath QNames accept browser whitespace](spec-compliance-xpath-qname-whitespace.md) - Normalize spaced QNames while keeping axis separators contiguous.
 
 ### Codegen
 
@@ -533,6 +538,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A test encoder written beside its decoder can share its mistake](testing-a-test-encoder-written-beside-its-decoder-can-share-its-mistake.md) - An encoder and decoder written together agree with each other, not with the format: anchor one of them to an independent implementation, and build truncated streams that end where you think they do.
 - [The WebDriver remote end reads the browsing context, not script's getters](testing-the-webdriver-remote-end-reads-the-browsing-context-not-script-getters.md) - Remote-end code is not script: reach a window's document and cookie store through its browsing context, never through an IDL getter that checks the accessor or a top-level-only field.
 - [Check benchmark noise with identical binaries](testing-check-benchmark-noise-with-identical-binaries.md) - Measure A/A variation and preserve every sample before attributing a slowdown.
+- [A DOM evaluator needs a scale probe](testing-a-dom-evaluator-needs-a-scale-probe.md) - Gate a DOM query engine on its growth rate - time it at doubling sizes up to 10k nodes - because no correctness fixture is large enough to show a quadratic merge or sort.
 
 ### Debugging
 
