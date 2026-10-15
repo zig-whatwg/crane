@@ -104,15 +104,33 @@ pub fn PumpToken(comptime Target: type, comptime Timer: type) type {
 
 const testing = std.testing;
 
-/// A timer that runs nothing by itself: the test fires what is scheduled.
+/// A timer that runs nothing by itself: the test fires what is scheduled,
+/// or ends the timer with it unfired, as a worker's loop ends its timers.
 const FakeTimer = struct {
     scheduled: std.ArrayListUnmanaged(Entry) = .empty,
+    /// Set by `end`: the timer is gone, as a NativeTimerManager after its
+    /// deinit. Anything scheduled on it from then on is counted here.
+    ended: bool = false,
+    used_after_end: usize = 0,
 
-    const Entry = struct { callback: *const fn (?*anyopaque) void, data: ?*anyopaque };
+    const Callback = *const fn (?*anyopaque) void;
+    const Entry = struct { callback: Callback, data: ?*anyopaque, drop: ?Callback = null };
 
-    fn setTimeout(self: *FakeTimer, ms: u64, callback: *const fn (?*anyopaque) void, data: ?*anyopaque) u32 {
+    fn setTimeout(self: *FakeTimer, ms: u64, callback: Callback, data: ?*anyopaque) u32 {
+        return self.schedule(ms, .{ .callback = callback, .data = data });
+    }
+
+    fn setTimeoutOwned(self: *FakeTimer, ms: u64, callback: Callback, data: ?*anyopaque, drop: Callback) u32 {
+        return self.schedule(ms, .{ .callback = callback, .data = data, .drop = drop });
+    }
+
+    fn schedule(self: *FakeTimer, ms: u64, entry: Entry) u32 {
         _ = ms;
-        self.scheduled.append(testing.allocator, .{ .callback = callback, .data = data }) catch return 0;
+        if (self.ended) {
+            self.used_after_end += 1;
+            return 0;
+        }
+        self.scheduled.append(testing.allocator, entry) catch return 0;
         return @intCast(self.scheduled.items.len);
     }
 
@@ -123,6 +141,16 @@ const FakeTimer = struct {
         for (due) |entry| entry.callback(entry.data);
     }
 
+    /// The timer's end with everything still scheduled unfired, as
+    /// NativeTimerManager.deinit: an owned timer's data is dropped, a plain
+    /// one's is left to whoever armed it.
+    fn end(self: *FakeTimer) void {
+        self.ended = true;
+        const unfired = self.scheduled.toOwnedSlice(testing.allocator) catch return;
+        defer testing.allocator.free(unfired);
+        for (unfired) |entry| if (entry.drop) |drop| drop(entry.data);
+    }
+
     fn deinit(self: *FakeTimer) void {
         self.scheduled.deinit(testing.allocator);
     }
@@ -130,8 +158,11 @@ const FakeTimer = struct {
 
 const TimerRef = struct {
     fake: *FakeTimer,
-    fn setTimeout(self: TimerRef, ms: u64, callback: *const fn (?*anyopaque) void, data: ?*anyopaque) u32 {
+    fn setTimeout(self: TimerRef, ms: u64, callback: FakeTimer.Callback, data: ?*anyopaque) u32 {
         return self.fake.setTimeout(ms, callback, data);
+    }
+    fn setTimeoutOwned(self: TimerRef, ms: u64, callback: FakeTimer.Callback, data: ?*anyopaque, drop: FakeTimer.Callback) u32 {
+        return self.fake.setTimeoutOwned(ms, callback, data, drop);
     }
 };
 
@@ -142,6 +173,8 @@ const FakeSocket = struct {
     /// turn), end the socket (detach), or both, in that order.
     close_in_turn: bool = false,
     end_in_turn: bool = false,
+    /// A timer the next turn's script ends, after the rest.
+    end_timer_in_turn: ?*FakeTimer = null,
     token: ?*Token = null,
 };
 
@@ -156,6 +189,7 @@ fn turn(data: ?*anyopaque) void {
         token.detach();
         socket.token = null;
     }
+    if (socket.end_timer_in_turn) |timer| timer.end();
     token.endTurn(true, 1, turn);
 }
 
@@ -216,4 +250,69 @@ test "a turn that arms the next and then ends the socket leaves the token to the
     timer.fireAll();
     try testing.expectEqual(@as(usize, 1), socket.turns);
     try testing.expectEqual(@as(usize, 0), timer.scheduled.items.len);
+}
+
+test "a token detached while its turn is scheduled is freed when the timer ends with the turn unfired" {
+    // A worker's end: unloading cleanup makes the socket disappear (detach)
+    // while a turn is scheduled, which then owns the token - and the worker's
+    // loop ends its timers without firing it. The turn that would have freed
+    // the token never runs, so the timer's end must free it (2 x 64 B per
+    // worker socket in leaks --atExit before).
+    var timer: FakeTimer = .{};
+    defer timer.deinit();
+    var socket: FakeSocket = .{};
+    const token = try Token.create(testing.allocator, &socket, .{ .fake = &timer });
+    token.arm(1, turn);
+    token.detach();
+    timer.end();
+    try testing.expectEqual(@as(usize, 0), socket.turns);
+}
+
+test "a turn the timer ends unfired gives the token back to a live socket, whose detach frees it" {
+    // The timer ends first, the socket after (a Browser whose loop ends
+    // before its realms do): the token goes back to the socket, which frees
+    // it at its teardown.
+    var timer: FakeTimer = .{};
+    defer timer.deinit();
+    var socket: FakeSocket = .{};
+    const token = try Token.create(testing.allocator, &socket, .{ .fake = &timer });
+    token.arm(1, turn);
+    timer.end();
+    try testing.expectEqual(@as(usize, 0), socket.turns);
+    token.detach();
+}
+
+test "a token whose timer ended its turn unfired arms nothing on that timer again" {
+    // The timer is gone (its manager freed): arming on it again would write
+    // into freed memory. Once it has dropped a turn, the token arms no more;
+    // the socket's teardown still frees it.
+    var timer: FakeTimer = .{};
+    defer timer.deinit();
+    var socket: FakeSocket = .{};
+    const token = try Token.create(testing.allocator, &socket, .{ .fake = &timer });
+    token.arm(1, turn);
+    timer.end();
+    token.arm(1, turn);
+    try testing.expectEqual(@as(usize, 0), timer.used_after_end);
+    token.detach();
+}
+
+test "a turn armed during a running turn and ended unfired leaves the token to the running turn's end" {
+    // Defensive: NativeTimerManager cannot end inside its own poll, but should
+    // a timer end while a turn runs - the turn arms the next (close()), its
+    // script ends the socket (detach) and then the timer (the armed turn is
+    // dropped unfired) - the token is still the running turn's, and only its
+    // end may free it.
+    var timer: FakeTimer = .{};
+    defer timer.deinit();
+    var socket: FakeSocket = .{};
+    const token = try Token.create(testing.allocator, &socket, .{ .fake = &timer });
+    socket.token = token;
+    token.arm(1, turn);
+    socket.close_in_turn = true;
+    socket.end_in_turn = true;
+    socket.end_timer_in_turn = &timer;
+    timer.fireAll();
+    try testing.expectEqual(@as(usize, 1), socket.turns);
+    try testing.expectEqual(@as(usize, 0), timer.used_after_end);
 }
