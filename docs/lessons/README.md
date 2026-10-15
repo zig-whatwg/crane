@@ -282,6 +282,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A shared, mutable spec object is a reference-counted record its sharers hold](architecture-a-shared-mutable-spec-object-is-a-refcounted-record.md) - Shared and mutable in the spec means one reference-counted record held by every sharer: copies diverge on the first mutation, and a walk to the creator breaks when the mutation comes from the other side or the creator is gone.
 - [Window callback errors use the HTML reporter](architecture-window-callback-errors-use-the-html-reporter.md) - The context override alone is not a general exception-reporting API.
 - [A nesting limit does not bound a left-associative chain](architecture-a-nesting-limit-does-not-bound-a-left-associative-chain.md) - Bound recursion by the height of the tree you walk, not by the parser's nesting depth - any left-associative operator loop builds a tree as high as its input is long.
+- [A pending script exception is not a new host error](architecture-a-pending-script-exception-is-not-a-new-host-error.md) - Test the identity of a thrown object across each binding path, not merely that some exception was thrown.
 
 ### Spec Compliance
 - [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
@@ -405,6 +406,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [XPath browser strings use UTF-16 units](spec-compliance-xpath-browser-string-units.md) - Match browser string units and preserve WTF-8 surrogate seams.
 - [XPath QNames accept browser whitespace](spec-compliance-xpath-qname-whitespace.md) - Normalize spaced QNames while keeping axis separators contiguous.
 - [SVG href selects its target before policy reentry](spec-compliance-svg-href-selects-its-target-before-policy-reentry.md) - Read the callers around a policy callback: the browsers may already have selected the object or attribute that the callback's result will update.
+- [ElementInternals reflection is private state](spec-compliance-element-internals-reflection-is-private-state.md) - A shared IDL member does not imply a shared reflected target or identical browser algorithms.
+- [A reflection cache is separate from the last assignment](spec-compliance-reflection-cache-is-separate-from-the-last-assignment.md) - Keep the spec's explicit value and observation cache separate, and validate before replacing either.
 
 ### Codegen
 
@@ -540,6 +543,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [The WebDriver remote end reads the browsing context, not script's getters](testing-the-webdriver-remote-end-reads-the-browsing-context-not-script-getters.md) - Remote-end code is not script: reach a window's document and cookie store through its browsing context, never through an IDL getter that checks the accessor or a top-level-only field.
 - [Check benchmark noise with identical binaries](testing-check-benchmark-noise-with-identical-binaries.md) - Measure A/A variation and preserve every sample before attributing a slowdown.
 - [A DOM evaluator needs a scale probe](testing-a-dom-evaluator-needs-a-scale-probe.md) - Gate a DOM query engine on its growth rate - time it at doubling sizes up to 10k nodes - because no correctness fixture is large enough to show a quadratic merge or sort.
+- [A failing test can hide per-call leaks](testing-a-failing-test-can-hide-per-call-leaks.md) - A passing test can expose more of an old leak; equal-call controls distinguish that from a new allocation leak.
 
 ### Debugging
 
@@ -623,3 +627,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [`git stash` is shared by every worktree of the repository](workflow-git-stash-is-shared-by-every-worktree.md) - The stash is repository-wide: a deferred `git stash pop` in a multi-worktree checkout can apply another session's work - carry base-code runs on a saved patch.
 - [A pass lost to a binding fix can be a false pass - read wpt.fyi before calling it a regression](workflow-a-pass-lost-to-a-binding-fix-can-be-a-false-pass.md) - Before opening a lane for a regression, read the browsers' failure messages on wpt.fyi and diff the whole directory's journal numbers: a loss balanced by a sibling's gain, with the browsers failing the same way, is a false pass removed.
 - [Check what a WPT resource serves before choosing what to support](workflow-check-what-a-wpt-resource-serves-before-choosing-a-format.md) - Read the resource the tests load, not the tests' description of it: a WPT handler's real output decides what Crane must support.
+- [Read Gecko from mozilla-firefox/firefox, not the archived gecko-dev](workflow-read-gecko-from-mozilla-firefox-not-the-archived-gecko-dev.md) - Cite Gecko from searchfox or mozilla-firefox/firefox, and name whether the evidence is the shipped release or the engine head.
