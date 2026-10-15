@@ -435,12 +435,17 @@ pub const DocumentCounts = struct {
     /// total and this are both zero: a held detached node keeps its
     /// document's tree (Blink; decision D6).
     foreign_holds: u32 = 0,
-    /// The DOM tree version (Blink `Document::dom_tree_version_`): it moves
-    /// on every insert, remove, replace and move of a node of this document,
-    /// on adoption into and out of it, on every attribute set or removal of
-    /// an element of it, and when a node of it is freed outside a mutation
-    /// (a tree's teardown). A live collection caches its walk under it and
-    /// walks again once it has moved (Blink's InvalidateNodeListCaches).
+    /// The DOM tree version (Blink `Document::dom_tree_version_`, WebKit
+    /// `Document::m_domTreeVersion`): it moves on every mutation of a node of
+    /// this document, its detached trees included - every insert, remove,
+    /// replace and move, adoption into and out of it, every attribute set or
+    /// removal, every character data change - and on nothing else. A free is
+    /// not a mutation: a node is freed only once nothing can reach its tree -
+    /// after the removal that moved the version, in a garbage detached tree,
+    /// or in its document's teardown, which takes these counts first. A live
+    /// collection caches its walk under it and walks again once it has moved
+    /// (Blink's InvalidateNodeListCaches); an XPath iterator is invalid once
+    /// it has moved (Blink and WebKit `XPathResult::invalidIteratorState`).
     tree_version: u64 = 0,
 };
 
@@ -461,6 +466,16 @@ pub fn treeVersion(document: *runtime.Instance) ?u64 {
 pub fn attributeChanged(element: *runtime.Instance) void {
     const accessor = hooks.node_document_counts orelse return;
     if (accessor(element)) |counts| bumpTreeVersion(counts);
+}
+
+/// `node`'s data changed (DOM "replace data", steps 5-7): its node
+/// document's tree version moves, whether or not `node` has a parent - as
+/// Blink's CharacterData::SetDataAndUpdate and WebKit's
+/// CharacterData::notifyParentAfterChange move theirs. A live collection of
+/// elements does not read data, but an XPath iterator's nodes may.
+pub fn characterDataChanged(node: *runtime.Instance) void {
+    const accessor = hooks.node_document_counts orelse return;
+    if (accessor(node)) |counts| bumpTreeVersion(counts);
 }
 
 /// What the owners supply: the Document impl its counts, the Node impl the
@@ -782,12 +797,16 @@ pub fn nodeDocumentChanged(node: *NodeBase, old: ?*DocumentCounts, new: ?*Docume
 
 /// `node` is freed, and `counts` are its node document's (null when that
 /// document is gone): its reference ends, and a detached root's holds - its
-/// whole tree's, which goes with it - leave the foreign holds.
+/// whole tree's, which goes with it - leave the foreign holds. The tree
+/// version stays: freeing a node no tree holds is not a mutation of the
+/// document (neither Blink nor WebKit moves theirs when a node dies), and an
+/// XPath iterator over the document must survive a collection of unrelated
+/// garbage (crane/xp2-result-gc.html). Nothing a version-keyed cache
+/// remembers is freed under it: see `live_collections.IndexCache.fresh`.
 pub fn nodeFreed(node: *NodeBase, counts: ?*DocumentCounts) void {
     if (node.node_type == NodeBase.DOCUMENT_NODE) return;
     const document = counts orelse return;
     addTo(&document.referencing_nodes, -1, "referencing_nodes");
-    bumpTreeVersion(document);
     if (node.rc_flags.foreign) addTo(&document.foreign_holds, -@as(i64, node.subtree_holds), "foreign_holds");
     node.rc_flags.foreign = false;
 }

@@ -15,9 +15,11 @@ const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const NodeBase = @import("node_base.zig").NodeBase;
 
-/// A document version covers tree and attribute mutations, including adoption
-/// and teardown. The refcount owner updates it at those mutation boundaries.
-/// Null means no live document version is available: always recompute.
+/// A document version covers tree, attribute and character data mutations,
+/// adoption included, and nothing else (a free is not a mutation). The
+/// refcount owner updates it at those mutation boundaries. Null means no live
+/// document version is available - none, or a document whose teardown has
+/// begun: always recompute.
 pub fn treeVersion(document: *runtime.Instance) ?u64 {
     return @import("refcount.zig").treeVersion(document);
 }
@@ -38,19 +40,15 @@ pub const Link = struct {
         return .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
     }
 
+    /// The instance while its slot holds it and its teardown has not
+    /// finished. The generation and the cleanup bit are both in the slot's
+    /// stamp (runtime.SlabAllocator, runtime.instance_lifecycle): no
+    /// registry read. Every read of a cached entry or cursor makes this
+    /// check, because the tree version does not move on frees
+    /// (refcount.nodeFreed).
     pub fn get(self: Link) ?*runtime.Instance {
         if (runtime.SlabAllocator.generationOf(self.instance) != self.generation or
             runtime.instance_lifecycle.isCleanedUp(self.instance)) return null;
-        return self.instance;
-    }
-
-    /// `get` by the slab generation alone, for an entry of a cache whose
-    /// document's tree version has not moved since the entry was cached:
-    /// every free of a node of that document moves it (refcount.nodeFreed),
-    /// so the entry's teardown cannot have begun. The generation stays the
-    /// net.
-    pub fn getUnchanged(self: Link) ?*runtime.Instance {
-        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
         return self.instance;
     }
 };
@@ -110,11 +108,22 @@ pub const IndexCache = struct {
     /// every indexed read: the root - alive, its collection holds it
     /// (node_holds.MemberHold), and `root_base` is its tree node - still
     /// names the document `begin` read, that document is the same slab slot,
-    /// and its tree version has not moved. Every mutation, adoption and free
-    /// of a node of the document moves the version, so a true answer also
-    /// says every node the cache remembers is alive. One registry read (the
-    /// document's counts) against `begin`'s six; false sends the caller to
-    /// `begin`.
+    /// and its tree version has not moved. One registry read (the document's
+    /// counts) against `begin`'s six; false sends the caller to `begin`.
+    ///
+    /// Every mutation and adoption of a node of the document moves the
+    /// version, so a true answer says the walk the cache remembers is still
+    /// the tree's: no node entered or left the root's subtree. Frees do not
+    /// move it (refcount.nodeFreed), and need not: a node the cache
+    /// remembers is in the root's subtree, and the collection being read
+    /// keeps its root (node_holds.MemberHold: an edge from its wrapper), so
+    /// the root's tree is not garbage and no teardown of it has begun. A node
+    /// leaves a tree that is not garbage only by removal, which moves the
+    /// version before the node can be freed. A document's own teardown
+    /// takes its counts first (Document's deinitOwn runs before Node's
+    /// deinit tears its tree down), so its version reads null from then
+    /// on. Each cached entry is still read through `Link.get`, which sees
+    /// a teardown that has finished.
     pub fn fresh(self: *const IndexCache, root_base: *const NodeBase) bool {
         const version = self.version orelse return false;
         const document = self.document orelse return false;
@@ -142,7 +151,7 @@ pub const IndexCache = struct {
             if (index >= self.last_index) {
                 // `begin` or `fresh` validated the cache against an unmoved
                 // tree version for this read, or it would hold no cursor.
-                node = link.getUnchanged();
+                node = link.get();
                 if (node != null) offset = self.last_index;
             }
         }
