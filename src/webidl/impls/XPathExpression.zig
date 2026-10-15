@@ -73,7 +73,7 @@ pub fn call_evaluate(instance: *Node, contextNode: *Node, kind_arg: webidl.Opt(u
     var arena = std.heap.ArenaAllocator.init(internal.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-    var evaluator = Evaluation{ .allocator = allocator };
+    var evaluator = Evaluation{ .allocator = allocator, .backing = internal.allocator };
     const value = try evaluator.evaluate(expression, .{ .node = contextNode });
     const actual: u16 = if (kind != 0) kind else switch (value) {
         .number => 1,
@@ -107,8 +107,9 @@ const Test = union(enum) {
     text,
     comment,
     pi: ?[]const u8,
-    name: struct { local: []const u8, namespace: ?[]const u8 = null, wildcard: bool = false },
+    name: NameTest,
 };
+const NameTest = struct { local: []const u8, namespace: ?[]const u8 = null, wildcard: bool = false };
 const Step = struct { axis: Axis, test_node: Test, predicates: []const *const Expr = &.{} };
 const Expr = union(enum) {
     number: f64,
@@ -291,7 +292,7 @@ const Parser = struct {
             const descendant_path = p.token.kind == .slash2;
             try p.advance();
             if (descendant_path) try steps.append(.{ .axis = .descendant_or_self, .test_node = .any });
-            if (isStep(p.token)) try steps.append(try p.step()) else if (descendant_path) return error.SyntaxError;
+            if (isStep(p.token)) try appendStep(&steps, try p.step()) else if (descendant_path) return error.SyntaxError;
         } else {
             const saved = p.*;
             var is_primary = p.token.kind == .variable or p.token.kind == .string or p.token.kind == .number or p.token.kind == .lp;
@@ -312,7 +313,7 @@ const Parser = struct {
             const descendant_path = p.token.kind == .slash2;
             try p.advance();
             if (descendant_path) try steps.append(.{ .axis = .descendant_or_self, .test_node = .any });
-            try steps.append(try p.step());
+            try appendStep(&steps, try p.step());
         }
         return p.make(.{ .path = .{ .start = start, .absolute = absolute, .steps = try steps.toOwnedSlice() } });
     }
@@ -469,6 +470,22 @@ fn nameStart(cp: u21) bool {
 fn xmlSpace(c: u8) bool {
     return c == ' ' or c == '\t' or c == '\r' or c == '\n';
 }
+/// XPath §2.5: `//` abbreviates /descendant-or-self::node()/. Followed by a
+/// child step WITHOUT predicates the pair selects exactly descendant::<test>,
+/// which one walk yields in document order; WebKit's LocationPath
+/// optimizeStepPair makes the same rewrite. With predicates it may not:
+/// //x[1] is every parent's first x child, not the first x descendant.
+fn appendStep(steps: *List(Step), step: Step) !void {
+    if (step.axis == .child and step.predicates.len == 0) {
+        if (steps.getPtr(steps.len -% 1)) |previous| {
+            if (previous.axis == .descendant_or_self and previous.test_node == .any and previous.predicates.len == 0) {
+                previous.* = .{ .axis = .descendant, .test_node = step.test_node };
+                return;
+            }
+        }
+    }
+    try steps.append(step);
+}
 fn nodeTypeName(name: []const u8) bool {
     return std.mem.eql(u8, name, "node") or std.mem.eql(u8, name, "text") or std.mem.eql(u8, name, "comment") or std.mem.eql(u8, name, "processing-instruction");
 }
@@ -524,7 +541,10 @@ fn validArity(name: []const u8, count: usize) bool {
 }
 
 const Evaluation = struct {
+    /// Holds every value of this evaluation; freed when it ends.
     allocator: Allocator,
+    /// Backs the scratch arenas predicate evaluations run in (see `filter`).
+    backing: Allocator,
 
     fn evaluate(e: *Evaluation, expr: *const Expr, ctx: Context) anyerror!Value {
         return switch (expr.*) {
@@ -538,30 +558,49 @@ const Evaluation = struct {
             .unary => |operand| .{ .number = -try e.number(try e.evaluate(operand, ctx)) },
             .function => |call| try e.function(call.name, call.args, ctx),
             .filter => |selection| .{ .nodes = try e.filter(try nodeSet(try e.evaluate(selection.base, ctx)), selection.predicates) },
-            .path => |path| blk: {
-                var nodes: []const *Node = if (path.start) |start| try nodeSet(try e.evaluate(start, ctx)) else try e.singleton(if (path.absolute) try root(ctx.node) else ctx.node);
-                for (path.steps) |step| {
-                    var merged = List(*Node).init(e.allocator);
-                    defer merged.deinit();
-                    // XPath §2.1: predicates apply to each context node's axis,
-                    // BEFORE merging results (//i[1] differs from (//i)[1]).
-                    for (nodes) |node| {
-                        var selected = List(*Node).init(e.allocator);
-                        defer selected.deinit();
-                        const candidates = try e.axis(step.axis, node);
-                        for (candidates) |candidate| if (try e.matches(candidate, step.axis, step.test_node)) {
-                            try selected.append(candidate);
-                        };
-                        const filtered = try e.filter(selected.items(), step.predicates);
-                        for (filtered) |item| try appendUnique(&merged, item);
-                    }
-                    nodes = try merged.toOwnedSlice();
-                    try e.sort(nodes);
-                }
-                break :blk .{ .nodes = nodes };
-            },
+            .path => |location| .{ .nodes = try e.path(location.start, location.absolute, location.steps, ctx) },
             .binary => try e.operators(expr, ctx),
         };
+    }
+
+    /// XPath §2 location paths. Every node-set VALUE is in document order
+    /// (§5), but the sets between steps need not be: a step's predicates count
+    /// along each context node's own axis (§2.4), never through the merged set.
+    /// So, as WebKit LocationPath::evaluate does, carry what is known of the
+    /// set from step to step and put it in order once, at the end, only when
+    /// it may be out of order.
+    fn path(e: *Evaluation, start: ?*const Expr, absolute: bool, steps: []const Step, ctx: Context) anyerror![]const *Node {
+        var nodes: []const *Node = undefined;
+        var shape: Shape = .{ .sorted = true, .disjoint = true };
+        if (start) |expr| {
+            nodes = try nodeSet(try e.evaluate(expr, ctx));
+            shape.disjoint = nodes.len < 2;
+        } else nodes = try e.singleton(if (absolute) try root(ctx.node) else ctx.node);
+        // One axis is live at a time: these buffers serve every context node.
+        var candidates: std.ArrayListUnmanaged(*Node) = .empty;
+        var selected: std.ArrayListUnmanaged(*Node) = .empty;
+        var last: []*Node = &.{};
+        for (steps) |step| {
+            const next = shape.after(step.axis, nodes.len);
+            var merged: NodeSetBuilder = .{ .dedup = next.repeats };
+            // XPath §2.1: predicates apply to each context node's axis,
+            // BEFORE merging results (//i[1] differs from (//i)[1]).
+            for (nodes) |node| {
+                candidates.clearRetainingCapacity();
+                try e.axis(step.axis, node, &candidates);
+                selected.clearRetainingCapacity();
+                for (candidates.items) |candidate| if (try matches(candidate, step.axis, step.test_node)) {
+                    try selected.append(e.allocator, candidate);
+                };
+                for (try e.filter(selected.items, step.predicates)) |item| try merged.add(e.allocator, item);
+            }
+            // One context node on a reverse axis gave reverse document order.
+            if (next.reversed) std.mem.reverse(*Node, merged.list.items);
+            last = merged.list.items;
+            nodes = last;
+            shape = next;
+        }
+        return if (shape.sorted) nodes else try e.documentOrder(last);
     }
 
     /// XPath §§3.3–3.5 binary operators. All are left-associative, so a chain
@@ -589,14 +628,23 @@ const Evaluation = struct {
                 .and_op => if (!boolean(value)) .{ .boolean = false } else .{ .boolean = boolean(try e.evaluate(operation.right, ctx)) },
                 .eq, .ne, .lt, .le, .gt, .ge => .{ .boolean = try e.compare(value, try e.evaluate(operation.right, ctx), operation.op) },
                 .union_op => blk: {
-                    var list = List(*Node).init(e.allocator);
-                    defer list.deinit();
+                    // XPath §3.3: merge every operand of a run of unions, then
+                    // order the result once. Each operand is in document order
+                    // already, so only a mix of two or more needs ordering.
                     const right = try e.evaluate(operation.right, ctx);
-                    for (try nodeSet(value)) |node| try appendUnique(&list, node);
-                    for (try nodeSet(right)) |node| try appendUnique(&list, node);
-                    const nodes = try list.toOwnedSlice();
-                    try e.sort(nodes);
-                    break :blk .{ .nodes = nodes };
+                    var merged: NodeSetBuilder = .{};
+                    var sources: usize = 0;
+                    for ([_][]const *Node{ try nodeSet(value), try nodeSet(right) }) |operand| {
+                        if (operand.len != 0) sources += 1;
+                        for (operand) |node| try merged.add(e.allocator, node);
+                    }
+                    while (index != 0 and spine.items[index - 1].binary.op == .union_op) {
+                        index -= 1;
+                        const operand = try nodeSet(try e.evaluate(spine.items[index].binary.right, ctx));
+                        if (operand.len != 0) sources += 1;
+                        for (operand) |node| try merged.add(e.allocator, node);
+                    }
+                    break :blk .{ .nodes = if (sources > 1) try e.documentOrder(merged.list.items) else merged.list.items };
                 },
                 .add, .sub, .mul, .div, .mod => blk: {
                     const right = try e.evaluate(operation.right, ctx);
@@ -624,76 +672,95 @@ const Evaluation = struct {
         return e.allocator.dupe(*Node, &.{node});
     }
 
+    /// XPath §2.4 and §3.3 predicates: keep the nodes for which each predicate
+    /// holds, counting positions in `input`'s order. A predicate's value is
+    /// used at once, so it is evaluated in a scratch arena reset for every
+    /// node: memory stays that of one predicate evaluation, not their sum
+    /// (`//*[following::x]` would otherwise hold N axes of N nodes each).
     fn filter(e: *Evaluation, input: []const *Node, predicates: []const *const Expr) anyerror![]const *Node {
+        if (predicates.len == 0) return input;
+        var scratch = std.heap.ArenaAllocator.init(e.backing);
+        defer scratch.deinit();
+        var inner = Evaluation{ .allocator = scratch.allocator(), .backing = e.backing };
         var current = input;
         for (predicates) |predicate| {
-            var selected = List(*Node).init(e.allocator);
-            defer selected.deinit();
+            var selected: std.ArrayListUnmanaged(*Node) = .empty;
             for (current, 0..) |node, i| {
-                const value = try e.evaluate(predicate, .{ .node = node, .position = i + 1, .size = current.len });
+                _ = scratch.reset(.retain_capacity);
+                const value = try inner.evaluate(predicate, .{ .node = node, .position = i + 1, .size = current.len });
                 const accepted = switch (value) {
                     .number => |n| n == @as(f64, @floatFromInt(i + 1)),
                     else => boolean(value),
                 };
-                if (accepted) try selected.append(node);
+                if (accepted) try selected.append(e.allocator, node);
             }
-            current = try selected.toOwnedSlice();
+            current = selected.items;
         }
         return current;
     }
 
-    fn axis(e: *Evaluation, which: Axis, node: *Node) anyerror![]const *Node {
-        var result = List(*Node).init(e.allocator);
-        defer result.deinit();
+    /// Appends `node`'s axis (XPath §2.2) in axis order: document order for a
+    /// forward axis, reverse document order for a reverse one.
+    fn axis(e: *Evaluation, which: Axis, node: *Node, result: *std.ArrayListUnmanaged(*Node)) anyerror!void {
+        const allocator = e.allocator;
         switch (which) {
-            .self => try result.append(node),
+            .self => try result.append(allocator, node),
             .parent => if (try parent(node)) |p| {
-                try result.append(p);
+                try result.append(allocator, p);
             },
             .ancestor, .ancestor_or_self => {
                 var cursor: ?*Node = if (which == .ancestor_or_self) node else try parent(node);
-                while (cursor) |p| : (cursor = try parent(p)) try result.append(p);
+                while (cursor) |p| : (cursor = try parent(p)) try result.append(allocator, p);
             },
             .child => {
                 var cursor = try interfaces.Node.get_firstChild(node);
-                while (cursor) |child| : (cursor = try interfaces.Node.get_nextSibling(child)) try result.append(child);
+                while (cursor) |child| : (cursor = try interfaces.Node.get_nextSibling(child)) try result.append(allocator, child);
             },
             .descendant, .descendant_or_self => {
-                if (which == .descendant_or_self) try result.append(node);
-                try descendants(node, &result);
+                if (which == .descendant_or_self) try result.append(allocator, node);
+                try descendants(allocator, node, result);
             },
-            .following_sibling, .preceding_sibling => {
-                if (try nodeKind(node) != 2) {
-                    var cursor = if (which == .following_sibling) try interfaces.Node.get_nextSibling(node) else try interfaces.Node.get_previousSibling(node);
-                    while (cursor) |sibling| {
-                        try result.append(sibling);
-                        cursor = if (which == .following_sibling) try interfaces.Node.get_nextSibling(sibling) else try interfaces.Node.get_previousSibling(sibling);
+            .following_sibling, .preceding_sibling => if (try nodeKind(node) != 2) {
+                var cursor = if (which == .following_sibling) try interfaces.Node.get_nextSibling(node) else try interfaces.Node.get_previousSibling(node);
+                while (cursor) |sibling| {
+                    try result.append(allocator, sibling);
+                    cursor = if (which == .following_sibling) try interfaces.Node.get_nextSibling(sibling) else try interfaces.Node.get_previousSibling(sibling);
+                }
+            },
+            .following => {
+                // Everything after the node except its descendants, walked
+                // directly: the subtrees of the next siblings of the node and
+                // of each ancestor. An attribute's following nodes begin with
+                // its owner's children (WebKit XPathStep.cpp FollowingAxis).
+                var anchor = node;
+                if (try nodeKind(node) == 2) {
+                    anchor = try interfaces.Attr.get_ownerElement(node) orelse return;
+                    try descendants(allocator, anchor, result);
+                }
+                var cursor: ?*Node = anchor;
+                while (cursor) |current| : (cursor = try interfaces.Node.get_parentNode(current)) {
+                    var sibling = try interfaces.Node.get_nextSibling(current);
+                    while (sibling) |next| : (sibling = try interfaces.Node.get_nextSibling(next)) {
+                        try result.append(allocator, next);
+                        try descendants(allocator, next, result);
                     }
                 }
             },
-            .following, .preceding => {
-                const anchor = if (try nodeKind(node) == 2) (try parent(node) orelse node) else node;
-                var all = List(*Node).init(e.allocator);
-                defer all.deinit();
-                const tree_root = try root(anchor);
-                try all.append(tree_root);
-                try descendants(tree_root, &all);
-                var position: usize = 0;
-                for (all.items(), 0..) |item, index| if (item == anchor) {
-                    position = index;
-                    break;
-                };
-                if (which == .following) {
-                    for (all.items()[position + 1 ..]) |item| {
-                        if (try nodeKind(node) != 2 and try ancestorOf(anchor, item)) continue;
-                        try result.append(item);
-                    }
-                } else {
-                    var index = position;
-                    while (index != 0) {
-                        index -= 1;
-                        const item = all.items()[index];
-                        if (!try ancestorOf(item, anchor)) try result.append(item);
+            .preceding => {
+                // Everything before the node except its ancestors, nearest
+                // first: the subtrees of the previous siblings of the node and
+                // of each ancestor, each reversed. An attribute's ancestors
+                // include its owner (XPath §2.2; WebKit PrecedingAxis).
+                var anchor = node;
+                if (try nodeKind(node) == 2) anchor = try interfaces.Attr.get_ownerElement(node) orelse return;
+                var cursor: ?*Node = anchor;
+                while (cursor) |current| : (cursor = try interfaces.Node.get_parentNode(current)) {
+                    var sibling = try interfaces.Node.get_previousSibling(current);
+                    while (sibling) |previous| : (sibling = try interfaces.Node.get_previousSibling(previous)) {
+                        const begin = result.items.len;
+                        try result.append(allocator, previous);
+                        try descendants(allocator, previous, result);
+                        std.mem.reverse(*Node, result.items[begin..]);
                     }
                 }
             },
@@ -702,8 +769,7 @@ const Evaluation = struct {
                 const count = try interfaces.NamedNodeMap.get_length(attributes);
                 for (0..count) |index| {
                     if (try interfaces.NamedNodeMap.call_item(attributes, @intCast(index))) |attr| {
-                        const ns = try namespaceUri(e.allocator, attr);
-                        if (!std.mem.eql(u8, ns, xmlns_namespace)) try result.append(attr);
+                        if (!try namespaceIs(attr, 2, xmlns_namespace)) try result.append(allocator, attr);
                     }
                 }
             },
@@ -712,55 +778,133 @@ const Evaluation = struct {
                 // kNamespaceAxis and WebKit XPathStep.cpp NamespaceAxis return empty.
             },
         }
-        return result.toOwnedSlice();
     }
 
-    fn matches(e: *Evaluation, node: *Node, axis_kind: Axis, node_test: Test) anyerror!bool {
-        const node_kind = try nodeKind(node);
-        // XPath's node model has no DocumentType nodes.
-        if (node_kind == 10) return false;
-        return switch (node_test) {
-            .any => true,
-            .text => node_kind == 3 or node_kind == 4,
-            .comment => node_kind == 8,
-            // Blink/WebKit Step treat an empty PI target as unrestricted.
-            .pi => |target| node_kind == 7 and (target == null or target.?.len == 0 or std.mem.eql(u8, target.?, try nodeName(e.allocator, node, false))),
-            .name => |name| blk: {
-                if (node_kind != (if (axis_kind == .attribute) @as(u16, 2) else @as(u16, 1))) break :blk false;
-                const ns = try namespaceUri(e.allocator, node);
-                // Browser Step matching also treats an empty wildcard namespace
-                // as unrestricted, including one returned by a prefix resolver.
-                if (name.wildcard) break :blk name.namespace == null or name.namespace.?.len == 0 or std.mem.eql(u8, name.namespace.?, ns);
-                const local = try nodeName(e.allocator, node, true);
-                const doc = dom.live_collections.nodeDocument(node);
-                const html_doc = if (doc) |document| dom.document_internals.getDocumentType(document) == .html else false;
-                if (html_doc and node_kind == 1) {
-                    // Browser HTML integration, WebKit XPathStep.cpp nodeMatchesBasicTest.
-                    if (std.mem.eql(u8, ns, html_namespace))
-                        break :blk std.ascii.eqlIgnoreCase(local, name.local) and (name.namespace == null or std.mem.eql(u8, name.namespace.?, ns));
-                    break :blk name.namespace != null and std.mem.eql(u8, name.namespace.?, ns) and std.mem.eql(u8, local, name.local);
+    /// Puts `nodes` in XPath §5 document order without repeats, in place, and
+    /// returns the ordered prefix. No pair of nodes is compared: every member's
+    /// ancestors are marked, then each tree is walked once, entering only
+    /// marked subtrees and starting below the chain of single marked children
+    /// above the members' common ancestor. The cost is the members' ancestors
+    /// plus the children of the marked nodes walked (WebKit
+    /// NodeSet::traversalSort walks the whole tree; review M2).
+    ///
+    /// An element's attributes follow it, in attribute-list order (DOM
+    /// compareDocumentPosition step 5.2 orders them so), and precede its
+    /// children. Separate trees stay contiguous, ordered by root address: an
+    /// order consistent for as long as the trees exist, which is what the DOM
+    /// asks of disconnected nodes (compareDocumentPosition step 6).
+    fn documentOrder(e: *Evaluation, nodes: []*Node) anyerror![]*Node {
+        if (nodes.len < 2) return nodes;
+        const Mark = struct {
+            member: bool = false,
+            emitted: bool = false,
+            /// Some member is an attribute of this element.
+            attributes: bool = false,
+            /// Marked children: how many, how many the walk has entered, one of them.
+            children: u32 = 0,
+            entered: u32 = 0,
+            child: ?*Node = null,
+        };
+        var marks: std.AutoHashMapUnmanaged(*Node, Mark) = .empty;
+        var members: std.ArrayListUnmanaged(*Node) = .empty;
+        var roots: std.ArrayListUnmanaged(*Node) = .empty;
+        for (nodes) |node| {
+            const entry = try marks.getOrPut(e.allocator, node);
+            if (entry.found_existing) {
+                // Marked before as an ancestor, or a repeat: its ancestors are marked.
+                if (!entry.value_ptr.member) try members.append(e.allocator, node);
+                entry.value_ptr.member = true;
+                continue;
+            }
+            entry.value_ptr.* = .{ .member = true };
+            try members.append(e.allocator, node);
+            // Mark ancestors up to the first one already marked.
+            var below = node;
+            var attribute = try nodeKind(node) == 2;
+            while (true) {
+                const above_or_null = if (attribute) try interfaces.Attr.get_ownerElement(below) else try interfaces.Node.get_parentNode(below);
+                const above = above_or_null orelse {
+                    try roots.append(e.allocator, below);
+                    break;
+                };
+                const above_entry = try marks.getOrPut(e.allocator, above);
+                if (!above_entry.found_existing) above_entry.value_ptr.* = .{};
+                if (attribute) above_entry.value_ptr.attributes = true else {
+                    above_entry.value_ptr.children += 1;
+                    above_entry.value_ptr.child = below;
                 }
-                if (!std.mem.eql(u8, name.namespace orelse "", ns)) break :blk false;
-                if (html_doc and node_kind == 2 and name.namespace == null) {
-                    if (try interfaces.Attr.get_ownerElement(node)) |owner| {
-                        if (std.mem.eql(u8, try namespaceUri(e.allocator, owner), html_namespace)) break :blk std.ascii.eqlIgnoreCase(local, name.local);
+                if (above_entry.found_existing) break;
+                below = above;
+                attribute = false;
+            }
+        }
+        std.mem.sort(*Node, roots.items, {}, addressLess);
+
+        var count: usize = 0;
+        for (roots.items) |tree_root| {
+            var top = tree_root;
+            while (marks.get(top)) |mark| {
+                if (mark.member or mark.attributes or mark.children != 1) break;
+                top = mark.child orelse break;
+            }
+            var cursor = top;
+            walk: while (true) {
+                const mark = marks.getPtr(cursor) orelse break;
+                if (mark.member and !mark.emitted) {
+                    mark.emitted = true;
+                    nodes[count] = cursor;
+                    count += 1;
+                }
+                if (mark.attributes) {
+                    // Every member attribute exists already, so reading the
+                    // list's existing Attr nodes makes none.
+                    for (0..dom.element_attributes.count(cursor)) |i| {
+                        const attr = dom.element_attributes.existingNodeAt(cursor, i) orelse continue;
+                        const attr_mark = marks.getPtr(attr) orelse continue;
+                        if (!attr_mark.member or attr_mark.emitted) continue;
+                        attr_mark.emitted = true;
+                        nodes[count] = attr;
+                        count += 1;
                     }
                 }
-                break :blk std.mem.eql(u8, local, name.local);
-            },
-        };
-    }
-
-    fn sort(e: *Evaluation, nodes: []const *Node) !void {
-        _ = e;
-        // A stable insertion sort can propagate DOM errors, unlike sort's bool comparator.
-        const items = @constCast(nodes);
-        for (1..@max(items.len, 1)) |i| {
-            const node = items[i];
-            var j = i;
-            while (j != 0 and try before(node, items[j - 1])) : (j -= 1) items[j] = items[j - 1];
-            items[j] = node;
+                // Into the first marked child...
+                if (mark.children != 0) {
+                    var child = try interfaces.Node.get_firstChild(cursor);
+                    while (child) |candidate| : (child = try interfaces.Node.get_nextSibling(candidate)) {
+                        if (!marks.contains(candidate)) continue;
+                        mark.entered = 1;
+                        cursor = candidate;
+                        continue :walk;
+                    }
+                }
+                // ...else on to the next marked sibling of it or of an ancestor.
+                while (cursor != top) {
+                    const up = try interfaces.Node.get_parentNode(cursor) orelse break :walk;
+                    const up_mark = marks.getPtr(up) orelse break :walk;
+                    if (up_mark.entered < up_mark.children) {
+                        var sibling = try interfaces.Node.get_nextSibling(cursor);
+                        while (sibling) |candidate| : (sibling = try interfaces.Node.get_nextSibling(candidate)) {
+                            if (!marks.contains(candidate)) continue;
+                            up_mark.entered += 1;
+                            cursor = candidate;
+                            continue :walk;
+                        }
+                    }
+                    cursor = up;
+                }
+                break;
+            }
         }
+        // Unreachable while the trees are intact - no script runs during an
+        // evaluation - but a member is never dropped.
+        if (count != members.items.len) for (members.items) |node| {
+            const mark = marks.getPtr(node) orelse continue;
+            if (mark.emitted) continue;
+            mark.emitted = true;
+            nodes[count] = node;
+            count += 1;
+        };
+        return nodes[0..count];
     }
 
     fn number(e: *Evaluation, value: Value) anyerror!f64 {
@@ -783,19 +927,21 @@ const Evaluation = struct {
             },
         };
     }
+    /// XPath §5 string-value: an element's, document's or fragment's is its
+    /// text descendants' data in document order; any other node's its value.
     fn nodeString(e: *Evaluation, node: *Node) anyerror![]const u8 {
         switch (try nodeKind(node)) {
             1, 9, 11 => {
-                var nodes = List(*Node).init(e.allocator);
-                defer nodes.deinit();
-                try descendants(node, &nodes);
-                var text = List(u8).init(e.allocator);
-                defer text.deinit();
-                for (nodes.items()) |child| {
+                var text: std.ArrayListUnmanaged(u8) = .empty;
+                var walk = try Descendants.init(node);
+                while (try walk.next()) |child| {
                     const child_type = try nodeKind(child);
-                    if (child_type == 3 or child_type == 4) try text.appendSlice(try e.nodeValue(child));
+                    if (child_type != 3 and child_type != 4) continue;
+                    var value = (try interfaces.Node.get_nodeValue(child)) orelse continue;
+                    defer value.deinit(child.ctx.allocator);
+                    try text.appendSlice(e.allocator, value.asSlice());
                 }
-                return text.toOwnedSlice();
+                return text.items;
             },
             else => return e.nodeValue(node),
         }
@@ -805,16 +951,17 @@ const Evaluation = struct {
         defer value.deinit(node.ctx.allocator);
         return e.allocator.dupe(u8, value.asSlice());
     }
+    /// Each node's string-value, computed once.
+    fn nodeStrings(e: *Evaluation, nodes: []const *Node) anyerror![]const []const u8 {
+        const strings = try e.allocator.alloc([]const u8, nodes.len);
+        for (nodes, strings) |node, *text| text.* = try e.nodeString(node);
+        return strings;
+    }
 
     // XPath §3.4: node-set equality AND inequality are existential comparisons.
     fn compare(e: *Evaluation, left: Value, right: Value, op: Op) anyerror!bool {
         const equality = op == .eq or op == .ne;
-        if (left == .nodes and right == .nodes) {
-            for (left.nodes) |a| for (right.nodes) |b| {
-                if (try e.compare(.{ .string = try e.nodeString(a) }, .{ .string = try e.nodeString(b) }, op)) return true;
-            };
-            return false;
-        }
+        if (left == .nodes and right == .nodes) return e.compareNodeSets(left.nodes, right.nodes, op);
         if (left == .nodes or right == .nodes) {
             const nodes = if (left == .nodes) left.nodes else right.nodes;
             const scalar = if (left == .nodes) right else left;
@@ -830,6 +977,45 @@ const Evaluation = struct {
         if (equality and (left == .boolean or right == .boolean)) return compareNumber(if (boolean(left)) 1 else 0, if (boolean(right)) 1 else 0, op);
         if (equality and left == .string and right == .string) return std.mem.eql(u8, left.string, right.string) == (op == .eq);
         return compareNumber(try e.number(left), try e.number(right), op);
+    }
+
+    /// XPath §3.4 for two node-sets: true when SOME pair of nodes compares true
+    /// on their string-values. Each string-value is computed once and no pair
+    /// is enumerated: `=` probes a hash set of one side's strings, `!=` fails
+    /// only when every string on both sides is the same one, and `<` `<=` `>`
+    /// `>=` compare numbers, where some pair holds exactly when the extremes
+    /// do (NaN compares false with everything, so it never contributes).
+    fn compareNodeSets(e: *Evaluation, left: []const *Node, right: []const *Node, op: Op) anyerror!bool {
+        if (left.len == 0 or right.len == 0) return false;
+        const a = try e.nodeStrings(left);
+        const b = try e.nodeStrings(right);
+        switch (op) {
+            .eq => {
+                const small = if (a.len <= b.len) a else b;
+                const large = if (a.len <= b.len) b else a;
+                var set: std.StringHashMapUnmanaged(void) = .empty;
+                for (small) |text| try set.put(e.allocator, text, {});
+                for (large) |text| if (set.contains(text)) return true;
+                return false;
+            },
+            .ne => {
+                for (a) |text| if (!equal(text, a[0])) return true;
+                for (b) |text| if (!equal(text, a[0])) return true;
+                return false;
+            },
+            .lt, .le, .gt, .ge => {
+                const lhs = numberRange(a) orelse return false;
+                const rhs = numberRange(b) orelse return false;
+                return switch (op) {
+                    .lt => lhs.min < rhs.max,
+                    .le => lhs.min <= rhs.max,
+                    .gt => lhs.max > rhs.min,
+                    .ge => lhs.max >= rhs.min,
+                    else => unreachable,
+                };
+            },
+            else => unreachable,
+        }
     }
 
     fn function(e: *Evaluation, name: []const u8, expressions: []const *const Expr, ctx: Context) anyerror!Value {
@@ -863,8 +1049,7 @@ const Evaluation = struct {
             return .{ .string = if (equal(name, "namespace-uri")) try namespaceUri(e.allocator, nodes[0]) else try nodeName(e.allocator, nodes[0], equal(name, "local-name")) };
         }
         if (equal(name, "id")) {
-            var result = List(*Node).init(e.allocator);
-            defer result.deinit();
+            var result: NodeSetBuilder = .{};
             // XPath §4.1 id(): browsers use TreeScope (Document or ShadowRoot),
             // including when the context is detached; not the detached subtree.
             const ancestor_root = try root(ctx.node);
@@ -875,9 +1060,7 @@ const Evaluation = struct {
             if (first == .nodes) {
                 for (first.nodes) |node| try e.ids(tree_root, try e.nodeString(node), &result);
             } else try e.ids(tree_root, try e.string(first), &result);
-            const nodes = try result.toOwnedSlice();
-            try e.sort(nodes);
-            return .{ .nodes = nodes };
+            return .{ .nodes = try e.documentOrder(result.list.items) };
         }
         if (equal(name, "lang")) {
             const language = try e.string(first);
@@ -950,14 +1133,13 @@ const Evaluation = struct {
         unreachable; // Parser validates the entire core function library and arities.
     }
 
-    fn ids(e: *Evaluation, tree_root: *Node, text: []const u8, result: *List(*Node)) !void {
-        _ = e;
+    fn ids(e: *Evaluation, tree_root: *Node, text: []const u8, result: *NodeSetBuilder) !void {
         var tokens = std.mem.tokenizeAny(u8, text, " \t\r\n");
         while (tokens.next()) |id| {
             if (try nodeKind(tree_root) == 9) {
-                if (try interfaces.Document.call_getElementById(tree_root, runtime.DOMString.initInterned(id))) |element| try appendUnique(result, element);
+                if (try interfaces.Document.call_getElementById(tree_root, runtime.DOMString.initInterned(id))) |element| try result.add(e.allocator, element);
             } else if (tree_root.stateAs(interfaces.ShadowRoot.State) != null) {
-                if (try interfaces.DocumentFragment.call_getElementById(tree_root, runtime.DOMString.initInterned(id))) |element| try appendUnique(result, element);
+                if (try interfaces.DocumentFragment.call_getElementById(tree_root, runtime.DOMString.initInterned(id))) |element| try result.add(e.allocator, element);
             }
         }
     }
@@ -994,41 +1176,160 @@ fn root(node: *Node) !*Node {
     while (try parent(current)) |p| current = p;
     return current;
 }
-fn ancestorOf(ancestor: *Node, node: *Node) !bool {
-    var current = try parent(node);
-    while (current) |p| : (current = try parent(p)) if (p == ancestor) return true;
-    return false;
-}
-fn descendants(node: *Node, result: *List(*Node)) !void {
-    // Iterative preorder: deeply nested DOM trees consume no native call stack.
-    var cursor = try interfaces.Node.get_firstChild(node);
-    while (cursor) |current| {
-        try result.append(current);
-        if (try interfaces.Node.get_firstChild(current)) |child| {
-            cursor = child;
-            continue;
-        }
-        var ancestor = current;
-        while (ancestor != node) {
-            if (try interfaces.Node.get_nextSibling(ancestor)) |sibling| {
-                cursor = sibling;
-                break;
-            }
-            ancestor = try interfaces.Node.get_parentNode(ancestor) orelse node;
-        }
-        if (ancestor == node) break;
+/// Preorder walk of a node's descendants, not the node itself. Iterative:
+/// deeply nested trees consume no native call stack.
+const Descendants = struct {
+    top: *Node,
+    pending: ?*Node,
+
+    fn init(top: *Node) !Descendants {
+        return .{ .top = top, .pending = try interfaces.Node.get_firstChild(top) };
     }
+    fn next(walk: *Descendants) !?*Node {
+        const current = walk.pending orelse return null;
+        walk.pending = try interfaces.Node.get_firstChild(current);
+        if (walk.pending == null) {
+            var ancestor = current;
+            while (ancestor != walk.top) {
+                if (try interfaces.Node.get_nextSibling(ancestor)) |sibling| {
+                    walk.pending = sibling;
+                    break;
+                }
+                ancestor = try interfaces.Node.get_parentNode(ancestor) orelse break;
+            }
+        }
+        return current;
+    }
+};
+fn descendants(allocator: Allocator, node: *Node, result: *std.ArrayListUnmanaged(*Node)) !void {
+    var walk = try Descendants.init(node);
+    while (try walk.next()) |current| try result.append(allocator, current);
 }
-fn appendUnique(list: *List(*Node), node: *Node) !void {
-    for (list.items()) |item| if (item == node) return;
-    try list.append(node);
+
+/// A node-set being merged: members in arrival order and, when one node may
+/// arrive twice, a hash set, so an arrival costs O(1) rather than a scan of
+/// the members (WebKit LocationPath::evaluate and Union::evaluate keep a
+/// HashSet beside the vector; review M2).
+const NodeSetBuilder = struct {
+    list: std.ArrayListUnmanaged(*Node) = .empty,
+    seen: std.AutoHashMapUnmanaged(*Node, void) = .empty,
+    dedup: bool = true,
+
+    fn add(builder: *NodeSetBuilder, allocator: Allocator, node: *Node) !void {
+        if (builder.dedup and (try builder.seen.getOrPut(allocator, node)).found_existing) return;
+        try builder.list.append(allocator, node);
+    }
+};
+
+/// What is known of a node-set between location steps (WebKit tracks the same
+/// as NodeSet::isSorted and subtreesAreDisjoint).
+const Shape = struct {
+    /// In document order.
+    sorted: bool,
+    /// No member is an ancestor of another; an Attr's parent is its owner.
+    disjoint: bool,
+    /// The step can reach one node from two context nodes: deduplicate.
+    repeats: bool = false,
+    /// One context node on a reverse axis: the step yields reverse document order.
+    reversed: bool = false,
+
+    /// The shape of what a step along `axis_kind` makes from `count` nodes of `set`'s shape.
+    fn after(set: Shape, axis_kind: Axis, count: usize) Shape {
+        if (count <= 1) return .{
+            .sorted = true,
+            .reversed = switch (axis_kind) {
+                .ancestor, .ancestor_or_self, .preceding, .preceding_sibling => true,
+                else => false,
+            },
+            .disjoint = switch (axis_kind) {
+                .self, .parent, .child, .attribute, .namespace, .following_sibling, .preceding_sibling => true,
+                else => false,
+            },
+        };
+        return switch (axis_kind) {
+            // One node has one parent and one owner: these never repeat a node.
+            .self => .{ .sorted = set.sorted, .disjoint = set.disjoint },
+            .child => .{ .sorted = set.sorted and set.disjoint, .disjoint = set.disjoint },
+            // An element's attributes come right after it (XPath §5), so they
+            // keep the order of their elements, nested or not.
+            .attribute => .{ .sorted = set.sorted, .disjoint = true },
+            .descendant, .descendant_or_self => .{ .sorted = set.sorted and set.disjoint, .disjoint = false, .repeats = !set.disjoint },
+            else => .{ .sorted = false, .disjoint = false, .repeats = true },
+        };
+    }
+};
+
+/// XPath §2.3 node tests. Reads names in place: a step tests every node of its
+/// axis, so a copy per candidate would grow the evaluation's memory with
+/// every axis walked (`//*/following::*` walks N axes of up to N nodes).
+fn matches(node: *Node, axis_kind: Axis, node_test: Test) anyerror!bool {
+    const node_kind = try nodeKind(node);
+    // XPath's node model has no DocumentType nodes.
+    if (node_kind == 10) return false;
+    return switch (node_test) {
+        .any => true,
+        .text => node_kind == 3 or node_kind == 4,
+        .comment => node_kind == 8,
+        // Blink/WebKit Step treat an empty PI target as unrestricted.
+        .pi => |target| node_kind == 7 and (target == null or target.?.len == 0 or blk: {
+            var name = try interfaces.ProcessingInstruction.get_target(node);
+            defer name.deinit(node.ctx.allocator);
+            break :blk std.mem.eql(u8, target.?, name.asSlice());
+        }),
+        .name => |name| try nameMatches(node, node_kind, axis_kind, name),
+    };
 }
-fn before(a: *Node, b: *Node) !bool {
-    if (a == b) return false;
-    // DOM compareDocumentPosition orders attributes before children, but the
-    // attribute pair is implementation-specific. Use its consistent ordering.
-    const position = try interfaces.Node.call_compareDocumentPosition(a, b);
-    return position & interfaces.Node.get_DOCUMENT_POSITION_FOLLOWING() != 0;
+fn nameMatches(node: *Node, node_kind: u16, axis_kind: Axis, name: NameTest) anyerror!bool {
+    if (node_kind != (if (axis_kind == .attribute) @as(u16, 2) else @as(u16, 1))) return false;
+    var ns_value = if (node_kind == 1) try interfaces.Element.get_namespaceURI(node) else try interfaces.Attr.get_namespaceURI(node);
+    defer if (ns_value) |*value| value.deinit(node.ctx.allocator);
+    const ns = if (ns_value) |value| value.asSlice() else "";
+    // Browser Step matching also treats an empty wildcard namespace
+    // as unrestricted, including one returned by a prefix resolver.
+    if (name.wildcard) return name.namespace == null or name.namespace.?.len == 0 or std.mem.eql(u8, name.namespace.?, ns);
+    var local_value = if (node_kind == 1) try interfaces.Element.get_localName(node) else try interfaces.Attr.get_localName(node);
+    defer local_value.deinit(node.ctx.allocator);
+    const local = local_value.asSlice();
+    const doc = dom.live_collections.nodeDocument(node);
+    const html_doc = if (doc) |document| dom.document_internals.getDocumentType(document) == .html else false;
+    if (html_doc and node_kind == 1) {
+        // Browser HTML integration, WebKit XPathStep.cpp nodeMatchesBasicTest.
+        if (std.mem.eql(u8, ns, html_namespace))
+            return std.ascii.eqlIgnoreCase(local, name.local) and (name.namespace == null or std.mem.eql(u8, name.namespace.?, ns));
+        return name.namespace != null and std.mem.eql(u8, name.namespace.?, ns) and std.mem.eql(u8, local, name.local);
+    }
+    if (!std.mem.eql(u8, name.namespace orelse "", ns)) return false;
+    if (html_doc and node_kind == 2 and name.namespace == null) {
+        if (try interfaces.Attr.get_ownerElement(node)) |owner| {
+            if (try namespaceIs(owner, 1, html_namespace)) return std.ascii.eqlIgnoreCase(local, name.local);
+        }
+    }
+    return std.mem.eql(u8, local, name.local);
+}
+/// Whether an element's or attribute's namespace URI is `uri` ("" for none),
+/// read in place.
+fn namespaceIs(node: *Node, node_kind: u16, uri: []const u8) !bool {
+    var ns = (if (node_kind == 1) try interfaces.Element.get_namespaceURI(node) else try interfaces.Attr.get_namespaceURI(node)) orelse return uri.len == 0;
+    defer ns.deinit(node.ctx.allocator);
+    return std.mem.eql(u8, ns.asSlice(), uri);
+}
+fn addressLess(_: void, a: *Node, b: *Node) bool {
+    return @intFromPtr(a) < @intFromPtr(b);
+}
+const Range = struct { min: f64, max: f64 };
+/// The least and greatest of the numbers `strings` convert to, NaN ignored;
+/// null when every one is NaN.
+fn numberRange(strings: []const []const u8) ?Range {
+    var range: ?Range = null;
+    for (strings) |text| {
+        const n = parseNumber(text);
+        if (std.math.isNan(n)) continue;
+        if (range) |*r| {
+            r.min = @min(r.min, n);
+            r.max = @max(r.max, n);
+        } else range = .{ .min = n, .max = n };
+    }
+    return range;
 }
 fn namespaceUri(allocator: Allocator, node: *Node) ![]const u8 {
     var ns = switch (try nodeKind(node)) {
