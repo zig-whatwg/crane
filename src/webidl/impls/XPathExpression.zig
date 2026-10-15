@@ -797,7 +797,9 @@ const Evaluation = struct {
         if (left == .nodes or right == .nodes) {
             const nodes = if (left == .nodes) left.nodes else right.nodes;
             const scalar = if (left == .nodes) right else left;
-            if (equality and scalar == .boolean) return compareNumber(if (boolean(left)) 1 else 0, if (boolean(right)) 1 else 0, op);
+            // XPath §3.4: against a boolean, a node-set converts with boolean()
+            // for EVERY operator, < <= > >= included (WebKit EqTestOp::compare).
+            if (scalar == .boolean) return compareNumber(if (boolean(left)) 1 else 0, if (boolean(right)) 1 else 0, op);
             for (nodes) |node| {
                 const value = Value{ .string = try e.nodeString(node) };
                 if (try e.compare(if (left == .nodes) value else scalar, if (left == .nodes) scalar else value, op)) return true;
