@@ -286,9 +286,9 @@ pub fn prepareScriptElement(
         // hashes and 'strict-dynamic' are csp.inline_check's).
         if (node_document) |doc| {
             // CSP 6.7.3.1 "Is element nonceable?": one with a nonce
-            // attribute. Not modelled, stated: step 2's scan of a script's
-            // attributes for "<script" and the like, and step 3's
-            // duplicate-attribute parse error.
+            // attribute; step 2's scan of a script's attributes for
+            // "<script" and the like is csp_violations.shouldBlockInline's.
+            // Not modelled, stated: step 3's duplicate-attribute parse error.
             const nonce = getNonceAttribute(script_element);
             if (!document_scripts.inlineScriptAllowedByCsp(
                 doc,
