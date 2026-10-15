@@ -386,6 +386,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A WebAssembly.Module is bound to its agent cluster, not its origin](spec-compliance-a-wasm-module-is-bound-to-its-agent-cluster-not-its-origin.md) - A test that passed only because a feature was missing proves nothing; when the feature breaks it, read the spec's own note and the three engines' wpt.fyi runs before adding a deviation - if two engines and the spec agree, the failing test was written for the third.
 - [A union member of a union is flattened into it](spec-compliance-a-union-member-of-a-union-is-flattened-into-it.md) - When a binding conversion handles a union, handle nested unions as their flattened members - and when a newly implemented method throws TypeError before its first line, suspect the argument conversion, not the method.
 - [Safari's image decoder runs on this Mac - probe it](spec-compliance-safari-s-image-decoder-runs-on-this-mac-probe-it.md) - For Safari's image (and other CoreGraphics/ImageIO-backed) behaviour, measure ImageIO on this machine instead of reading WebKit's non-Apple decoders - and check the result against Safari's wpt.fyi runs where a test exists.
+- [Upgrade form ownership precedes custom state](spec-compliance-upgrade-form-ownership-precedes-custom-state.md) - Check when an algorithm establishes the state required by a predicate.
+- [Base href uses the fallback URL](spec-compliance-base-href-uses-the-fallback-url.md) - Read each URL property's own getter and mutation algorithms.
+- [Meter midpoints must remain finite](spec-compliance-meter-midpoints-must-remain-finite.md) - Test arithmetic defaults at both ends of the finite range.
 
 ### Codegen
 
@@ -518,6 +521,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A union conversion needs a case per member type](testing-a-union-conversion-needs-a-case-per-member-type.md) - Enumerate the flattened member types from the IDL and give each its own case - plus an offset view and a detached buffer - before calling a conversion done.
 - [A test encoder written beside its decoder can share its mistake](testing-a-test-encoder-written-beside-its-decoder-can-share-its-mistake.md) - An encoder and decoder written together agree with each other, not with the format: anchor one of them to an independent implementation, and build truncated streams that end where you think they do.
 - [The WebDriver remote end reads the browsing context, not script's getters](testing-the-webdriver-remote-end-reads-the-browsing-context-not-script-getters.md) - Remote-end code is not script: reach a window's document and cookie store through its browsing context, never through an IDL getter that checks the accessor or a top-level-only field.
+- [Check benchmark noise with identical binaries](testing-check-benchmark-noise-with-identical-binaries.md) - Measure A/A variation and preserve every sample before attributing a slowdown.
 
 ### Debugging
 
