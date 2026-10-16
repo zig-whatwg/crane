@@ -114,6 +114,8 @@ pub const BrowserAdapter = struct {
             .shadowrealm_in_audioworklet,
             .shadowrealm_in_serviceworker,
             => .window,
+            // Never run (GlobalType.isImplemented).
+            .window_module, .jsshell => .window,
         };
     }
 
