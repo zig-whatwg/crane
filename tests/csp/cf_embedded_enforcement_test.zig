@@ -92,6 +92,17 @@ test "CSPEE source subsumption compares schemes hosts ports and path boundaries"
     try checkSubsumes(a, "img-src *", &.{"img-src data:"}, false);
 }
 
+test "CSPEE path comparison decodes each source once" {
+    // CSP 3 path-part matching decodes each path once. Chrome 154's
+    // content_security_policy.cc:511-519 and csp_source.cc:141-159,342
+    // suggest a second decode during subsumption, but that source-level
+    // inference is unconfirmed in a running browser. Keep this deliberate
+    // until a shipping-browser probe settles both escaped-percent pairs.
+    const a = std.testing.allocator;
+    try checkSubsumes(a, "img-src https://a.test/a/b", &.{"img-src https://a.test/a%252Fb"}, false);
+    try checkSubsumes(a, "img-src https://a.test/a%252Fb", &.{"img-src https://a.test/a%252Fb"}, true);
+}
+
 fn allocationPaths(allocator: std.mem.Allocator) !void {
     try checkSubsumes(allocator, "script-src http://*.test:* 'nonce-abc'", &.{ "script-src http://a.test 'nonce-xyz'", "script-src https://*.test 'nonce-xyz'" }, true);
     try std.testing.expect(try ee.isValidAttribute(allocator, "img-src 'none'", "img-src https:", null));
