@@ -1387,7 +1387,9 @@ pub const Registry = struct {
         }
     }
 
-    fn opWorker(self: *const Registry, op_id: u64) ?*Worker {
+    /// The worker of the install or activate event `op_id`, while it is
+    /// pending; null once it is done.
+    pub fn opWorker(self: *const Registry, op_id: u64) ?*Worker {
         for (self.installs.items) |op| if (op.id == op_id) return op.worker;
         for (self.activates.items) |op| if (op.id == op_id) return op.worker;
         return null;

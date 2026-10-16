@@ -269,6 +269,19 @@ pub const Manager = struct {
     /// How long a running worker with no event to handle lives on (2.1.1):
     /// Chromium's idle timeout.
     idle_timeout_ms: u64 = 30_000,
+    /// "The timed out flag ... is set after an optional user agent imposed
+    /// delay if the pending promises count is greater than zero" (4.4): an
+    /// install or activate event still extended after this long times out -
+    /// it fails, and its worker is terminated. Chromium's request timeout
+    /// (ServiceWorkerVersion kRequestTimeout, 5 minutes). Without it a worker
+    /// whose waitUntil() never settles holds its job queue - and its thread -
+    /// for the Browser's life.
+    lifecycle_timeout_ms: u64 = 5 * 60_000,
+    /// "A user agent may terminate service workers at any time it ... detects
+    /// abnormal operation: such as infinite loops" (2.1.1): a worker whose
+    /// script has not finished evaluating after this long is terminated, and
+    /// its start fails. Chromium's start timeout (5 minutes).
+    start_timeout_ms: u64 = 5 * 60_000,
     /// The job thread's link (the manager's reference), once started.
     job_link: ?*WorkerLink = null,
     /// The job thread's loop, while it runs. Read only on the job thread.
@@ -855,7 +868,42 @@ pub const Manager = struct {
         if (entry.terminate_requested) if (started.link) |link| {
             _ = link.terminate();
         };
+        // The start's timeout: an evaluation that never ends is aborted.
+        const check = self.allocator.create(StartTimeout) catch return;
+        check.* = .{ .manager = self, .worker_id = worker_id, .epoch = entry.epoch };
+        const loop = self.job_loop orelse return self.allocator.destroy(check);
+        if (loop.timerInterface().setTimeoutOwned(self.start_timeout_ms, StartTimeout.fire, check, StartTimeout.drop) == 0) {
+            self.allocator.destroy(check);
+        }
     }
+
+    /// A service worker's start that has not answered in `start_timeout_ms`.
+    const StartTimeout = struct {
+        manager: *Manager,
+        worker_id: u64,
+        epoch: u64,
+
+        fn drop(data: ?*anyopaque) void {
+            const self: *StartTimeout = @ptrCast(@alignCast(data.?));
+            self.manager.allocator.destroy(self);
+        }
+
+        fn fire(data: ?*anyopaque) void {
+            const self: *StartTimeout = @ptrCast(@alignCast(data.?));
+            const manager = self.manager;
+            const worker_id = self.worker_id;
+            const epoch = self.epoch;
+            manager.allocator.destroy(self);
+            manager.lock();
+            defer manager.unlock();
+            const entry = manager.findRunning(worker_id) orelse return;
+            if (entry.epoch != epoch) return;
+            const worker = manager.registry.findWorker(worker_id) orelse return;
+            if (worker.run != .starting) return;
+            log.debug("service worker {d} did not finish evaluating; terminated", .{worker_id});
+            terminateWorker(manager, worker);
+        }
+    };
 
     const StartCopy = struct {
         start: WorkerStart,
@@ -932,6 +980,43 @@ pub const Manager = struct {
         }
     };
 
+    /// An install or activate event's timeout (`lifecycle_timeout_ms`).
+    const LifecycleTimeout = struct {
+        manager: *Manager,
+        op: u64,
+        worker_id: u64,
+
+        fn arm(data: ?*anyopaque) void {
+            const self: *LifecycleTimeout = @ptrCast(@alignCast(data.?));
+            const manager = self.manager;
+            const loop = manager.job_loop orelse return manager.allocator.destroy(self);
+            if (loop.timerInterface().setTimeoutOwned(manager.lifecycle_timeout_ms, fire, self, dropPosted) == 0) {
+                manager.allocator.destroy(self);
+            }
+        }
+
+        fn dropPosted(data: ?*anyopaque) void {
+            const self: *LifecycleTimeout = @ptrCast(@alignCast(data.?));
+            self.manager.allocator.destroy(self);
+        }
+
+        /// Still extended: timed out - the event fails (Install step
+        /// 11.3.1.4.2: installFailed), and the worker is terminated.
+        fn fire(data: ?*anyopaque) void {
+            const self: *LifecycleTimeout = @ptrCast(@alignCast(data.?));
+            const manager = self.manager;
+            const op = self.op;
+            const worker_id = self.worker_id;
+            manager.allocator.destroy(self);
+            manager.lock();
+            defer manager.unlock();
+            if (manager.registry.opWorker(op) == null) return;
+            log.debug("a lifecycle event of service worker {d} timed out", .{worker_id});
+            manager.registry.lifecycleEventDone(op, true) catch {};
+            if (manager.registry.findWorker(worker_id)) |worker| terminateWorker(manager, worker);
+        }
+    };
+
     // ------------------------------------------------------------------
     // The registry's effects (lock held)
     // ------------------------------------------------------------------
@@ -996,6 +1081,10 @@ pub const Manager = struct {
         entry.epoch +%= 1;
         const started = entry.started orelse return;
         self.host.dispatch(self, started, event, op);
+        // Its timeout, armed on the job thread.
+        const task = self.allocator.create(LifecycleTimeout) catch return;
+        task.* = .{ .manager = self, .op = op, .worker_id = worker.id };
+        self.postToJobThread(.{ .run = LifecycleTimeout.arm, .drop = LifecycleTimeout.dropPosted, .data = task });
     }
 
     fn startAnswered(_: *anyopaque, _: *registry_mod.Worker, _: u64, _: bool) void {}

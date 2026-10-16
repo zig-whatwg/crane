@@ -17,10 +17,11 @@
 //!   navigator's ServiceWorkerContainer, or a service worker global's
 //!   members), not when it is created: there is no realm-creation hook yet,
 //!   so claim() and Activate step 8 reach only realms that did.
-//! - A window realm whose document is not fully active - a removed frame's -
-//!   becomes no environment: its promises stay pending (the browsers'
-//!   behaviour, detached-context.https.html: "methods called on a detached
-//!   registration should not resolve").
+//! - A window realm whose document is not fully active - a removed frame's,
+//!   a closed window's - becomes no environment: what it calls is rejected
+//!   with an "InvalidStateError" (Chromium's answer for a detached context),
+//!   and the promises it was waiting on when its environment ended stay
+//!   pending (nothing runs in a realm that has gone).
 //!
 //! Spec: https://w3c.github.io/ServiceWorker/#client-context
 
@@ -446,6 +447,10 @@ fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironmen
     defer realm.allocator.free(origin);
     const creation_url = realm.documentUrl() orelse return null;
     const is_secure = settings.is_secure_context(global);
+    const service_worker_id: u64 = if (kind == .service_worker) blk: {
+        const service = html.worker_host.serviceScopeOf(realm) orelse return null;
+        break :blk service.worker_id;
+    } else 0;
     manager.noteCookieJar(dom.global_settings.cookieJarOf(global));
 
     const self = try allocator.create(RealmEnvironment);
@@ -454,10 +459,6 @@ fn makeEnvironment(manager: *Manager, realm: runtime.Context) !?*RealmEnvironmen
     errdefer allocator.free(owned_origin);
     const owned_url = try allocator.dupe(u8, creation_url);
     errdefer allocator.free(owned_url);
-    const service_worker_id: u64 = if (kind == .service_worker) blk: {
-        const service = html.worker_host.serviceScopeOf(realm) orelse return null;
-        break :blk service.worker_id;
-    } else 0;
     self.* = .{
         .endpoint = .{ .sink = sink.retain(), .deliver = RealmEnvironment.deliver, .realm = realm },
         .allocator = allocator,
@@ -511,12 +512,14 @@ pub const RegisterOptions = struct {
     update_via_cache: registry_mod.UpdateViaCache = .imports,
 };
 
-/// A promise that never settles: what a realm that is no environment gets
-/// (see the file's deviations). Held for the caller.
-fn pendingForever(realm: runtime.Context) !runtime.JSValue {
-    var capability = try engine.createPromise(realm);
-    defer engine.releasePromiseCapability(&capability);
-    return (try engine.retainValue(realm, capability.promise)).take();
+/// What a realm that can be no environment gets - a removed frame's, a
+/// closed window's: a promise rejected with an "InvalidStateError", as
+/// Chromium's ServiceWorkerContainer and ServiceWorkerRegistration answer a
+/// detached context ("The document is in an invalid state"). WPT
+/// register-closed-window.https.html waits for register() to settle;
+/// detached-context.https.html only checks that nothing resolves.
+fn noEnvironment(realm: runtime.Context) !runtime.JSValue {
+    return rejected(realm, .invalid_state_error, "The document is in an invalid state");
 }
 
 fn rejected(realm: runtime.Context, kind: registry_mod.ErrorKind, message: []const u8) !runtime.JSValue {
@@ -534,7 +537,7 @@ fn rejected(realm: runtime.Context, kind: registry_mod.ErrorKind, message: []con
 pub fn register(container: *runtime.Instance, script_url: []const u8, options: RegisterOptions) !runtime.JSValue {
     const realm = container.ctx;
     // 3. client: this's service worker client.
-    const environment = environmentOf(realm, true) orelse return pendingForever(realm);
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
     const allocator = environment.allocator;
     const base = realm.documentUrl();
     // 4. scriptURL, parsed with the API base URL (serialized; null: failure).
@@ -593,7 +596,7 @@ fn fetchClientOf(realm: runtime.Context) !?*anyopaque {
 /// getRegistration(clientURL) steps 1-9.
 pub fn getRegistration(container: *runtime.Instance, client_url: []const u8) !runtime.JSValue {
     const realm = container.ctx;
-    const environment = environmentOf(realm, true) orelse return pendingForever(realm);
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
     const allocator = environment.allocator;
     // 3-5. clientURL, parsed with the API base URL, its fragment null.
     const parsed = try scope_mod.parseAgainst(allocator, client_url, realm.documentUrl()) orelse
@@ -616,7 +619,7 @@ pub fn getRegistration(container: *runtime.Instance, client_url: []const u8) !ru
 /// getRegistrations() steps 1-5.
 pub fn getRegistrations(container: *runtime.Instance) !runtime.JSValue {
     const realm = container.ctx;
-    const environment = environmentOf(realm, true) orelse return pendingForever(realm);
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
     const made = try environment.newPromise();
     errdefer made.promise.release();
     // 4.1-4.2. Every registration of the client's storage key; 4.3, a task
@@ -629,7 +632,13 @@ pub fn getRegistrations(container: *runtime.Instance) !runtime.JSValue {
 /// The ready attribute's getter steps.
 pub fn ready(container: *runtime.Instance) !runtime.JSValue {
     const realm = container.ctx;
-    const environment = environmentOf(realm, true) orelse return pendingForever(realm);
+    // "The returned ready promise will never reject": a realm that can be no
+    // environment gets one that never settles.
+    const environment = environmentOf(realm, true) orelse {
+        var capability = try engine.createPromise(realm);
+        defer engine.releasePromiseCapability(&capability);
+        return (try engine.retainValue(realm, capability.promise)).take();
+    };
     // 1. A new promise the first time.
     if (environment.ready == null) {
         var capability = try engine.createPromise(realm);
@@ -666,7 +675,7 @@ pub fn controller(container: *runtime.Instance) !?*runtime.Instance {
 /// update() steps 1-9.
 pub fn update(registration: *runtime.Instance, data: *const objects.RegistrationObject) !runtime.JSValue {
     const realm = registration.ctx;
-    const environment = environmentOf(realm, true) orelse return pendingForever(realm);
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
     const allocator = environment.allocator;
     // 2-3. newestWorker; null: InvalidStateError.
     var target = (try environment.manager.updateTarget(allocator, data.registration_id)) orelse
@@ -705,7 +714,7 @@ pub fn update(registration: *runtime.Instance, data: *const objects.Registration
 /// unregister() steps 1-5.
 pub fn unregister(registration: *runtime.Instance, data: *const objects.RegistrationObject) !runtime.JSValue {
     const realm = registration.ctx;
-    const environment = environmentOf(realm, true) orelse return pendingForever(realm);
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
     const made = try environment.newPromise();
     errdefer made.promise.release();
     // 3-4. An unregister job for the registration's storage key and scope.
@@ -751,7 +760,7 @@ pub fn registrationOf(global: *runtime.Instance) !*runtime.Instance {
 /// activate; its resolution comes back.
 pub fn skipWaiting(global: *runtime.Instance) !runtime.JSValue {
     const realm = global.ctx;
-    const environment = environmentOf(realm, true) orelse return pendingForever(realm);
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
     const made = try environment.newPromise();
     environment.manager.report(.{ .skip_waiting = .{ .worker = environment.service_worker_id, .environment = environment.id, .promise = made.id } });
     return made.promise.take();
@@ -760,7 +769,7 @@ pub fn skipWaiting(global: *runtime.Instance) !runtime.JSValue {
 /// clients.claim() steps 1-4, for the Clients object `clients`.
 pub fn claim(clients: *runtime.Instance) !runtime.JSValue {
     const realm = clients.ctx;
-    const environment = environmentOf(realm, true) orelse return pendingForever(realm);
+    const environment = environmentOf(realm, true) orelse return noEnvironment(realm);
     // 1. Not an active worker: InvalidStateError.
     if (!environment.manager.isActiveWorker(environment.service_worker_id)) {
         return rejected(realm, .invalid_state_error, "The service worker is not the active worker");

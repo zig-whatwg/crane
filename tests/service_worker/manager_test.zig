@@ -188,3 +188,59 @@ test "an environment that ended hears nothing more, and its unsent deliveries ar
     }
     try testing.expectEqual(@as(usize, 0), page.log.items.len);
 }
+
+/// A host whose lifecycle events never settle: waitUntil() with a promise
+/// that never resolves.
+const stuck_host: manager_mod.Host = .{
+    .fetch = fakeFetch,
+    .start = fakeStart,
+    .dispatch = stuckDispatch,
+};
+
+fn stuckDispatch(_: *Manager, _: manager_mod.Started, _: registry.LifecycleEvent, _: u64) void {}
+
+test "an install event that never settles times out: the worker is redundant and the job queue moves on" {
+    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    defer std.debug.assert(debug_allocator.deinit() == .ok);
+    const allocator = debug_allocator.allocator();
+
+    const sink = try runtime.TaskSink.create(allocator);
+    defer sink.release();
+    var page = TestEndpoint.create(allocator, sink);
+    defer page.deinit();
+
+    var manager = Manager.init(allocator);
+    manager.host = &stuck_host;
+    manager.lifecycle_timeout_ms = 50;
+    defer manager.deinit();
+
+    const environment = try manager.addEnvironment(.{
+        .kind = .window,
+        .origin = "https://example.com",
+        .creation_url = "https://example.com/page.html",
+        .endpoint = &page.endpoint,
+    });
+    try manager.schedule(.{
+        .job_type = .register,
+        .storage_key = "https://example.com",
+        .scope_url = "https://example.com/",
+        .script_url = "https://example.com/sw.js",
+        .client = .{ .environment = environment, .promise = 1 },
+        .referrer = "https://example.com/page.html",
+    });
+    // A second job for the scope waits behind the first.
+    try manager.schedule(.{
+        .job_type = .unregister,
+        .storage_key = "https://example.com",
+        .scope_url = "https://example.com/",
+        .client = .{ .environment = environment, .promise = 2 },
+        .referrer = "https://example.com/page.html",
+    });
+    try page.drainUntil(sink, "installing null", 10_000);
+    try testing.expect(page.heard("state redundant"));
+    // Install step 12.4 finished the job: the unregister ran, and found
+    // nothing (step 12.3 removed the registration).
+    try page.drainUntil(sink, "resolve_boolean", 10_000);
+    try testing.expect((try manager.match(allocator, "https://example.com", "https://example.com/page.html")) == null);
+    manager.removeEnvironment(environment);
+}
