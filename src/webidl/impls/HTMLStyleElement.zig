@@ -171,12 +171,10 @@ fn updateStyleBlock(element: *runtime.Instance) void {
     internal.load = style_sheet_loading.startStyle(element, text, parser_created) orelse 0;
 }
 
-/// The element's nonce attribute, when it has a non-empty one: what CSP
-/// 6.7.3.3 step 2 matches nonce-sources against. Borrowed from the
-/// attribute, for the check.
+/// The element's private nonce slot: what CSP 6.7.3.3 step 2 matches
+/// nonce-sources against. Borrowed until its next change, for this check.
 fn nonceOf(element: *runtime.Instance) ?[]const u8 {
-    const nonce = (interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("nonce")) catch null) orelse return null;
-    const value = nonce.asSlice();
+    const value = dom_module.attribute_change_steps.readForAttribute(element, "http://www.w3.org/1999/xhtml", "nonce") orelse return null;
     return if (value.len == 0) null else value;
 }
 

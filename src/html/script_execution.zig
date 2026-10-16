@@ -2469,10 +2469,12 @@ fn hasNoModuleAttribute(element: *runtime.Instance) bool {
     return hasAttribute(element, "nomodule");
 }
 
-/// Get nonce attribute value
+/// Borrow the private nonce slot, not the hidden content attribute.
 /// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#attr-nonce
 fn getNonceAttribute(element: *runtime.Instance) []const u8 {
-    return getAttribute(element, "nonce") orelse "";
+    const data = dom.element_data.of(element) orelse return "";
+    const namespace = data.namespace_uri orelse return "";
+    return dom.attribute_change_steps.readForAttribute(element, namespace.asSlice(), "nonce") orelse "";
 }
 
 /// Check if element has event attribute (obsolete)
@@ -3000,8 +3002,8 @@ fn resolveUrl(allocator: std.mem.Allocator, url: []const u8, base_url: []const u
 
 /// HTML "set up the classic script request" given `request` and the script
 /// fetch options of `element` (HTML "prepare the script element" step 26-31):
-/// its cryptographic nonce (the nonce attribute's value - the element's
-/// [[CryptographicNonce]]), integrity metadata (the integrity attribute),
+/// its cryptographic nonce (the element's private [[CryptographicNonce]]),
+/// integrity metadata (the integrity attribute),
 /// parser metadata ("parser-inserted" for a parser-inserted script) and
 /// referrer policy (the referrerpolicy attribute). Main fetch step 7 checks
 /// the request against the client's CSP list with them (a nonce or a listed

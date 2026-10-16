@@ -306,7 +306,7 @@ pub fn serializePolicy(allocator: std.mem.Allocator, policy: *const types.Policy
 /// A copy of `policy`: its serialization parsed again - which "parse a
 /// serialized CSP" turns into the same directive set, since every
 /// directive and expression came from that parse - with the same
-/// disposition, source and self-origin.
+/// disposition, source, self-origin and delivery URL.
 pub fn copyPolicy(allocator: std.mem.Allocator, policy: *const types.Policy) !types.Policy {
     const serialized = try serializePolicy(allocator, policy);
     defer allocator.free(serialized);
@@ -315,6 +315,7 @@ pub fn copyPolicy(allocator: std.mem.Allocator, policy: *const types.Policy) !ty
     if (policy.self_origin) |origin| {
         copy.self_origin = try types.Origin.create(allocator, origin.scheme, origin.host, origin.port);
     }
+    if (policy.delivery_url) |url| copy.delivery_url = try allocator.dupe(u8, url);
     return copy;
 }
 

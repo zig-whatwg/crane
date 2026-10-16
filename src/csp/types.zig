@@ -348,6 +348,10 @@ pub const Policy = struct {
     /// Needed for local scheme documents with opaque origins
     self_origin: ?Origin = null,
 
+    /// URL against which report-uri was delivered. Owned by this policy;
+    /// inherited policies keep it even when their global has a local URL.
+    delivery_url: ?[]u8 = null,
+
     allocator: std.mem.Allocator,
 
     const Self = @This();
@@ -363,6 +367,7 @@ pub const Policy = struct {
             .disposition = disposition,
             .source = source,
             .self_origin = null,
+            .delivery_url = null,
             .allocator = allocator,
         };
     }
@@ -382,6 +387,7 @@ pub const Policy = struct {
         if (self.self_origin) |*origin| {
             origin.deinit();
         }
+        if (self.delivery_url) |url| self.allocator.free(url);
     }
 };
 

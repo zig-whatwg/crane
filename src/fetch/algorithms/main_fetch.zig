@@ -280,7 +280,15 @@ pub fn mainFetchStart(
     if (request.mode == .no_cors) {
         // 1. If request's redirect mode is not "follow", then return a
         //    network error.
-        if (request.redirect_mode != .follow) return .{ .response = try internal_response.networkError(allocator) };
+        // Deviation: CSP 5.5 creates legacy reports with no-cors and
+        // redirect "error", which Fetch 4.1 step 12 otherwise rejects
+        // here. Blink PingLoader::SendViolationReport and WebKit
+        // PingLoader::sendViolationReport send this non-following load
+        // across origins (row 46 Q10). Keep HTTP fetch's actual redirect
+        // rejection; exempt only Fetch's internal report destination.
+        // https://w3c.github.io/webappsec-csp/#report-violation
+        // https://fetch.spec.whatwg.org/#main-fetch
+        if (request.redirect_mode != .follow and request.destination != .report) return .{ .response = try internal_response.networkError(allocator) };
         // 2. Set request's response tainting to "opaque".
         request.response_tainting = .@"opaque";
         // 3. Return the result of running scheme fetch.

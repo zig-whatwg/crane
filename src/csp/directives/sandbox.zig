@@ -189,8 +189,11 @@ pub fn parseSandboxDirective(directive: *const types.Directive) SandboxFlags {
 // ============================================================================
 
 /// Get sandbox flags from a policy.
-/// Returns null if no sandbox directive is present.
+/// Returns null if no applicable sandbox directive is present.
 pub fn getSandboxFlags(policy: *const types.Policy) ?SandboxFlags {
+    // CSP 6.3.2: sandbox is ignored in report-only policies and in meta
+    // delivery. Only enforced response-header policies add restrictions.
+    if (policy.source != .header or policy.disposition != .enforce) return null;
     const directive = policy.getDirective("sandbox") orelse return null;
     return parseSandboxDirective(directive);
 }

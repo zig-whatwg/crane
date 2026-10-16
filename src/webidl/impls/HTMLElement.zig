@@ -56,6 +56,11 @@ pub const PopoverState = enum {
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
+    /// HTML 2.5.6 [[CryptographicNonce]], owned independently of the content
+    /// attribute. Null means unused/removed; an explicitly empty slot may
+    /// still accompany a nonempty attribute that must hide on connection.
+    cryptographic_nonce: ?[]u8 = null,
+
     // === Popover State ===
     /// Current popover visibility state
     /// Spec: https://html.spec.whatwg.org/multipage/popover.html#popover-visibility-state
@@ -100,6 +105,7 @@ pub const InternalState = struct {
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
+            .cryptographic_nonce = null,
             .popover_showing = false,
             .popover_invoker = null,
             .was_focused_by_script = false,
@@ -112,6 +118,7 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        if (self.cryptographic_nonce) |nonce| self.allocator.free(nonce);
         self.inline_style.deinit();
         // Note: style_declaration runtime.Instance is owned by the GC layer, don't deinit here
     }
@@ -583,7 +590,9 @@ pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Getter for nonce
 /// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#dom-noncedelement-nonce
 pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "nonce") orelse runtime.DOMString.initEmpty();
+    // HTML 2.5.6: the IDL attribute reads the private slot. Its result is
+    // the caller's, valid even after the element changes or is destroyed.
+    return runtime.DOMString.initDupe(instance.ctx.allocator, nonceValueOf(instance));
 }
 
 /// Getter for tabIndex
@@ -782,7 +791,10 @@ pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOM
 // =============================================================================
 
 pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "nonce", value);
+    const internal = getInternalState(instance) orelse return error.InvalidStateError;
+    const copy = try internal.allocator.dupe(u8, value.asSlice());
+    if (internal.cryptographic_nonce) |old| internal.allocator.free(old);
+    internal.cryptographic_nonce = copy;
 }
 
 // =============================================================================
@@ -982,12 +994,80 @@ fn ensureInternals(instance: *runtime.Instance) !*runtime.Instance {
 }
 
 pub fn installHooks() void {
+    dom.attribute_change_steps.installForAttribute("http://www.w3.org/1999/xhtml", "nonce", .{ .change = &nonceAttributeChanged, .read = &nonceValueOf });
+    dom.mutation.registerPostConnectionStepsCallback(&nonceConnectionSteps) catch @panic("out of memory installing nonce connection steps");
+    dom.cloning_steps.install(&nonceCloningSteps);
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.html_elements, &sweepRemaining);
     // Its inline style declarations, which the CSSOM reads and writes.
     dom.cssom.installInlineStyle(.{ .of = &inlineStyleOf });
     @import("dom").html_pseudo_classes.install(.{ .matches = &@import("html").pseudo_classes.matches, .popover_showing = &popoverShowing });
     @import("dom").custom_elements.installHTMLElement(.{ .internals = &attachedInternals, .ensure_internals = &ensureInternals });
+}
+
+/// The internal CSP reader borrows; the IDL getter above copies.
+fn nonceValueOf(instance: *runtime.Instance) []const u8 {
+    const internal = getInternalState(instance) orelse return "";
+    return internal.cryptographic_nonce orelse "";
+}
+
+/// HTML 2.5.6 attribute change steps 1-4. The registry has checked the
+/// element namespace and attribute local name; namespaced attributes do
+/// not change [[CryptographicNonce]]. Removal clears it.
+fn nonceAttributeChanged(instance: *runtime.Instance, _: []const u8, _: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    if (namespace != null) return;
+    const internal = getInternalState(instance) orelse return;
+    if (value) |bytes| {
+        set_nonce(instance, runtime.DOMString.initInterned(bytes)) catch {
+            // The attribute has already changed. A failed copy must never
+            // leave its previous nonce authorizing the new content.
+            if (internal.cryptographic_nonce) |old| internal.allocator.free(old);
+            internal.cryptographic_nonce = null;
+        };
+    } else {
+        if (internal.cryptographic_nonce) |old| internal.allocator.free(old);
+        internal.cryptographic_nonce = null;
+    }
+}
+
+/// HTML 2.5.6: when browsing-context connected, hide a nonempty nonce
+/// content attribute if any policy was header-delivered. WebKit's
+/// Element::hideNonceSlow likewise preserves the slot around the change.
+/// Deviation: HTML 2.1.4 (cached html.md:4216-4224) ties this to insertion,
+/// before connectedCallback is enqueued. All three aligned stable browsers
+/// pass script-nonces-hidden.html 12/12 (cc74d2669f, 2026-10-06), requiring
+/// Connected before AttributeChanged(hiding). Use the existing later phase.
+fn nonceConnectionSteps(node: *dom.NodeBase) void {
+    if (node.node_type != 1 or !node.is_connected) return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return));
+    const internal = getInternalState(instance) orelse return;
+    const saved = internal.cryptographic_nonce orelse return;
+    const data = element_data.of(instance) orelse return;
+    const attribute = element_data.getAttributeByNamespaceAndLocalName(data, null, "nonce") orelse return;
+    if (attribute.value.len == 0) return;
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
+    const container = dom.policy_containers.of(document) orelse return;
+    if (!container.csp_list.contains_header_policy) return;
+    if ((interfaces.Document.get_defaultView(document) catch null) == null) return;
+    // Steps 2.1-2.3: keep the old allocation outside the slot while the
+    // attribute-change step clears it, then restore it without copying.
+    internal.cryptographic_nonce = null;
+    defer {
+        if (internal.cryptographic_nonce) |empty| internal.allocator.free(empty);
+        internal.cryptographic_nonce = saved;
+    }
+    dom.element_attributes.set(instance, "nonce", "", .{}) catch {};
+}
+
+/// HTML 2.5.6 cloning steps: the clone owns a copy, not the source buffer.
+fn nonceCloningSteps(node: *runtime.Instance, copy: *runtime.Instance, _: bool) anyerror!void {
+    const source = getInternalState(node) orelse return;
+    if (source.cryptographic_nonce) |nonce| {
+        try set_nonce(copy, runtime.DOMString.initInterned(nonce));
+    } else if (getInternalState(copy)) |target| {
+        if (target.cryptographic_nonce) |old| target.allocator.free(old);
+        target.cryptographic_nonce = null;
+    }
 }
 
 /// `dom.cssom.inlineStyleOf`: this element's inline style declarations.

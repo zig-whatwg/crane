@@ -155,7 +155,7 @@ fn fetchAndProcess(element: *runtime.Instance) void {
         .href = href,
         .cors = style_sheet_loading.CorsSetting.fromAttribute(attribute(element, "crossorigin")),
         .referrer_policy = referrerPolicyState(attribute(element, "referrerpolicy")),
-        .nonce = attribute(element, "nonce") orelse "",
+        .nonce = dom_module.attribute_change_steps.readForAttribute(element, "http://www.w3.org/1999/xhtml", "nonce") orelse "",
         .integrity = attribute(element, "integrity") orelse "",
         .fetch_priority = blk: {
             const priority = attribute(element, "fetchpriority") orelse break :blk .auto;

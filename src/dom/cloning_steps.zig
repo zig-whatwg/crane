@@ -11,7 +11,7 @@
 //! start (its installHooks), and the algorithm runs every installed set. The same shape as `mutation.zig`'s
 //! insertion-steps registry.
 //!
-//! lint-impls: hook for HTMLScriptElement, SVGScriptElement, HTMLTemplateElement, Document, HTMLInputElement, HTMLTextAreaElement
+//! lint-impls: hook for HTMLScriptElement, SVGScriptElement, HTMLTemplateElement, Document, HTMLInputElement, HTMLTextAreaElement, HTMLElement, SVGElement
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
@@ -23,7 +23,9 @@ const runtime = @import("runtime");
 pub const Steps = *const fn (node: *runtime.Instance, copy: *runtime.Instance, subtree: bool) anyerror!void;
 
 /// One slot per owning interface; installed for the life of the process.
-var installed: [8]Steps = undefined;
+/// Eight owners install today (Document, Input, TextArea, Script, Template,
+/// SVGScript, HTMLElement, SVGElement); room for more (row 46 review S1).
+var installed: [16]Steps = undefined;
 var installed_count: usize = 0;
 
 /// Called by an owning's installHooks, once, at process start (process_start.zig).

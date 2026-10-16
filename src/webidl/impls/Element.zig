@@ -1060,6 +1060,7 @@ fn attributeChangeSteps(
     // ran the iframe's steps on a plain Element, whose state they read as an
     // iframe's - a wild pointer).
     const element_namespace = if (internal.data.namespace_uri) |ns| ns.asSlice() else return;
+    dom.attribute_change_steps.runForAttribute(instance, element_namespace, local_name, old_value, value, namespace);
     if (!std.mem.eql(u8, element_namespace, "http://www.w3.org/1999/xhtml")) return;
     dom.attribute_change_steps.run(instance, internal.data.local_name.asSlice(), local_name, old_value, value, namespace);
 }
