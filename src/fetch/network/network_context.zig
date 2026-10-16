@@ -69,6 +69,7 @@ pub const NetworkContext = struct {
     proxy: Proxy = .system,
     /// Browser-owned Fetch permission entries, independently locked.
     preflight_cache: @import("../cors/preflight_cache.zig").PreflightCache,
+    auth_entries: @import("auth_entries.zig").AuthEntries,
 
     /// The options a Browser gives its network (BrowserConfig).
     pub const Options = struct {
@@ -110,7 +111,7 @@ pub const NetworkContext = struct {
     };
 
     pub fn init(allocator: Allocator) NetworkContext {
-        return .{ .allocator = allocator, .preflight_cache = .init(allocator) };
+        return .{ .allocator = allocator, .preflight_cache = .init(allocator), .auth_entries = .init(allocator) };
     }
 
     /// The end, with the Browser's scope - after every transfer of the
@@ -120,6 +121,7 @@ pub const NetworkContext = struct {
     /// and WPT's h2 server (:9000) spins a thread forever on each of those.
     pub fn deinit(self: *NetworkContext) void {
         self.preflight_cache.deinit();
+        self.auth_entries.deinit();
         if (self.share) |share| share.destroy();
         self.share = null;
         self.share_tried = false;
