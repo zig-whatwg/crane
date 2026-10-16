@@ -416,6 +416,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [ElementInternals reflection is private state](spec-compliance-element-internals-reflection-is-private-state.md) - A shared IDL member does not imply a shared reflected target or identical browser algorithms.
 - [A reflection cache is separate from the last assignment](spec-compliance-reflection-cache-is-separate-from-the-last-assignment.md) - Keep the spec's explicit value and observation cache separate, and validate before replacing either.
 - [Convert unions before running WebSocket steps](spec-compliance-convert-unions-before-running-websocket-steps.md) - Test conversion exceptions and side effects before testing the API's state or validation steps; JSValue is a representation, not proof that WebIDL conversion already happened.
+- [Permission descriptors have observable conversion shapes](spec-compliance-permission-descriptors-have-observable-conversion-shapes.md) - A dictionary conversion is observable script execution; implement the conversion shape the supporting browsers agree on.
 
 ### Codegen
 
@@ -608,6 +609,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A reuse test can open fresh connections](debugging-a-reuse-test-can-open-fresh-connections.md) - Measure the transport path and distinguish a hypothesis from a reproduced cause.
 - [A format enum error never reaches the codec](debugging-a-format-enum-error-never-reaches-the-codec.md) - An enum failure precedes the implementation: a shared message is not evidence of a shared codec defect.
 - [Check the binding receiver before changing the impl](debugging-check-the-binding-receiver-before-changing-the-impl.md) - Trace the actual receiver through the binding; an impl cannot reconstruct an argument the binding discarded.
+- [A permission query cannot repair its settings object](debugging-a-permission-query-cannot-repair-its-settings-object.md) - A consumer's correct behavior cannot compensate for incorrect shared settings; repair the owner and keep the reproducer.
 
 ### Workflow
 - [Zig optimizes a compilation at its root module's level; a module's own mode is its semantics](workflow-zig-optimizes-a-compilation-at-its-root-module-s-level.md) - The root module's mode is the optimizer; every other module's mode is its semantics. To speed up a binary without losing a module's Debug-only checks, raise the root and leave the module.

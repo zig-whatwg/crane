@@ -25,8 +25,12 @@ pub fn call_request(instance: *runtime.Instance, permissionDesc: runtime.JSValue
 
 pub fn call_query(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!runtime.JSValue {
     const realm = instance.ctx;
-    // Step 1. Use this's relevant document, as WebKit Permissions::query and
-    // Gecko Permissions::Query do, including calls through another window.
+    // Step 1. Deviation from the spec text, which checks the CURRENT settings
+    // object's document: use this's RELEVANT document, as WebKit
+    // Permissions::query and Gecko Permissions::Query do, including calls
+    // through another window. All three browsers agree (wpt.fyi,
+    // permissions/non-fully-active.https.html subtest 1: Chrome 155,
+    // Firefox 157, Safari 27 pass); pinned by crane/pm-inactive.https.html.
     if (realm.isWindow()) {
         const window = relevantGlobal(realm);
         if (window == null or !dom.document_activity.fullyActive(window.?, runtime.SlabAllocator.generationOf(window.?))) {
