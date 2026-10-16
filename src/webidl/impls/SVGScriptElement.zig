@@ -33,11 +33,23 @@ pub const ImplError = error{
 
 /// The element's script element state (HTML § 4.12.1.1): parser-inserted and
 /// already started.
+///
+/// A block of the Browser's runtime arena kept in the registry, as
+/// HTMLScriptElement's is: an SVG script removed from its tree while script
+/// held no wrapper of it - innerHTML = '' over one, a sanitizer's removal -
+/// is an orphan nothing deinits (dom.teardown_sweeps), and its state's one
+/// exit is then the sweep at its Browser's end. A block of its own
+/// (`allocator.create`) had none, and leaked per orphaned script.
 pub const InternalState = struct {
     flags: ScriptFlags = .{},
-    /// The allocator this block came from.
-    allocator: std.mem.Allocator,
+
+    /// What the state owns: its script text (Trusted Types 4.1.2.1).
+    pub fn deinit(self: *InternalState) void {
+        self.flags.script_text.deinit();
+    }
 };
+
+const Registry = runtime.InstanceRegistry(.svg_script_element, InternalState);
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
@@ -49,6 +61,15 @@ pub fn installHooks() void {
     // children changing: installed before any SVG script exists.
     dom_module.script_elements.installSvg(.{ .flags = &flagsOf });
     dom_module.cloning_steps.install(&cloningSteps);
+    // Its states no exit reached - orphaned scripts' - at its Browser's end.
+    dom_module.teardown_sweeps.install(.script_elements, &sweepRemaining);
+}
+
+/// `dom.teardown_sweeps`: free what the state of every SVG script no deinit
+/// reached still owns - its script text - at its Browser's end; the arena
+/// takes the blocks.
+fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    Registry.deinitAllAndClear(scope);
 }
 
 /// DOM clone-a-node step 3. SVG does not specify this extension, but all
@@ -73,8 +94,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // dispatch on.
     try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("script"));
 
-    const internal = try allocator.create(InternalState);
-    internal.* = .{ .allocator = allocator };
+    _ = allocator;
+    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
+    internal.* = .{};
     instance.getState(State).own._internal = internal;
 }
 
@@ -82,9 +104,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 pub fn deinitOwn(instance: *runtime.Instance) void {
     if (instance.stateAs(State)) |state| {
         if (state.own._internal) |internal| {
-            internal.flags.script_text.deinit();
-            internal.allocator.destroy(internal);
+            internal.deinit();
             state.own._internal = null;
+            Registry.remove(instance);
         }
     }
 }

@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [An element's own state block needs a registry and a sweep, or it leaks for every orphan](architecture-an-orphan-s-state-needs-a-sweep-or-the-arena.md) - An element impl that keeps a state block of its own needs both exits: a registry entry (in the arena) that its deinit removes, and a teardown sweep for the orphans no deinit reaches; test with an unwrapped node dropped by innerHTML, not removeChild, which wraps.
 - [A helper move must follow the production module graph](architecture-a-helper-move-must-follow-the-production-module-graph.md) - Check the destination module's actual dependency table; a matching import elsewhere does not make a move compile.
 - [A tree version does not cover custom-element upgrades](architecture-a-tree-version-does-not-cover-custom-element-upgrades.md) - Cache validity follows every input to the answer, including classification changes that do not mutate the tree.
 - [A free is not a mutation - a version script can observe must not move with the collector](architecture-a-free-is-not-a-mutation.md) - A counter that script can observe through an API counts only what the spec calls a mutation - not a free, not a creation; never let the collector move it. A cache that needs to hear about frees proves from ownership that nothing it remembers is freed, and checks each entry cheaply.
