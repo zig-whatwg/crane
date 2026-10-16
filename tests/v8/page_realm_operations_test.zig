@@ -3310,3 +3310,121 @@ test "protocol: a trusted animation event reaches a listener for its legacy webk
     // An untrusted dispatch is never renamed.
     try expectEval(w, "seen.length = 0; legacyOnly.dispatchEvent(new AnimationEvent('animationend')); String(seen.length)", "0");
 }
+
+// ============================================================================
+// A callback of a Window whose associated Document is not fully active
+// (binding3 item 8)
+// ============================================================================
+//
+// html/semantics/scripting-1/the-script-element/execution-timing/083.html:
+// a frame's script adds a listener to its parent's document; the frame
+// navigates; the parent fires the event again, and the listener must not run
+// - its realm's Window's associated Document is no longer fully active. DOM
+// inner invoke step 8 skips such a listener; Blink refuses every such
+// callback (IsCallbackFunctionRunnable, and JSBasedEventListener's
+// ContextIsValid for a listener), and Gecko too (CallbackObject::CallSetup:
+// "Refusing to execute function from window whose document is no longer
+// active"). wpt.fyi stable: 083.html 1/1 in Chrome 155, Firefox 157 and
+// Safari 27. Crane detaches such a realm (destroyWindowRealm: a navigation
+// that hands its WindowProxy on, or its navigable destroyed) and stops its
+// tasks; the callbacks other realms still hold ran.
+
+/// The callbacks a frame's script hands its parent: a function and a
+/// callback interface object, each counting its calls on the parent.
+const FrameCallbacks = struct {
+    function: protocol.CallbackFunction,
+    object: protocol.CallbackInterface,
+
+    fn of(frame: runtime.Context, parent: runtime.Context) !FrameCallbacks {
+        // The parent's object the frame's script counts its calls on.
+        const counter = try evalOwned(parent, "globalThis.frameCalls = { count: 0 }");
+        defer counter.release();
+        try setGlobal(frame, "counter", counter.value);
+        const function = try evalOwned(frame, "(function () { counter.count++; })");
+        errdefer function.release();
+        const object = try evalOwned(frame, "({ handleEvent() { counter.count++; } })");
+        return .{ .function = .{ .function = function, .context = frame }, .object = .{ .object = object, .context = frame } };
+    }
+
+    fn release(self: FrameCallbacks) void {
+        self.function.release();
+        self.object.release();
+    }
+
+    /// Both called from `parent`, as its event dispatch and its observers do.
+    fn call(self: *const FrameCallbacks, parent: runtime.Context) protocol.Error!void {
+        const ran = try protocol.invokeCallbackFunction(parent, &self.function, .undefined, &.{}, .rethrow);
+        switch (ran) {
+            .normal, .throw => |value| value.release(),
+        }
+        const called = try protocol.callUserObjectOperation(parent, &self.object, "handleEvent", .undefined, &.{}, .rethrow);
+        switch (called) {
+            .normal, .throw => |value| value.release(),
+        }
+    }
+};
+
+fn runIn(r: runtime.Context, source: []const u8) !void {
+    const value = try evalOwned(r, source);
+    value.release();
+}
+
+test "protocol: a callback of a frame realm a navigation replaced is not run" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    var old_realm: FrameRealm = .{ .parent = parent };
+    const old = try old_realm.make();
+    const callbacks = try FrameCallbacks.of(old, parent);
+    defer callbacks.release();
+
+    // While the frame's document is fully active, both run.
+    try callbacks.call(parent);
+    try expectEval(parent, "String(frameCalls.count)", "2");
+
+    // The navigation completes: a new Window behind the same WindowProxy,
+    // and the old document destroyed.
+    var new_realm: FrameRealm = .{ .parent = parent, .global_this = .{ .window_proxy_of = old } };
+    const new = try new_realm.make();
+    defer protocol.destroyWindowRealm(new, .global_detached);
+    protocol.destroyWindowRealm(old, .global_detached);
+    try std.testing.expect(old.engine_ctx != null);
+
+    // Neither runs, and nothing is thrown into the parent.
+    try std.testing.expectError(error.OperationFailed, protocol.invokeCallbackFunction(parent, &callbacks.function, .undefined, &.{}, .rethrow));
+    try std.testing.expectError(error.OperationFailed, protocol.callUserObjectOperation(parent, &callbacks.object, "handleEvent", .undefined, &.{}, .rethrow));
+    try expectEval(parent, "String(frameCalls.count)", "2");
+}
+
+test "protocol: a callback of a removed frame's realm is not run" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    const callbacks = try FrameCallbacks.of(frame, parent);
+    defer callbacks.release();
+    try callbacks.call(parent);
+    try expectEval(parent, "String(frameCalls.count)", "2");
+
+    // The iframe is removed: its navigable is destroyed, its realm detached.
+    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    try std.testing.expectError(error.OperationFailed, protocol.invokeCallbackFunction(parent, &callbacks.function, .undefined, &.{}, .rethrow));
+    try std.testing.expectError(error.OperationFailed, protocol.callUserObjectOperation(parent, &callbacks.object, "handleEvent", .undefined, &.{}, .rethrow));
+    try expectEval(parent, "String(frameCalls.count)", "2");
+}
+
+test "protocol: a callback of a frame realm still fully active runs, whoever calls it" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    defer protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    const callbacks = try FrameCallbacks.of(frame, parent);
+    defer callbacks.release();
+    // Called from the frame's own realm, and from its parent's.
+    try callbacks.call(frame);
+    try callbacks.call(parent);
+    try expectEval(parent, "String(frameCalls.count)", "4");
+}

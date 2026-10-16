@@ -177,6 +177,11 @@ pub fn finishDynamicImport(_: *engine.ImportRequest, _: engine.DynamicImportOutc
 pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 
 // 4.4 Invoking callbacks
+/// TODO (once linked): refuse a callback whose associated realm's global is
+/// a Window whose associated Document is not fully active - a Window realm
+/// destroyWindowRealm detached - with OperationFailed, nothing called, thrown
+/// or reported, as the V8 adapter does (engine_protocol.zig
+/// invokeCallbackFunction; tests/v8/page_realm_operations_test.zig pins it).
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }

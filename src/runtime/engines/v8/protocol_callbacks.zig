@@ -32,6 +32,7 @@ const context_manager = @import("context_manager.zig");
 const callback_interfaces = @import("callback_interfaces.zig");
 const V8CallbackWrapper = @import("callback_wrapper.zig").CallbackWrapper;
 const support = @import("protocol_support.zig");
+const protocol_realms = @import("protocol_realms.zig");
 
 const Context = engine.Context;
 const JSValue = engine.JSValue;
@@ -62,6 +63,26 @@ const CallbackRealm = struct {
             return error.OperationFailed;
         };
         return .{ .scope = scope, .context = context, .realm = support.associatedRealm(object) };
+    }
+
+    /// Whether the callback may run: not when its associated realm's global
+    /// is a Window whose associated Document is not fully active - a frame
+    /// realm `destroyWindowRealm` detached, because a navigation replaced its
+    /// document or its navigable was destroyed (protocol_realms.isDetached:
+    /// its tasks no longer run either, HTML "destroy a document" step 7).
+    ///
+    /// DOM inner invoke step 8 skips such a listener; the browsers refuse
+    /// every such callback, which is what this is: Blink
+    /// (IsCallbackFunctionRunnable - the callback's relevant ExecutionContext
+    /// is destroyed - and JSBasedEventListener::Invoke's ContextIsValid) and
+    /// Gecko (CallbackObject::CallSetup: "Refusing to execute function from
+    /// window whose document is no longer active"). wpt.fyi stable:
+    /// html/semantics/scripting-1/the-script-element/execution-timing/083.html
+    /// passes in Chrome 155, Firefox 157 and Safari 27. A worker's realm, or
+    /// a realm the context manager does not host, is always runnable here.
+    fn runnable(self: CallbackRealm) bool {
+        const realm = self.realm orelse return true;
+        return !protocol_realms.isDetached(realm);
     }
 
     /// "Clean up after running script".
@@ -262,6 +283,9 @@ pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFu
     const callback_realm = try CallbackRealm.enter(function, entered);
     var in_callback_realm = true;
     defer if (in_callback_realm) callback_realm.leave();
+    // A Window realm whose Document is not fully active runs nothing:
+    // nothing is called, thrown or reported (`CallbackRealm.runnable`).
+    if (!callback_realm.runnable()) return error.OperationFailed;
 
     // The callback this value, from where it was read.
     const receiver = try Receiver.of(entered, this_arg);
@@ -325,6 +349,8 @@ pub fn constructCallbackFunction(realm: Context, callback: *const engine.Callbac
     const callback_realm = try CallbackRealm.enter(function, entered);
     var in_callback_realm = true;
     defer if (in_callback_realm) callback_realm.leave();
+    // As for invokeCallbackFunction (`CallbackRealm.runnable`).
+    if (!callback_realm.runnable()) return error.OperationFailed;
 
     var js_args: Arguments = .{};
     defer js_args.release();
@@ -403,6 +429,9 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
     const callback_realm = try CallbackRealm.enter(object, entered);
     var in_callback_realm = true;
     defer if (in_callback_realm) callback_realm.leave();
+    // As for invokeCallbackFunction (`CallbackRealm.runnable`): a listener
+    // of a frame a navigation replaced does not run (DOM inner invoke step 8).
+    if (!callback_realm.runnable()) return error.OperationFailed;
 
     const receiver = try Receiver.of(entered, this_arg);
     defer receiver.release();

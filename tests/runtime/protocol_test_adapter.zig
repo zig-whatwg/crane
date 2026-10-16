@@ -195,6 +195,8 @@ pub fn finishDynamicImport(_: *engine.ImportRequest, _: engine.DynamicImportOutc
 pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 
 // 4.4 Invoking callbacks
+/// No engine: no callback runs, so none of a Window whose Document is not
+/// fully active either (engine_protocol.zig invokeCallbackFunction).
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }
