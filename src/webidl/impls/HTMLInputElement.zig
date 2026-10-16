@@ -466,6 +466,12 @@ pub fn installHooks() void {
     dom.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
         log.warn("input insertion steps not registered: {}", .{err});
     };
+    // An input removed from its tree while script held no wrapper of it is
+    // an orphan nothing deinits: the states no deinit reached free their
+    // value, editor text and custom validity at their Browser's end
+    // (dom.orphan_states, lane orphanleak). Its validity object, made only
+    // where an engine traces it, is the collector's.
+    dom.orphan_states.installRegistrySweep(Registry);
 }
 
 /// Initialize instance (creates the instance)

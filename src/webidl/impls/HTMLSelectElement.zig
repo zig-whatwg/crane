@@ -37,7 +37,14 @@ pub const ImplError = error{
 
 /// Selection state belongs to the options. The select's custom validity
 /// state is made lazily when its constraint API is first used.
+///
+/// A block of the Browser's arena, registered (dom.orphan_states): a select
+/// removed from its tree while script held no wrapper of it is an orphan
+/// nothing deinits, and a block of its own had no exit then (lane
+/// orphanleak).
 pub const InternalState = struct {
+    /// The allocator the custom validity message came from: the context's.
+    allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
     options: ?*runtime.Instance = null,
     options_generation: u64 = 0,
@@ -45,14 +52,23 @@ pub const InternalState = struct {
     selected_options: ?*runtime.Instance = null,
     selected_options_generation: u64 = 0,
     selected_options_traced: bool = false,
+
+    /// What the state owns, without its element (dom.orphan_states): the
+    /// custom validity message. The collections and the validity object are
+    /// the element's to release (`deinit`).
+    pub fn deinit(self: *InternalState) void {
+        self.validation.custom_error.deinit(self.allocator);
+    }
 };
 
-/// Constraint state is allocated only when script first uses the API.
+const States = @import("dom").orphan_states.Swept(.html_select_element, InternalState);
+
+/// Constraint state is allocated when it is first used - by script, or by
+/// matching :valid and :invalid (form_associated.validationState).
 fn internalState(instance: *runtime.Instance) !*InternalState {
     const state = instance.getState(State);
     if (state.own._internal) |internal| return internal;
-    const internal = try instance.ctx.allocator.create(InternalState);
-    internal.* = .{};
+    const internal = try States.create(instance, .{ .allocator = instance.ctx.allocator });
     state.own._internal = internal;
     return internal;
 }
@@ -102,6 +118,9 @@ fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
 
 pub fn installHooks() void {
     @import("dom").form_controls.install(.{ .is = &isValidationControl, .validity_flags = &constraintFlags });
+    // The states no deinit reached - orphaned selects' - at their Browser's
+    // end.
+    States.installSweep();
 }
 
 /// Initialize instance (creates the instance)
@@ -125,8 +144,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         if (internal.selected_options_traced) engine.forgetTracedChild(instance, .{ .name = "selectedOptions" });
         if (!internal.options_traced) if (forms.liveChild(internal.options, internal.options_generation)) |child| runtime.Instance.deinit(child);
         if (!internal.selected_options_traced) if (forms.liveChild(internal.selected_options, internal.selected_options_generation)) |child| runtime.Instance.deinit(child);
-        instance.ctx.allocator.destroy(internal);
         state.own._internal = null;
+        States.destroy(instance);
     }
     interfaces.HTMLElement.deinit(instance);
 }

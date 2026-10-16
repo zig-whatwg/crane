@@ -190,6 +190,14 @@ pub fn installHooks() void {
     // activation, FormData's constructor): installed before anyone can hold
     // a form.
     @import("dom").form_submission.install(submission_algorithms);
+    // A form removed from its tree while script held no wrapper of it is an
+    // orphan nothing deinits: the states no deinit reached free their named
+    // elements, past names and pending navigations at their Browser's end
+    // (dom.orphan_states, lane orphanleak). Its entry in the agent's list of
+    // forms with past names (dom.form_past_names) is a weak link the list
+    // drops at its next change - the form then answers that it has none -
+    // and the list itself ends with the Browser's agent host, right after.
+    @import("dom").orphan_states.installRegistrySweep(Registry);
 }
 
 /// HTMLFormElement's own construction steps: the generated chain runs HTMLElement's first.
