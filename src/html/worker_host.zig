@@ -369,6 +369,9 @@ pub const ImportedScript = struct {
 /// extracting a MIME type from response's header list is not a JavaScript
 /// MIME type, then throw a "NetworkError" DOMException."
 pub fn fetchClassicWorkerImportedScript(ctx: runtime.Context, url: []const u8) error{ NetworkError, OutOfMemory }!ImportedScript {
+    // A service worker's importScripts() runs Service Workers 6.3.2's fetch
+    // hook: its script resource map, set of used scripts and update check.
+    if (serviceScopeOf(ctx)) |service| return service.hooks.import_script(service.manager, service.worker_id, ctx, url);
     const allocator = ctx.allocator;
     const request = fetch_mod.internal.InternalRequest.init(allocator, url) catch return error.OutOfMemory;
     defer request.deinit();
@@ -703,6 +706,11 @@ pub const WorkerHost = struct {
     /// ("run a worker" steps 8 and 10). Null for a dedicated worker. OWNED.
     shared: ?SharedScope = null,
 
+    /// A service worker's: which service worker its ServiceWorkerGlobalScope
+    /// is, and its owner (Service Workers "Setup ServiceWorkerGlobalScope").
+    /// Null for a dedicated or shared worker.
+    service: ?ServiceScope = null,
+
     /// The built-in functions this host defines on the global object. The
     /// engine reads them on every call, so they live as long as this does.
     builtins: [5]runtime.BuiltinFunction = undefined,
@@ -819,6 +827,58 @@ pub const WorkerHost = struct {
         start.shared = null;
         // "Run a worker" onComplete: the global scope's policy container,
         // chosen when the script was fetched. Taken.
+        if (start.policy_container) |container| {
+            self.setPolicyContainer(container);
+            start.policy_container = null;
+        }
+        live_contexts.append(std.heap.page_allocator, self) catch {};
+        return runs;
+    }
+
+    /// A SERVICE worker's host, made on its own thread by its start step
+    /// (`ServiceThreadHost.startSteps`): Setup ServiceWorkerGlobalScope step
+    /// 8, "obtain a service worker agent" - an agent of its own, [[CanBlock]]
+    /// false, in an agent cluster of its own - with this host's hooks, made
+    /// with no isolate entered (so recorded as the thread's host agent, as a
+    /// dedicated worker's is), published through the link, destroyed by
+    /// WorkerThread after the realm's end. Whether the worker still runs.
+    fn initServiceOnThread(allocator: Allocator, thread_host: *ServiceThreadHost, thread: *WorkerThread) !bool {
+        const start = &thread_host.start;
+        const self = try allocator.create(Self);
+        self.* = .{
+            .agent = undefined,
+            .agent_host = html_core.agent_host.AgentHost.init(allocator),
+            .script_url = "",
+            .worker_type = start.worker_type,
+            .policy_container = fetch_mod.internal.PolicyContainer.init(allocator),
+            .timer = thread.loop.timerInterface(),
+            .event_loop = thread.loop.eventLoop(),
+            .browser_scope = start.browser_scope,
+            .task_sink = thread.loop.sink,
+            .allocator = allocator,
+            .link = thread.link,
+            .cookie_jar = start.cookie_jar,
+            .time_origin_ns = start.time_origin_ns,
+            .service = start.service,
+        };
+        thread_host.host = self;
+        hosts.append(std.heap.page_allocator, self) catch {};
+        const agent = try engine.createAgent(.{
+            .can_block = false,
+            .from_snapshot = false,
+            .hooks = &worker_hooks,
+            .host = &self.agent_host,
+            .allocator = allocator,
+            .deferred_teardown = &self.agent_host.deferred_teardown,
+        });
+        self.agent = agent;
+        thread.loop.agent = agent;
+        thread.loop.deferred_teardown = &self.agent_host.deferred_teardown;
+        thread.loop.fetches = &self.agent_host.fetches;
+        const runs = thread.link.publishAgent(agent);
+        self.script_url = try allocator.dupe(u8, start.script_url);
+        self.name = try allocator.dupe(u8, "");
+        // Setup step 8.5: the script resource's policy container. Taken.
         if (start.policy_container) |container| {
             self.setPolicyContainer(container);
             start.policy_container = null;
@@ -1025,8 +1085,10 @@ pub const WorkerHost = struct {
     pub fn setupWorkerGlobalScope(self: *Self) !void {
         const made = try engine.createWorkerRealm(self.agent, &.{
             .url = self.script_url,
-            // "Run a worker" step 5: a SharedWorkerGlobalScope when `is shared`.
-            .global = if (self.shared != null) .shared else .dedicated,
+            // "Run a worker" step 5: a SharedWorkerGlobalScope when `is
+            // shared`; Setup ServiceWorkerGlobalScope step 8.1: a
+            // ServiceWorkerGlobalScope for a service worker.
+            .global = if (self.service != null) .service else if (self.shared != null) .shared else .dedicated,
             .timer = self.timer,
             // The worker's own loop, which host algorithms queue their tasks
             // on.
@@ -2967,6 +3029,296 @@ const ThreadHost = struct {
     /// the worker's thread.
     fn free(data: ?*anyopaque) void {
         const self: *ThreadHost = @ptrCast(@alignCast(data.?));
+        if (self.host) |worker_host| worker_host.free();
+        self.freeStart();
+        self.allocator.destroy(self);
+    }
+};
+
+// ============================================================================
+// Service workers (Service Workers "Run Service Worker" and "Setup
+// ServiceWorkerGlobalScope") - html's third kind of worker
+// ============================================================================
+
+/// What a service worker's ServiceWorkerGlobalScope is made with: which
+/// service worker it is, in which registration, and the owner of both - the
+/// Browser's service worker manager (src/service_worker), opaque here: html
+/// never imports it; it reaches html through these hooks.
+pub const ServiceScope = struct {
+    worker_id: u64,
+    registration_id: u64,
+    /// The service worker manager. BORROWED: it outlives every service
+    /// worker thread (the Browser's end joins them before its scope ends).
+    manager: *anyopaque,
+    hooks: *const ServiceHooks,
+};
+
+/// The manager's steps a service worker's thread runs, on that thread.
+pub const ServiceHooks = struct {
+    /// Run Service Worker step 9: the script has been evaluated - `ok` false
+    /// when it was not, or threw (its start status an abrupt completion), or
+    /// its global scope could not be set up.
+    evaluated: *const fn (manager: *anyopaque, worker_id: u64, ok: bool) void,
+    /// importScripts() in the service worker (Service Workers 6.3.2): the
+    /// fetch hook's steps - answered from its script resource map, or
+    /// fetched and recorded there. NetworkError for a network error.
+    import_script: *const fn (manager: *anyopaque, worker_id: u64, ctx: runtime.Context, url: []const u8) error{ NetworkError, OutOfMemory }!ImportedScript,
+};
+
+/// The service worker scope of the realm `ctx`, when it is a service
+/// worker's: through its realm record's kind (any other realm answers null
+/// there), then its agent's host - a service worker's agent is its
+/// WorkerHost's (`agent_host`).
+pub fn serviceScopeOf(ctx: runtime.Context) ?ServiceScope {
+    const record = ctx.getRealm() orelse return null;
+    if (record.info.context_type != .service_worker) return null;
+    const host = serviceHostOf(ctx) orelse return null;
+    return host.service;
+}
+
+fn serviceHostOf(ctx: runtime.Context) ?*WorkerHost {
+    const agent = ctx.agent orelse return null;
+    const agent_host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    const host: *WorkerHost = @fieldParentPtr("agent_host", agent_host);
+    if (host.service == null) return null;
+    return host;
+}
+
+/// What a service worker's thread starts with (Run Service Worker steps
+/// 7-9): its script resource, its global scope's settings and its owner -
+/// the Browser's service worker job thread, whose loop hears the worker's
+/// end.
+pub const ServiceWorkerStart = struct {
+    /// The script resource (the main script's body). BORROWED (copied).
+    source: []const u8,
+    /// The service worker's script url: its global scope's URL and API base
+    /// URL. BORROWED (copied).
+    script_url: []const u8,
+    worker_type: WorkerType,
+    /// The script resource's policy container (Setup step 8.5). Taken on
+    /// success.
+    policy_container: ?fetch_mod.internal.PolicyContainer,
+    /// The user agent's cookie jar (Browser-lifetime, locked).
+    cookie_jar: ?*CookieJar,
+    /// The Browser's scope: the worker's realm carries it, and its
+    /// WorkerRegistry ends the worker's thread with the Browser.
+    browser_scope: ?*runtime.BrowserScope,
+    /// The inbox of the loop the worker's end is posted to (WorkerThread
+    /// step g): the job thread's. The worker's thread is registered as owned
+    /// by it, so the job thread's end ends the worker first.
+    owner_sink: *runtime.TaskSink,
+    /// What runs there at the worker's end. Taken on success.
+    owner: WorkerThread.Owner,
+    service: ServiceScope,
+    /// Setup step 1, the unsafe creation time (hr_time's monotonic clock,
+    /// nanoseconds): the global scope's time origin.
+    time_origin_ns: ?i64 = null,
+};
+
+/// A service worker started on a thread of its own.
+pub const StartedServiceWorker = struct {
+    /// The caller's reference to the worker's link: terminate it with
+    /// `terminate()`, and `release()` it once its end has reached the owner
+    /// (`endServiceWorkerLink`).
+    link: *WorkerLink,
+    /// The worker's thread host, for `postServiceTask`. Dereferenced only
+    /// on the worker's thread.
+    handle: *anyopaque,
+};
+
+/// Start a service worker on a thread of its own: a link whose owner's loop
+/// is the job thread's (`start.owner_sink`), registered with the Browser's
+/// WorkerRegistry - the Browser's end terminates and joins it - and a
+/// WorkerThread whose host makes a ServiceWorkerGlobalScope realm, runs the
+/// script and reports through `start.service.hooks`. On success
+/// `start.policy_container` is taken, and the thread owns `start.owner`.
+pub fn startServiceWorker(allocator: Allocator, start: *ServiceWorkerStart) !StartedServiceWorker {
+    const registry: ?*WorkerRegistry = if (start.browser_scope) |scope| scope.of(WorkerRegistry) catch null else null;
+    const link = try WorkerLink.create(allocator, start.owner_sink);
+    errdefer link.release();
+    if (registry) |r| try r.register(link);
+    errdefer if (registry) |r| r.unregister(link);
+    const thread_host = try ServiceThreadHost.create(allocator, start);
+    errdefer thread_host.destroyUnstarted();
+    try WorkerThread.spawn(allocator, link, thread_host.asHost(), start.owner, registry);
+    start.policy_container = null;
+    return .{ .link = link, .handle = thread_host };
+}
+
+/// A service worker's end has reached its owner's loop: join its thread and
+/// forget it in the Browser's WorkerRegistry. The caller then releases its
+/// reference.
+pub fn endServiceWorkerLink(browser_scope: ?*runtime.BrowserScope, link: *WorkerLink) void {
+    link.join();
+    if (browser_scope) |scope| if (scope.existing(WorkerRegistry)) |registry| registry.unregister(link);
+}
+
+/// A task of a service worker's realm, posted to its loop
+/// (`postServiceTask`).
+pub const ServiceTask = struct {
+    /// On the worker's thread, as a task of its realm (its agent entered,
+    /// ended the worker's way): `realm` and its global scope.
+    run: *const fn (data: ?*anyopaque, realm: runtime.Context, global_scope: *runtime.Instance) void,
+    /// The task will never run - the worker is closing, or ended. Any
+    /// thread; no engine.
+    drop: *const fn (data: ?*anyopaque) void,
+    data: ?*anyopaque,
+};
+
+/// Post `task` to the service worker `handle` (`StartedServiceWorker`)
+/// whose link is `link`. A worker that is ending drops it.
+pub fn postServiceTask(allocator: Allocator, link: *WorkerLink, handle: *anyopaque, task: ServiceTask) void {
+    const box = allocator.create(ServiceTaskBox) catch return task.drop(task.data);
+    box.* = .{ .allocator = allocator, .thread_host = @ptrCast(@alignCast(handle)), .task = task };
+    // A closed sink drops it.
+    _ = link.worker_sink.post(.{ .run = ServiceTaskBox.run, .drop = ServiceTaskBox.drop, .data = box });
+}
+
+const ServiceTaskBox = struct {
+    allocator: Allocator,
+    /// Read only by `run`, on the worker's thread, while its loop runs.
+    thread_host: *ServiceThreadHost,
+    task: ServiceTask,
+    ran: bool = false,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *ServiceTaskBox = @ptrCast(@alignCast(data.?));
+        defer {
+            if (!self.ran) self.task.drop(self.task.data);
+            self.allocator.destroy(self);
+        }
+        const host = self.thread_host.host orelse return;
+        if (!host.runsTasks()) return;
+        host.runTask(steps, self);
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *ServiceTaskBox = @ptrCast(@alignCast(data.?));
+        const host = self.thread_host.host orelse return;
+        const realm = host.realm orelse return;
+        const global_scope = host.global_scope orelse return;
+        self.ran = true;
+        self.task.run(self.task.data, realm, global_scope);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *ServiceTaskBox = @ptrCast(@alignCast(data.?));
+        self.task.drop(self.task.data);
+        self.allocator.destroy(self);
+    }
+};
+
+/// The worker host's part of a service worker's thread (WorkerThread.Host):
+/// Run Service Worker steps 7-9 - Setup ServiceWorkerGlobalScope and the
+/// script - then the realm's end, and the host's memory.
+const ServiceThreadHost = struct {
+    allocator: Allocator,
+    start: Start,
+    /// The worker's host, once its start step made it.
+    host: ?*WorkerHost = null,
+
+    const Start = struct {
+        source: []u8,
+        script_url: []u8,
+        worker_type: WorkerType,
+        policy_container: ?fetch_mod.internal.PolicyContainer,
+        cookie_jar: ?*CookieJar,
+        browser_scope: ?*runtime.BrowserScope,
+        time_origin_ns: ?i64,
+        service: ServiceScope,
+    };
+
+    fn create(allocator: Allocator, start: *const ServiceWorkerStart) !*ServiceThreadHost {
+        const source = try allocator.dupe(u8, start.source);
+        errdefer allocator.free(source);
+        const script_url = try allocator.dupe(u8, start.script_url);
+        errdefer allocator.free(script_url);
+        const self = try allocator.create(ServiceThreadHost);
+        self.* = .{
+            .allocator = allocator,
+            .start = .{
+                .source = source,
+                .script_url = script_url,
+                .worker_type = start.worker_type,
+                .policy_container = start.policy_container,
+                .cookie_jar = start.cookie_jar,
+                .browser_scope = start.browser_scope,
+                .time_origin_ns = start.time_origin_ns,
+                .service = start.service,
+            },
+        };
+        return self;
+    }
+
+    /// A thread host whose thread never started: what it copied goes; the
+    /// policy container stays the caller's.
+    fn destroyUnstarted(self: *ServiceThreadHost) void {
+        self.start.policy_container = null;
+        self.freeStart();
+        self.allocator.destroy(self);
+    }
+
+    fn freeStart(self: *ServiceThreadHost) void {
+        self.allocator.free(self.start.source);
+        self.allocator.free(self.start.script_url);
+        if (self.start.policy_container) |*container| container.deinit();
+        self.start.policy_container = null;
+    }
+
+    fn asHost(self: *ServiceThreadHost) WorkerThread.Host {
+        return .{ .data = self, .start = startSteps, .end_realm = endRealm, .free = free };
+    }
+
+    /// Run Service Worker steps 7-9 on the worker's thread. False when the
+    /// worker does not run: terminated before it started, or failed - its
+    /// start status is reported either way.
+    fn startSteps(data: ?*anyopaque, thread: *WorkerThread) bool {
+        const self: *ServiceThreadHost = @ptrCast(@alignCast(data.?));
+        const service = self.start.service;
+        const ok = self.run(thread) catch |err| blk: {
+            log.debug("a service worker did not start: {}", .{err});
+            break :blk false;
+        };
+        // Step 9.7: its start status, for its owner. A worker whose script
+        // was not evaluated, or threw, does not stay: its owner terminates it.
+        service.hooks.evaluated(service.manager, service.worker_id, ok);
+        return ok;
+    }
+
+    fn run(self: *ServiceThreadHost, thread: *WorkerThread) !bool {
+        // 8, "obtain a service worker agent": the agent, on this thread.
+        if (!try WorkerHost.initServiceOnThread(self.allocator, self, thread)) return false;
+        const worker_host = self.host.?;
+        // 8.1-8.7: the realm, its global a new ServiceWorkerGlobalScope, its
+        // URL, type and policy container the service worker's.
+        try worker_host.setupWorkerGlobalScope();
+        switch (self.start.worker_type) {
+            // 9.4: run the classic script. An abrupt completion - a throw, a
+            // parse error, an abort - fails the start (Update step 16).
+            .classic => {
+                worker_host.executeScript(self.start.source) catch return false;
+                if (worker_host.own_script_parse_failed) return false;
+            },
+            // 9.5: run the module script; a rejected evaluation fails it.
+            .module => if (!worker_host.executeModuleScript(self.start.script_url, self.start.source)) return false,
+        }
+        // The source is not needed again.
+        self.allocator.free(self.start.source);
+        self.start.source = &.{};
+        return true;
+    }
+
+    /// The realm's end, with the agent alive and the loop's tasks dropped.
+    fn endRealm(data: ?*anyopaque, _: *WorkerThread) void {
+        const self: *ServiceThreadHost = @ptrCast(@alignCast(data.?));
+        const worker_host = self.host orelse return;
+        worker_host.teardownRealm();
+        worker_host.timer = null;
+    }
+
+    /// After the agent's end: the host's memory and the thread host's.
+    fn free(data: ?*anyopaque) void {
+        const self: *ServiceThreadHost = @ptrCast(@alignCast(data.?));
         if (self.host) |worker_host| worker_host.free();
         self.freeStart();
         self.allocator.destroy(self);

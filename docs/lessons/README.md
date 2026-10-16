@@ -294,6 +294,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A JSValue's type cannot say whether its conversion is fresh](architecture-a-jsvalue-s-type-cannot-say-whether-its-conversion-is-fresh.md) - A type-level "is it fresh?" answer must be "kept" for JSValue and unions, so it leaks every fresh value: ask the value (its arm) with an allowlist, and keep borrowed arms as the default.
 - [A release predicate must dispatch as its converter does](architecture-a-release-predicate-must-dispatch-as-its-converter-does.md) - Write a release predicate as a mirror of the converter's dispatch: a type the converter handles specially must be handled specially, and first, in the predicate too.
 - [A missing partition key is not a shared cache partition](architecture-a-missing-partition-key-is-not-a-shared-cache-partition.md) - An absent partition is missing information, not permission to share.
+- [A task taken from a sink runs outside every realm until it enters one](architecture-a-task-from-a-sink-runs-outside-every-realm.md) - A sink's task is not in any realm. Before it touches the engine, enter its realm with `runTaskInRealm` - and test the worker case, since the window loop hides the mistake.
 
 ### Spec Compliance
 - [A form's past names go at the change of owner, and insertBefore is one](spec-compliance-past-names-go-at-the-owner-change.md) - A rule keyed on a change of a computed value needs the change, not a later comparison - and a remove-then-insert is two changes even when the value ends where it began.
@@ -579,6 +580,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [refAllDecls on a module that imports the engine needs V8 linked](testing-refalldecls-on-a-module-that-imports-engine-needs-v8-linked.md) - Once a module imports `engine`, its native tests must not reference anything that reaches the protocol - scope refAllDecls, and run the rest in tests/v8.
 - [Read a test's META lines with upstream's regex, and stop where upstream stops](testing-read-wpt-metadata-with-upstreams-regex.md) - The runner's variant set must be upstream's manifest, not an approximation of it: port the regex and the expansion table, and before changing the parser, diff its run set against MANIFEST.json for the whole worklist.
 - [A partition test needs a cross-site top level](testing-a-partition-test-needs-a-cross-site-top-level.md) - Partitioning is by site: a cross-site test needs HTTP_NOTSAMESITE_ORIGIN; a www1 subdomain is the same site and only passes while partitioning is off.
+- [A file that times out leaves state the next file inherits](testing-a-file-that-times-out-leaves-state-the-next-file-inherits.md) - When a runner shares one browser across files, a file that times out is the one most likely to leave state behind. Restart after it, as wptrunner does, and test that the browser's end copes with whatever a stuck file can leave.
 
 ### Debugging
 

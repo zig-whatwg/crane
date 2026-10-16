@@ -1,0 +1,12 @@
+# Testing: A file that times out leaves state the next file inherits
+
+**Date**: 2026-10-16
+**Lesson**: The WPT runner reuses one Browser across the files of a process, so whatever a file leaves behind - here a service worker whose install never settles, holding its scope's job queue - is still there for the next file. A file that times out is exactly the one that leaves things unfinished. wptrunner restarts the browser after an unexpected result; Crane's runner now does the same after every TIMEOUT.
+
+**Why**: Service worker registrations are per Browser (a profile's state), and Schedule Job serialises every job for a scope: an unregister waits behind the register job ahead of it until that job finishes. A test whose service worker waits in `waitUntil()` for a message the engine cannot deliver yet never finishes its register job, and its own cleanup (`registration.unregister()`) times out. Every later file in the same process that unregisters at that scope - `service_worker_unregister()`, or a getRegistrations() purge; 'resources/blank.html' is a scope dozens of tests share - then waits behind it too.
+
+**What Happened**: Lane sw1's 283-file service-workers run (3 processes): waiting.https.html and getregistrations.https.html TIMEOUT with 0 passed; run alone, 2/2 and 5/6. Nothing about either file was wrong - an earlier file in its process had left a stuck install at its scope. Chromium bounds a stuck event with a 5-minute request timeout (kept: the timed out flag of Service Workers 4.4), but five minutes is far longer than the next file's.
+
+**Fix**: tests/wpt_runner/main.zig ends its BrowserAdapter and makes a fresh one after a file whose status is TIMEOUT (`journal.Status.restartsBrowser`), the rule wptrunner applies to unexpected results (Crane keeps no expectations). A restart costs about 20 ms (four restarts added 0.07 s to a 40.8 s run). A Browser's end must therefore end cleanly with a worker stuck mid-install: tests/service_worker/browser_end_test.zig pins it (threads joined, no leak).
+
+**Takeaway**: **When a runner shares one browser across files, a file that times out is the one most likely to leave state behind. Restart after it, as wptrunner does, and test that the browser's end copes with whatever a stuck file can leave.**

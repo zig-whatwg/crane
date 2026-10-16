@@ -1,4 +1,12 @@
 //! Implementation for Clients interface
+//!
+//! Spec: Service Workers 4.3 Clients
+//! https://w3c.github.io/ServiceWorker/#clients-interface
+//!
+//! A service worker global's `clients`. claim() is the service_worker
+//! module's (src/service_worker/realm.zig: its steps run on the Browser's
+//! service worker job thread); get(), matchAll() and openWindow() are the
+//! next batch's (the Client objects).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -8,6 +16,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const service_worker = @import("service_worker");
 const Clients = interfaces.Clients;
 
 pub const State = Clients.State;
@@ -16,29 +25,8 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// No state of its own: its realm's environment is the module's.
 pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
 
 /// Operation: get
 pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) anyerror!runtime.JSValue {
@@ -61,8 +49,7 @@ pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anye
     return error.NotImplemented;
 }
 
-/// Operation: claim
+/// Operation: claim (4.3.4).
 pub fn call_claim(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    return service_worker.realm.claim(instance);
 }

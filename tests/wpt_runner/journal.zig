@@ -28,6 +28,18 @@ pub const Status = enum {
     timeout,
     crash,
 
+    /// Whether the runner ends its Browser after a file that ended so, and
+    /// starts the next file with a fresh one: after a TIMEOUT, as wptrunner
+    /// restarts the browser after an unexpected result (Crane keeps no
+    /// expectations: every TIMEOUT is unexpected). A file that times out may
+    /// leave state the next file would run into - a service worker whose
+    /// install never settles holds its scope's job queue for the Browser's
+    /// life. (A stall the watchdog catches ends the process; its supervisor
+    /// starts a new one.)
+    pub fn restartsBrowser(self: Status) bool {
+        return self == .timeout;
+    }
+
     pub fn toString(self: Status) []const u8 {
         return switch (self) {
             .ok => "OK",
@@ -908,4 +920,11 @@ test "summarize counts records by status" {
     try std.testing.expectEqual(@as(usize, 1), s.crashed);
     try std.testing.expectEqual(@as(usize, 5), s.subtests_passed);
     try std.testing.expectEqual(@as(usize, 1), s.subtests_failed);
+}
+
+test "the runner restarts its Browser after a file that timed out, and only then" {
+    try std.testing.expect(Status.timeout.restartsBrowser());
+    try std.testing.expect(!Status.ok.restartsBrowser());
+    try std.testing.expect(!Status.@"error".restartsBrowser());
+    try std.testing.expect(!Status.crash.restartsBrowser());
 }

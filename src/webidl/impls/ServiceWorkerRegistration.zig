@@ -1,9 +1,18 @@
 //! Implementation for ServiceWorkerRegistration interface
 //!
-//! WHATWG Service Worker + Cookie Store Standard Integration
+//! Spec: Service Workers 3.2 ServiceWorkerRegistration
+//! https://w3c.github.io/ServiceWorker/#serviceworkerregistration-interface
 //!
-//! The ServiceWorkerRegistration includes the cookies attribute
-//! which returns a CookieStoreManager for managing cookie subscriptions.
+//! A ServiceWorkerRegistration has a service worker registration. Its realm's
+//! environment (src/service_worker/realm.zig, "get the service worker
+//! registration object") makes it with the registration's state as a
+//! construction argument - the scope, the update via cache mode and the
+//! installing, waiting and active attributes, which the environment sets as
+//! Update Registration State's tasks run - and this impl owns that state. Its
+//! onupdatefound is the generated event handler (dom.event_handlers).
+//!
+//! WHATWG Service Worker + Cookie Store Standard Integration: the cookies
+//! attribute returns a CookieStoreManager for the registration.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -13,6 +22,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const service_worker = @import("service_worker");
 const CookieStoreManagerImpl = @import("CookieStoreManager.zig");
 const ServiceWorkerRegistration = interfaces.ServiceWorkerRegistration;
 
@@ -24,9 +34,15 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
+/// Its service worker registration: what its realm's environment gives it.
+pub const construction_args = .{"service_worker_registration"};
+
 /// Internal state for ServiceWorkerRegistration implementation
 pub const InternalState = struct {
-    /// The scope URL for this registration
+    /// The registration's state, OWNED (the environment sets what changes).
+    registration: *service_worker.RegistrationObject,
+    /// The scope URL for this registration (the registration's, BORROWED
+    /// from it): the CookieStoreManager's.
     scope_url: []const u8,
     /// Whether this is a secure context
     is_secure_context: bool,
@@ -34,55 +50,34 @@ pub const InternalState = struct {
     cookie_store_manager: ?*runtime.Instance,
     /// Allocator for internal allocations
     allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator, scope_url: []const u8, is_secure_context: bool) !*InternalState {
-        const internal = try allocator.create(InternalState);
-        errdefer allocator.destroy(internal);
-
-        const scope_copy = try allocator.dupe(u8, scope_url);
-        errdefer allocator.free(scope_copy);
-
-        internal.* = InternalState{
-            .scope_url = scope_copy,
-            .is_secure_context = is_secure_context,
-            .cookie_store_manager = null,
-            .allocator = allocator,
-        };
-
-        return internal;
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        // Note: cookie_store_manager is owned by the runtime GC, we don't deinit it here
-        self.allocator.free(self.scope_url);
-        self.allocator.destroy(self);
-    }
 };
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-
-    // Initialize internal state with default scope
-    const internal = try InternalState.init(allocator, "/", true);
-
-    const state = instance.getState(StateType);
-    state.own._internal = internal;
-
-    return instance;
+/// ServiceWorkerRegistration's own construction steps: the generated chain
+/// runs EventTarget's first. `args.service_worker_registration` is taken.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    if (!@hasField(@TypeOf(args), "service_worker_registration")) return;
+    const registration: *service_worker.RegistrationObject = args.service_worker_registration;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{
+        .registration = registration,
+        .scope_url = registration.scope_url,
+        // [SecureContext]: made only in a secure context.
+        .is_secure_context = true,
+        .cookie_store_manager = null,
+        .allocator = allocator,
+    };
+    instance.getState(State).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// ServiceWorkerRegistration's own teardown: the generated chain runs
+/// EventTarget's after it.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.deinit();
-    }
+    const internal = state.own._internal orelse return;
+    internal.registration.destroy();
+    internal.allocator.destroy(internal);
+    state.own._internal = null;
 }
 
 /// Helper to get internal state from instance
@@ -91,46 +86,46 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-/// Getter for installing
-pub fn get_installing(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
-/// Getter for waiting
-pub fn get_waiting(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
-/// Getter for active
-pub fn get_active(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
-/// Getter for navigationPreload
-pub fn get_navigationPreload(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for scope
-pub fn get_scope(instance: *runtime.Instance) anyerror!runtime.USVString {
+fn registrationOf(instance: *runtime.Instance) !*service_worker.RegistrationObject {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
-    return internal.scope_url;
+    return internal.registration;
 }
 
-/// Getter for updateViaCache
+/// Getter for installing (3.2.2): "the value to which it was last set".
+pub fn get_installing(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    return (try registrationOf(instance)).installing;
+}
+
+/// Getter for waiting (3.2.3).
+pub fn get_waiting(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    return (try registrationOf(instance)).waiting;
+}
+
+/// Getter for active (3.2.4).
+pub fn get_active(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    return (try registrationOf(instance)).active;
+}
+
+/// Getter for navigationPreload (3.2.5): the registration's
+/// NavigationPreloadManager - one per object here ([SameObject], kept by the
+/// generated getter); navigation preload itself waits for Handle Fetch.
+pub fn get_navigationPreload(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    return interfaces.NavigationPreloadManager.init(instance.ctx.allocator, instance.ctx);
+}
+
+/// Getter for scope (3.2.6): the registration's serialized scope url.
+pub fn get_scope(instance: *runtime.Instance) anyerror!runtime.USVString {
+    return instance.ctx.allocator.dupe(u8, (try registrationOf(instance)).scope_url);
+}
+
+/// Getter for updateViaCache (3.2.7): the registration's update via cache
+/// mode.
 pub fn get_updateViaCache(instance: *runtime.Instance) anyerror!enums.ServiceWorkerUpdateViaCache {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onupdatefound
-pub fn get_onupdatefound(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    return switch ((try registrationOf(instance)).update_via_cache) {
+        .imports => ._imports_,
+        .all => ._all_,
+        .none => ._none_,
+    };
 }
 
 /// Getter for periodicSync
@@ -199,23 +194,14 @@ pub fn get_paymentManager(instance: *runtime.Instance) anyerror!*runtime.Instanc
     return error.NotImplemented;
 }
 
-/// Setter for onupdatefound
-pub fn set_onupdatefound(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Operation: unregister
+/// Operation: unregister (3.2.9).
 pub fn call_unregister(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    return service_worker.realm.unregister(instance, try registrationOf(instance));
 }
 
-/// Operation: update
+/// Operation: update (3.2.8).
 pub fn call_update(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    return service_worker.realm.update(instance, try registrationOf(instance));
 }
 
 /// Operation: showNotification
@@ -231,40 +217,4 @@ pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(dic
     _ = instance;
     _ = filter;
     return error.NotImplemented;
-}
-
-// ============================================================================
-// Public API for integration
-// ============================================================================
-
-/// Create a new ServiceWorkerRegistration for a given scope
-/// This is used when registering a new service worker.
-pub fn createForScope(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-    scope_url: []const u8,
-    is_secure_context: bool,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-
-    const internal = try InternalState.init(allocator, scope_url, is_secure_context);
-
-    const state = instance.getState(StateType);
-    state.own._internal = internal;
-
-    return instance;
-}
-
-/// Get the CookieStoreManager for this registration (if available)
-pub fn getCookieStoreManager(instance: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternalState(instance) orelse return null;
-    return internal.cookie_store_manager;
-}
-
-/// Get the scope URL for this registration
-pub fn getScopeUrl(instance: *runtime.Instance) ?[]const u8 {
-    const internal = getInternalState(instance) orelse return null;
-    return internal.scope_url;
 }

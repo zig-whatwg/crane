@@ -1,4 +1,15 @@
 //! Implementation for ServiceWorkerContainer interface
+//!
+//! Spec: Service Workers 3.4 ServiceWorkerContainer
+//! https://w3c.github.io/ServiceWorker/#serviceworkercontainer-interface
+//!
+//! The object a Navigator's or WorkerNavigator's `serviceWorker` returns.
+//! Its service worker client is its realm's environment, and what its
+//! members do there - the jobs, the matching, the ready promise, the
+//! controller - is the service_worker module's (src/service_worker/realm.zig),
+//! which keeps the realm's environment and the promises it waits on. Its
+//! event handlers (oncontrollerchange, onmessage, onmessageerror) are the
+//! generated ones (dom.event_handlers).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -8,6 +19,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const service_worker = @import("service_worker");
 const ServiceWorkerContainer = interfaces.ServiceWorkerContainer;
 
 pub const State = ServiceWorkerContainer.State;
@@ -16,103 +28,59 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// No state of its own: its realm's environment is the module's.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// Installed once, at process start: Handle Service Worker Client Unload
+/// runs as an unloading document cleanup step - for every realm that ends,
+/// on its thread - and the realm's environment ends with it.
+pub fn installHooks() void {
+    @import("dom").unloading_cleanup.install(&service_worker.realm.environmentEnded);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+/// ServiceWorkerContainer's own construction steps: the generated chain runs
+/// EventTarget's first. "The user agent must create a ServiceWorkerContainer
+/// object when a Navigator object or a WorkerNavigator object is created and
+/// associate it with that object": its realm becomes a service worker client
+/// now, and this is the object its controllerchange is fired at.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
+    _ = StateType;
+    _ = args;
+    service_worker.realm.containerMade(instance);
 }
 
-/// Getter for controller
+/// Getter for controller (3.4.1).
 pub fn get_controller(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    return service_worker.realm.controller(instance);
 }
 
-/// Getter for ready
+/// Getter for ready (3.4.2).
 pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    return service_worker.realm.ready(instance);
 }
 
-/// Getter for oncontrollerchange
-pub fn get_oncontrollerchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onmessage
-pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onmessageerror
-pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for oncontrollerchange
-pub fn set_oncontrollerchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onmessage
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onmessageerror
-pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Operation: startMessages
+/// Operation: startMessages (3.4.6) - "enable this's client message queue if
+/// it is not enabled". Nothing posts to the queue yet (ServiceWorker
+/// postMessage and Client.postMessage are batch 2), so there is nothing to
+/// enable.
 pub fn call_startMessages(instance: *runtime.Instance) anyerror!void {
     _ = instance;
-    return error.NotImplemented;
 }
 
-/// Operation: getRegistrations
+/// Operation: getRegistrations (3.4.5).
 pub fn call_getRegistrations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    return service_worker.realm.getRegistrations(instance);
 }
 
-/// Operation: getRegistration
+/// Operation: getRegistration (3.4.4); clientURL defaults to "".
 pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = clientURL;
-    return error.NotImplemented;
+    const client_url: []const u8 = if (clientURL.was_passed) clientURL.value else "";
+    return service_worker.realm.getRegistration(instance, client_url);
 }
 
-/// Operation: register
+/// Operation: register (3.4.3).
 pub fn call_register(instance: *runtime.Instance, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(dictionaries.RegistrationOptions)) anyerror!runtime.JSValue {
-    _ = options;
     // Service Workers register() step 2: "Let compliantScriptURL be the result
     // of invoking the get trusted type compliant string algorithm with
     // TrustedScriptURL, this's relevant global object, scriptURL,
@@ -120,6 +88,20 @@ pub fn call_register(instance: *runtime.Instance, scriptURL: typedefs.TrustedScr
     const allocator = instance.ctx.allocator;
     const compliant = try @import("dom").trusted_types.compliantStringFor(allocator, .script_url, instance, scriptURL, "ServiceWorkerContainer register");
     defer allocator.free(compliant);
-    // TODO: the rest of register() - service workers are not implemented.
-    return error.NotImplemented;
+    var converted: service_worker.realm.RegisterOptions = .{};
+    if (options.was_passed) {
+        const given = options.value;
+        converted.scope = given.scope;
+        if (given.type) |worker_type| converted.worker_type = switch (worker_type) {
+            ._classic_ => .classic,
+            ._module_ => .module,
+        };
+        if (given.updateViaCache) |mode| converted.update_via_cache = switch (mode) {
+            ._imports_ => .imports,
+            ._all_ => .all,
+            ._none_ => .none,
+        };
+    }
+    // Steps 3-8.
+    return service_worker.realm.register(instance, compliant, converted);
 }
