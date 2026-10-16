@@ -2087,7 +2087,9 @@ const SerializedMessage = union(enum) {
                 return .{ .string = .{ .data = s, .owned = true } };
             },
             .serialized => |serialized| {
-                const value = try engine.structuredDeserializeWithTransfer(realm, serialized.serialized, serialized.array_buffers);
+                // No transfer list (`.with_transfer` has one): no platform
+                // object was transferred.
+                const value = try engine.structuredDeserializeWithTransfer(realm, serialized.serialized, serialized.array_buffers, &.{});
                 return value.take();
             },
             // Delivered by `deliverWithTransfer`, which receives its ports.
@@ -2216,9 +2218,16 @@ fn deliverWithTransfer(target: *runtime.Instance, message: *@import("dom").port_
         const port = dom.message_ports.receive(target.ctx, @ptrCast(end)) catch continue;
         ports.append(allocator, port) catch continue;
     }
-    // Step 8.4: StructuredDeserializeWithTransfer in the target's realm; an
-    // exception is a messageerror, with origin and source.
-    const data = engine.structuredDeserializeWithTransfer(target.ctx, message.serialized, message.array_buffers) catch {
+    // Step 8.4: StructuredDeserializeWithTransfer in the target's realm, the
+    // received ports its memory for the transferred ones the value refers to
+    // (step 3.5); an exception is a messageerror, with origin and source - a
+    // port whose transfer-receiving steps failed too (step 3.4.4 throws), as
+    // the value's references are by place in the transfer list.
+    if (ports.items.len != ends.len) {
+        fireTransferEvent(target, "messageerror", runtime.JSValue.jsUndefined, origin, source, &.{});
+        return;
+    }
+    const data = engine.structuredDeserializeWithTransfer(target.ctx, message.serialized, message.array_buffers, ports.items) catch {
         fireTransferEvent(target, "messageerror", runtime.JSValue.jsUndefined, origin, source, &.{});
         return;
     };

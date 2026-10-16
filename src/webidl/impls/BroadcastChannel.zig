@@ -395,7 +395,8 @@ const Delivery = struct {
         // destination, using MessageEvent, with the origin attribute
         // initialized to the serialization of sourceOrigin, and then abort
         // these steps."
-        const value = engine.structuredDeserializeWithTransfer(channel.ctx, self.serialized, &.{}) catch {
+        // No transfer list: nothing was transferred.
+        const value = engine.structuredDeserializeWithTransfer(channel.ctx, self.serialized, &.{}, &.{}) catch {
             fire(channel, "messageerror", null, self.origin);
             return;
         };

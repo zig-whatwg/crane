@@ -97,8 +97,10 @@ pub fn structuredSerializeWithTransfer(
     var code: c_int = 0;
     // StructuredSerializeInternal(value, false, memory): a [Serializable]
     // platform object runs its interface's serialization steps, forStorage
-    // false (serializable_objects.zig).
-    var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = allocator };
+    // false (serializable_objects.zig); one of the transfer list's platform
+    // objects is in memory already (step 2.4) and is written as a reference
+    // to its data holder, by its index among `objects`.
+    var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = allocator, .transferred = objects.items };
     // A WebAssembly.Module's [[AgentCluster]]: the current realm's.
     const options: ffi.StructuredSerializeOptions = .{ .for_storage = false, .agent_cluster = protocol_agents.agentClusterOf(isolate, realm) };
     const bytes = ffi.v8_Value_StructuredSerializeWithTransfer(
@@ -140,10 +142,14 @@ pub fn structuredSerializeWithTransfer(
 }
 
 /// Engine table `structuredDeserializeWithTransfer`: OWNED `.handle`.
+/// `transferred`: the transferred platform objects as their
+/// transfer-receiving steps made them in `realm`, in transfer-list order -
+/// memory's values for their data holders (step 3.5) - BORROWED for the call.
 pub fn structuredDeserializeWithTransfer(
     realm: runtime.Context,
     serialized: []const u8,
     array_buffers: []const []const u8,
+    transferred: []const *runtime.Instance,
 ) EngineError!runtime.JSValue {
     const entered = try engine.enterRealm(realm);
     defer entered.leaveAgent();
@@ -163,9 +169,10 @@ pub fn structuredDeserializeWithTransfer(
         data[i] = .{ .data = if (contents.len > 0) @ptrCast(@constCast(contents.ptr)) else null, .size = contents.len };
     }
     var code: c_int = 0;
-    // StructuredDeserialize(serialized, targetRealm = `realm`, memory): a
-    // platform object is made there by its interface's deserialization steps.
-    var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = std.heap.c_allocator };
+    // Step 4, StructuredDeserialize(serialized, targetRealm = `realm`,
+    // memory): a platform object is made there by its interface's
+    // deserialization steps; a transferred one is memory's.
+    var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = std.heap.c_allocator, .transferred = transferred };
     const value = ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(serialized.ptr, serialized.len, data.ptr, data.len, &code, host.hostObjectSteps(), agent_cluster) orelse
         return EngineError.DataCloneError;
     return .{ .handle = .{ .ptr = @ptrCast(value) } };

@@ -1798,15 +1798,23 @@ pub inline fn structuredDeserialize(realm: Context, bytes: []const u8) Error!Own
 
 /// StructuredSerializeWithTransfer: StructuredSerializeInternal with
 /// forStorage false, so a [Serializable] platform object's steps see
-/// forStorage false. OWNED (`allocator`).
+/// forStorage false. Step 2.4 puts each of the transfer list's platform
+/// objects in `memory` before the value is serialized, so where the value
+/// refers to one it is written as a reference to its data holder - the
+/// result's `platform_objects`, by index. OWNED (`allocator`).
 pub inline fn structuredSerializeWithTransfer(realm: Context, value: JSValue, transfer_list: []const JSValue, check: TransferableCheck, check_data: ?*anyopaque, allocator: std.mem.Allocator) Error!SerializedWithTransfer {
     return impl.structuredSerializeWithTransfer(realm, value, transfer_list, check, check_data, allocator);
 }
 
 /// StructuredDeserializeWithTransfer into `realm` (targetRealm): its
-/// platform objects are made there. OWNED.
-pub inline fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8) Error!Owned {
-    return impl.structuredDeserializeWithTransfer(realm, serialized, array_buffers);
+/// platform objects are made there. `transferred`: the transferred platform
+/// objects as their transfer-receiving steps made them in `realm` (step 3),
+/// in transfer-list order - SerializedWithTransfer.platform_objects' order -
+/// BORROWED for the call. Where the value referred to a transferred object,
+/// the deserialized value refers to its counterpart here (step 3.5 puts it in
+/// `memory`); a reference past `transferred` is a DataCloneError. OWNED.
+pub inline fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8, transferred: []const *Instance) Error!Owned {
+    return impl.structuredDeserializeWithTransfer(realm, serialized, array_buffers, transferred);
 }
 
 // ============================================================================

@@ -1703,7 +1703,7 @@ pub fn deliverPortMessage(
         ports.append(allocator, port) catch continue;
     }
 
-    const data = engine.structuredDeserializeWithTransfer(realm, message.serialized, message.array_buffers) catch {
+    const data = engine.structuredDeserializeWithTransfer(realm, message.serialized, message.array_buffers, ports.items) catch {
         fire(realm, target, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };

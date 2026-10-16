@@ -21,6 +21,18 @@
 //!   uint32  count           the sub-serializations, then each as V8 writes
 //!                           any value - on the same serializer
 //!
+//! A transferred platform object - one of the transfer list's, which
+//! StructuredSerializeWithTransfer put in `memory` before serializing (step
+//! 2.4), so StructuredSerializeInternal step 2 returns its data holder - is
+//! instead:
+//!
+//!   uint32  record format (2)
+//!   uint32  its index among the transfer list's platform objects
+//!
+//! and is read back as memory's value for that data holder: the object its
+//! transfer-receiving steps made in the target realm
+//! (StructuredDeserializeWithTransfer steps 3.5 and 4).
+//!
 //! Everything is inline: the result is plain bytes, independent of any
 //! realm, agent and thread, which is what a worker's message (read on the
 //! worker's thread) and an IndexedDB record (read after the agent is gone)
@@ -40,6 +52,11 @@ const log = std.log.scoped(.serializable_objects);
 /// not read (DataCloneError): an IndexedDB record outlives the build that
 /// wrote it.
 const record_format: u32 = 1;
+
+/// The record of a transferred platform object: a reference to its data
+/// holder, by index. Only in a serialization with a transfer list - never
+/// stored.
+const transferred_format: u32 = 2;
 
 const Entry = struct { []const u8, runtime.SerializableSteps };
 
@@ -89,6 +106,11 @@ pub const Host = struct {
     for_storage: bool,
     /// For the records (released before the call returns).
     allocator: std.mem.Allocator,
+    /// StructuredSerializeWithTransfer's and StructuredDeserializeWithTransfer's
+    /// `memory` for platform objects: serializing, the transfer list's
+    /// platform objects; deserializing, what their transfer-receiving steps
+    /// made in the target realm - both in transfer-list order, BORROWED.
+    transferred: []const *runtime.Instance = &.{},
     steps: ffi.HostObjectSteps = undefined,
 
     /// The delegates' view of this host. BORROWED: valid while `self` is.
@@ -141,6 +163,15 @@ fn write(data: ?*anyopaque, object: *ffi.Value, serializer: *ffi.ValueSerializer
         throwDataCloneError("An object could not be cloned.", .{});
         return false;
     };
+    // Step 2: StructuredSerializeWithTransfer step 2.4 put each of the
+    // transfer list's platform objects in memory, so memory[value] exists
+    // and its data holder is returned - written as a reference, by index.
+    for (host.transferred, 0..) |transferred, index| {
+        if (transferred != instance) continue;
+        ffi.v8_ValueSerializer_WriteUint32(serializer, transferred_format);
+        ffi.v8_ValueSerializer_WriteUint32(serializer, @intCast(index));
+        return true;
+    }
     // Step 19.2: typeString is the identifier of value's PRIMARY interface -
     // the instance's own, not an ancestor's: a script subclass of File is
     // still a File, and a platform object whose primary interface is not
@@ -209,7 +240,9 @@ fn readRaw(deserializer: *ffi.ValueDeserializer, length: u64) ?[]const u8 {
 fn read(data: ?*anyopaque, deserializer: *ffi.ValueDeserializer) callconv(.c) ?*ffi.Value {
     const host: *Host = @ptrCast(@alignCast(data orelse return null));
     const malformed = "DataCloneError: a platform object's serialized record is malformed.";
-    if ((readUint32(deserializer) orelse 0) != record_format) {
+    const format = readUint32(deserializer) orelse 0;
+    if (format == transferred_format) return readTransferred(host, deserializer);
+    if (format != record_format) {
         throwDeserializationError(malformed, .{});
         return null;
     }
@@ -289,4 +322,28 @@ fn read(data: ?*anyopaque, deserializer: *ffi.ValueDeserializer) callconv(.c) ?*
     }
     log.debug("deserialized a {s}", .{interface_name});
     return wrapper;
+}
+
+/// StructuredDeserialize step 2 for a transferred platform object's data
+/// holder: memory's value for it - the object its transfer-receiving steps
+/// made in the target realm (StructuredDeserializeWithTransfer step 3.5) - as
+/// its wrapper there. OWNED Global; null with an exception pending. A
+/// reference past the objects the caller received is no serialization of a
+/// message it was given: DataCloneError.
+fn readTransferred(host: *Host, deserializer: *ffi.ValueDeserializer) ?*ffi.Value {
+    const index = readUint32(deserializer) orelse {
+        throwDeserializationError("DataCloneError: a transferred object's serialized record is malformed.", .{});
+        return null;
+    };
+    if (index >= host.transferred.len) {
+        throwDeserializationError("DataCloneError: a transferred object was not received.", .{});
+        return null;
+    }
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return null;
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+    defer ffi.v8_Context_Dispose(context);
+    return value_operations.ownHandle(isolate, context, .{ .instance = host.transferred[index] }) catch {
+        throwDeserializationError("DataCloneError: a transferred object could not be received.", .{});
+        return null;
+    };
 }
