@@ -70,7 +70,22 @@ pub const Settings = struct {
     /// Mixed Content 4.3 for this settings object, including embedding
     /// documents. Absence means this kind of global does not prohibit.
     prohibits_mixed_security_contexts: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!bool = null,
+    /// Fetch "determine the network partition key" steps 1-4: the settings
+    /// object's top-level origin obtained as a site (HTML "obtain a site"),
+    /// serialized. OWNED by the caller, allocated with `global.ctx.allocator`.
+    /// Null when there is none or it is opaque - a request with no site
+    /// bypasses the partitioned stores (Codex row 44, ANSWER Q4). Null where
+    /// this kind of global keeps none.
+    top_level_site: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!?[]u8 = null,
 };
+
+/// `global`'s settings object's top-level site, serialized and OWNED
+/// (`global.ctx.allocator`); null where none is known or it is opaque.
+pub fn topLevelSiteOf(global: *runtime.Instance) error{OutOfMemory}!?[]u8 {
+    const settings = of(global) orelse return null;
+    const site_of = settings.top_level_site orelse return null;
+    return site_of(global);
+}
 
 /// `global`'s settings object's origin record (borrowed), or null where its
 /// kind keeps none.
@@ -160,6 +175,8 @@ pub const Client = struct {
     pub fn deinit(self: *Client) void {
         if (self.request.origin) |origin| self.allocator.free(origin);
         self.request.origin = null;
+        if (self.request.top_level_site) |site| self.allocator.free(site);
+        self.request.top_level_site = null;
     }
 };
 
@@ -178,6 +195,8 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     } else |err| {
         if (err == error.OutOfMemory) return error.OutOfMemory;
     }
+    // Fetch "determine the network partition key": the top-level site.
+    if (settings.top_level_site) |site_of| client.request.top_level_site = try site_of(global);
     // The referrer source: the realm's document URL - a worker realm's is
     // its creation URL.
     client.request.referrer_source = global.ctx.documentUrl();

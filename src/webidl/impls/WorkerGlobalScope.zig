@@ -123,6 +123,13 @@ pub const InternalState = struct {
     /// Is secure context
     is_secure_context: bool = false,
 
+    /// The settings object's top-level site (Fetch "determine the network
+    /// partition key"): a dedicated worker's owner's, read on the owner's
+    /// thread when it started (worker_host.ScopeSettings). OWNED; null for a
+    /// shared or service worker, an owner with none, or a scope no host
+    /// started.
+    top_level_site: ?[]u8 = null,
+
     /// Cross-origin isolated
     cross_origin_isolated: bool = false,
 
@@ -140,6 +147,8 @@ pub const InternalState = struct {
     pub fn deinit(self: *InternalState) void {
         if (self.origin_record) |record| record.release();
         self.origin_record = null;
+        if (self.top_level_site) |site| self.allocator.free(site);
+        self.top_level_site = null;
         self.reporting.deinit(self.allocator);
         if (self.indexed_db) |*factory| factory.edge.release(factory.owner);
         if (self.performance) |*performance| performance.edge.release(performance.owner);
@@ -196,6 +205,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
             // starter_secure_context with the worker's own origin, its own
             // URL's (html.secure_context.ofWorker).
             internal.is_secure_context = try @import("html").secure_context.ofWorker(allocator, internal.url, settings.owner_is_secure_context);
+            // HTML "set up a worker environment settings object": a dedicated
+            // worker's top-level origin is its owner's.
+            if (settings.top_level_site) |site| internal.top_level_site = try allocator.dupe(u8, site);
         }
     }
 }
@@ -225,7 +237,16 @@ pub fn installHooks() void {
         .policy_container = &settingsPolicyContainer,
         .reporting = &settingsReporting,
         .fetch_group = &settingsFetchGroup,
+        .top_level_site = &settingsTopLevelSite,
     });
+}
+
+/// The settings object's top-level site, as the scope captured it at set-up
+/// (OWNED copy, `instance.ctx.allocator`); null where it has none.
+fn settingsTopLevelSite(instance: *runtime.Instance) error{OutOfMemory}!?[]u8 {
+    const internal = instance.getState(State).own._internal orelse return null;
+    const site = internal.top_level_site orelse return null;
+    return try instance.ctx.allocator.dupe(u8, site);
 }
 
 fn settingsReporting(instance: *runtime.Instance) ?*@import("dom").reporting.State {

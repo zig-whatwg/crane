@@ -494,6 +494,7 @@ pub fn installHooks() void {
         .reporting = &settingsReporting,
         .fetch_group = &settingsFetchGroup,
         .prohibits_mixed_security_contexts = &settingsProhibitsMixedSecurityContexts,
+        .top_level_site = &settingsTopLevelSite,
     });
 }
 
@@ -630,6 +631,33 @@ fn secureContext(instance: *runtime.Instance, depth: usize) bool {
         .parent = parent,
         .creator = internal.creator_is_secure_context,
     }) catch false;
+}
+
+/// The settings object's top-level site (Fetch "determine the network
+/// partition key" steps 1-4): its top-level origin - HTML "initialize the
+/// document object" gives a child its parent environment's, so the top-level
+/// traversable's active window's - obtained as a site (HTML "obtain a site"),
+/// serialized and OWNED (`instance.ctx.allocator`). Null when that origin is
+/// opaque or not a tuple origin: no partition, so a request bypasses the
+/// per-Browser preflight cache and authentication entries (Codex row 44 Q4).
+fn settingsTopLevelSite(instance: *runtime.Instance) error{OutOfMemory}!?[]u8 {
+    var top = instance;
+    var depth: usize = 0;
+    while (true) : (depth += 1) {
+        const internal = getInternal(top) orelse return null;
+        const parent = parentWindowOf(internal) orelse break;
+        // Bounded, as the secure-context walk is: a cycle is a bug, not a site.
+        if (depth >= 64) return null;
+        top = parent;
+    }
+    const top_internal = getInternal(top) orelse return null;
+    const origin = effectiveOrigin(top, top_internal);
+    if (origin.len == 0 or std.mem.eql(u8, origin, "null")) return null;
+    return @import("html").agent_clusters.siteOf(instance.ctx.allocator, origin) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        // An origin with no host (file:) has no site to key by.
+        else => null,
+    };
 }
 
 /// The active window of the parent of this window's navigable; null for a

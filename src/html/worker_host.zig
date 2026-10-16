@@ -263,6 +263,10 @@ pub const ScopeSettings = struct {
     /// the global that created it - is a secure context (HTML 8.1.3.5 step
     /// 1.2.1), read on the owner's thread when the worker started.
     owner_is_secure_context: bool = false,
+    /// The owner's top-level site (dom.global_settings.topLevelSiteOf), read
+    /// on the owner's thread when a DEDICATED worker started. BORROWED from
+    /// the host; null for a shared or service worker or an owner with none.
+    top_level_site: ?[]const u8 = null,
 };
 
 /// The settings for a global scope created in the realm whose runtime
@@ -277,6 +281,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .policy_container = &wctx.policy_container,
         .time_origin_ns = wctx.time_origin_ns,
         .owner_is_secure_context = wctx.owner_is_secure_context,
+        .top_level_site = wctx.top_level_site,
     };
 }
 
@@ -663,6 +668,10 @@ pub const WorkerHost = struct {
     /// worker (`ScopeSettings.owner_is_secure_context`).
     owner_is_secure_context: bool = false,
 
+    /// The owner's top-level site, for a dedicated worker
+    /// (`ScopeSettings.top_level_site`). OWNED.
+    top_level_site: ?[]u8 = null,
+
     /// The worker object that ran the worker - a dedicated worker's Worker,
     /// a shared worker's first SharedWorker - as its owner's tasks find it:
     /// an address and slab generation, never dereferenced on this thread. An
@@ -776,6 +785,10 @@ pub const WorkerHost = struct {
             .time_origin_ns = start.time_origin_ns,
             .owner_is_secure_context = start.owner_is_secure_context,
         };
+        // Taken, not copied: the start's allocator is this one, and a move
+        // has no failure to unwind.
+        self.top_level_site = start.top_level_site;
+        start.top_level_site = null;
         // "Obtain a worker/worklet agent" step 3: a dedicated worker's agent
         // is in its owner's agent cluster, which a WebAssembly.Module it
         // serializes is bound to and one it receives is checked against
@@ -977,6 +990,7 @@ pub const WorkerHost = struct {
         self.inside_end = null;
         self.policy_container.deinit();
         self.agent_host.deinit();
+        if (self.top_level_site) |site| self.allocator.free(site);
         self.allocator.free(self.script_url);
         self.allocator.free(self.name);
         self.allocator.destroy(self);
@@ -2222,6 +2236,18 @@ fn ownerIsSecureContext(realm: runtime.Context) bool {
     return settings.is_secure_context(global);
 }
 
+/// The owner's top-level site (Fetch "determine the network partition key"),
+/// read in its realm on its thread and copied with `allocator` to cross to
+/// the worker's. A nested dedicated worker's owner is a worker realm, whose
+/// answer is the site it captured in turn.
+fn ownerTopLevelSite(allocator: Allocator, realm: runtime.Context) error{OutOfMemory}!?[]u8 {
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    const site = (try @import("dom").global_settings.topLevelSiteOf(global)) orelse return null;
+    defer global.ctx.allocator.free(site);
+    return try allocator.dupe(u8, site);
+}
+
 fn creatorCookieJar(realm: runtime.Context) ?*CookieJar {
     const record = realm.getRealm() orelse return null;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
@@ -2772,6 +2798,11 @@ const ThreadHost = struct {
         /// worker, whose agent starts a cluster of its own (isTopLevel), or
         /// when the owner's is not known.
         agent_cluster: u64,
+        /// A DEDICATED worker's owner's top-level site, read on the owner's
+        /// thread (dom.global_settings.topLevelSiteOf). OWNED; null for a
+        /// shared worker: HTML leaves its top-level origin to the user agent,
+        /// and Crane does not partition SharedWorker matching.
+        top_level_site: ?[]u8,
     };
 
     fn create(allocator: Allocator, start: *const WorkerStart) !*ThreadHost {
@@ -2781,6 +2812,9 @@ const ThreadHost = struct {
         errdefer allocator.free(script_url);
         const name = try allocator.dupe(u8, start.name);
         errdefer allocator.free(name);
+        // On the owner's thread, in its realm: its top-level site.
+        const top_level_site = if (start.shared == null) try ownerTopLevelSite(allocator, start.owner_realm) else null;
+        errdefer if (top_level_site) |site| allocator.free(site);
         const self = try allocator.create(ThreadHost);
         self.* = .{
             .allocator = allocator,
@@ -2802,6 +2836,7 @@ const ThreadHost = struct {
                 // On the owner's thread, in its realm: the owner's agent
                 // cluster, for a dedicated worker.
                 .agent_cluster = if (start.shared == null) agent_clusters.ofRealm(start.owner_realm) else 0,
+                .top_level_site = top_level_site,
             },
         };
         return self;
@@ -2827,6 +2862,8 @@ const ThreadHost = struct {
         self.start.inside_end = null;
         if (self.start.shared) |*shared| shared.deinit(self.allocator);
         self.start.shared = null;
+        if (self.start.top_level_site) |site| self.allocator.free(site);
+        self.start.top_level_site = null;
     }
 
     fn asHost(self: *ThreadHost) WorkerThread.Host {
