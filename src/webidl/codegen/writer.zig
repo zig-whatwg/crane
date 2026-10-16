@@ -390,6 +390,51 @@ pub fn isEventHandlerAttribute(attr: types.Attribute) bool {
     return false;
 }
 
+/// Write `Meta.secure_context_members` (and `secure_context_static_members`):
+/// the JS names of the interface's own attributes and operations that carry
+/// [SecureContext] - their own, their partial interface's or their interface
+/// mixin's (the IR scopes those to the members, ir.withMemberScopedExtAttrs).
+/// WebIDL 3.3.13 and "exposed": such a member is exposed only where the
+/// realm's settings object is a secure context, so the binding hides it in
+/// any other realm. Nothing when there are none.
+pub fn writeSecureContextMembers(writer: anytype, attributes: []const types.Attribute, operations: []const types.Operation) !void {
+    inline for (.{ false, true }) |static| {
+        var names = std.ArrayList([]const u8).empty;
+        defer names.deinit(std.heap.page_allocator);
+        for (attributes) |attr| {
+            if (attr.static != static or !hasExtendedAttribute(attr.extAttrs, "SecureContext")) continue;
+            try appendUniqueName(&names, attr.name);
+        }
+        for (operations) |op| {
+            const name = op.name orelse continue;
+            if (op.static != static or !hasExtendedAttribute(op.extAttrs, "SecureContext")) continue;
+            try appendUniqueName(&names, name);
+        }
+        if (names.items.len != 0) {
+            try writer.writeAll("        \n");
+            if (static) {
+                try writer.writeAll("        /// [SecureContext] static members: hidden from the interface object\n");
+                try writer.writeAll("        /// of a realm that is not a secure context (WebIDL 3.3.13).\n");
+                try writer.writeAll("        pub const secure_context_static_members = .{\n");
+            } else {
+                try writer.writeAll("        /// [SecureContext] members - their own, their partial interface's or\n");
+                try writer.writeAll("        /// their mixin's: hidden in a realm that is not a secure context\n");
+                try writer.writeAll("        /// (WebIDL 3.3.13).\n");
+                try writer.writeAll("        pub const secure_context_members = .{\n");
+            }
+            for (names.items) |name| try writer.print("            \"{s}\",\n", .{name});
+            try writer.writeAll("        };\n");
+        }
+    }
+}
+
+fn appendUniqueName(names: *std.ArrayList([]const u8), name: []const u8) !void {
+    for (names.items) |existing| {
+        if (std.mem.eql(u8, existing, name)) return;
+    }
+    try names.append(std.heap.page_allocator, name);
+}
+
 /// Whether `op` is a regular operation - a method of the interface prototype.
 /// WebIDL 2.5.3: "If an operation has an identifier, then it is a regular
 /// operation" - a special one (getter, setter, deleter, stringifier) declared
@@ -906,6 +951,9 @@ pub fn writeMetadata(
     // anonymous one's delegate is gated, and the table says whether its impl
     // implements it.
     if (!is_mixin and !is_callback) if (special_ops) |model| try special_operations.writeMeta(writer, model, interface_name);
+
+    // Its [SecureContext] members, which a non-secure realm hides.
+    try writeSecureContextMembers(writer, own_attributes_and_statics, own_operations);
 
     // Generate iterable metadata if present
     if (iterable) |iter| {
