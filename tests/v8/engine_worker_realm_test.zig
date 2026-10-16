@@ -44,6 +44,16 @@ fn sharedWorkerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
     });
 }
 
+fn serviceWorkerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
+    return v8.worker_realm.createWorkerRealm(agent, .{
+        .url = "https://web-platform.test:8443/service-workers/sw.js",
+        .timer = null,
+        .event_loop = inline_task_loop.eventLoop(),
+        .global = .service,
+        .allocator = std.heap.page_allocator,
+    });
+}
+
 /// `code`, run in `realm` of `agent`, as an int32.
 fn evalIntIn(agent: *runtime.Agent, realm: runtime.Context, code: []const u8) !i32 {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
@@ -89,6 +99,36 @@ test "a shared worker realm's global object is a SharedWorkerGlobalScope" {
     ));
     try std.testing.expectEqual(@as(i32, 0), try evalIntIn(agent, made.realm,
         \\"DedicatedWorkerGlobalScope" in self || "postMessage" in self || "onmessage" in self ? 1 : 0
+    ));
+}
+
+// Service Workers "Setup ServiceWorkerGlobalScope" step 8.1: a service
+// worker's realm's global object is a new ServiceWorkerGlobalScope - its
+// record says so, its prototype chain is ServiceWorkerGlobalScope's, its own
+// members are on it, and the set [Exposed] to a service worker is
+// installed: ExtendableEvent and Clients, and neither the other worker
+// globals nor a dedicated worker's postMessage.
+test "a service worker realm's global object is a ServiceWorkerGlobalScope" {
+    setup();
+    const agent = try v8.worker_realm.createAgent();
+    defer v8.worker_realm.destroyAgent(agent);
+    const made = try serviceWorkerRealm(agent);
+    defer v8.worker_realm.destroyWorkerRealm(made.realm, null, null);
+
+    const record = made.realm.getRealm() orelse return error.NoRealmRecord;
+    try std.testing.expectEqual(runtime.realm.ContextType.service_worker, record.info.context_type);
+    try std.testing.expectEqual(@as(?*anyopaque, @ptrCast(made.global_scope)), record.global_object);
+    try std.testing.expectEqual(@as(i32, 1), try evalIntIn(agent, made.realm,
+        \\Object.getPrototypeOf(self) === ServiceWorkerGlobalScope.prototype &&
+        \\Object.getPrototypeOf(ServiceWorkerGlobalScope.prototype) === WorkerGlobalScope.prototype &&
+        \\self instanceof ServiceWorkerGlobalScope && self === globalThis ? 1 : 0
+    ));
+    try std.testing.expectEqual(@as(i32, 1), try evalIntIn(agent, made.realm,
+        \\"oninstall" in self && "onactivate" in self && typeof self.skipWaiting === "function" &&
+        \\"ExtendableEvent" in self && "Clients" in self ? 1 : 0
+    ));
+    try std.testing.expectEqual(@as(i32, 0), try evalIntIn(agent, made.realm,
+        \\"DedicatedWorkerGlobalScope" in self || "SharedWorkerGlobalScope" in self || "postMessage" in self || "onconnect" in self ? 1 : 0
     ));
 }
 

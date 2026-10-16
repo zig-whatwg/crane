@@ -8,8 +8,9 @@
 //! table. What is here is what only the engine can do:
 //!
 //! - an agent: a V8 isolate of the worker's own (createAgent, destroyAgent);
-//! - a realm in it whose global object is a DedicatedWorkerGlobalScope or a
-//!   SharedWorkerGlobalScope platform object (createWorkerRealm), and the
+//! - a realm in it whose global object is a DedicatedWorkerGlobalScope, a
+//!   SharedWorkerGlobalScope or a ServiceWorkerGlobalScope platform object
+//!   (createWorkerRealm), and the
 //!   realm's end (destroyWorkerRealm);
 //! - the engine's own work for the agent - V8's posted platform tasks, such as
 //!   an asynchronous WebAssembly compile settling its promise
@@ -153,6 +154,11 @@ fn GlobalKind(comptime global: runtime.WorkerRealmOptions.WorkerGlobal) type {
             const scope: webidl_helpers.GlobalScope = .SharedWorker;
             const context_type: runtime.realm.ContextType = .shared_worker;
         },
+        .service => struct {
+            const Interface = interfaces.ServiceWorkerGlobalScope;
+            const scope: webidl_helpers.GlobalScope = .ServiceWorker;
+            const context_type: runtime.realm.ContextType = .service_worker;
+        },
     };
 }
 
@@ -171,7 +177,8 @@ fn globalScopeTemplate(comptime Interface: type, isolate: *ffi.Isolate) *ffi.Fun
 
 /// The protocol's `createWorkerRealm`: HTML "run a worker" step 5 - a new
 /// realm in `agent` whose global object is a new DedicatedWorkerGlobalScope,
-/// or a new SharedWorkerGlobalScope when `options.global` is `.shared` - with
+/// or a new SharedWorkerGlobalScope when `options.global` is `.shared`, or a
+/// new ServiceWorkerGlobalScope when it is `.service` - with
 /// every interface [Exposed] to that kind of worker installed on it. OWNED:
 /// `destroyWorkerRealm`.
 pub fn createWorkerRealm(agent: *runtime.Agent, options: runtime.WorkerRealmOptions) EngineError!runtime.WorkerRealm {
