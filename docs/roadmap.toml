@@ -55,6 +55,7 @@ progress = [
   "71b40ef7a1, 3b05ac5527, 817cdd3d79 - refcount steps 1 and 2 (rc12): pins for retention, listener cycles, D1 and D6 (known-red until their step), the Ref/GCReachableRef/WeakRef types with the Debug ledger and count fields in NodeBase (456 B until nodeholds' holds go), lint-refcount; no behaviour change. Found: a windowless document held only through a detached node is freed under it (crash)",
   "3bfc905d14, 01b5401afb, 61b73e0ee3, a85be6b6a1 - refcount step 3 (rc3): every parent write through NodeBase.setParent (lint-refcount at 0), subtree_holds kept along the host-including chain (shadow roots, template contents), the Document's referencing_nodes and foreign_holds (D6); shadow mode, checked after every mutation in unit tests and under CRANE_REFCOUNT_CHECK; no behaviour change",
   "77781a10b6 - an `any` attribute setter's value is released once the setter returns, fails or its conversion fails (every `any` setter read for keepers, setterValueIsBorrowed); ElementInternals' ARIA arrays no longer root their inputs, and a setter's ExceptionPending reaches script as script's own exception (setterleak)",
+  "8321e646e2, 8a73cd6881 - a returned record's JSValue values and a returned sequence's union elements made for the call are released, by value (jsValueConversionIsFresh, unionValueIsOwned): URLPattern exec() leaked its groups and its input String every call (regexop)",
 ]
 
   [[infra.items]]
