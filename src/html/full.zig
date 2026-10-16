@@ -32,6 +32,7 @@
 
 const std = @import("std");
 pub const dom_parser = @import("dom_parser.zig");
+pub const sanitizer = @import("sanitizer.zig");
 pub const serialization = @import("serialization.zig");
 
 // Re-export all of html_core via module import (not file import)
