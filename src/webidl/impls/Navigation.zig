@@ -690,12 +690,23 @@ fn traverseToKey(instance: *runtime.Instance, key: []const u8, info: runtime.JSV
     }
     // Steps 9-12: the traversal to the destination's step - the nearest one
     // that shows it (JointHistory.nearestStepOf, as browsers do).
+    const step = scope.history.nearestStepOf(destination);
+    // Step 12.2's "apply the traverse history step" given this navigation's
+    // document's source snapshot params and its navigable as
+    // initiatorToCheck: "initiator-disallowed" - a sandboxed document
+    // asking for a traversal that would change the entry of a navigable it
+    // is not allowed by sandboxing to navigate - changes nothing, and step
+    // 12.6 rejects the finished promise with a SecurityError (a task later).
+    if (!initiatorAllowedToTraverse(internal.allocator, scope, step)) {
+        queueTraversalCheck(instance, scope.window, tracker, .initiator_disallowed);
+        return derivedResult(instance, internal, tracker);
+    }
     ensureHistoryTraversal(scope.window);
-    dom.history_traversal.traverseToStep(scope.window, scope.history.nearestStepOf(destination));
+    dom.history_traversal.traverseToStep(scope.window, step);
     // Step 12.3, when the queued traversal has run: its target already the
     // navigable's active entry - a traversal queued before it took the
     // navigable there - rejects the finished promise.
-    queueActiveTargetCheck(instance, scope.window, tracker);
+    queueTraversalCheck(instance, scope.window, tracker, .active_target);
     // Step 13.
     return derivedResult(instance, internal, tracker);
 }
@@ -707,11 +718,47 @@ fn traverseToKey(instance: *runtime.Instance, key: []const u8, info: runtime.JSV
 /// "InvalidStateError" DOMException." A traversal that changed the entry
 /// fired its navigate event, which took the tracker out of the upcoming
 /// ones; one that went to another document has not made it active yet.
+/// "Apply the history step" step 3 for a traversal to `step` that `scope`'s
+/// document asks for: whether its navigable is allowed by sandboxing to
+/// navigate every navigable whose current session history entry the step
+/// changes, given the document's source snapshot params. A document that is
+/// not sandboxed always is.
+fn initiatorAllowedToTraverse(allocator: Allocator, scope: navigation_entries.Scope, step: u32) bool {
+    const flags = dom.document_scripts.activeSandboxingFlags(scope.document);
+    if (flags.isEmpty()) return true;
+    const snapshot: html_core.navigation.sandbox_navigation.SourceSnapshot = .{
+        .sandboxing_flags = flags,
+        .has_transient_activation = @import("html").user_activation.hasTransientActivation(scope.window),
+    };
+    var tree: std.ArrayListUnmanaged(*html_core.window.BrowsingContext) = .empty;
+    defer tree.deinit(allocator);
+    // Out of memory: no navigable can be checked, so none is allowed.
+    scope.navigable.getTop().collectDescendants(allocator, &tree) catch return false;
+    for (tree.items) |navigable| {
+        const current = scope.history.currentEntry(navigable.id) orelse continue;
+        const target = scope.history.entryAt(navigable.id, step) orelse continue;
+        if (current == target) continue;
+        if (!html_core.navigation.sandbox_navigation.allowedBySandboxingToNavigate(scope.navigable, navigable, snapshot)) return false;
+    }
+    return true;
+}
+
+/// What a queued look at a navigation API traversal's tracker settles.
+const TraversalCheckKind = enum {
+    /// Step 12.3: the traversal's destination was already the navigable's
+    /// active entry once the traversal ran - an InvalidStateError.
+    active_target,
+    /// Step 12.6: the traversal was "initiator-disallowed" - a
+    /// SecurityError.
+    initiator_disallowed,
+};
+
 const ActiveTargetCheck = struct {
     navigation: *runtime.Instance,
     generation: u64,
     tracker: *Tracker,
     allocator: Allocator,
+    kind: TraversalCheckKind = .active_target,
 
     fn run(data: ?*anyopaque) void {
         const self: *ActiveTargetCheck = @ptrCast(@alignCast(data orelse return));
@@ -723,6 +770,16 @@ const ActiveTargetCheck = struct {
         const key = for (internal.upcoming.items) |t| {
             if (t == self.tracker) break t.key orelse return;
         } else return;
+        if (self.kind == .initiator_disallowed) {
+            const reason = engine.createDOMException(self.navigation.ctx, "SecurityError", "The document is not allowed by sandboxing to navigate every navigable this traversal changes.") catch {
+                cleanUp(internal, self.tracker);
+                return;
+            };
+            defer reason.release();
+            rejectFinished(internal, self.tracker, reason.value);
+            collect(internal);
+            return;
+        }
         const scope = scopeOf(self.navigation, internal) orelse return;
         const current = scope.history.currentEntry(scope.navigable.id) orelse return;
         if (!std.mem.eql(u8, &current.api_key, &key)) return;
@@ -741,7 +798,7 @@ const ActiveTargetCheck = struct {
     }
 };
 
-fn queueActiveTargetCheck(navigation: *runtime.Instance, window: *runtime.Instance, tracker: *Tracker) void {
+fn queueTraversalCheck(navigation: *runtime.Instance, window: *runtime.Instance, tracker: *Tracker, kind: TraversalCheckKind) void {
     const internal = getInternal(navigation) orelse return;
     const check = internal.allocator.create(ActiveTargetCheck) catch return;
     check.* = .{
@@ -749,6 +806,7 @@ fn queueActiveTargetCheck(navigation: *runtime.Instance, window: *runtime.Instan
         .generation = runtime.SlabAllocator.generationOf(navigation),
         .tracker = tracker,
         .allocator = internal.allocator,
+        .kind = kind,
     };
     // With no loop (a context built for tests) the traversal ran in the call.
     const loop = window.ctx.getOptionalEventLoop() orelse return ActiveTargetCheck.run(check);

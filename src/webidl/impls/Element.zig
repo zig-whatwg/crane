@@ -2562,6 +2562,16 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
         if (!forwards_to_window) rawEventHandlerSteps(instance, local_name, value);
         return;
     };
+    // A document sandboxed without allow-scripts: "getting the current value
+    // of the event handler" step 1.2 returns null while "document's active
+    // sandboxing flag set has its sandboxed scripts browsing context flag
+    // set", so nothing is compiled. The element's own handler is the spec's
+    // internal raw uncompiled handler (it compiles only once the element is
+    // in a document that runs script); a window-reflecting one is never set.
+    if (dom.document_scripts.scriptsSandboxed(document)) {
+        if (!forwards_to_window) rawEventHandlerSteps(instance, local_name, value);
+        return;
+    }
     const target: *runtime.Instance = if (forwards_to_window) window else instance;
     _ = compileEventHandlerAttribute(instance, document, target, forwards_to_window, local_name, value);
 }
@@ -2699,6 +2709,9 @@ fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8) dom
 
     const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse return .scripting_disabled;
     if ((interfaces.Document.get_defaultView(document) catch null) == null) return .scripting_disabled;
+    // Step 1.2's other half: "or document's active sandboxing flag set has
+    // its sandboxed scripts browsing context flag set, then return null."
+    if (dom.document_scripts.scriptsSandboxed(document)) return .scripting_disabled;
     const internal = getInternal(target) orelse return .settled;
     // The body, copied: compiling reports errors, and the script that runs
     // can change the attribute under a borrowed slice.

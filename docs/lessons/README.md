@@ -297,6 +297,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A task taken from a sink runs outside every realm until it enters one](architecture-a-task-from-a-sink-runs-outside-every-realm.md) - A sink's task is not in any realm. Before it touches the engine, enter its realm with `runTaskInRealm` - and test the worker case, since the window loop hides the mistake.
 
 ### Spec Compliance
+- [A sandbox belongs to the document it was created with, not to the frame](spec-compliance-a-sandbox-belongs-to-the-document-not-the-frame.md) - Put a security state on the object the spec puts it on, and fix it where the spec fixes it: a flag kept on the frame cannot say which document it applies to.
 - [A form's past names go at the change of owner, and insertBefore is one](spec-compliance-past-names-go-at-the-owner-change.md) - A rule keyed on a change of a computed value needs the change, not a later comparison - and a remove-then-insert is two changes even when the value ends where it began.
 - [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
 - [Cookie normalization precedes validation](spec-compliance-cookie-normalization-precedes-validation.md) - Normalize before validation and distinguish empty names from omitted filters.
@@ -470,6 +471,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Native SameObject getters can leak unwrapped instances](codegen-native-sameobject-getters-can-leak-unwrapped-instances.md) - Share scalar reads before acquiring wrapper objects; measure Zig and C++ allocations separately.
 
 ### Testing
+- [A headers file applies only to the path it names](testing-a-headers-file-applies-only-to-the-path-it-names.md) - Before diagnosing a header-driven failure, confirm the header is sent (`curl -sI`): a misnamed headers file fails silently, in your tests and in upstream ones.
 - [Only state made natively can be orphaned - a wrap reaches up to the root](testing-only-state-made-natively-can-be-orphaned.md) - An orphan is a subtree script never touched: reproduce an orphan leak with state the engine makes on its own, first with state made at parse time; reading the node from script wraps it and every ancestor.
 - [A named interceptor changes ordinary property reads](testing-a-named-interceptor-changes-ordinary-property-reads.md) - The cost of registering an interceptor includes ordinary operations that fall through it. Exercise those operations explicitly.
 - [A failed assertion can hide a later operation](testing-a-failed-assertion-can-hide-a-later-operation.md) - Coverage follows executed operations, not assertions written below an earlier failure.

@@ -842,9 +842,15 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
     // Step 9: "If navigable's active document's unload counter is greater
     // than 0 ... return."
     if (dom.document_lifecycle.isUnloading(document)) return;
+    // Step 6.2: "If sourceDocument's node navigable is not allowed by
+    // sandboxing to navigate navigable given sourceSnapshotParams: if
+    // exceptionsEnabled is true, then throw a SecurityError", and return. A
+    // Location navigation's exceptions are enabled; the hook's caller (a
+    // hyperlink, a form) drops the error.
     // Step 12: "If navigable's allowed to perform a navigation or history
     // update returns blocked, then ... return."
     if (dom.browser_state.browsingContextOf(window)) |navigable| {
+        if (@import("html").user_activation.sandboxBlocksNavigation(params.source_document, navigable)) return error.SecurityError;
         if (!navigable.allowedToNavigateOrUpdateHistory()) return;
     }
     const allocator = window.ctx.allocator;
@@ -1070,6 +1076,12 @@ fn isValidUrl(allocator: Allocator, url: []const u8) bool {
 /// value, and for a script that throws, which is reported.
 fn evaluateJavascriptUrl(window: *runtime.Instance, url: []const u8, allocator: Allocator) ?[]u8 {
     const realm = window.ctx;
+    // Step 4's settings is the window's: "create a classic script" step 2
+    // empties the source when scripting is disabled for it - for a document
+    // sandboxed without allow-scripts nothing runs.
+    if (interfaces.Window.get_document(window) catch null) |document| {
+        if (dom.document_scripts.scriptsSandboxed(document)) return null;
+    }
     // Steps 1-3: "Let encodedScriptSource be the result of removing the
     // leading "javascript:" from urlString"; "let scriptSource be the UTF-8
     // decoding of the percent-decoding of encodedScriptSource".

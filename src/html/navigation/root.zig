@@ -17,7 +17,8 @@
 //! - **document_type**: which document a response makes
 //! - **object_resource_type**: what an object's or embed's resource is
 //! - **termination_nesting**: the event loop's termination nesting level
-//! - **security_policies**: COOP, COEP, CORP, sandboxing, framing
+//! - **security_policies**: COOP, COEP, CORP, framing
+//! - **sandbox_navigation**: "allowed by sandboxing to navigate"
 
 pub const fetch_integration = @import("fetch_integration.zig");
 pub const navigate_steps = @import("navigate_steps.zig");
@@ -27,6 +28,8 @@ pub const joint_history = @import("joint_history.zig");
 pub const document_type = @import("document_type.zig");
 pub const object_resource_type = @import("object_resource_type.zig");
 pub const security_policies = @import("security_policies.zig");
+/// HTML "allowed by sandboxing to navigate".
+pub const sandbox_navigation = @import("sandbox_navigation.zig");
 
 pub const fetchNavigationResource = fetch_integration.fetchNavigationResource;
 pub const NavigationFetchResult = fetch_integration.NavigationFetchResult;
@@ -47,8 +50,6 @@ pub const SecurityPolicyHeaderMap = security_policies.HeaderMap;
 pub const checkCoopEnforcement = security_policies.checkCoopEnforcement;
 pub const checkCoepEnforcement = security_policies.checkCoepEnforcement;
 pub const isCrossOriginIsolated = security_policies.isCrossOriginIsolated;
-pub const isNavigationAllowedBySandbox = security_policies.isNavigationAllowedBySandbox;
-pub const checkNavigationSecurity = security_policies.checkNavigationSecurity;
 pub const XFrameOptions = security_policies.XFrameOptions;
 pub const isFramingAllowed = security_policies.isFramingAllowed;
 

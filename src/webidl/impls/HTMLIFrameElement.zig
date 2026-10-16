@@ -34,11 +34,12 @@ const DOMTokenListImpl = @import("DOMTokenList.zig");
 const html_core = @import("html_core");
 const IFrameIntegration = html_core.IFrameIntegration;
 const Origin = html_core.Origin;
-const SandboxFlags = html_core.SandboxFlags;
+const SandboxingFlagSet = html_core.SandboxingFlagSet;
 
 // DOM imports for post-connection steps callback
 const dom_module = @import("dom");
 const OriginRecord = dom_module.origin_record.OriginRecord;
+const sandboxing = dom_module.sandboxing;
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.NodeBase;
 
@@ -284,10 +285,15 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     const allocator = runtime_ctx.allocator;
 
     // Create a Document instance using the WebIDL interface, of the origin
-    // the navigable was given for it (takeNextOrigin).
+    // the navigable was given for it (takeNextOrigin), and with the
+    // sandboxing flags it was given ("create a new browsing context and
+    // document" step 15: the creation sandboxing flags).
     const origin = takeNextOrigin(browsing_ctx_ptr);
     defer if (origin) |record| record.release();
-    const document_instance = interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin }) catch {
+    const document_instance = interfaces.Document.initWith(allocator, runtime_ctx, .{
+        .origin = origin,
+        .sandboxing_flags = takeNextSandboxingFlags(browsing_ctx_ptr),
+    }) catch {
         return null;
     };
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
@@ -405,13 +411,6 @@ fn parseHtmlForIframe(
     else
         null;
 
-    // CRITICAL: Check sandbox flags to determine if scripting is enabled.
-    // Per HTML spec §4.8.5, when an iframe has the sandbox attribute:
-    // - If empty (sandbox=""), ALL restrictions apply including script blocking
-    // - If sandbox="allow-scripts", scripts are allowed to execute
-    // The BrowsingContext.allowsScripts() method encapsulates this check.
-    const scripting_enabled = browsing_ctx_ptr.allowsScripts();
-
     // HTML "create and initialize a Document object" step 9: a new Document
     // whose type is "html" and content type "text/html" ("load an HTML
     // document"); step 10: the window's associated Document becomes it. Both
@@ -421,6 +420,11 @@ fn parseHtmlForIframe(
     // document: their getElementsByTagName, createElement and body were that
     // document's.
     const document_instance = createNavigationDocument(allocator, runtime_ctx, browsing_ctx_ptr, window_instance, .html, "text/html") orelse return null;
+
+    // The parser's scripting flag: "scripting is enabled" for the new
+    // document - not when its active sandboxing flag set, which the
+    // navigation gave it, has the sandboxed scripts browsing context flag.
+    const scripting_enabled = dom_module.document_scripts.scriptingEnabled(document_instance);
 
     // The encoding sniffing algorithm's step 6: the container document's
     // encoding, when it is same origin with the new document.
@@ -489,10 +493,13 @@ fn createNavigationDocument(
     // srcdoc, its initiator's for a javascript: URL's String.
     const origin = takeNextOrigin(browsing_ctx_ptr);
     defer if (origin) |record| record.release();
+    // Step 9's active sandboxing flag set: navigationParams's final
+    // sandboxing flag set, which the commit gave the navigable for it.
+    const sandboxing_flags = takeNextSandboxingFlags(browsing_ctx_ptr);
     const document_instance = (if (kind == .xml)
-        interfaces.XMLDocument.initWith(allocator, runtime_ctx, .{ .origin = origin })
+        interfaces.XMLDocument.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags })
     else
-        interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin })) catch return null;
+        interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags })) catch return null;
     document_internals.setDocumentType(document_instance, kind) catch {};
     document_internals.setContentType(document_instance, content_type) catch {};
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
@@ -559,7 +566,7 @@ fn parseXmlForIframe(
         .allocator = allocator,
     } else null;
     const failure = xml_parser.parseInto(document, decoded.text, .{
-        .scripting = browsing_ctx_ptr.allowsScripts(),
+        .scripting = dom_module.document_scripts.scriptingEnabled(document),
         .script_loader = loader,
     }) catch |err| {
         log.warn("[parseXmlForIframe] parsing stopped: {}", .{err});
@@ -869,6 +876,18 @@ const Navigation = struct {
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
     response: ?navigation_fetch.NavigationFetchResult = null,
+    /// Navigate step 8's target snapshot params' sandboxing flags: "determine
+    /// the creation sandboxing flags" for the navigable's active browsing
+    /// context given its container, as the navigation starts - the iframe's
+    /// sandbox attribute as it is then, united with its container document's
+    /// active sandboxing flag set; a popup's popup sandboxing flag set.
+    target_sandboxing_flags: SandboxingFlagSet = .empty,
+    /// navigationParams's final sandboxing flag set, decided as the response
+    /// commits: the target snapshot's flags united with the policy
+    /// container's CSP-derived sandboxing flags. The new document's active
+    /// sandboxing flag set, and with the sandboxed origin browsing context
+    /// flag, its origin is a new opaque one.
+    final_sandboxing_flags: SandboxingFlagSet = .empty,
 
     fn destroy(self: *Navigation) void {
         // Terminating a fetch runs neither `done` nor `gone`.
@@ -904,6 +923,15 @@ fn giveAboutBaseUrl(document: *runtime.Instance, browsing_context: *html_core.Br
     const integration = integrationOfBrowsingContext(browsing_context) orelse return;
     const url = integration.next_about_base_url orelse return;
     dom_module.document_lifecycle.setAboutBaseUrl(document, url);
+}
+
+/// "Create and initialize a Document object" step 9's active sandboxing
+/// flag set: the one `browsing_context`'s navigable was given for the
+/// document about to be made (IFrameIntegration.next_sandboxing_flags) - or
+/// the empty set.
+fn takeNextSandboxingFlags(browsing_context: *html_core.BrowsingContext) SandboxingFlagSet {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse return .empty;
+    return integration.takeNextSandboxingFlags();
 }
 
 /// "Create and initialize a Document object": the origin record
@@ -1090,6 +1118,13 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     if (options.traversal_entry == 0 and !options.initial_insertion and options.user_involvement != .browser_ui and
         html_module.user_activation.topNavigationBlocked(options.source_document, browsing_context, url)) return;
 
+    // Step 6.2: "If sourceDocument's node navigable is not allowed by
+    // sandboxing to navigate navigable given sourceSnapshotParams", return
+    // (a SecurityError where exceptions are enabled: navigateFromLocation).
+    // A traversal's navigation was checked by "apply the history step".
+    if (options.traversal_entry == 0 and options.user_involvement != .browser_ui and
+        html_module.user_activation.sandboxBlocksNavigation(options.source_document, browsing_context)) return;
+
     // Step 9: "If navigable's active document's unload counter is greater
     // than 0, then ... return."
     if (active) |doc| {
@@ -1165,6 +1200,9 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         .traversal_from = options.traversal_from,
         .browser_initiated = options.user_involvement == .browser_ui,
         .csp_navigation_type = options.csp_navigation_type,
+        // Step 8: "Let targetSnapshotParams be the result of snapshotting
+        // target snapshot params given navigable": its sandboxing flags.
+        .target_sandboxing_flags = creationSandboxingFlagsOf(integration),
     };
     record.required_csp = determineRequiredCSP(integration, url) catch {
         record.destroy();
@@ -1753,6 +1791,25 @@ fn runCommit(context: ?*anyopaque) void {
         return;
     }
 
+    // "Create navigation params by fetching" steps 21.9-21.11 (and "create
+    // navigation params from a srcdoc resource" steps 4-6): navigationParams's
+    // policy container, and its final sandboxing flag set - "the union of
+    // targetSnapshotParams's sandboxing flags and policyContainer's CSP
+    // list's CSP-derived sandboxing flags". Decided before anything unloads:
+    // with the sandboxed origin browsing context flag the new document's
+    // origin is a new opaque one ("determining the origin" step 1), which
+    // the pageswap event names and the new document's Window is chosen by.
+    // A network error's document is "inline content that doesn't have a
+    // DOM", whose final sandboxing flag set is empty.
+    var params_container = navigationParamsPolicyContainer(integration, record, response);
+    var params_container_taken = false;
+    defer if (!params_container_taken) {
+        if (params_container) |*container| container.deinit();
+    };
+    record.final_sandboxing_flags = if (response.is_network_error) .empty else record.target_sandboxing_flags.unionWith(
+        if (params_container) |*container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else .empty,
+    );
+
     // Script runs below and may take the iframe away; the integration stays
     // until this is done with it - and is freed, if it has to be, only after
     // the realm scopes below have been left.
@@ -1783,7 +1840,7 @@ fn runCommit(context: ?*anyopaque) void {
     // "Create and initialize a Document object" steps 5-7: the realm the new
     // document goes in - the active one, or a new Window's around the same
     // WindowProxy - decided with no realm entered.
-    const new_origin = integration.responseOrigin(record.url, response);
+    const new_origin = if (record.final_sandboxing_flags.origin) Origin.createOpaque() else integration.responseOrigin(record.url, response);
     const old_origin: ?Origin = if (integration.window_proxy) |proxy| proxy.document_origin else null;
     // Navigation Timing: the unload times are the new document's only when
     // the previous document was same origin with it.
@@ -1819,8 +1876,7 @@ fn runCommit(context: ?*anyopaque) void {
     integration.setNextAboutBaseUrl(record.initiator_base_url);
     defer integration.setNextAboutBaseUrl(null);
     // "Create and initialize a Document object" step 9: the document's policy
-    // container, waiting for whatever makes the document.
-    const params_container = navigationParamsPolicyContainer(integration, record, response);
+    // container, waiting for whatever makes the document (decided above).
     // "Populate a session history entry" step 7.2.3: a document whose URL
     // requires storing the policy container in history has its document
     // state keep it (commitInRealm records it).
@@ -1831,7 +1887,11 @@ fn runCommit(context: ?*anyopaque) void {
         }
     }
     integration.setNextPolicyContainer(params_container);
+    params_container_taken = true;
     defer integration.setNextPolicyContainer(null);
+    // Step 9's active sandboxing flag set, for whatever makes the document.
+    integration.setNextSandboxingFlags(record.final_sandboxing_flags);
+    defer integration.setNextSandboxingFlags(.empty);
     // Step 14: its referrer, the request's as main fetch left it.
     integration.setNextReferrer(response.referrer);
     defer integration.setNextReferrer(null);
@@ -1870,9 +1930,7 @@ fn runCommit(context: ?*anyopaque) void {
 fn obtainAgentCluster(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult, new_origin: Origin) void {
     if (new_origin.is_opaque or response.is_network_error) return;
     const browsing_context = integration.browsing_context orelse return;
-    if (browsing_context.sandbox_flags) |flags| {
-        if (flags.sandboxesSameOrigin()) return;
-    }
+    if (record.final_sandboxing_flags.origin) return;
     const allocator = integration.allocator;
     const response_url = if (response.final_url.len > 0) response.final_url else record.url;
     const keys = dom_module.agent_cluster_keys;
@@ -2162,6 +2220,25 @@ fn containerDocumentOf(integration: *IFrameIntegration) ?*runtime.Instance {
     return interfaces.Node.get_ownerDocument(element) catch null;
 }
 
+/// HTML "determine the creation sandboxing flags" for `integration`'s
+/// navigable's active browsing context, given its container ("embedder"):
+/// with one, the container's iframe sandboxing flag set (empty for any other
+/// element, which has no sandbox attribute) united with its node document's
+/// active sandboxing flag set; with none - a popup - its popup sandboxing
+/// flag set.
+/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#determining-the-creation-sandboxing-flags
+fn creationSandboxingFlagsOf(integration: *IFrameIntegration) SandboxingFlagSet {
+    if (integration.iframe_element != null) {
+        const container_document = containerDocumentOf(integration);
+        return sandboxing.creationSandboxingFlags(.{ .embedder = .{
+            .iframe_flags = integration.iframe_sandboxing_flags,
+            .container_document_flags = if (container_document) |document| dom_module.document_scripts.activeSandboxingFlags(document) else .empty,
+        } });
+    }
+    const browsing_context = integration.browsing_context orelse return .empty;
+    return sandboxing.creationSandboxingFlags(.{ .popup = browsing_context.popup_sandboxing_flags });
+}
+
 /// "Create and initialize a Document object" step 9: `document`, which
 /// `browsing_context`'s navigable just made, takes the policy container its
 /// commit chose, if one is waiting.
@@ -2239,7 +2316,7 @@ fn pageSwapOf(integration: *IFrameIntegration, record: *Navigation, response: *c
     const history = bc.ensureHistoryEntries(&history_documents.infoOf) catch return null;
     const allocator = history.allocator;
     const final_url = if (response.final_url.len > 0) response.final_url else record.url;
-    const origin = navigationParamsOrigin(integration, final_url, integration.allocator) catch return null;
+    const origin = navigationParamsOrigin(integration, record.final_sandboxing_flags, final_url, integration.allocator) catch return null;
     if (record.target_origin) |old| integration.allocator.free(old);
     record.target_origin = origin;
 
@@ -2302,7 +2379,7 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     const final_url = if (response.final_url.len > 0) response.final_url else record.url;
     // The origin decided before the displayed document unloaded, as the
     // pageswap event saw it.
-    const computed: ?[]u8 = if (record.target_origin == null) navigationParamsOrigin(integration, final_url, integration.allocator) catch null else null;
+    const computed: ?[]u8 = if (record.target_origin == null) navigationParamsOrigin(integration, record.final_sandboxing_flags, final_url, integration.allocator) catch null else null;
     defer if (computed) |o| integration.allocator.free(o);
     const origin: []const u8 = record.target_origin orelse computed orelse "null";
     const document_state = recordInHistory(integration, record, final_url, origin);
@@ -2444,19 +2521,17 @@ fn attachDocument(integration: *IFrameIntegration, document_state: ?u64) void {
 /// `allocator`, computed from what exists before the document does:
 ///
 /// 1. "If sandboxFlags has its sandboxed origin browsing context flag set,
-///    then return a new opaque origin": "null" for a navigable sandboxed
-///    without allow-same-origin.
+///    then return a new opaque origin": "null" when `flags`, the navigation's
+///    final sandboxing flag set, has it.
 /// 2-3. A URL that matches about:blank, or about:srcdoc, inherits: its
 ///    container document's origin (a popup's: the window it replaces). This
 ///    is the origin the new Window reports (IFrameIntegration's
 ///    parseOriginFromURL gives about: URLs the container origin), where the
 ///    spec gives about:blank the initiator's.
 /// 4. Otherwise `url`'s origin, as the URL Standard serializes it.
-fn navigationParamsOrigin(integration: *IFrameIntegration, url: []const u8, allocator: std.mem.Allocator) ![]u8 {
+fn navigationParamsOrigin(integration: *IFrameIntegration, flags: SandboxingFlagSet, url: []const u8, allocator: std.mem.Allocator) ![]u8 {
     const bc = integration.browsing_context orelse return allocator.dupe(u8, "null");
-    if (bc.sandbox_flags) |flags| {
-        if (flags.sandboxesSameOrigin()) return allocator.dupe(u8, "null");
-    }
+    if (flags.origin) return allocator.dupe(u8, "null");
     if (navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url)) {
         const container_window: ?*runtime.Instance = blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
@@ -2478,8 +2553,9 @@ fn navigationParamsOrigin(integration: *IFrameIntegration, url: []const u8, allo
 /// with (one reference; null leaves it an origin of its own), following
 /// `navigationParamsOrigin`, whose serialization is `serialized`:
 ///
-/// - a network error's document, and any document of a navigable sandboxed
-///   without allow-same-origin: a new opaque origin;
+/// - a network error's document, and any document whose final sandboxing
+///   flag set has the sandboxed origin browsing context flag: a new opaque
+///   origin;
 /// - about:blank and about:srcdoc: the container document's origin record
 ///   itself (a popup's: its active document's), shared - so a domain set
 ///   in either document is both documents'
@@ -2494,20 +2570,19 @@ fn navigationParamsOriginRecord(
 ) ?*OriginRecord {
     const allocator = integration.allocator;
     if (response.is_network_error) return OriginRecord.create(allocator, "null") catch null;
-    // HTML "navigate" step 23's final sandboxing flag set is the target's
-    // sandboxing flags united with the response's CSP-derived ones (CSP 4.3
-    // "sandbox"); "determining the origin" step 1 gives a set with the
-    // sandboxed origin browsing context flag a new opaque origin.
-    if (responseSandboxesOrigin(allocator, response, url)) return OriginRecord.create(allocator, "null") catch null;
-    const bc = integration.browsing_context orelse return null;
-    const sandboxed = if (bc.sandbox_flags) |flags| flags.sandboxesSameOrigin() else false;
-    if (!sandboxed and record.srcdoc == null and navigate_steps.matchesAboutBlank(url)) {
+    // "Determining the origin" step 1, given navigationParams's final
+    // sandboxing flag set - the target's sandboxing flags united with the
+    // policy container's CSP-derived ones (CSP 4.3 "sandbox"): "If
+    // sandboxFlags has its sandboxed origin browsing context flag set, then
+    // return a new opaque origin."
+    if (record.final_sandboxing_flags.origin) return OriginRecord.create(allocator, "null") catch null;
+    if (record.srcdoc == null and navigate_steps.matchesAboutBlank(url)) {
         // "Determining the origin" step 2: about:blank's origin is the
         // initiator's - the source document's, which for a popup the opener
         // navigates is the opener's, not the popup's active document's.
         if (record.initiator_origin) |initiator| return initiator.retain();
     }
-    if (!sandboxed and (record.srcdoc != null or navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url))) {
+    if (record.srcdoc != null or navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url)) {
         const container_document: ?*runtime.Instance = if (integration.iframe_element) |element|
             (interfaces.Node.get_ownerDocument(@ptrCast(@alignCast(element))) catch null)
         else
@@ -2517,19 +2592,6 @@ fn navigationParamsOriginRecord(
         return shared.retain();
     }
     return OriginRecord.create(allocator, serialized) catch null;
-}
-
-/// Whether the response's enforced Content-Security-Policy has a sandbox
-/// directive without allow-same-origin: its document's CSP-derived sandboxing
-/// flags set the sandboxed origin browsing context flag (CSP 4.3.1).
-fn responseSandboxesOrigin(allocator: std.mem.Allocator, response: *const navigation_fetch.NavigationFetchResult, url: []const u8) bool {
-    const headers = response.headers orelse return false;
-    const csp_value = headers.get("content-security-policy") orelse return false;
-    const response_url = if (response.final_url.len > 0) response.final_url else url;
-    var container = fetch_mod.internal.PolicyContainer.fromResponseHeaders(allocator, .{ .url = response_url, .csp = csp_value }) catch return false;
-    defer container.deinit();
-    const flags = @import("csp").directives.sandbox.getCombinedSandboxFlags(&container.csp_list) orelse return false;
-    return !flags.allow_same_origin;
 }
 
 /// `window`'s origin, serialized ("null" without one). Owned.
@@ -2903,6 +2965,9 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     // itself; with no initiator, the replaced document's.
     integration.setNextOrigin(javascriptDocumentOrigin(integration, record));
     defer integration.setNextOrigin(null);
+    // Step 16's final sandboxing flag set (taken in javascriptNavigation).
+    integration.setNextSandboxingFlags(record.final_sandboxing_flags);
+    defer integration.setNextSandboxingFlags(.empty);
     const ctx = navigableContext(integration) orelse return endLoadDelay(integration);
     if (!inRealm(ctx, commitJavascriptResult, .{ integration, record, url, html })) endLoadDelay(integration);
 }
@@ -2915,7 +2980,7 @@ fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, 
     const origin = originOfWindow(active, integration.allocator) catch return endLoadDelay(integration);
     defer integration.allocator.free(origin);
     const document_state = recordInHistory(integration, record, url, origin);
-    integration.commitHtmlAt(url, html, integration.container_origin) catch return endLoadDelay(integration);
+    integration.commitHtmlAt(url, html, if (record.final_sandboxing_flags.origin) Origin.createOpaque() else integration.container_origin) catch return endLoadDelay(integration);
     attachDocument(integration, document_state);
 }
 
@@ -3007,6 +3072,16 @@ fn javascriptNavigationInRealm(integration: *IFrameIntegration, record: *Navigat
             record.javascript_policy_container = container.clone(integration.allocator) catch null;
         }
     }
+    // Step 13: "Let finalSandboxFlags be policyContainer's CSP list's
+    // CSP-derived sandboxing flags". Deviation, stated (golden rule 2): the
+    // replaced document's whole active sandboxing flag set, which holds
+    // those and its iframe's and container's flags too. The text would let
+    // a document sandboxed by its iframe's attribute (with allow-scripts,
+    // without allow-same-origin: it can only navigate itself to a
+    // javascript: URL) make an unsandboxed one; Blink keeps the frame's
+    // sandbox flags for the new document (they are the frame's policy, not
+    // the response's), as Gecko does (its docshell's sandbox flags).
+    if (active) |old| record.final_sandboxing_flags = dom_module.document_scripts.activeSandboxingFlags(old);
     if (active) |old| unloadDocumentAndDescendants(old, integration);
     if (integration.state == .discarded or integration.browsing_context == null) return;
     // Step 17, handed back to runJavascriptNavigation to commit outside this
@@ -3029,6 +3104,15 @@ fn isParsableUrl(allocator: std.mem.Allocator, url: []const u8) bool {
 fn evaluateJavascriptUrl(integration: *IFrameIntegration, url: []const u8) ?[]u8 {
     const allocator = integration.allocator;
     const realm = navigableContext(integration) orelse return null;
+    // Step 4's settings is "targetNavigable's active document's relevant
+    // settings object", and step 7 creates the classic script with it:
+    // "create a classic script" step 2, "if scripting is disabled for
+    // settings, then set source to the empty string" - a script whose
+    // completion is undefined, never a String. So for a document sandboxed
+    // without allow-scripts nothing runs and no document is made.
+    if (activeDocumentOf(integration)) |active| {
+        if (dom_module.document_scripts.scriptsSandboxed(active)) return null;
+    }
     // Steps 1-3: strip the scheme, percent-decode.
     const encoded = url["javascript:".len..];
     const source = percentDecode(allocator, encoded) catch return null;
@@ -3444,11 +3528,8 @@ fn downloadHyperlink(subject: *runtime.Instance, user_involvement: dom_module.na
     const is_anchor = subject.stateAs(interfaces.HTMLAnchorElement.State) != null;
     if (!is_anchor and !(interfaces.Node.get_isConnected(subject) catch false)) return;
     // Step 2: "If subject's node document's active sandboxing flag set has
-    // the sandboxed downloads browsing context flag set, then return." The
-    // document's flags are its navigable's (as for scripts and forms).
-    if (@import("dom").browser_state.browsingContextOf(window)) |bc| {
-        if (bc.sandbox_flags) |flags| if (!flags.allow_downloads) return;
-    }
+    // the sandboxed downloads browsing context flag set, then return."
+    if (dom_module.document_scripts.activeSandboxingFlags(document).downloads) return;
     // Steps 3-4: "Let urlString be the result of encoding-parsing-and-
     // serializing a URL given subject's href attribute value, relative to
     // subject's node document. If urlString is failure, then return."
@@ -3530,6 +3611,9 @@ fn navigateFromLocation(ctx: ?*anyopaque, url: []const u8, request: html_core.wi
     // Gecko's do; navigate() would refuse it silently.
     const source: ?*runtime.Instance = if (request.source_document) |d| @ptrCast(@alignCast(d)) else null;
     if (html_module.user_activation.topNavigationBlocked(source, integration.browsing_context.?, url)) return false;
+    // Navigate step 6.2.1: "If exceptionsEnabled is true, then throw a
+    // SecurityError" - a Location navigation's are.
+    if (html_module.user_activation.sandboxBlocksNavigation(source, integration.browsing_context.?)) return false;
     var behavior = request.history_behavior;
     if (activeDocumentOf(integration)) |document| {
         // Step 3: "If location's relevant Document is not yet completely
@@ -3867,19 +3951,23 @@ fn createBrowsingContextAndDocument(container: *runtime.Instance, integration: *
     // This element is the new navigable's container.
     existing_bc.container = container;
 
-    // Sandboxed without allow-same-origin, the navigable's origin is opaque
-    // - decided before the context exists, since V8's security token is set
-    // as it is created.
-    const use_opaque_origin = blk: {
-        if (integration.sandbox_flags) |flags| {
-            break :blk !flags.allow_same_origin;
-        }
-        break :blk false;
-    };
-
     // This element is the navigable's container: its load event steps run
     // once a navigation completes.
     integration.iframe_element = @ptrCast(container);
+
+    // "Create a new browsing context and document" step 3: "Let sandboxFlags
+    // be the result of determining the creation sandboxing flags given
+    // browsingContext and embedder" - the element's iframe sandboxing flag
+    // set united with its node document's active one, so a frame in a
+    // sandboxed document is sandboxed as much. They are the initial
+    // about:blank document's active sandboxing flag set (step 15), and with
+    // the sandboxed origin browsing context flag its origin is opaque (step
+    // 12, "determining the origin") - decided before the context exists,
+    // since V8's security token is set as it is created.
+    const creation_flags = creationSandboxingFlagsOf(integration);
+    const use_opaque_origin = creation_flags.origin;
+    integration.setNextSandboxingFlags(creation_flags);
+    defer integration.setNextSandboxingFlags(.empty);
 
     // The navigable's context, Window and initial about:blank document,
     // whose creator is the element's node document.
@@ -4255,6 +4343,7 @@ fn createAuxiliaryNavigable(
     opener_bc_ptr: *anyopaque,
     opener_origin: []const u8,
     is_popup: bool,
+    popup_sandboxing_flags: SandboxingFlagSet,
 ) ?dom_module.auxiliary_navigables.Created {
     const opener_bc: *html_core.BrowsingContext = @ptrCast(@alignCast(opener_bc_ptr));
     // The opener is the entry global, whose script called open(): its realm
@@ -4274,22 +4363,41 @@ fn createAuxiliaryNavigable(
     // A new top-level context, but the same user agent: the opener's cookie
     // jar (it has no parent to reach one through).
     browsing_context.cookie_jar = opener_bc.cookieJar();
+    // "The rules for choosing a navigable" step 8.9: the flags of the
+    // document that opened it, when its sandbox propagates. Deviation,
+    // stated (golden rule 2): the spec sets them once the new top-level
+    // traversable exists, after its initial about:blank document was made
+    // with an empty set; every engine gives that document the flags too
+    // (Blink's frame policy carries them into the new frame before its
+    // first document - crbug.com/1256822), so a popup still on its initial
+    // document is sandboxed: html/browsers/sandboxing/popup-from-initial-
+    // empty-sandboxed-document.window.js, sandbox-javascript-window-open.html
+    // and sandbox-window-open-srcdoc.html ("popup is isolated from an
+    // isolated iframe").
+    browsing_context.popup_sandboxing_flags = popup_sandboxing_flags;
+    const creation_flags = sandboxing.creationSandboxingFlags(.{ .popup = popup_sandboxing_flags });
     integration.container_origin = dom_module.navigables.parseOriginFromString(opener_origin);
     integration.state = .creating_initial_document;
     // Its WindowProxy, whose document origin - the initial about:blank's, the
-    // opener's - decides whether its first navigation keeps its Window.
+    // opener's (an opaque one, sandboxed) - decides whether its first
+    // navigation keeps its Window.
     integration.window_proxy = html_core.WindowProxy.init(allocator, browsing_context);
-    if (integration.window_proxy) |*proxy| proxy.setDocumentOrigin(integration.container_origin);
+    if (integration.window_proxy) |*proxy| proxy.setDocumentOrigin(if (creation_flags.origin) Origin.createOpaque() else integration.container_origin);
+    // The initial about:blank document's active sandboxing flag set
+    // (createDocumentForIframe takes it). No defer resets it: the error
+    // paths below free the integration.
+    integration.setNextSandboxingFlags(creation_flags);
 
     // "Create a new auxiliary browsing context and document": its creator is
     // the opener's active document.
     const creator: ?*runtime.Instance = if (opener_bc.getActiveDocument()) |d| @ptrCast(@alignCast(d)) else null;
     integration.parent_realm = @ptrCast(opener_realm);
-    _ = attachNavigableContext(integration, opener_realm, browsing_context, opener_origin, creator, allocator) orelse {
+    _ = attachNavigableContext(integration, opener_realm, browsing_context, if (creation_flags.origin) null else opener_origin, creator, allocator) orelse {
         integration.deinit();
         allocator.destroy(integration);
         return null;
     };
+    integration.setNextSandboxingFlags(.empty);
     const window: *runtime.Instance = @ptrCast(@alignCast(browsing_context.getActiveWindow() orelse {
         integration.deinit();
         allocator.destroy(integration);
@@ -4413,7 +4521,7 @@ fn iframeAttributeChangeSteps(
     if (namespace != null) return;
     const internal = getInternal(element) orelse return;
     if (std.mem.eql(u8, local_name, "sandbox")) {
-        if (value) |v| internal.integration.setSandbox(v) catch {} else internal.integration.clearSandbox();
+        if (value) |v| internal.integration.setSandbox(v) else internal.integration.clearSandbox();
         return;
     }
     const is_srcdoc = std.mem.eql(u8, local_name, "srcdoc");
@@ -4495,7 +4603,7 @@ pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     errdefer DOMTokenList.deinit(token_list);
 
     // Set supported tokens for supports() method
-    DOMTokenListImpl.setSupportedTokens(token_list, &SandboxFlags.SUPPORTED_TOKENS);
+    DOMTokenListImpl.setSupportedTokens(token_list, &sandboxing.supported_tokens);
 
     // Associate with this element and attribute name
     DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("sandbox"));
@@ -4746,7 +4854,7 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
     // security token as it is created.
     const ElementImpl = @import("Element.zig");
     if (ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("sandbox")) catch null) |sandbox| {
-        internal.integration.setSandbox(sandbox.asSlice()) catch {};
+        internal.integration.setSandbox(sandbox.asSlice());
     }
 
     // Step 1: create a new child navigable.

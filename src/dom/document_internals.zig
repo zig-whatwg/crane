@@ -325,7 +325,9 @@ pub fn getWriteBuffer(instance: *runtime.Instance) []const u8 {
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-noscript
 pub fn isScriptingEnabled(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
-    return internal.scripting_enabled;
+    // HTML 8.1.3.4: not when the document's active sandboxing flag set has
+    // the sandboxed scripts browsing context flag set.
+    return internal.scripting_enabled and !internal.active_sandboxing_flags.scripts;
 }
 
 /// DOM "allow declarative shadow roots", the value an HTML parser for the
