@@ -720,6 +720,13 @@ pub const WindowRealmOptions = struct {
     /// WindowProxy and Location as a same-origin one would.
     is_platform_object_same_origin: ?*const fn (host: ?*anyopaque, current: Context, object: *Instance) bool = null,
     host: ?*anyopaque = null,
+    /// Whether the realm's environment settings object is a secure context
+    /// (HTML 8.1.3.5), as the host decides it for the document the realm is
+    /// made for (html.secure_context.ofDocument). The realm records it
+    /// (ContextData.secure_context); with false it exposes no [SecureContext]
+    /// interface object or member (WebIDL 3.3.13). True, the default, keeps
+    /// every construct exposed, as before.
+    secure_context: bool = true,
 };
 
 /// An agent's heap, for the diagnostics tier.

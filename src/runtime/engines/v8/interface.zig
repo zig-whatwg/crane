@@ -1555,6 +1555,26 @@ fn markMaterializedInterfaceObject(constructor: *v8.Function) void {
     v8.v8_Object_SetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len, @ptrCast(constructor));
 }
 
+/// Whether `context`'s realm's environment settings object is a secure
+/// context (HTML 8.1.3.5; ContextData.secure_context, from the realm's
+/// options). A context with no realm record answers true: it exposes
+/// everything, as every realm did before the flag.
+pub fn realmIsSecureContext(context: *v8.Context) bool {
+    const realm = @import("context_manager.zig").get(context) orelse return true;
+    return realm.secure_context;
+}
+
+/// Delete each of `names` from `object`: WebIDL 3.3.13, the [SecureContext]
+/// constructs a realm that is not a secure context does not expose.
+pub fn hideNames(isolate: *v8.Isolate, context: *v8.Context, object: *v8.Object, comptime names: anytype) void {
+    inline for (names) |name| {
+        if (v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len))) |key| {
+            defer v8.v8_String_Dispose(key);
+            _ = v8.v8_Object_Delete(object, context, @ptrCast(key));
+        }
+    }
+}
+
 /// Whether `Interface` declares `name` as `fn (*runtime.Instance, u32)`: an
 /// indexed property getter's shape (WebIDL 2.5.6.1).
 fn takesIndex(comptime Interface: type, comptime name: []const u8) bool {
@@ -2287,6 +2307,29 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // WebIDL 3.3.13 and "exposed": a [SecureContext] member exists
+            // only in a realm whose settings object is a secure context. The
+            // template carries every member (one template serves every realm
+            // of the isolate, and the snapshot), so a realm that is not one
+            // drops them from its own interface object and prototype as they
+            // are made - lazily or eagerly, restored or afresh.
+            if (comptime @hasDecl(Meta, "secure_context_members") or @hasDecl(Meta, "secure_context_static_members")) {
+                if (!realmIsSecureContext(context)) {
+                    if (comptime @hasDecl(Meta, "secure_context_static_members")) {
+                        hideNames(isolate, context, @ptrCast(constructor), Meta.secure_context_static_members);
+                    }
+                    if (comptime @hasDecl(Meta, "secure_context_members")) {
+                        if (v8.v8_String_NewFromUtf8(isolate, "prototype", 9)) |prototype_key| {
+                            defer v8.v8_String_Dispose(prototype_key);
+                            if (v8.v8_Object_Get(@ptrCast(constructor), context, @ptrCast(prototype_key))) |prototype| {
+                                defer v8.v8_Value_Dispose(prototype);
+                                if (v8.v8_Value_IsObject(prototype)) hideNames(isolate, context, @ptrCast(prototype), Meta.secure_context_members);
+                            }
+                        }
+                    }
+                }
+            }
+
             return constructor;
         }
 
@@ -2453,6 +2496,16 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 }
             }
+        }
+
+        /// WebIDL 3.3.13: in a realm that is not a secure context, delete
+        /// this interface's [SecureContext] attributes and operations from
+        /// `object` - for a [Global] interface, the global object that holds
+        /// them as own properties.
+        pub fn hideSecureContextMembers(isolate: *v8.Isolate, context: *v8.Context, object: *v8.Object) void {
+            if (comptime !@hasDecl(Meta, "secure_context_members")) return;
+            if (realmIsSecureContext(context)) return;
+            hideNames(isolate, context, object, Meta.secure_context_members);
         }
 
         /// Register interface properties as own properties on an existing V8 object

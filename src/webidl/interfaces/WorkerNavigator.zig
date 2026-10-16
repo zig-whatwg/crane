@@ -65,8 +65,6 @@ pub const WorkerNavigator = struct {
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Worker" } },
-            .{ .name = "SecureContext" },
-            .{ .name = "IsolatedContext" },
         };
 
         /// Global contexts where this interface is exposed
@@ -161,6 +159,26 @@ pub const WorkerNavigator = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "serial",
+            "serviceWorker",
+            "smartCard",
+            "hid",
+            "usb",
+            "deviceMemory",
+            "storageBuckets",
+            "storage",
+            "userAgentData",
+            "locks",
+            "gpu",
+            "ml",
+            "setAppBadge",
+            "clearAppBadge",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -364,7 +382,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -390,7 +408,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext], [IsolatedContext]
     pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -403,7 +421,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -416,7 +434,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -429,6 +447,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
     pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
@@ -506,7 +525,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -519,7 +538,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -535,6 +554,7 @@ pub const WorkerNavigator = struct {
     /// Extended attributes: [SecureContext]
     pub const get_userAgentData = mixins.NavigatorUA.get_userAgentData;
 
+    /// Extended attributes: [SecureContext]
     pub const get_locks = mixins.NavigatorLocks.get_locks;
 
     /// Extended attributes: [SameObject], [SecureContext]

@@ -80,6 +80,8 @@ pub fn requestGarbageCollection(_: *Agent) void {}
 pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 
 // 4.2 Realms
+/// No engine: no realm, so none that exposes a [SecureContext] construct
+/// it was asked to hide (WindowRealmOptions.secure_context).
 pub fn createWindowRealm(_: *const engine.WindowRealmOptions) Error!Context {
     return error.NotSupported;
 }

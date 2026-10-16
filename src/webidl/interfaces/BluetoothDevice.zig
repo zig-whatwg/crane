@@ -98,6 +98,18 @@ pub const BluetoothDevice = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "onadvertisementreceived",
+            "ongattserverdisconnected",
+            "oncharacteristicvaluechanged",
+            "onserviceadded",
+            "onservicechanged",
+            "onserviceremoved",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -246,21 +258,27 @@ pub const BluetoothDevice = struct {
         return try BluetoothDeviceImpl.get_watchingAdvertisements(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_onadvertisementreceived = mixins.BluetoothDeviceEventHandlers.get_onadvertisementreceived;
     pub const set_onadvertisementreceived = mixins.BluetoothDeviceEventHandlers.set_onadvertisementreceived;
 
+    /// Extended attributes: [SecureContext]
     pub const get_ongattserverdisconnected = mixins.BluetoothDeviceEventHandlers.get_ongattserverdisconnected;
     pub const set_ongattserverdisconnected = mixins.BluetoothDeviceEventHandlers.set_ongattserverdisconnected;
 
+    /// Extended attributes: [SecureContext]
     pub const get_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.get_oncharacteristicvaluechanged;
     pub const set_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.set_oncharacteristicvaluechanged;
 
+    /// Extended attributes: [SecureContext]
     pub const get_onserviceadded = mixins.ServiceEventHandlers.get_onserviceadded;
     pub const set_onserviceadded = mixins.ServiceEventHandlers.set_onserviceadded;
 
+    /// Extended attributes: [SecureContext]
     pub const get_onservicechanged = mixins.ServiceEventHandlers.get_onservicechanged;
     pub const set_onservicechanged = mixins.ServiceEventHandlers.set_onservicechanged;
 
+    /// Extended attributes: [SecureContext]
     pub const get_onserviceremoved = mixins.ServiceEventHandlers.get_onserviceremoved;
     pub const set_onserviceremoved = mixins.ServiceEventHandlers.set_onserviceremoved;
 

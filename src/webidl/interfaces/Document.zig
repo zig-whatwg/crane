@@ -682,6 +682,14 @@ pub const Document = struct {
             .legacy_override_built_ins = true,
         };
 
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "onpointerrawupdate",
+            "browsingTopics",
+        };
+
         /// Members marked with [Unscopable] extended attribute
         pub const unscopables = .{
             "fullscreen",

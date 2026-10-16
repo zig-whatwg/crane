@@ -205,6 +205,16 @@ pub const ContextData = struct {
     /// agent, which for a worker realm is never the page's.
     agent: ?*@import("engine_types.zig").Agent = null,
 
+    /// Whether this realm's environment settings object is a secure context
+    /// (HTML 8.1.3.5), as the host decided it when it asked for the realm
+    /// (WindowRealmOptions/WorkerRealmOptions.secure_context). The engine
+    /// records it before any interface object is made; a realm made with
+    /// false exposes no [SecureContext] construct (WebIDL 3.3.13). Exposure
+    /// only: a Window's isSecureContext answers from its document each time
+    /// (html.secure_context), and a Window realm reused across in-page loads
+    /// keeps this creation answer.
+    secure_context: bool = true,
+
     /// The URL this realm's settings object records as its document's (a
     /// Window) or its script's (a worker): the API base URL that fetch, XHR,
     /// WebSocket and module resolution resolve against. Realm state, not

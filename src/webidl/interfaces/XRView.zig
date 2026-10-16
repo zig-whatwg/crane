@@ -72,6 +72,14 @@ pub const XRView = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "projectionMatrix",
+            "transform",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -220,9 +228,10 @@ pub const XRView = struct {
         return try XRViewImpl.get_isFirstPersonObserver(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_projectionMatrix = mixins.XRViewGeometry.get_projectionMatrix;
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [SecureContext]
     pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance

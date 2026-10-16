@@ -62,6 +62,13 @@ pub const XRRenderState = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "layers",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -194,6 +201,7 @@ pub const XRRenderState = struct {
         return try XRRenderStateImpl.get_baseLayer(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn get_layers(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRRenderStateImpl.get_layers(instance);
     }

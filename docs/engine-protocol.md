@@ -215,6 +215,19 @@ the caller's.
   and every other platform object of the realm come from that Browser's
   slab and arena. A frame passes its parent's. A worker realm's host sets it
   in `WorkerRealmOptions.on_realm`, which also runs before the global is made.
+- **Secure contexts:** `WindowRealmOptions.secure_context` and
+  `WorkerRealmOptions.secure_context` (default true) carry HTML 8.1.3.5's
+  answer for the realm's settings object, which the host decides
+  (`html.secure_context`: a Window's from the document the realm is made for
+  and its parent; a worker's from its owner and its own URL). The realm
+  records it (`ContextData.secure_context`). A realm made with false exposes
+  no [SecureContext] construct (WebIDL 3.3.13): no interface object of a
+  [SecureContext] interface, and no [SecureContext] attribute or operation -
+  its own, its partial interface's or its interface mixin's
+  (`Meta.secure_context_members`) - on any interface object, prototype or
+  [Global] object of the realm. The answer is the realm's creation answer: a
+  Window realm reused across in-page loads keeps it. The JavaScriptCore and
+  QuickJS adapters must hide the same constructs once linked.
 - **Threads:** an agent is used only on the thread that made it - every
   operation that takes the agent, or a realm or value of it, runs there. The
   one exception is `abortRunningScript`, which may be called from any thread

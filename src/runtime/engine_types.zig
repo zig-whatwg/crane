@@ -279,6 +279,13 @@ pub const WorkerRealmOptions = struct {
     /// Passed to `on_realm`.
     data: ?*anyopaque = null,
     allocator: std.mem.Allocator,
+    /// Whether the realm's environment settings object is a secure context
+    /// (HTML 8.1.3.5), as the host decides it for the worker
+    /// (html.secure_context.ofWorker: its owner's answer and its own URL).
+    /// The realm records it (ContextData.secure_context); with false it
+    /// exposes no [SecureContext] interface object or member (WebIDL
+    /// 3.3.13). True, the default, keeps every construct exposed, as before.
+    secure_context: bool = true,
 };
 
 /// A worker realm and its global object.

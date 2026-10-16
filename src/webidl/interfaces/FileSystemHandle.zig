@@ -68,6 +68,14 @@ pub const FileSystemHandle = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "queryPermission",
+            "requestPermission",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -221,6 +229,7 @@ pub const FileSystemHandle = struct {
         return try FileSystemHandleImpl.get_name(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!runtime.JSValue {
         return try FileSystemHandleImpl.call_queryPermission(instance, descriptor);
     }
@@ -229,6 +238,7 @@ pub const FileSystemHandle = struct {
         return try FileSystemHandleImpl.call_isSameEntry(instance, other);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!runtime.JSValue {
         return try FileSystemHandleImpl.call_requestPermission(instance, descriptor);
     }

@@ -258,6 +258,10 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // The realm's Browser, before any platform object of it exists - its
     // Window comes from that Browser's slab and arena.
     realm.browser_scope = options.browser_scope;
+    // HTML 8.1.3.5, as the host determined it: recorded before any interface
+    // object is made, since a realm that is not a secure context exposes no
+    // [SecureContext] construct (WebIDL 3.3.13).
+    realm.secure_context = options.secure_context;
 
     if (restored) {
         // The snapshot has the interfaces; the adapter's template registry
@@ -272,6 +276,9 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     }
     // The namespaces (console, WebAssembly, CSS...) are not in the snapshot.
     interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
+    // A realm that is not a secure context: no [SecureContext] interface
+    // object, whichever way they were installed above.
+    interface_bindings.hideSecureContextInterfaceObjects(isolate, context, .Window);
 
     // Ours until the Window's wrapper-cache entry adopts it (bindWindowToGlobal),
     // which releases it at the realm's end; the host BORROWS it until then.
@@ -540,6 +547,9 @@ fn bindWindowToGlobal(
     // `self.addEventListener === EventTarget.prototype.addEventListener`.
     interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, context, global);
     interface_bindings.Window.registerMethodsAsOwnOnObject(isolate, context, global);
+    // Its [SecureContext] ones, in a realm that is not a secure context
+    // (WebIDL 3.3.13): cookieStore, caches, showOpenFilePicker...
+    interface_bindings.Window.hideSecureContextMembers(isolate, context, global);
 
     // HTML 7.3.3, named access on the Window: WindowProperties on the chain.
     _ = window_properties.insertIntoPrototypeChain(isolate, context, window);

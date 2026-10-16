@@ -100,6 +100,13 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "oncharacteristicvaluechanged",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -250,6 +257,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         return try BluetoothRemoteGATTCharacteristicImpl.get_value(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.get_oncharacteristicvaluechanged;
     pub const set_oncharacteristicvaluechanged = mixins.CharacteristicEventHandlers.set_oncharacteristicvaluechanged;
 

@@ -100,6 +100,23 @@ pub const SubtleCrypto = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "encapsulateKey",
+            "encapsulateBits",
+            "decapsulateKey",
+            "decapsulateBits",
+            "getPublicKey",
+        };
+
+        /// [SecureContext] static members: hidden from the interface object
+        /// of a realm that is not a secure context (WebIDL 3.3.13).
+        pub const secure_context_static_members = .{
+            "supports",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -225,6 +242,7 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_encrypt(instance, algorithm, key, data);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_decapsulateKey(instance: *runtime.Instance, decapsulationAlgorithm: AlgorithmIdentifier, decapsulationKey: *runtime.Instance, ciphertext: BufferSource, sharedKeyAlgorithm: AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
         return try SubtleCryptoImpl.call_decapsulateKey(instance, decapsulationAlgorithm, decapsulationKey, ciphertext, sharedKeyAlgorithm, extractable, keyUsages);
     }
@@ -233,6 +251,7 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_wrapKey(instance, format, key, wrappingKey, wrapAlgorithm);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_decapsulateBits(instance: *runtime.Instance, decapsulationAlgorithm: AlgorithmIdentifier, decapsulationKey: *runtime.Instance, ciphertext: BufferSource) anyerror!runtime.JSValue {
         return try SubtleCryptoImpl.call_decapsulateBits(instance, decapsulationAlgorithm, decapsulationKey, ciphertext);
     }
@@ -245,6 +264,7 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_sign(instance, algorithm, key, data);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_static_supports(instance: *runtime.Instance, operation: DOMString, algorithm: AlgorithmIdentifier, length: webidl.Opt(?u32)) anyerror!bool {
         return try SubtleCryptoImpl.call_static_supports(instance, operation, algorithm, length);
     }
@@ -261,10 +281,12 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_importKey(instance, format, keyData, algorithm, extractable, keyUsages);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_encapsulateKey(instance: *runtime.Instance, encapsulationAlgorithm: AlgorithmIdentifier, encapsulationKey: *runtime.Instance, sharedKeyAlgorithm: AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
         return try SubtleCryptoImpl.call_encapsulateKey(instance, encapsulationAlgorithm, encapsulationKey, sharedKeyAlgorithm, extractable, keyUsages);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_getPublicKey(instance: *runtime.Instance, key: *runtime.Instance, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
         return try SubtleCryptoImpl.call_getPublicKey(instance, key, keyUsages);
     }
@@ -277,6 +299,7 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_generateKey(instance, algorithm, extractable, keyUsages);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn call_encapsulateBits(instance: *runtime.Instance, encapsulationAlgorithm: AlgorithmIdentifier, encapsulationKey: *runtime.Instance) anyerror!runtime.JSValue {
         return try SubtleCryptoImpl.call_encapsulateBits(instance, encapsulationAlgorithm, encapsulationKey);
     }

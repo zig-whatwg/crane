@@ -323,6 +323,16 @@ pub const HTMLMediaElement = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "sinkId",
+            "mediaKeys",
+            "setSinkId",
+            "setMediaKeys",
+        };
     };
 
     pub const State = runtime.FlattenedState(

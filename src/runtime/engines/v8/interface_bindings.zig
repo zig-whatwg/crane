@@ -509,8 +509,8 @@ fn isSecureContextInterface(comptime T: type) bool {
 /// interface has no interface object. The interface objects are installed
 /// for every realm alike - by the snapshot, eagerly, or as lazy data
 /// properties - so a realm that is not a secure context deletes the global's
-/// properties for those exposed in `scope` (LockManager, Lock, SubtleCrypto,
-/// CookieStore, ...). Their members on other interfaces go as each interface
+/// property of every [SecureContext] interface (LockManager, Lock,
+/// SubtleCrypto, CookieStore, ...). Their members on other interfaces go as each interface
 /// object is made (V8Interface.materializeInterfaceObject), and a [Global]
 /// interface's own as its global is bound (hideSecureContextMembers).
 pub fn hideSecureContextInterfaceObjects(
@@ -519,6 +519,9 @@ pub fn hideSecureContextInterfaceObjects(
     comptime scope: helpers.GlobalScope,
 ) void {
     @setEvalBranchQuota(400_000);
+    // Every [SecureContext] interface the global may have, exposed in
+    // `scope` or not: a window realm installs some it does not expose.
+    _ = scope;
     if (interface_mod.realmIsSecureContext(context)) return;
     const global = v8.v8_Context_Global(context) orelse return;
     defer v8.v8_Object_Dispose(global);
@@ -526,9 +529,6 @@ pub fn hideSecureContextInterfaceObjects(
     inline for (iface_decls) |decl| {
         if (comptime shouldSkipInterface(decl.name)) continue;
         const InterfaceType = @field(interfaces, decl.name);
-        // Every [SecureContext] interface the global may have, exposed in
-        // `scope` or not: a window realm installs some it does not expose.
-        _ = scope;
         if (comptime @typeInfo(InterfaceType) == .@"struct" and isSecureContextInterface(InterfaceType)) {
             interface_mod.hideNames(isolate, context, global, .{decl.name});
         }

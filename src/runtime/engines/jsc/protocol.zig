@@ -114,10 +114,16 @@ pub fn requestGarbageCollection(_: *Agent) void {}
 pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 
 // 4.2 Realms
+/// TODO (once linked): honour `secure_context` - a realm made with false
+/// exposes no [SecureContext] interface object or member (WebIDL 3.3.13), as
+/// the V8 adapter's does (tests/v8/secure_context_exposure_test.zig).
 pub fn createWindowRealm(_: *const engine.WindowRealmOptions) Error!Context {
     return error.NotSupported;
 }
 pub fn destroyWindowRealm(_: Context, _: engine.WindowRealmEnd) void {}
+/// TODO (once linked): honour `secure_context` - a realm made with false
+/// exposes no [SecureContext] interface object or member (WebIDL 3.3.13), as
+/// the V8 adapter's does (tests/v8/secure_context_exposure_test.zig).
 pub fn createWorkerRealm(_: *Agent, _: *const engine.WorkerRealmOptions) Error!engine.WorkerRealm {
     return error.NotSupported;
 }

@@ -66,6 +66,14 @@ pub const PasswordCredential = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "name",
+            "iconURL",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -202,7 +210,9 @@ pub const PasswordCredential = struct {
         return try PasswordCredentialImpl.get_password(instance);
     }
 
+    /// Extended attributes: [SecureContext]
     pub const get_name = mixins.CredentialUserData.get_name;
 
+    /// Extended attributes: [SecureContext]
     pub const get_iconURL = mixins.CredentialUserData.get_iconURL;
 };

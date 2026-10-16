@@ -273,6 +273,14 @@ pub const HTMLIFrameElement = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "privateToken",
+            "sharedStorageWritable",
+        };
     };
 
     /// HTML 3.2.3 [HTMLConstructor]: the constructor's steps are HTML's "HTML

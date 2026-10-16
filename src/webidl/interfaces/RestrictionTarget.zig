@@ -57,6 +57,12 @@ pub const RestrictionTarget = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] static members: hidden from the interface object
+        /// of a realm that is not a secure context (WebIDL 3.3.13).
+        pub const secure_context_static_members = .{
+            "fromElement",
+        };
     };
 
     pub const State = runtime.FlattenedState(

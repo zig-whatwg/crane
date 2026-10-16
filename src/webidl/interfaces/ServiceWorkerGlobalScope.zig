@@ -153,6 +153,14 @@ pub const ServiceWorkerGlobalScope = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// [SecureContext] members - their own, their partial interface's or
+        /// their mixin's: hidden in a realm that is not a secure context
+        /// (WebIDL 3.3.13).
+        pub const secure_context_members = .{
+            "onpush",
+            "onpushsubscriptionchange",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -533,21 +541,25 @@ pub const ServiceWorkerGlobalScope = struct {
         try event_handlers.setValue(EventHandler, instance, "onperiodicsync", value);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn get_onpush(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpush")) return try ServiceWorkerGlobalScopeImpl.get_onpush(instance);
         return event_handlers.value(EventHandler, instance, "onpush");
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn set_onpush(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpush")) return try ServiceWorkerGlobalScopeImpl.set_onpush(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onpush", value);
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn get_onpushsubscriptionchange(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpushsubscriptionchange")) return try ServiceWorkerGlobalScopeImpl.get_onpushsubscriptionchange(instance);
         return event_handlers.value(EventHandler, instance, "onpushsubscriptionchange");
     }
 
+    /// Extended attributes: [SecureContext]
     pub fn set_onpushsubscriptionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpushsubscriptionchange")) return try ServiceWorkerGlobalScopeImpl.set_onpushsubscriptionchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onpushsubscriptionchange", value);
