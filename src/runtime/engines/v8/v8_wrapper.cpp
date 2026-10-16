@@ -10380,7 +10380,9 @@ static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String
 // What a serialization cannot write into V8's stream travels in front of it:
 // each WebAssembly.Module's bytes (WebAssembly Web API section 3: the
 // serialization steps keep [[Bytes]] and [[AgentCluster]]; V8 writes only a
-// transfer id for a module, Delegate::GetWasmModuleTransferId). A
+// transfer id for a module, Delegate::GetWasmModuleTransferId), and the shape
+// of each transferred ArrayBuffer when one is resizable (V8 writes only a
+// transfer id for a transferred buffer). A
 // serialization with nothing of that kind is V8's payload alone, which starts
 // with V8's version tag (0xFF): forStorage records - IndexedDB's, on disk -
 // never carry the envelope, so their format is V8's and nothing else.
@@ -10389,7 +10391,16 @@ static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String
 //   u8      kEnvelopeVersion
 //   u64 LE  [[AgentCluster]] of the realm that serialized (0: none known)
 //   u32 LE  module count, then each module's u32 LE length and wire bytes
+//   u32 LE  transferred buffer count, then each buffer's u8 resizable and
+//           u64 LE [[ArrayBufferMaxByteLength]], in transfer-list order
 //   ...     V8's payload
+//
+// The transferred buffers' shapes are there because a transferred buffer's
+// contents leave the engine as bytes (SerializedWithTransfer.array_buffers):
+// StructuredSerializeWithTransfer step 5.4.1 keeps a resizable buffer's
+// [[ArrayBufferMaxByteLength]] in its data holder ("ResizableArrayBuffer"),
+// and StructuredDeserializeWithTransfer step 3.3 makes it resizable again with
+// that maximum - which V8 then checks a length-tracking view against.
 //
 // Everything is inline - no pointer into an isolate, a realm or a thread - so
 // a message is read on any thread, as often as it is delivered (a
@@ -10405,14 +10416,27 @@ static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String
 // (WasmModuleObject::Compile).
 
 static constexpr uint8_t kEnvelopeTag = 0xC2;
-static constexpr uint8_t kEnvelopeVersion = 1;
+/// 2: the transferred buffers' shapes follow the modules. Nothing stores an
+/// envelope (forStorage records never carry one), so no reader of version 1
+/// remains.
+static constexpr uint8_t kEnvelopeVersion = 2;
+
+/// A transferred ArrayBuffer's shape: whether it is resizable, and its
+/// [[ArrayBufferMaxByteLength]] when it is.
+struct TransferredBufferShape {
+    bool resizable;
+    uint64_t max_byte_length;
+};
 
 /// What travels in the envelope.
 struct SerializationAttachments {
     uint64_t agent_cluster = 0;
     std::vector<std::vector<uint8_t>> wasm_modules;
+    /// Empty unless a transferred buffer is resizable; else one per
+    /// transferred buffer.
+    std::vector<TransferredBufferShape> buffers;
 
-    bool empty() const { return wasm_modules.empty(); }
+    bool empty() const { return wasm_modules.empty() && buffers.empty(); }
 };
 
 static void appendLE(std::vector<uint8_t>& out, uint64_t value, int bytes) {
@@ -10440,6 +10464,11 @@ static uint8_t* wrapInEnvelope(const SerializationAttachments& attachments, uint
     for (const auto& bytes : attachments.wasm_modules) {
         appendLE(header, bytes.size(), 4);
         header.insert(header.end(), bytes.begin(), bytes.end());
+    }
+    appendLE(header, attachments.buffers.size(), 4);
+    for (const auto& shape : attachments.buffers) {
+        header.push_back(shape.resizable ? 1 : 0);
+        appendLE(header, shape.max_byte_length, 8);
     }
     uint8_t* whole = static_cast<uint8_t*>(malloc(header.size() + size));
     if (!whole) {
@@ -10473,6 +10502,14 @@ static bool openEnvelope(const uint8_t* data, size_t size, SerializationAttachme
         if (static_cast<uint64_t>(end - cursor) < length) return false;
         attachments->wasm_modules.emplace_back(cursor, cursor + length);
         cursor += length;
+    }
+    uint64_t buffers = 0;
+    if (!readLE(cursor, end, 4, &buffers)) return false;
+    for (uint64_t i = 0; i < buffers; i++) {
+        uint64_t resizable = 0, max_byte_length = 0;
+        if (!readLE(cursor, end, 1, &resizable) || resizable > 1) return false;
+        if (!readLE(cursor, end, 8, &max_byte_length)) return false;
+        attachments->buffers.push_back({resizable == 1, max_byte_length});
     }
     *payload = cursor;
     *payload_size = static_cast<size_t>(end - cursor);
@@ -10748,6 +10785,10 @@ static uint8_t* serializeWithTransfer(
     std::set<void*> seen_buffers;
     std::vector<Local<ArrayBuffer>> array_buffers_to_transfer;
     std::vector<std::pair<void*, size_t>> copied_data;  // Data copied before detach
+    // Step 5.4.1-5.4.2: each buffer's data holder type - "ResizableArrayBuffer"
+    // with its [[ArrayBufferMaxByteLength]], or "ArrayBuffer".
+    std::vector<TransferredBufferShape> shapes;
+    bool any_resizable = false;
 
     for (size_t i = 0; i < transfer_count; i++) {
         if (!transfer_list[i] || transfer_list[i]->IsEmpty()) {
@@ -10817,6 +10858,9 @@ static uint8_t* serializeWithTransfer(
 
         array_buffers_to_transfer.push_back(ab);
         copied_data.push_back({data_copy, byte_length});
+        const bool resizable = ab->IsResizableByUserJavaScript();
+        shapes.push_back({resizable, resizable ? static_cast<uint64_t>(ab->MaxByteLength()) : 0});
+        any_resizable = any_resizable || resizable;
 
         // Fill out the output arraybuffer data
         if (out_arraybuffer_data) {
@@ -10854,9 +10898,13 @@ static uint8_t* serializeWithTransfer(
     uint8_t* data = buffer.first;
     size_t size = buffer.second;
 
-    // What V8's stream cannot hold - the modules' bytes - goes in front of it.
-    if (data != nullptr && size > 0 && delegate && !delegate->attachments().empty()) {
-        data = wrapInEnvelope(delegate->attachments(), data, size, &size);
+    // What V8's stream cannot hold - the modules' bytes, the transferred
+    // buffers' shapes - goes in front of it.
+    if (data != nullptr && size > 0) {
+        SerializationAttachments attachments;
+        if (delegate) attachments = delegate->attachments();
+        if (any_resizable) attachments.buffers = shapes;
+        if (!attachments.empty()) data = wrapInEnvelope(attachments, data, size, &size);
     }
 
     if (data == nullptr || size == 0) {
@@ -10984,13 +11032,28 @@ Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
     ValueDeserializer deserializer(isolate, payload, payload_size, &delegate);
     delegate.SetDeserializer(&deserializer);
 
-    // Create new ArrayBuffers in this isolate from the transferred data
+    // Create new ArrayBuffers in this isolate from the transferred data:
+    // StructuredDeserializeWithTransfer steps 3.2-3.3, an "ArrayBuffer" data
+    // holder fixed-length, a "ResizableArrayBuffer" one resizable with its
+    // [[ArrayBufferMaxByteLength]].
     std::vector<Local<ArrayBuffer>> transferred_buffers;
     for (size_t i = 0; i < arraybuffer_count; i++) {
         size_t byte_length = arraybuffer_data[i].size;
 
-        // Create new ArrayBuffer with copied data
-        Local<ArrayBuffer> ab = ArrayBuffer::New(isolate, byte_length);
+        Local<ArrayBuffer> ab;
+        if (i < attachments.buffers.size() && attachments.buffers[i].resizable) {
+            const uint64_t max_byte_length = attachments.buffers[i].max_byte_length;
+            // The sender's buffer had these lengths: anything else is not a
+            // serialization of ours (NewResizableBackingStore CHECKs them).
+            if (byte_length > max_byte_length || max_byte_length > TypedArray::kMaxByteLength) {
+                if (error_code) *error_code = 2;
+                return nullptr;
+            }
+            std::unique_ptr<BackingStore> store = ArrayBuffer::NewResizableBackingStore(byte_length, static_cast<size_t>(max_byte_length));
+            ab = ArrayBuffer::New(isolate, std::shared_ptr<BackingStore>(std::move(store)));
+        } else {
+            ab = ArrayBuffer::New(isolate, byte_length);
+        }
         if (byte_length > 0 && arraybuffer_data[i].data && ab->GetBackingStore()) {
             memcpy(ab->GetBackingStore()->Data(), arraybuffer_data[i].data, byte_length);
         }
