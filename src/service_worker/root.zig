@@ -16,9 +16,8 @@
 //!   objects' state; extend_lifetime.zig: an ExtendableEvent's extended
 //!   lifetime.
 //!
-//! cache/ (and the types.zig and interfaces/types.zig it reads) is the
-//! early-2026 Cache API model, not built yet: batch 2 reviews it when Cache
-//! Storage lands.
+//! - cache/: Cache Storage - a Browser's caches in its store, and the
+//!   steps of CacheStorage's and Cache's members.
 //!
 //! Spec: https://w3c.github.io/ServiceWorker/
 
@@ -29,6 +28,7 @@ pub const update_fetch = @import("update_fetch.zig");
 pub const run = @import("run.zig");
 pub const realm = @import("realm.zig");
 pub const objects = @import("objects.zig");
+pub const cache = @import("cache/root.zig");
 
 pub const Registry = registry.Registry;
 pub const Manager = manager.Manager;
