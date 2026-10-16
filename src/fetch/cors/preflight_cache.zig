@@ -1,611 +1,275 @@
-//! CORS Preflight Cache
-//!
-//! Spec: https://fetch.spec.whatwg.org/#cors-preflight-cache
-//!
-//! This module implements an in-memory CORS preflight cache to avoid
-//! redundant OPTIONS requests. Cache entries expire based on the
-//! Access-Control-Max-Age header.
-
+//! Fetch CORS-preflight cache, owned by one Browser's NetworkContext.
+//! Keys and permissions are owned; lookups return only bools under the lock.
+//! https://fetch.spec.whatwg.org/#cors-preflight-cache
 const std = @import("std");
-const clock = @import("clock");
 const Allocator = std.mem.Allocator;
 
-/// Cache key identifying a unique preflight entry.
 pub const CacheKey = struct {
-    /// Serialized origin of the request
+    network_partition_key: []const u8,
     origin: []const u8,
-
-    /// URL being requested (without fragment)
     url: []const u8,
 
-    /// Network partition key (for partitioned cache)
-    /// For simplicity, we use the request origin.
-    network_partition_key: []const u8,
+    fn copy(self: CacheKey, a: Allocator) !CacheKey {
+        const partition = try a.dupe(u8, self.network_partition_key);
+        errdefer a.free(partition);
+        const origin = try a.dupe(u8, self.origin);
+        errdefer a.free(origin);
+        return .{ .network_partition_key = partition, .origin = origin, .url = try a.dupe(u8, self.url) };
+    }
+    fn deinit(self: CacheKey, a: Allocator) void {
+        a.free(self.network_partition_key);
+        a.free(self.origin);
+        a.free(self.url);
+    }
 };
-
-/// CORS preflight cache entry.
-pub const CacheEntry = struct {
-    allocator: Allocator,
-
-    /// Cache key components
-    key: CacheKey,
-
-    /// Allowed methods (stored uppercase)
-    methods: std.StringHashMapUnmanaged(void),
-
-    /// Allowed headers (stored byte-lowercased)
-    headers: std.StringHashMapUnmanaged(void),
-
-    /// Expiry time (absolute Unix timestamp)
-    expiry_time: i64,
-
-    /// Whether wildcard (*) was used for methods
-    methods_wildcard: bool,
-
-    /// Whether wildcard (*) was used for headers
-    headers_wildcard: bool,
-
-    /// Whether credentials are allowed
+const KeyContext = struct {
+    pub fn hash(_: @This(), key: CacheKey) u64 {
+        var h = std.hash.Wyhash.init(0);
+        inline for (.{ key.network_partition_key, key.origin, key.url }) |part| {
+            std.hash.autoHash(&h, part.len);
+            h.update(part);
+        }
+        return h.final();
+    }
+    pub fn eql(_: @This(), a: CacheKey, b: CacheKey) bool {
+        return std.mem.eql(u8, a.network_partition_key, b.network_partition_key) and
+            std.mem.eql(u8, a.origin, b.origin) and std.mem.eql(u8, a.url, b.url);
+    }
+};
+const Permission = struct {
+    name: []u8,
+    is_header: bool,
     credentials: bool,
+    expires: i64,
+};
 
-    const Self = @This();
+/// One hashed key, containing the independently expiring method/header entries.
+pub const CacheEntry = struct {
+    created: i64,
+    permissions: std.ArrayListUnmanaged(Permission) = .empty,
 
-    /// Free all owned memory.
-    pub fn deinit(self: *Self) void {
-        // Free key strings
-        self.allocator.free(self.key.origin);
-        self.allocator.free(self.key.url);
-        self.allocator.free(self.key.network_partition_key);
-
-        // Free method strings
-        var methods_iter = self.methods.keyIterator();
-        while (methods_iter.next()) |key| {
-            self.allocator.free(key.*);
-        }
-        self.methods.deinit(self.allocator);
-
-        // Free header strings
-        var headers_iter = self.headers.keyIterator();
-        while (headers_iter.next()) |key| {
-            self.allocator.free(key.*);
-        }
-        self.headers.deinit(self.allocator);
+    fn deinit(self: *CacheEntry, a: Allocator) void {
+        for (self.permissions.items) |p| a.free(p.name);
+        self.permissions.deinit(a);
     }
-
-    /// Check if this entry has expired.
-    pub fn isExpired(self: *const Self) bool {
-        return self.expiry_time < clock.wallSeconds();
+    fn expired(self: *const CacheEntry, now: i64) bool {
+        for (self.permissions.items) |p| if (p.expires > now) return false;
+        return true;
     }
-
-    /// Check if a method is allowed by this cache entry.
-    pub fn isMethodAllowed(self: *const Self, method: []const u8) bool {
-        // Wildcard allows any method (unless credentials)
-        if (self.methods_wildcard and !self.credentials) {
-            return true;
+    fn permits(self: *const CacheEntry, now: i64, credentials: bool, name: []const u8, is_header: bool) bool {
+        for (self.permissions.items) |p| {
+            if (p.is_header != is_header or p.expires <= now or (credentials and !p.credentials)) continue;
+            if (if (is_header) std.ascii.eqlIgnoreCase(p.name, name) else std.mem.eql(u8, p.name, name)) return true;
+            // Browsers treat '*' literally for credentialed requests. The
+            // Authorization header always needs an explicit permission.
+            if (!credentials and std.mem.eql(u8, p.name, "*") and
+                !(is_header and std.ascii.eqlIgnoreCase(name, "authorization"))) return true;
         }
-
-        // Check uppercase method
-        var buf: [32]u8 = undefined;
-        const upper = toUppercase(&buf, method);
-        return self.methods.contains(upper);
+        return false;
     }
-
-    /// Check if a header is allowed by this cache entry.
-    pub fn isHeaderAllowed(self: *const Self, header: []const u8) bool {
-        // Wildcard allows any header (unless credentials)
-        // But Authorization always needs explicit listing
-        if (self.headers_wildcard and !self.credentials) {
-            if (eqlIgnoreCase(header, "Authorization")) {
-                return self.headers.contains("authorization");
+    fn put(self: *CacheEntry, a: Allocator, name: []const u8, is_header: bool, credentials: bool, expires: i64) !void {
+        var matched = false;
+        for (self.permissions.items) |*p| {
+            if (p.is_header != is_header or (credentials and !p.credentials)) continue;
+            const exact = if (is_header) std.ascii.eqlIgnoreCase(p.name, name) else std.mem.eql(u8, p.name, name);
+            const wildcard = !credentials and std.mem.eql(u8, p.name, "*") and
+                !(is_header and std.ascii.eqlIgnoreCase(name, "authorization"));
+            if (exact or wildcard) {
+                p.expires = expires;
+                matched = true;
             }
-            return true;
         }
-
-        // Check byte-lowercased header
-        var buf: [256]u8 = undefined;
-        const lower = toLowercase(&buf, header);
-        return self.headers.contains(lower);
+        if (matched) return;
+        const owned = if (is_header) try std.ascii.allocLowerString(a, name) else try a.dupe(u8, name);
+        errdefer a.free(owned);
+        try self.permissions.append(a, .{ .name = owned, .is_header = is_header, .credentials = credentials, .expires = expires });
     }
 };
 
-/// In-memory CORS preflight cache.
-///
-/// Per spec, preflight results can be cached to avoid redundant OPTIONS.
-/// Cache entries expire based on Access-Control-Max-Age.
 pub const PreflightCache = struct {
     allocator: Allocator,
+    mutex: std.Io.Mutex = .init,
+    entries: std.HashMapUnmanaged(CacheKey, CacheEntry, KeyContext, 80) = .empty,
+    entry_count: std.atomic.Value(usize) = .init(0),
+    /// Chromium 154: kMaxCacheEntries=1024, kMaxTimeout=2h. Fetch permits
+    /// implementation-defined caps and early eviction (codex-xhr D6).
+    max_entries: usize = 1024,
+    max_max_age: u64 = 7200,
 
-    /// Cached entries
-    entries: std.ArrayListUnmanaged(CacheEntry),
-
-    /// Maximum age for cache entries (default 5 seconds if not specified)
-    default_max_age: u64 = 5,
-
-    /// Upper bound on max age (browsers typically cap this)
-    max_max_age: u64 = 7200, // 2 hours (Chrome's default cap)
-
-    const Self = @This();
-
-    /// Initialize an empty cache.
-    pub fn init(allocator: Allocator) Self {
-        return .{
-            .allocator = allocator,
-            .entries = .empty,
-        };
+    pub fn init(a: Allocator) PreflightCache {
+        return .{ .allocator = a };
     }
-
-    /// Free all entries and the cache.
-    pub fn deinit(self: *Self) void {
-        for (self.entries.items) |*entry| {
-            entry.deinit();
-        }
+    pub fn deinit(self: *PreflightCache) void {
+        self.clearAll();
         self.entries.deinit(self.allocator);
     }
-
-    /// Match cache entry for request.
-    ///
-    /// Returns entry if found and not expired.
-    pub fn match(
-        self: *Self,
-        origin: []const u8,
-        url: []const u8,
-        network_partition_key: []const u8,
-    ) ?*CacheEntry {
-        // First, clean up expired entries
-        self.removeExpired();
-
-        for (self.entries.items) |*entry| {
-            if (std.mem.eql(u8, entry.key.origin, origin) and
-                std.mem.eql(u8, entry.key.url, url) and
-                std.mem.eql(u8, entry.key.network_partition_key, network_partition_key))
-            {
-                return entry;
-            }
-        }
-        return null;
+    /// A miss is one hash lookup, with no allocation or scan of other keys.
+    /// `method=null` means the caller's method needs no cache permission.
+    pub fn allows(self: *PreflightCache, key: CacheKey, now: i64, credentials: bool, method: ?[]const u8, headers: []const []const u8) bool {
+        if (self.count() == 0) return false;
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const entry = self.entries.getPtr(key) orelse return false;
+        if (method) |m| if (!entry.permits(now, credentials, m, false)) return false;
+        for (headers) |h| if (!entry.permits(now, credentials, h, true)) return false;
+        return true;
     }
-
-    /// Create cache entry from preflight response.
-    ///
-    /// Parameters:
-    /// - origin: Serialized origin making the request
-    /// - url: URL being requested
-    /// - network_partition_key: Network partition key
-    /// - max_age: Max-Age from response (will be capped)
-    /// - methods: Allowed methods from response
-    /// - headers: Allowed headers from response
-    /// - credentials: Whether credentials are allowed
-    pub fn createEntry(
-        self: *Self,
-        origin: []const u8,
-        url: []const u8,
-        network_partition_key: []const u8,
-        max_age: u64,
-        methods: []const []const u8,
-        methods_wildcard: bool,
-        headers: []const []const u8,
-        headers_wildcard: bool,
-        credentials: bool,
-    ) !void {
-        // Remove existing entry for this key first
-        self.clear(origin, url, network_partition_key);
-
-        const now = clock.wallSeconds();
-        const capped_max_age = @min(max_age, self.max_max_age);
-        const effective_max_age = if (capped_max_age == 0) self.default_max_age else capped_max_age;
-
-        var entry = CacheEntry{
-            .allocator = self.allocator,
-            .key = .{
-                .origin = try self.allocator.dupe(u8, origin),
-                .url = try self.allocator.dupe(u8, url),
-                .network_partition_key = try self.allocator.dupe(u8, network_partition_key),
-            },
-            .methods = .{},
-            .headers = .{},
-            .expiry_time = now + @as(i64, @intCast(effective_max_age)),
-            .methods_wildcard = methods_wildcard,
-            .headers_wildcard = headers_wildcard,
-            .credentials = credentials,
+    /// Fetch create/update cache entries (preflight steps 8-15). `now` is
+    /// monotonic milliseconds, injected for deterministic expiry tests.
+    pub fn store(self: *PreflightCache, key: CacheKey, now: i64, max_age: ?u64, methods: []const []const u8, headers: []const []const u8, credentials: bool) !void {
+        if (self.max_entries == 0 or methods.len + headers.len == 0 or methods.len + headers.len > 1024) return;
+        // Chromium's key-size limit also avoids retaining arbitrarily long URLs.
+        if (key.url.len > 1024) return;
+        const age: u64 = @min(max_age orelse 5, @min(self.max_max_age, 7200));
+        const expires = now +| @as(i64, @intCast(age * 1000));
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const entry = self.entries.getPtr(key) orelse {
+            // Prepare the whole insertion before eviction. Allocation
+            // failure must preserve the old entry and its count (D13).
+            var value: CacheEntry = .{ .created = now };
+            errdefer value.deinit(self.allocator);
+            for (methods) |m| try value.put(self.allocator, m, false, credentials, expires);
+            for (headers) |h| try value.put(self.allocator, h, true, credentials, expires);
+            const owned = try key.copy(self.allocator);
+            errdefer owned.deinit(self.allocator);
+            try self.entries.ensureUnusedCapacity(self.allocator, 1);
+            if (self.entries.count() >= self.max_entries) self.evict(now);
+            self.entries.putAssumeCapacity(owned, value);
+            _ = self.entry_count.fetchAdd(1, .release);
+            return;
         };
-        errdefer entry.deinit();
-
-        // Store methods (uppercase)
-        for (methods) |method| {
-            var buf: [32]u8 = undefined;
-            const upper = toUppercase(&buf, method);
-            const owned = try self.allocator.dupe(u8, upper);
-            errdefer self.allocator.free(owned);
-            try entry.methods.put(self.allocator, owned, {});
-        }
-
-        // Store headers (byte-lowercased)
-        for (headers) |header| {
-            var buf: [256]u8 = undefined;
-            const lower = toLowercase(&buf, header);
-            const owned = try self.allocator.dupe(u8, lower);
-            errdefer self.allocator.free(owned);
-            try entry.headers.put(self.allocator, owned, {});
-        }
-
-        try self.entries.append(self.allocator, entry);
-    }
-
-    /// Clear cache entry for origin/URL.
-    pub fn clear(
-        self: *Self,
-        origin: []const u8,
-        url: []const u8,
-        network_partition_key: []const u8,
-    ) void {
         var i: usize = 0;
-        while (i < self.entries.items.len) {
-            const entry = &self.entries.items[i];
-            if (std.mem.eql(u8, entry.key.origin, origin) and
-                std.mem.eql(u8, entry.key.url, url) and
-                std.mem.eql(u8, entry.key.network_partition_key, network_partition_key))
-            {
-                var removed = self.entries.orderedRemove(i);
-                removed.deinit();
-            } else {
-                i += 1;
+        while (i < entry.permissions.items.len) {
+            if (entry.permissions.items[i].expires <= now) {
+                self.allocator.free(entry.permissions.swapRemove(i).name);
+            } else i += 1;
+        }
+        if (entry.permissions.items.len + methods.len + headers.len > 1024) {
+            entry.deinit(self.allocator);
+            entry.* = .{ .created = now };
+        }
+        for (methods) |m| try entry.put(self.allocator, m, false, credentials, expires);
+        for (headers) |h| try entry.put(self.allocator, h, true, credentials, expires);
+    }
+    /// Only insertion at capacity scans keys. Prefer expired entries, then
+    /// evict the oldest key; no callback or other subsystem runs under lock.
+    fn evict(self: *PreflightCache, now: i64) void {
+        var victim: ?CacheKey = null;
+        var oldest: i64 = std.math.maxInt(i64);
+        var it = self.entries.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.expired(now)) {
+                victim = entry.key_ptr.*;
+                break;
+            }
+            if (victim == null or entry.value_ptr.created < oldest) {
+                oldest = entry.value_ptr.created;
+                victim = entry.key_ptr.*;
             }
         }
+        if (victim) |key| self.remove(key);
     }
-
-    /// Remove all expired entries.
-    pub fn removeExpired(self: *Self) void {
-        const now = clock.wallSeconds();
-        var i: usize = 0;
-        while (i < self.entries.items.len) {
-            if (self.entries.items[i].expiry_time < now) {
-                var removed = self.entries.orderedRemove(i);
-                removed.deinit();
-            } else {
-                i += 1;
-            }
+    fn remove(self: *PreflightCache, key: CacheKey) void {
+        if (self.entries.fetchRemove(key)) |removed| {
+            var value = removed.value;
+            value.deinit(self.allocator);
+            removed.key.deinit(self.allocator);
+            _ = self.entry_count.fetchSub(1, .release);
         }
     }
-
-    /// Clear entire cache.
-    pub fn clearAll(self: *Self) void {
-        for (self.entries.items) |*entry| {
-            entry.deinit();
+    pub fn clear(self: *PreflightCache, key: CacheKey) void {
+        if (self.count() == 0) return;
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        self.remove(key);
+    }
+    pub fn clearAll(self: *PreflightCache) void {
+        if (self.count() == 0) return;
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var it = self.entries.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.deinit(self.allocator);
+            entry.key_ptr.deinit(self.allocator);
         }
         self.entries.clearRetainingCapacity();
+        self.entry_count.store(0, .release);
     }
-
-    /// Get the number of entries in the cache.
-    pub fn count(self: *const Self) usize {
-        return self.entries.items.len;
+    pub fn count(self: *const PreflightCache) usize {
+        return self.entry_count.load(.acquire);
     }
 };
 
-/// Convert string to uppercase (for method comparison).
-fn toUppercase(buf: []u8, str: []const u8) []const u8 {
-    const len = @min(str.len, buf.len);
-    for (str[0..len], 0..) |c, i| {
-        buf[i] = std.ascii.toUpper(c);
-    }
-    return buf[0..len];
-}
-
-/// Convert string to lowercase (for header comparison).
-fn toLowercase(buf: []u8, str: []const u8) []const u8 {
-    const len = @min(str.len, buf.len);
-    for (str[0..len], 0..) |c, i| {
-        buf[i] = std.ascii.toLower(c);
-    }
-    return buf[0..len];
-}
-
-/// Case-insensitive string comparison.
-fn eqlIgnoreCase(a: []const u8, b: []const u8) bool {
-    if (a.len != b.len) return false;
-    for (a, b) |ca, cb| {
-        if (std.ascii.toLower(ca) != std.ascii.toLower(cb)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// =============================================================================
-// Tests
-// =============================================================================
-
+const test_key: CacheKey = .{ .origin = "https://frame.test", .url = "https://api.test/", .network_partition_key = "https://top.test" };
 test "PreflightCache.init and deinit" {
-    const allocator = std.testing.allocator;
-
-    var cache = PreflightCache.init(allocator);
+    var cache = PreflightCache.init(std.testing.allocator);
     defer cache.deinit();
-
     try std.testing.expectEqual(@as(usize, 0), cache.count());
 }
-
 test "PreflightCache.createEntry and match" {
-    const allocator = std.testing.allocator;
-
-    var cache = PreflightCache.init(allocator);
+    var cache = PreflightCache.init(std.testing.allocator);
     defer cache.deinit();
-
-    const methods = [_][]const u8{ "GET", "PUT", "DELETE" };
-    const headers = [_][]const u8{ "X-Custom", "Content-Type" };
-
-    try cache.createEntry(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-        3600,
-        &methods,
-        false,
-        &headers,
-        false,
-        false,
-    );
-
-    try std.testing.expectEqual(@as(usize, 1), cache.count());
-
-    // Match should find the entry
-    const entry = cache.match(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-    );
-    try std.testing.expect(entry != null);
-
-    // Non-matching should return null
-    const no_match = cache.match(
-        "https://other.com",
-        "https://api.example.com/data",
-        "https://other.com",
-    );
-    try std.testing.expect(no_match == null);
+    try cache.store(test_key, 0, 60, &.{"PUT"}, &.{"X-Test"}, false);
+    try std.testing.expect(cache.allows(test_key, 1, false, "PUT", &.{"x-test"}));
+    var other = test_key;
+    other.origin = "null";
+    try std.testing.expect(!cache.allows(other, 1, false, "PUT", &.{}));
 }
-
 test "CacheEntry.isMethodAllowed" {
-    const allocator = std.testing.allocator;
-
-    var cache = PreflightCache.init(allocator);
+    var cache = PreflightCache.init(std.testing.allocator);
     defer cache.deinit();
-
-    const methods = [_][]const u8{ "PUT", "DELETE" };
-    const headers = [_][]const u8{};
-
-    try cache.createEntry(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-        3600,
-        &methods,
-        false,
-        &headers,
-        false,
-        false,
-    );
-
-    const entry = cache.match(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-    ).?;
-
-    try std.testing.expect(entry.isMethodAllowed("PUT"));
-    try std.testing.expect(entry.isMethodAllowed("put")); // case insensitive
-    try std.testing.expect(entry.isMethodAllowed("DELETE"));
-    try std.testing.expect(!entry.isMethodAllowed("PATCH"));
+    try cache.store(test_key, 0, 60, &.{"PUT"}, &.{}, false);
+    try std.testing.expect(cache.allows(test_key, 1, false, "PUT", &.{}));
+    // Fetch method matching is byte-exact, unlike the old cache's uppercasing.
+    try std.testing.expect(!cache.allows(test_key, 1, false, "put", &.{}));
+    try std.testing.expect(!cache.allows(test_key, 1, false, "PATCH", &.{}));
 }
-
 test "CacheEntry.isMethodAllowed with wildcard" {
-    const allocator = std.testing.allocator;
-
-    var cache = PreflightCache.init(allocator);
+    var cache = PreflightCache.init(std.testing.allocator);
     defer cache.deinit();
-
-    const methods = [_][]const u8{"*"};
-    const headers = [_][]const u8{};
-
-    try cache.createEntry(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-        3600,
-        &methods,
-        true, // wildcard
-        &headers,
-        false,
-        false,
-    );
-
-    const entry = cache.match(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-    ).?;
-
-    // Wildcard allows any method
-    try std.testing.expect(entry.isMethodAllowed("ANY"));
-    try std.testing.expect(entry.isMethodAllowed("CUSTOM"));
+    try cache.store(test_key, 0, 60, &.{"*"}, &.{}, false);
+    try std.testing.expect(cache.allows(test_key, 1, false, "CUSTOM", &.{}));
 }
-
 test "CacheEntry.isHeaderAllowed" {
-    const allocator = std.testing.allocator;
-
-    var cache = PreflightCache.init(allocator);
+    var cache = PreflightCache.init(std.testing.allocator);
     defer cache.deinit();
-
-    const methods = [_][]const u8{};
-    const headers = [_][]const u8{ "X-Custom", "Content-Type" };
-
-    try cache.createEntry(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-        3600,
-        &methods,
-        false,
-        &headers,
-        false,
-        false,
-    );
-
-    const entry = cache.match(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-    ).?;
-
-    try std.testing.expect(entry.isHeaderAllowed("X-Custom"));
-    try std.testing.expect(entry.isHeaderAllowed("x-custom")); // case insensitive
-    try std.testing.expect(entry.isHeaderAllowed("Content-Type"));
-    try std.testing.expect(!entry.isHeaderAllowed("Authorization"));
+    try cache.store(test_key, 0, 60, &.{}, &.{"X-Custom"}, false);
+    try std.testing.expect(cache.allows(test_key, 1, false, null, &.{"x-custom"}));
+    try std.testing.expect(!cache.allows(test_key, 1, false, null, &.{"Authorization"}));
 }
-
 test "CacheEntry.isHeaderAllowed with wildcard" {
-    const allocator = std.testing.allocator;
-
-    var cache = PreflightCache.init(allocator);
+    var cache = PreflightCache.init(std.testing.allocator);
     defer cache.deinit();
-
-    const methods = [_][]const u8{};
-    const headers = [_][]const u8{"*"};
-
-    try cache.createEntry(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-        3600,
-        &methods,
-        false,
-        &headers,
-        true, // wildcard
-        false,
-    );
-
-    const entry = cache.match(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-    ).?;
-
-    // Wildcard allows any header except Authorization
-    try std.testing.expect(entry.isHeaderAllowed("X-Any-Header"));
-    try std.testing.expect(!entry.isHeaderAllowed("Authorization")); // Needs explicit listing
+    try cache.store(test_key, 0, 60, &.{}, &.{"*"}, false);
+    try std.testing.expect(cache.allows(test_key, 1, false, null, &.{"x-custom"}));
+    try std.testing.expect(!cache.allows(test_key, 1, false, null, &.{"Authorization"}));
 }
-
 test "PreflightCache.clear" {
-    const allocator = std.testing.allocator;
-
-    var cache = PreflightCache.init(allocator);
+    var cache = PreflightCache.init(std.testing.allocator);
     defer cache.deinit();
-
-    const methods = [_][]const u8{};
-    const headers = [_][]const u8{};
-
-    try cache.createEntry(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-        3600,
-        &methods,
-        false,
-        &headers,
-        false,
-        false,
-    );
-
-    try std.testing.expectEqual(@as(usize, 1), cache.count());
-
-    cache.clear(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-    );
-
+    try cache.store(test_key, 0, 60, &.{"PUT"}, &.{}, false);
+    cache.clear(test_key);
     try std.testing.expectEqual(@as(usize, 0), cache.count());
 }
-
 test "PreflightCache.clearAll" {
-    const allocator = std.testing.allocator;
-
-    var cache = PreflightCache.init(allocator);
+    var cache = PreflightCache.init(std.testing.allocator);
     defer cache.deinit();
-
-    const methods = [_][]const u8{};
-    const headers = [_][]const u8{};
-
-    try cache.createEntry("https://a.com", "https://api.a.com/", "https://a.com", 3600, &methods, false, &headers, false, false);
-    try cache.createEntry("https://b.com", "https://api.b.com/", "https://b.com", 3600, &methods, false, &headers, false, false);
-
-    try std.testing.expectEqual(@as(usize, 2), cache.count());
-
+    try cache.store(test_key, 0, 60, &.{"PUT"}, &.{}, false);
     cache.clearAll();
-
     try std.testing.expectEqual(@as(usize, 0), cache.count());
 }
-
 test "PreflightCache max age capping" {
-    const allocator = std.testing.allocator;
-
-    var cache = PreflightCache.init(allocator);
-    cache.max_max_age = 100; // Cap at 100 seconds
+    var cache = PreflightCache.init(std.testing.allocator);
     defer cache.deinit();
-
-    const methods = [_][]const u8{};
-    const headers = [_][]const u8{};
-
-    // Try to create with 1000 second max age
-    try cache.createEntry(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-        1000, // This should be capped to 100
-        &methods,
-        false,
-        &headers,
-        false,
-        false,
-    );
-
-    const entry = cache.match(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-    ).?;
-
-    // Expiry should be roughly now + 100 seconds, not now + 1000
-    const now = clock.wallSeconds();
-    try std.testing.expect(entry.expiry_time <= now + 101);
+    cache.max_max_age = 100;
+    try cache.store(test_key, 0, 1000, &.{"PUT"}, &.{}, false);
+    try std.testing.expect(cache.allows(test_key, 99999, false, "PUT", &.{}));
+    try std.testing.expect(!cache.allows(test_key, 100000, false, "PUT", &.{}));
 }
-
 test "PreflightCache credentials with wildcard" {
-    const allocator = std.testing.allocator;
-
-    var cache = PreflightCache.init(allocator);
+    var cache = PreflightCache.init(std.testing.allocator);
     defer cache.deinit();
-
-    const methods = [_][]const u8{"*"};
-    const headers = [_][]const u8{"*"};
-
-    try cache.createEntry(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-        3600,
-        &methods,
-        true,
-        &headers,
-        true,
-        true, // credentials enabled
-    );
-
-    const entry = cache.match(
-        "https://example.com",
-        "https://api.example.com/data",
-        "https://example.com",
-    ).?;
-
-    // With credentials, wildcard doesn't work
-    try std.testing.expect(!entry.isMethodAllowed("CUSTOM"));
-    try std.testing.expect(!entry.isHeaderAllowed("X-Custom"));
+    try cache.store(test_key, 0, 60, &.{"*"}, &.{"*"}, true);
+    try std.testing.expect(!cache.allows(test_key, 1, true, "PUT", &.{"x-custom"}));
 }

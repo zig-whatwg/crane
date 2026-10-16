@@ -209,6 +209,11 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     try internal.form_data.appendString(name, value);
+    // HTML create an entry 1-2: native form controls supply DOMStrings,
+    // too. These are the entry's owned copies, so scalarize in place.
+    const entry = &internal.form_data.entries.items[internal.form_data.entries.items.len - 1];
+    @import("infra").string.replaceLoneSurrogatesWtf8(@constCast(entry.name));
+    @import("infra").string.replaceLoneSurrogatesWtf8(@constCast(entry.value.string));
 }
 
 /// XHR append steps 1–3, with HTML's create-an-entry File conversion.
@@ -220,6 +225,8 @@ pub fn call_append__1(instance: *runtime.Instance, name: runtime.USVString, blob
     const trace = try prepareFileTrace(instance, internal, null, file);
     defer if (trace) |value| value.release();
     try internal.form_data.appendBlobInstance(name, storedFile(file), null);
+    const entry = &internal.form_data.entries.items[internal.form_data.entries.items.len - 1];
+    @import("infra").string.replaceLoneSurrogatesWtf8(@constCast(entry.name));
     setFileTrace(instance, internal, trace);
 }
 
@@ -251,7 +258,19 @@ fn entryFile(realm: runtime.Context, blob: *runtime.Instance, filename: webidl.O
     defer parts.release();
     var content_type = try interfaces.Blob.get_type(blob);
     defer content_type.deinit(blob.ctx.allocator);
-    return interfaces.File.call_constructor(realm, parts.value, filename.getOrDefault("blob"), .passed(.{ .base = .{ .type = content_type } }));
+    // HTML create an entry, step 3.2: renaming a File keeps its other attributes.
+    const modified = if (blob.stateAs(interfaces.File.State) != null) try interfaces.File.get_lastModified(blob) else null;
+    const file = try interfaces.File.call_constructor(realm, parts.value, filename.getOrDefault("blob"), .passed(.{
+        .base = .{ .type = content_type },
+        .lastModified = modified,
+    }));
+    const generation = runtime.SlabAllocator.generationOf(file);
+    errdefer file.releaseIfUnwrapped(generation);
+    // HTML "create an entry" 3.1/3.2 does not normalize the Blob's type.
+    // As for XHR's response Blob (codex-xhr Q8), preserve it exactly before
+    // tracing or exposing this fresh File; the constructor copied its data.
+    try @import("dom").blob_bytes.setExactType(file, content_type.asSlice());
+    return file;
 }
 
 fn prepareFileTrace(instance: *runtime.Instance, internal: *InternalState, excluding_name: ?[]const u8, added: ?*runtime.Instance) !?engine.Owned {

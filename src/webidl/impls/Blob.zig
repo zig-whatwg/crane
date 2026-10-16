@@ -55,7 +55,7 @@ pub const InternalState = struct {
 pub fn installHooks() void {
     // Fetch, FormData's encoding and fetch()'s upload read a Blob's bytes
     // through this hook.
-    @import("dom").blob_bytes.install(.{ .bytes_of = &bytesOf, .set_bytes = &setBytes });
+    @import("dom").blob_bytes.install(.{ .bytes_of = &bytesOf, .set_bytes = &setBytes, .set_bytes_exact_type = &setBytesExactType, .set_exact_type = &setExactType });
 }
 
 /// Initialize instance (creates the instance)
@@ -83,6 +83,26 @@ fn setBytes(instance: *runtime.Instance, bytes: []const u8, mime_type: []const u
     const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
     errdefer blob_data.deinit();
     try setBlobData(instance, allocator, blob_data);
+}
+
+/// XHR's already-serialized MIME type does not use Blob constructor steps.
+fn setBytesExactType(instance: *runtime.Instance, bytes: []const u8, mime_type: []const u8) anyerror!void {
+    const allocator = instance.ctx.allocator;
+    const blob_data = try file.BlobData.initWithType(allocator, bytes, mime_type);
+    errdefer blob_data.deinit();
+    try setBlobData(instance, allocator, blob_data);
+}
+
+/// HTML create-an-entry preserves the type before exposing the fresh File.
+/// Blob URL entries may share data across agents: refuse shared data.
+fn setExactType(instance: *runtime.Instance, serialized_type: []const u8) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    const data = internal.blob_data;
+    if (data.ref_count.load(.acquire) != 1) return error.InvalidState;
+    if (std.mem.eql(u8, data.mime_type, serialized_type)) return;
+    const owned_type = try data.allocator.dupe(u8, serialized_type);
+    data.allocator.free(data.mime_type);
+    data.mime_type = owned_type;
 }
 
 // ============================================================================
@@ -125,7 +145,7 @@ pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *
     _ = target_realm;
     const mime_type = try serialized.readString();
     const bytes = try serialized.readBytes();
-    try setBytes(value, bytes, mime_type);
+    try setBytesExactType(value, bytes, mime_type);
 }
 
 /// Deinitialize instance - clean up owned resources only

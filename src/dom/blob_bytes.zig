@@ -29,6 +29,12 @@ pub const Steps = struct {
     /// copy of `bytes`, and `mime_type` as its type (as the File API's
     /// constructors take one: lowercased, or empty when it cannot be one).
     set_bytes: *const fn (blob: *runtime.Instance, bytes: []const u8, mime_type: []const u8) anyerror!void,
+    /// A specification-created Blob's type is already serialized: preserve
+    /// it verbatim as a DOMString in UTF-8, without constructor normalization.
+    set_bytes_exact_type: *const fn (blob: *runtime.Instance, bytes: []const u8, mime_type: []const u8) anyerror!void,
+    /// Restore a specification-computed type before exposing a fresh File.
+    /// Refuses shared data and preserves the old type on allocation failure.
+    set_exact_type: *const fn (blob: *runtime.Instance, serialized_type: []const u8) anyerror!void,
 };
 
 var steps: ?Steps = null;
@@ -57,4 +63,22 @@ pub fn create(ctx: runtime.Context, bytes: []const u8, mime_type: []const u8) !*
     const s = steps orelse return error.NotSupported;
     try s.set_bytes(blob, bytes, mime_type);
     return blob;
+}
+
+/// XHR response step 6: a new Blob with its type set to the serialized final
+/// MIME type, already decoded to UTF-8. The caller wraps or holds the result.
+pub fn createWithType(ctx: runtime.Context, bytes: []const u8, mime_type: []const u8) !*runtime.Instance {
+    const blob = try interfaces.Blob.init(ctx.allocator, ctx);
+    const generation = runtime.SlabAllocator.generationOf(blob);
+    errdefer blob.releaseIfUnwrapped(generation);
+    const s = steps orelse return error.NotSupported;
+    try s.set_bytes_exact_type(blob, bytes, mime_type);
+    return blob;
+}
+
+/// HTML create-an-entry: preserve the source type on a fresh, unwrapped File
+/// whose constructor copied its bytes. Never use this on exposed/shared data.
+pub fn setExactType(blob: *runtime.Instance, serialized_type: []const u8) !void {
+    const s = steps orelse return error.NotSupported;
+    try s.set_exact_type(blob, serialized_type);
 }

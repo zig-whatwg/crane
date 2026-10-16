@@ -102,6 +102,8 @@ pub const FetchJob = struct {
     network_request_is_preflight: bool = false,
     /// Set once the job is `.done`.
     response: ?*InternalResponse = null,
+    is_authentication_fetch: bool = false,
+    authentication_realm: ?[]u8 = null,
 
     /// What the job needs next.
     pub const Step = union(enum) {
@@ -147,6 +149,7 @@ pub const FetchJob = struct {
 
     pub fn destroy(self: *FetchJob) void {
         const allocator = self.allocator;
+        if (self.authentication_realm) |realm| allocator.free(realm);
         if (self.network_request) |request| http_fetch.freeNetworkRequest(allocator, request);
         if (self.response) |response| response.deinit();
         self.params.deinit();
@@ -299,7 +302,10 @@ pub const FetchJob = struct {
     /// Main fetch passes HTTP fetch no options.
     fn httpNetworkOrCacheFetch(self: *FetchJob) FetchError!Step {
         const allocator = self.allocator;
-        const network_start = http_fetch.httpNetworkOrCacheFetchStart(allocator, self.params, .{}) catch |err| {
+        const network_start = http_fetch.httpNetworkOrCacheFetchStart(allocator, self.params, .{
+            .is_authentication_fetch = self.is_authentication_fetch,
+            .authentication_realm = self.authentication_realm,
+        }) catch |err| {
             return self.httpFetchFailed(err);
         };
         switch (network_start) {
@@ -315,8 +321,22 @@ pub const FetchJob = struct {
     /// HTTP fetch, once HTTP-network-or-cache fetch has returned `response`.
     fn httpNetworkOrCacheFetchReturned(self: *FetchJob, network_response: *InternalResponse) FetchError!Step {
         // The rest of HTTP-network-or-cache fetch (step 14, a 401).
-        const response = http_fetch.httpNetworkOrCacheFetchFinish(self.allocator, self.request, network_response) catch |err| {
+        const finished = http_fetch.httpNetworkOrCacheFetchFinish(self.allocator, self.params, .{
+            .is_authentication_fetch = self.is_authentication_fetch,
+            .authentication_realm = self.authentication_realm,
+        }, network_response) catch |err| {
             return self.httpFetchFailed(err);
+        };
+        const response = switch (finished) {
+            .response => |r| r,
+            .authentication_retry => |realm| {
+                if (self.authentication_realm) |old| self.allocator.free(old);
+                self.authentication_realm = realm;
+                self.is_authentication_fetch = true;
+                // The normal network step: both drivers schedule it in the
+                // same way as the first request, never inside a curl callback.
+                return self.httpNetworkOrCacheFetch();
+            },
         };
         const next = http_fetch.httpFetchFinish(self.allocator, self.params, .{}, response) catch |err| {
             return self.httpFetchFailed(err);
@@ -324,6 +344,9 @@ pub const FetchJob = struct {
         switch (next) {
             .response => |r| return self.mainFetchFetched(r),
             .recursive_main_fetch => {
+                self.is_authentication_fetch = false;
+                if (self.authentication_realm) |realm| self.allocator.free(realm);
+                self.authentication_realm = null;
                 // HTTP-redirect fetch steps 20-22: main fetch again, one deeper.
                 self.depth += 1;
                 return self.mainFetch();
@@ -355,6 +378,28 @@ pub const FetchJob = struct {
     /// `response`: the rest of it, and of every HTTP-redirect fetch and HTTP
     /// fetch waiting on it, out to fetch itself.
     fn mainFetchFetched(self: *FetchJob, response: *InternalResponse) FetchError!Step {
+        // Main fetch 12, CORS-with-preflight branch, step 3: every network
+        // error clears these entries, including the actual request's failure.
+        // Success never computes the branch predicate or touches the store.
+        if ((response.response_type == .@"error" or response.status == 0) and self.request.response_tainting == .cors) {
+            const request = self.request;
+            const with_preflight = request.use_cors_preflight or (request.unsafe_request and blk: {
+                if (!main_fetch.isCorsSafelistedMethod(request.method)) break :blk true;
+                const names = @import("../internal/validation.zig").getCORSUnsafeRequestHeaderNames(self.allocator, &request.header_list) catch {
+                    response.deinit();
+                    return FetchError.OutOfMemory;
+                };
+                defer {
+                    for (names) |name| self.allocator.free(name);
+                    self.allocator.free(names);
+                }
+                break :blk names.len > 0;
+            });
+            if (with_preflight) http_fetch.clearPreflightEntries(self.allocator, request) catch {
+                response.deinit();
+                return FetchError.OutOfMemory;
+            };
+        }
         var r = response;
         while (self.depth > 0) {
             // A recursive main fetch returns its response to the HTTP-redirect

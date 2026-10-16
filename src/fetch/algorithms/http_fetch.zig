@@ -55,7 +55,11 @@ pub const HttpFetchResult = struct {
 
 /// Options for HTTP fetch. Main fetch passes none; cookies are the
 /// request's jar's (`InternalRequest.cookie_jar`).
-pub const HttpFetchOptions = struct {};
+pub const HttpFetchOptions = struct {
+    is_authentication_fetch: bool = false,
+    /// Borrowed from the FetchJob, which owns the challenge across the retry.
+    authentication_realm: ?[]const u8 = null,
+};
 
 /// What HTTP fetch does with the response HTTP-network-or-cache fetch gave it.
 pub const HttpFetchNext = union(enum) {
@@ -500,8 +504,6 @@ pub fn httpNetworkOrCacheFetchStart(
         return .{ .response = try internal_response.networkError(allocator) };
     }
 
-    _ = options;
-
     // HTTP-network fetch, step 8.3: "If connection is an HTTP/1.x
     // connection, request's body is non-null, and request's body's source is
     // null, then return a network error." A body with no source was made
@@ -526,6 +528,7 @@ pub fn httpNetworkOrCacheFetchStart(
     defer added.deinit(allocator);
     errdefer for (added.items) |header| allocator.free(header.value);
     httpRequestHeaders(allocator, request, &added) catch return HttpFetchError.OutOfMemory;
+    try appendAuthorization(allocator, request, options.is_authentication_fetch, &added);
 
     // HTTP-network fetch, step 1: Build NetworkRequest from InternalRequest
     var network_request = buildNetworkRequest(allocator, request, added.items) catch {
@@ -535,27 +538,236 @@ pub fn httpNetworkOrCacheFetchStart(
     return .{ .network = network_request };
 }
 
-/// HTTP-network-or-cache fetch, once HTTP-network fetch has returned
-/// `response` (ownership passes in and out): step 14, a 401.
-///
-/// "If response's status is 401, httpRequest's response tainting is not
-/// "cors", includeCredentials is true, and request's traversable for user
-/// prompts is a traversable navigable", a request whose body has a null
-/// source - a stream, which cannot be sent again - is a network error
-/// (14.2.1). The rest of the step prompts the end user for a username and
-/// password and fetches again; there is no one to prompt here, so the
-/// prompt is as good as cancelled and the 401 is the response.
-pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, request: *const InternalRequest, response: *InternalResponse) HttpFetchError!*InternalResponse {
-    if (response.status != 401) return response;
-    if (request.response_tainting == .cors or !httpNetworkFetchUsesCookies(request)) return response;
-    if (request.traversable_for_user_prompts != .traversable) return response;
-    const body = request.body orelse return response;
-    switch (body) {
-        .bytes => return response,
-        .body => |b| if (b.source != .none) return response,
+pub const HttpNetworkFinish = union(enum) {
+    response: *InternalResponse,
+    /// Owns the Basic challenge's realm. The driver schedules Start again.
+    authentication_retry: []u8,
+};
+
+/// HTTP-network-or-cache fetch 15 (formerly 14): a 401 challenge. Consumes
+/// the response on every path; never starts I/O or runs a callback itself.
+pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, params: *FetchParams, options: HttpFetchOptions, response: *InternalResponse) HttpFetchError!HttpNetworkFinish {
+    errdefer response.deinit();
+    const request = params.request;
+    if (response.status != 401 or request.response_tainting == .cors or !httpNetworkFetchUsesCookies(request) or
+        request.traversable_for_user_prompts != .traversable) return .{ .response = response };
+    // Cancellation wins before a challenge can cause another request.
+    if (params.isCanceled()) {
+        const failed = if (params.controller.isAborted()) try internal_response.abortedNetworkError(allocator) else try internal_response.networkError(allocator);
+        response.deinit();
+        return .{ .response = failed };
     }
-    response.deinit();
-    return internal_response.networkError(allocator) catch HttpFetchError.OutOfMemory;
+    // 15.2: a stream with no source cannot be sent a second time.
+    if (request.body) |body| if (body == .body and body.body.source == .none) {
+        const failed = try internal_response.networkError(allocator);
+        response.deinit();
+        return .{ .response = failed };
+    };
+    // There is no prompting UI. Only use-URL-credentials can supply a
+    // first retry, and a second 401 is returned, never recursively retried.
+    if (!request.use_url_credentials) return .{ .response = response };
+    const credentials = (try urlCredentials(allocator, request.currentUrl())) orelse return .{ .response = response };
+    defer credentials.deinit(allocator);
+    if (options.is_authentication_fetch) {
+        if (!request.header_list.contains("Authorization")) if (options.authentication_realm) |realm| {
+            if (request.network) |context| if (request.network_partition_key) |partition| {
+                const origin = origins.serializedOriginOf(allocator, request.currentUrl()) catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    else => return error.NetworkError,
+                };
+                defer allocator.free(origin);
+                context.auth_entries.removeMatching(partition, origin, realm, credentials.username, credentials.password);
+            };
+        };
+        return .{ .response = response };
+    }
+    const realm = (try basicChallengeRealm(allocator, &response.header_list)) orelse return .{ .response = response };
+    errdefer allocator.free(realm);
+    // 15.2.2: this layer's non-stream uploads are already extracted bytes
+    // (impls/fetch_body.zig), including Blob/FormData. Make a fresh body
+    // before dropping the old one; do not read its borrowed source pointer.
+    if (request.body) |body| if (body == .body) {
+        const replacement = try @import("../internal/body.zig").Body.fromBytes(request.allocator, body.body.getBytes());
+        replacement.source = .{ .bytes = replacement.data.items };
+        body.body.deinit();
+        request.body = .{ .body = replacement };
+    };
+    if (!request.header_list.contains("Authorization")) if (request.network) |context| if (request.network_partition_key) |partition| {
+        const origin = origins.serializedOriginOf(allocator, request.currentUrl()) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return error.NetworkError,
+        };
+        defer allocator.free(origin);
+        // Chromium's ResetAuth associates the realm/path before retrying.
+        // The store is optional: allocation failure only prevents reuse.
+        context.auth_entries.put(partition, origin, realm, urlPath(request.currentUrl()), credentials.username, credentials.password) catch {};
+    };
+    response.deinit(); // Drops a streaming 401 body before the retry.
+    return .{ .authentication_retry = realm };
+}
+
+const URLCredentials = struct {
+    username: []u8,
+    password: []u8,
+    fn deinit(self: @This(), allocator: Allocator) void {
+        allocator.free(self.username);
+        allocator.free(self.password);
+    }
+};
+
+fn urlCredentials(allocator: Allocator, url: []const u8) Allocator.Error!?URLCredentials {
+    const uri = std.Uri.parse(url) catch return null;
+    if ((uri.user orelse std.Uri.Component.empty).isEmpty() and (uri.password orelse std.Uri.Component.empty).isEmpty()) return null;
+    const username = try std.fmt.allocPrint(allocator, "{f}", .{std.fmt.alt(uri.user orelse std.Uri.Component.empty, .formatRaw)});
+    errdefer allocator.free(username);
+    return .{ .username = username, .password = try std.fmt.allocPrint(allocator, "{f}", .{std.fmt.alt(uri.password orelse std.Uri.Component.empty, .formatRaw)}) };
+}
+
+fn urlPath(url: []const u8) []const u8 {
+    const uri = std.Uri.parse(url) catch return "/";
+    const path = switch (uri.path) {
+        .raw, .percent_encoded => |p| p,
+    };
+    return if (path.len == 0) "/" else path;
+}
+
+/// Fetch HTTP-network-or-cache 8.21.2. Author headers take precedence.
+fn appendAuthorization(allocator: Allocator, request: *InternalRequest, authentication_fetch: bool, added: *std.ArrayListUnmanaged(NetworkRequest.Header)) HttpFetchError!void {
+    if (!httpNetworkFetchUsesCookies(request) or request.header_list.contains("Authorization")) return;
+    if (authentication_fetch) {
+        const credentials = (try urlCredentials(allocator, request.currentUrl())) orelse return;
+        defer credentials.deinit(allocator);
+        return appendBasic(allocator, added, credentials.username, credentials.password);
+    }
+    const context = request.network orelse return;
+    const partition = request.network_partition_key orelse return;
+    if (context.auth_entries.isEmpty()) return; // No lock, URL parse or allocation.
+    if (request.use_url_credentials) {
+        const uri = std.Uri.parse(request.currentUrl()) catch return;
+        if (!(uri.user orelse std.Uri.Component.empty).isEmpty() or !(uri.password orelse std.Uri.Component.empty).isEmpty()) return;
+    }
+    const origin = origins.serializedOriginOf(allocator, request.currentUrl()) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.NetworkError,
+    };
+    defer allocator.free(origin);
+    const credentials = (try context.auth_entries.lookup(allocator, partition, origin, urlPath(request.currentUrl()))) orelse return;
+    defer credentials.deinit(allocator);
+    try appendBasic(allocator, added, credentials.username, credentials.password);
+}
+
+fn appendBasic(allocator: Allocator, added: *std.ArrayListUnmanaged(NetworkRequest.Header), username: []const u8, password: []const u8) !void {
+    const plain = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ username, password });
+    defer allocator.free(plain);
+    const encoder = std.base64.standard.Encoder;
+    const value = try allocator.alloc(u8, "Basic ".len + encoder.calcSize(plain.len));
+    errdefer allocator.free(value);
+    @memcpy(value[0..6], "Basic ");
+    _ = encoder.encode(value[6..], plain);
+    try added.append(allocator, .{ .name = "Authorization", .value = value });
+}
+
+/// RFC 9110 challenge lists: commas inside quoted strings are not separators.
+/// Only Basic with a valid realm is supported; other schemes never prompt.
+fn basicChallengeRealm(allocator: Allocator, headers: *const @import("../internal/header_list.zig").HeaderList) !?[]u8 {
+    for (headers.iterator()) |header| {
+        if (!std.ascii.eqlIgnoreCase(header.name, "WWW-Authenticate")) continue;
+        var is_basic = false;
+        var realm: ?[]u8 = null;
+        defer if (realm) |r| allocator.free(r);
+        var start: usize = 0;
+        while (start < header.value.len) {
+            var end = start;
+            var quoted = false;
+            while (end < header.value.len) : (end += 1) {
+                const c = header.value[end];
+                if (quoted and c == '\\' and end + 1 < header.value.len) {
+                    end += 1;
+                    continue;
+                }
+                if (c == '"') quoted = !quoted;
+                if (!quoted and c == ',') break;
+            }
+            var item = std.mem.trim(u8, header.value[start..end], " \t");
+            start = end + 1;
+            var token_end: usize = 0;
+            while (token_end < item.len and validation.isValidHeaderName(item[token_end .. token_end + 1])) : (token_end += 1) {}
+            if (token_end == 0) {
+                is_basic = false;
+                continue;
+            }
+            const rest = std.mem.trimStart(u8, item[token_end..], " \t");
+            if (rest.len == 0 or rest[0] != '=') {
+                if (is_basic and realm != null) {
+                    const result = realm;
+                    realm = null;
+                    return result;
+                }
+                if (realm) |r| allocator.free(r);
+                realm = null;
+                is_basic = std.ascii.eqlIgnoreCase(item[0..token_end], "Basic");
+                item = rest;
+            }
+            if (!is_basic) continue;
+            const equals = std.mem.indexOfScalar(u8, item, '=') orelse {
+                is_basic = false;
+                continue;
+            };
+            const name = std.mem.trim(u8, item[0..equals], " \t");
+            const value = std.mem.trim(u8, item[equals + 1 ..], " \t");
+            if (!validation.isValidHeaderName(name)) {
+                is_basic = false;
+                continue;
+            }
+            var parsed: std.ArrayListUnmanaged(u8) = .empty;
+            defer parsed.deinit(allocator);
+            if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') {
+                var i: usize = 1;
+                var valid = true;
+                while (i < value.len - 1) : (i += 1) {
+                    var c = value[i];
+                    if (c == '\\') {
+                        i += 1;
+                        if (i >= value.len - 1) {
+                            valid = false;
+                            break;
+                        }
+                        c = value[i];
+                    } else if (c == '"') {
+                        valid = false;
+                        break;
+                    }
+                    if ((c < 0x20 and c != '\t') or c == 0x7f) {
+                        valid = false;
+                        break;
+                    }
+                    try parsed.append(allocator, c);
+                }
+                if (!valid) {
+                    is_basic = false;
+                    continue;
+                }
+            } else if (validation.isValidHeaderName(value)) {
+                try parsed.appendSlice(allocator, value);
+            } else {
+                is_basic = false;
+                continue;
+            }
+            if (std.ascii.eqlIgnoreCase(name, "realm")) {
+                if (realm != null) {
+                    is_basic = false;
+                    continue;
+                }
+                realm = try parsed.toOwnedSlice(allocator);
+            }
+        }
+        if (is_basic and realm != null) {
+            const result = realm;
+            realm = null;
+            return result;
+        }
+    }
+    return null;
 }
 
 /// HTTP-network-or-cache fetch step 8's headers for httpRequest: those it
@@ -614,8 +826,7 @@ fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *s
                 return err;
             };
         }
-        // TODO: 8.21.2, the `Authorization` header from an authentication
-        //       entry or the URL's credentials.
+        // 8.21.2 follows in Start, using its authentication-fetch option.
     }
 }
 
@@ -878,15 +1089,19 @@ fn connectionTimingInfo(request: *const InternalRequest, network_response: *cons
 /// headers - their values owned, and the NetworkRequest's once this returns
 /// (on error, still the caller's).
 fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: []const NetworkRequest.Header) !NetworkRequest {
+    // URL credentials belong to Fetch's Authorization step, never curl.
+    const stripped_url = try withoutUserinfo(allocator, request.currentUrl());
+    errdefer if (stripped_url) |url| allocator.free(url);
     // Get headers from header list using iterator()
     const header_entries = request.header_list.iterator();
 
     // Allocate headers array
     const headers = try allocator.alloc(NetworkRequest.Header, header_entries.len + added.len);
     errdefer allocator.free(headers);
-    const owned_values = try allocator.alloc([]const u8, added.len);
+    const owned_values = try allocator.alloc([]const u8, added.len + @intFromBool(stripped_url != null));
     errdefer allocator.free(owned_values);
     for (added, 0..) |header, i| owned_values[i] = header.value;
+    if (stripped_url) |url| owned_values[added.len] = url;
 
     for (header_entries, 0..) |header, i| {
         headers[i] = .{
@@ -903,7 +1118,7 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: [
     } else null;
 
     return NetworkRequest{
-        .url = request.currentUrl(),
+        .url = stripped_url orelse request.currentUrl(),
         .method = request.method,
         .headers = headers,
         .body = body,
@@ -923,6 +1138,16 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: [
         .verbose = false,
         .owned_values = owned_values,
     };
+}
+
+/// The input is a serialized URL; '@' in its authority separates userinfo.
+/// No allocation for ordinary requests, and no transport-owned credentials.
+fn withoutUserinfo(allocator: Allocator, url: []const u8) !?[]u8 {
+    const scheme = std.mem.indexOf(u8, url, "://") orelse return null;
+    const rest = url[scheme + 3 ..];
+    const authority = rest[0 .. std.mem.indexOfAny(u8, rest, "/?#") orelse rest.len];
+    const at = std.mem.lastIndexOfScalar(u8, authority, '@') orelse return null;
+    return try std.mem.concat(allocator, u8, &.{ url[0 .. scheme + 3], rest[at + 1 ..] });
 }
 
 /// Free allocated NetworkRequest resources.
@@ -991,15 +1216,28 @@ pub fn getCurrentTimeMs() f64 {
 // =============================================================================
 
 /// HTTP fetch step 4.1's condition, given makeCORSPreflight: does `request`
-/// need a CORS-preflight fetch first? With no CORS-preflight cache there is
-/// never a cache entry match, so: its method is not CORS-safelisted or its
-/// use-CORS-preflight flag is set, or it has a CORS-unsafe request-header
-/// name.
+/// need a CORS-preflight fetch first? Each required method/header needs an
+/// unexpired entry for this partition, requesting origin and URL.
 pub fn corsPreflightNeeded(allocator: Allocator, request: *const InternalRequest) !bool {
-    if (request.use_cors_preflight or !isCorsSafelistedMethod(request.method)) return true;
+    const method: ?[]const u8 = if (request.use_cors_preflight or !isCorsSafelistedMethod(request.method)) request.method else null;
     const unsafe_names = try validation.getCORSUnsafeRequestHeaderNames(allocator, &request.header_list);
     defer freeNames(allocator, unsafe_names);
-    return unsafe_names.len > 0;
+    if (method == null and unsafe_names.len == 0) return false;
+    const context = request.network orelse return true;
+    // No captured top-level site: never share a stand-in partition (D3).
+    const partition = request.network_partition_key orelse return true;
+    if (context.preflight_cache.count() == 0) return true;
+    const origin = try request.serializeOrigin(allocator);
+    defer allocator.free(origin);
+    return !context.preflight_cache.allows(.{
+        .network_partition_key = partition,
+        .origin = origin,
+        .url = withoutFragment(request.currentUrl()),
+    }, @intFromFloat(getCurrentTimeMs()), request.credentials_mode == .include, method, unsafe_names);
+}
+
+fn withoutFragment(url: []const u8) []const u8 {
+    return url[0 .. std.mem.indexOfScalar(u8, url, '#') orelse url.len];
 }
 
 /// CORS-preflight fetch, steps 1-6 up to the network: the preflight request,
@@ -1022,6 +1260,11 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
     }
     var headers: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
     errdefer headers.deinit(allocator);
+    const stripped_url = try withoutUserinfo(allocator, request.currentUrl());
+    if (stripped_url) |url| owned.append(allocator, url) catch |err| {
+        allocator.free(url);
+        return err;
+    };
 
     // 2. Append (`Accept`, `*/*`).
     try headers.append(allocator, .{ .name = "Accept", .value = "*/*" });
@@ -1064,7 +1307,7 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
     errdefer allocator.free(header_slice);
     const owned_values = try owned.toOwnedSlice(allocator);
     return .{
-        .url = request.currentUrl(),
+        .url = stripped_url orelse request.currentUrl(),
         .method = "OPTIONS",
         .headers = header_slice,
         .body = null,
@@ -1079,11 +1322,19 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
 
 /// CORS-preflight fetch step 7, once the network answered the preflight
 /// with `network_response`: whether it lets `request` go - false is step 8's
-/// network error. With no CORS-preflight cache, steps 8-15 have nothing to
-/// store.
+/// network error. Main fetch clears the cache for any failed CORS preflight.
 pub fn corsPreflightFetchFinish(allocator: Allocator, request: *InternalRequest, network_response: *const NetworkResponse) HttpFetchError!bool {
-    // Every error on the way is an allocation failing.
     return preflightAllows(allocator, request, network_response) catch HttpFetchError.OutOfMemory;
+}
+
+/// Main fetch 12's CORS-with-preflight branch: clear this request's entries.
+pub fn clearPreflightEntries(allocator: Allocator, request: *const InternalRequest) !void {
+    const context = request.network orelse return;
+    const partition = request.network_partition_key orelse return;
+    if (context.preflight_cache.count() == 0) return;
+    const origin = try request.serializeOrigin(allocator);
+    defer allocator.free(origin);
+    context.preflight_cache.clear(.{ .network_partition_key = partition, .origin = origin, .url = withoutFragment(request.currentUrl()) });
 }
 
 fn preflightAllows(allocator: Allocator, request: *InternalRequest, network_response: *const NetworkResponse) !bool {
@@ -1138,9 +1389,32 @@ fn preflightAllows(allocator: Allocator, request: *InternalRequest, network_resp
         if (!header_names.containsIgnoreCase(name) and (include or !header_names.containsExact("*"))) return false;
     }
 
-    // 8-16. max-age and the cache: there is no CORS-preflight cache ("If
-    //       the user agent does not provide for a cache, then return
-    //       response").
+    // 8-15. Cache the permissions, each with its own monotonic expiry.
+    if (request.network) |context| if (request.network_partition_key) |partition| {
+        const origin = try request.serializeOrigin(allocator);
+        defer allocator.free(origin);
+        const age_value = try response.header_list.get(allocator, "Access-Control-Max-Age");
+        defer if (age_value) |value| allocator.free(value);
+        const age: ?u64 = if (age_value) |value| blk: {
+            // Chrome 154 and WebKit accept signed i64, expire negative
+            // values, and fall back to 5 s for invalid/overflowing values
+            // (codex-xhr D12; Gecko rejects signs).
+            if (value.len == 0) break :blk null;
+            const digits = if (value[0] == '+' or value[0] == '-') value[1..] else value;
+            if (digits.len == 0) break :blk null;
+            for (digits) |c| if (!std.ascii.isDigit(c)) break :blk null;
+            const parsed = std.fmt.parseInt(i64, value, 10) catch break :blk null;
+            break :blk if (parsed < 0) 0 else @intCast(parsed);
+        } else null;
+        const fallback = [_][]const u8{request.method};
+        const cache_methods = if (methods_null and request.use_cors_preflight) &fallback else methods.items.items;
+        // Cache allocation failure can only cause another preflight.
+        context.preflight_cache.store(.{
+            .network_partition_key = partition,
+            .origin = origin,
+            .url = withoutFragment(request.currentUrl()),
+        }, @intFromFloat(getCurrentTimeMs()), age, cache_methods, header_names.items.items, include) catch {};
+    };
     return true;
 }
 
@@ -1642,18 +1916,25 @@ test "HTTP-network-or-cache fetch step 14: a 401 to a stream upload from a windo
     request.traversable_for_user_prompts = .{ .traversable = &window_token };
     request.body = .{ .body = try Body.fromSource(allocator, .none, 0) };
 
+    const controller = try @import("../internal/fetch_controller.zig").FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = @import("../internal/fetch_timing.zig").FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
     // A 401: the body cannot be sent again for the credentials a prompt
     // would ask for, so a network error.
     const unauthorized = try InternalResponse.init(allocator);
     unauthorized.status = 401;
-    const refused = try httpNetworkOrCacheFetchFinish(allocator, request, unauthorized);
+    const refused = (try httpNetworkOrCacheFetchFinish(allocator, params, .{}, unauthorized)).response;
     defer refused.deinit();
     try std.testing.expect(isNetworkError(refused));
 
     // Any other status goes on as it is.
     const ok = try InternalResponse.init(allocator);
     ok.status = 200;
-    const kept = try httpNetworkOrCacheFetchFinish(allocator, request, ok);
+    const kept = (try httpNetworkOrCacheFetchFinish(allocator, params, .{}, ok)).response;
     try std.testing.expect(kept == ok);
     kept.deinit();
 
@@ -1661,7 +1942,7 @@ test "HTTP-network-or-cache fetch step 14: a 401 to a stream upload from a windo
     request.traversable_for_user_prompts = .no_traversable;
     const worker_401 = try InternalResponse.init(allocator);
     worker_401.status = 401;
-    const stands = try httpNetworkOrCacheFetchFinish(allocator, request, worker_401);
+    const stands = (try httpNetworkOrCacheFetchFinish(allocator, params, .{}, worker_401)).response;
     try std.testing.expect(stands == worker_401);
     stands.deinit();
 
@@ -1670,7 +1951,7 @@ test "HTTP-network-or-cache fetch step 14: a 401 to a stream upload from a windo
     request.response_tainting = .cors;
     const cors_401 = try InternalResponse.init(allocator);
     cors_401.status = 401;
-    const cors_kept = try httpNetworkOrCacheFetchFinish(allocator, request, cors_401);
+    const cors_kept = (try httpNetworkOrCacheFetchFinish(allocator, params, .{}, cors_401)).response;
     try std.testing.expect(cors_kept == cors_401);
     cors_kept.deinit();
 }

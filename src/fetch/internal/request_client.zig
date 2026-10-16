@@ -24,6 +24,8 @@ pub const RequestClient = struct {
     /// Null while the global does not know it yet: the request's origin
     /// then stays "client".
     origin: ?[]const u8 = null,
+    /// BORROWED serialized top-level site, null for none or an opaque top-level origin.
+    top_level_site: ?[]const u8 = null,
     /// What Referrer Policy's "determine request's referrer" takes as the
     /// referrer source of a "client" referrer: a Window's document's URL, a
     /// worker's creation URL. Null or empty for none.
@@ -111,6 +113,11 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // The blob URL store scheme fetch "blob" obtains a blob from: the
     // client's Browser's, never another Browser's.
     if (request.blob_url_store == null) request.blob_url_store = client.blob_url_store;
+
+    // Fetch determine the network partition key: (top-level site, null).
+    if (request.network_partition_key == null) {
+        if (client.top_level_site) |site| request.network_partition_key = try request.allocator.dupe(u8, site);
+    }
 
     // The network the request goes out on: its client's Browser's
     // connections and TLS options, never another Browser's.
