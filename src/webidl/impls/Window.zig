@@ -222,8 +222,12 @@ pub const InternalState = struct {
     /// Cookie Store spec: window.cookieStore getter
     cookie_store: ?*runtime.Instance = null,
 
-    /// Whether this is a secure context (for SecureContext checks)
-    is_secure_context: bool = true,
+    /// The secure context answer of the window whose page created this
+    /// window's browsing context - a popup's opener, noopener or not - taken
+    /// when it was made. An about:blank document with no parent inherits it
+    /// (WebKit Document::initSecurityContext copies its owner's
+    /// m_isSecureContext). Null when nothing created it (`secureContext`).
+    creator_is_secure_context: ?bool = null,
 
     /// The origin this window was CREATED with: the page's for a top-level
     /// window, the container's for an iframe. It is the origin its document
@@ -588,8 +592,42 @@ fn settingsPolicyContainer(instance: *runtime.Instance) ?*const @import("fetch")
 }
 
 fn settingsIsSecureContext(instance: *runtime.Instance) bool {
+    return secureContext(instance, 0);
+}
+
+/// HTML 8.1.3.5 "secure context" for this window's environment settings
+/// object, decided as the browsers do (html.secure_context): its document's
+/// own URL is potentially trustworthy and its parent's active window is a
+/// secure context; about:blank and about:srcdoc take the parent's answer,
+/// else the creator's. Decided from the document the window has NOW - a
+/// Crane top-level Window keeps its object across its page's loads - so
+/// nothing has to set it at each creation path.
+fn secureContext(instance: *runtime.Instance, depth: usize) bool {
     const internal = getInternal(instance) orelse return false;
-    return internal.is_secure_context;
+    // The parent's answer, walking up the navigable tree (bounded).
+    const parent: ?bool = if (parentWindowOf(internal)) |parent_window|
+        (if (depth < 64) secureContext(parent_window, depth + 1) else false)
+    else
+        null;
+    // The getter clones the URL into the document's context allocator.
+    const document = internal.document;
+    const url: ?[]const u8 = if (document) |d| interfaces.Document.get_URL(d) catch return false else null;
+    defer if (url) |owned| document.?.ctx.allocator.free(owned);
+    return @import("html").secure_context.ofDocument(instance.ctx.allocator, .{
+        .url = url orelse "about:blank",
+        .parent = parent,
+        .creator = internal.creator_is_secure_context,
+    }) catch false;
+}
+
+/// The active window of the parent of this window's navigable; null for a
+/// top-level traversable.
+fn parentWindowOf(internal: *InternalState) ?*runtime.Instance {
+    const bc_ptr = @intFromPtr(internal.browsing_context);
+    if (bc_ptr == 0 or bc_ptr < 0x1000) return null;
+    const parent = internal.browsing_context.parent orelse return null;
+    const active = parent.getActiveWindow() orelse return null;
+    return @ptrCast(@alignCast(active));
 }
 
 fn settingsCrossOriginIsolated(instance: *runtime.Instance) bool {
@@ -1412,8 +1450,9 @@ pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return cookie_store_instance;
     }
 
-    // Check SecureContext requirement
-    if (!internal.is_secure_context) {
+    // Check SecureContext requirement (until [SecureContext] exposure hides
+    // the attribute in a non-secure context).
+    if (!secureContext(instance, 0)) {
         return error.SecurityError;
     }
 
@@ -1421,7 +1460,7 @@ pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const cookie_store_instance = interfaces.CookieStore.initWith(
         internal.allocator,
         instance.ctx,
-        .{ .is_secure_context = internal.is_secure_context },
+        .{ .is_secure_context = true },
     ) catch {
         return error.OutOfMemory;
     };
@@ -1616,32 +1655,6 @@ pub fn get_launchQueue(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_portalHost(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
-}
-
-/// Set the secure context flag
-/// Called by browser context when URL changes to update security state.
-/// Per Secure Contexts spec, a context is secure if:
-/// - URL scheme is https, wss, or file
-/// - URL host is localhost or 127.0.0.1
-pub fn setIsSecureContext(instance: *runtime.Instance, is_secure: bool) void {
-    if (getInternal(instance)) |internal| {
-        internal.is_secure_context = is_secure;
-    }
-}
-
-/// Check if a URL scheme indicates a secure context
-/// Per https://w3c.github.io/webappsec-secure-contexts/
-pub fn isSecureScheme(scheme: []const u8) bool {
-    return std.mem.eql(u8, scheme, "https") or
-        std.mem.eql(u8, scheme, "wss") or
-        std.mem.eql(u8, scheme, "file");
-}
-
-/// Check if a host is a secure localhost
-pub fn isSecureLocalhost(host: []const u8) bool {
-    return std.mem.eql(u8, host, "localhost") or
-        std.mem.eql(u8, host, "127.0.0.1") or
-        std.mem.eql(u8, host, "::1");
 }
 
 /// Getter for sessionStorage
@@ -3128,6 +3141,11 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
         if (integration.browsing_context) |bc| bc.setTargetName(target) catch {};
     }
+    // Its initial about:blank document takes this window's secure context
+    // (WebKit Document::initSecurityContext: the owner is the parent, else
+    // the opener); taken now, so the answer does not follow this window's
+    // later navigations.
+    if (getInternal(created.window)) |created_internal| created_internal.creator_is_secure_context = secureContext(window, 0);
     // Steps 8.7-8.8: its opener is this window, unless noopener - which makes
     // it a new top-level traversable "given null" opener, in a browsing
     // context group of its own.

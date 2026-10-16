@@ -259,6 +259,10 @@ pub const ScopeSettings = struct {
     /// yet coarsened (dom.global_settings `time_origin`). Null when the host
     /// recorded none.
     time_origin_ns: ?i64 = null,
+    /// Whether the worker's owner - owner set[0]'s relevant settings object,
+    /// the global that created it - is a secure context (HTML 8.1.3.5 step
+    /// 1.2.1), read on the owner's thread when the worker started.
+    owner_is_secure_context: bool = false,
 };
 
 /// The settings for a global scope created in the realm whose runtime
@@ -272,6 +276,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .cookie_jar = wctx.cookie_jar,
         .policy_container = &wctx.policy_container,
         .time_origin_ns = wctx.time_origin_ns,
+        .owner_is_secure_context = wctx.owner_is_secure_context,
     };
 }
 
@@ -679,6 +684,10 @@ pub const WorkerHost = struct {
     /// its Performance is made).
     time_origin_ns: ?i64 = null,
 
+    /// Whether the worker's owner was a secure context when it started the
+    /// worker (`ScopeSettings.owner_is_secure_context`).
+    owner_is_secure_context: bool = false,
+
     /// The worker object that ran the worker - a dedicated worker's Worker,
     /// a shared worker's first SharedWorker - as its owner's tasks find it:
     /// an address and slab generation, never dereferenced on this thread. An
@@ -790,6 +799,7 @@ pub const WorkerHost = struct {
             .owner_worker = start.owner_worker,
             .cookie_jar = start.cookie_jar,
             .time_origin_ns = start.time_origin_ns,
+            .owner_is_secure_context = start.owner_is_secure_context,
         };
         // "Obtain a worker/worklet agent" step 3: a dedicated worker's agent
         // is in its owner's agent cluster, which a WebAssembly.Module it
@@ -2213,6 +2223,14 @@ pub fn creatorPolicyContainer(realm: runtime.Context) ?*const fetch_mod.internal
 
 /// The cookie jar of the global whose realm is `realm`: the worker's
 /// creator's settings object's.
+/// Whether the global of `realm` - a worker's owner - is a secure context.
+fn ownerIsSecureContext(realm: runtime.Context) bool {
+    const record = realm.getRealm() orelse return false;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
+    const settings = @import("dom").global_settings.of(global) orelse return false;
+    return settings.is_secure_context(global);
+}
+
 fn creatorCookieJar(realm: runtime.Context) ?*CookieJar {
     const record = realm.getRealm() orelse return null;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
@@ -2753,6 +2771,8 @@ const ThreadHost = struct {
         owner_worker: OwnerWorker,
         inside_end: ?*port_channels.End,
         time_origin_ns: ?i64,
+        /// Whether the owner is a secure context, read on its thread.
+        owner_is_secure_context: bool,
         shared: ?SharedScope,
         /// The agent cluster of a DEDICATED worker's agent: its owner's
         /// ("obtain a worker/worklet agent" step 3 - isTopLevel is false, so
@@ -2784,6 +2804,9 @@ const ThreadHost = struct {
                 .owner_worker = start.owner_worker,
                 .inside_end = start.inside_end,
                 .time_origin_ns = start.time_origin_ns,
+                // On the owner's thread, in its realm: HTML 8.1.3.5 step
+                // 1.2.1 asks owner set[0]'s relevant settings object.
+                .owner_is_secure_context = ownerIsSecureContext(start.owner_realm),
                 .shared = start.shared,
                 // On the owner's thread, in its realm: the owner's agent
                 // cluster, for a dedicated worker.

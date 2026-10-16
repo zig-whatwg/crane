@@ -182,6 +182,10 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
         if (instance.getState(State).own._internal) |internal| {
             internal.cookie_jar = settings.cookie_jar;
             internal.time_origin_ns = settings.time_origin_ns;
+            // HTML 8.1.3.5 step 1.2: the owner's answer - and, as Blink's
+            // starter_secure_context with the worker's own origin, its own
+            // URL's (html.secure_context.ofWorker).
+            internal.is_secure_context = try @import("html").secure_context.ofWorker(allocator, internal.url, settings.owner_is_secure_context);
         }
     }
 }
@@ -338,10 +342,10 @@ fn setUpFromUrl(instance: *runtime.Instance, allocator: std.mem.Allocator, url: 
     const navigator = try InternalWorkerNavigator.init(allocator);
     errdefer navigator.deinit();
 
-    // Determine if secure context
-    const is_secure = std.mem.startsWith(u8, url, "https://") or
-        std.mem.startsWith(u8, url, "wss://") or
-        std.mem.startsWith(u8, url, "file://");
+    // Whether it is a secure context, from its own creation URL alone (Secure
+    // Contexts 3.2) - the answer for a scope no owner started, a service
+    // worker's; `initOwn` adds a started worker's owner's answer.
+    const is_secure = try @import("html").secure_context.ofWorker(allocator, url, true);
 
     internal_state.* = .{
         .internal_location = location,
