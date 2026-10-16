@@ -40,6 +40,10 @@ pub const PolicyContainer = struct {
     /// container. A request/inherited-document clone does not copy them.
     endpoints: ?*Endpoints = null,
 
+    /// CSPEE §2.4 item 2: the serialized requirement for nested navigations.
+    /// Owned. HTML's clone algorithm copies enforced policies, not this item.
+    required_csp: ?[]u8 = null,
+
     /// Upgrade Insecure Requests' "insecure requests policy" inherited from
     /// the embedding document (UIR 3.3: a nested browsing context's
     /// documents) or from the worker's creator (a worker's settings object):
@@ -81,6 +85,7 @@ pub const PolicyContainer = struct {
     pub fn deinit(self: *PolicyContainer) void {
         self.csp_list.deinit();
         if (self.endpoints) |endpoints| endpoints.deinit();
+        if (self.required_csp) |required| self.allocator.free(required);
         self.* = undefined;
     }
 
@@ -109,8 +114,30 @@ pub const PolicyContainer = struct {
         // `Referrer-Policy` header given response: the last token that is a
         // referrer policy, or the empty string when none is.
         result.referrer_policy = parseReferrerPolicyHeader(response.referrer_policy);
+        try result.applyRequiredCSP(response.required_csp, response.url, response.blanket_csp_acceptance);
         // 7. Return result.
         return result;
+    }
+
+    /// CSPEE §2.4 item 10, also used after local-document inheritance.
+    /// Deviation: Chrome 154 NavigationRequest::CheckCSPEmbeddedEnforcement
+    /// appends unconditionally after blanket acceptance (:8266-8279); only
+    /// implicit acceptance skips a subsumed requirement. The draft instead
+    /// skips both, to allow an embedee's compatible but different nonce.
+    pub fn applyRequiredCSP(self: *PolicyContainer, required: ?[]const u8, response_url: []const u8, blanket: bool) error{OutOfMemory}!void {
+        const serialized = required orelse return;
+        const owned = try self.allocator.dupe(u8, serialized);
+        errdefer self.allocator.free(owned);
+        var policy = csp.parsing.parseSerializedCSP(self.allocator, serialized, .header, .enforce) catch return error.OutOfMemory;
+        var policy_owned = true;
+        defer if (policy_owned) policy.deinit();
+        policy.self_origin = try selfOriginOf(self.allocator, response_url);
+        if (blanket or !(csp.embedded_enforcement.subsumes(self.allocator, &policy, &self.csp_list) catch return error.OutOfMemory)) {
+            try self.csp_list.append(policy);
+            policy_owned = false;
+        }
+        if (self.required_csp) |previous| self.allocator.free(previous);
+        self.required_csp = owned;
     }
 
     /// Whether an enforced policy of the CSP list carries
@@ -135,6 +162,8 @@ pub const ResponseHeaders = struct {
     csp_report_only: ?[]const u8 = null,
     referrer_policy: ?[]const u8 = null,
     reporting_endpoints: ?[]const u8 = null,
+    required_csp: ?[]const u8 = null,
+    blanket_csp_acceptance: bool = false,
 };
 
 pub const Endpoint = struct {

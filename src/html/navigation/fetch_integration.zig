@@ -483,6 +483,9 @@ pub fn resultFromResponse(
         "cross-origin-resource-policy",
         "content-security-policy",
         "content-security-policy-report-only",
+        // CSP Embedded Enforcement §4.2 and navigation-response reporting.
+        "allow-csp-from",
+        "reporting-endpoints",
         "x-frame-options",
         // HTML "create a policy container from a fetch response" step 5.
         "referrer-policy",

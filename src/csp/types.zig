@@ -307,8 +307,10 @@ pub const Origin = struct {
 
     /// Create with copied strings
     pub fn create(allocator: std.mem.Allocator, scheme: []const u8, host: []const u8, port: ?u16) !Self {
+        const owned_scheme = try allocator.dupe(u8, scheme);
+        errdefer allocator.free(owned_scheme);
         return Self{
-            .scheme = try allocator.dupe(u8, scheme),
+            .scheme = owned_scheme,
             .host = try allocator.dupe(u8, host),
             .port = port,
             .allocator = allocator,

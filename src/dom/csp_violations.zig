@@ -33,6 +33,7 @@ const fire_event = @import("fire_event.zig");
 const policy_containers = @import("policy_containers.zig");
 const trusted_types = @import("trusted_types.zig");
 const reporting = @import("reporting.zig");
+const fetch = @import("fetch");
 
 const log = std.log.scoped(.csp_violations);
 
@@ -289,6 +290,147 @@ pub fn reportViolation(global: *runtime.Instance, violation: *const Violation) v
 fn report(context: *anyopaque, violation: *const Violation) void {
     reportViolation(@ptrCast(@alignCast(context)), violation);
 }
+
+/// CSP §4.2.5 / §5.5: a response-policy violation has no global and no
+/// element, hence no event target. `sender` supplies only the task/fetch
+/// transport. Deviation for §5.5's null-global gap: Chromium
+/// AncestorThrottle::EvaluateFrameAncestors / network::ReportViolation use
+/// an ancestor's transport but the blocked response's report data. Its URL,
+/// origin and endpoints below are all copied before the response is freed.
+pub fn reportNavigationResponse(sender: *runtime.Instance, violation: *const Violation, response: struct {
+    url: []const u8,
+    referrer: []const u8 = "",
+    status: u16,
+    endpoints: ?*fetch.internal.policy_container.Endpoints = null,
+}) !void {
+    if (!violation.policy.containsDirective("report-uri") and !violation.policy.containsDirective("report-to")) return;
+    const allocator = sender.ctx.allocator;
+    const task = try allocator.create(NavigationViolationTask);
+    task.* = .{
+        .allocator = allocator,
+        .sender = sender,
+        .generation = runtime.SlabAllocator.generationOf(sender),
+    };
+    errdefer task.deinit();
+    task.base_url = try allocator.dupe(u8, response.url);
+    task.origin = try fetch.internal.origins.serializedOriginOf(allocator, response.url);
+    const document_url = try csp.violation_events.stripUrlForReports(allocator, response.url);
+    defer allocator.free(document_url);
+    const referrer = try csp.violation_events.stripUrlForReports(allocator, response.referrer);
+    defer allocator.free(referrer);
+    const blocked_url = try csp.violation_events.blockedUri(allocator, violation.resource);
+    defer allocator.free(blocked_url);
+    const original_policy = try csp.parsing.serializePolicy(allocator, violation.policy);
+    defer allocator.free(original_policy);
+    const body: csp.violation_events.ReportBody = .{
+        .document_url = document_url,
+        .referrer = referrer,
+        .blocked_url = blocked_url,
+        .effective_directive = violation.effective_directive,
+        .original_policy = original_policy,
+        .disposition = violation.policy.disposition,
+        .status_code = response.status,
+    };
+    // §5.5 step 4.1: report-to suppresses legacy delivery even with no
+    // matching response endpoint. Never consult the sender's endpoints.
+    if (violation.policy.getDirective("report-to")) |directive| {
+        const destination = reporting.reportDestination(directive);
+        if (response.endpoints) |endpoints| {
+            if (endpoints.find(destination)) |endpoint| try task.addEndpoint(endpoint.url);
+        }
+        const bytes = try body.serializeModern(allocator);
+        defer allocator.free(bytes);
+        task.modern = try reporting.Record.create(allocator, .{
+            .type = "csp-violation",
+            .destination = destination,
+            .url = document_url,
+            .body_json = bytes,
+            .timestamp_ms = @import("platform").wallMillis(),
+            .user_agent = if (@import("browser_state.zig").networkOf(sender.ctx)) |network| network.userAgent() else fetch.internal.user_agent.default_user_agent,
+        });
+    } else if (violation.policy.getDirective("report-uri")) |directive| {
+        task.legacy = try body.serializeLegacy(allocator);
+        for (directive.value.expressions.items) |expr| try task.addEndpoint(expr.raw_value);
+    }
+    if (sender.ctx.getOptionalEventLoop()) |loop| {
+        loop.queueTask(.{ .callback = NavigationViolationTask.run, .context = task, .drop = NavigationViolationTask.drop });
+        return; // queueTask owns task even when it drops it synchronously.
+    }
+    // Without a task boundary, a finder must not re-enter the fetch pump.
+    task.deinit();
+}
+
+const NavigationViolationTask = struct {
+    allocator: std.mem.Allocator,
+    sender: *runtime.Instance,
+    generation: u64,
+    base_url: []const u8 = "",
+    origin: []const u8 = "",
+    legacy: []const u8 = "",
+    modern: ?*reporting.Record = null,
+    endpoints: std.ArrayListUnmanaged([]const u8) = .empty,
+
+    fn addEndpoint(self: *NavigationViolationTask, borrowed: []const u8) !void {
+        const owned = try self.allocator.dupe(u8, borrowed);
+        errdefer self.allocator.free(owned);
+        try self.endpoints.append(self.allocator, owned);
+    }
+
+    fn deinit(self: *NavigationViolationTask) void {
+        const allocator = self.allocator;
+        allocator.free(self.base_url);
+        allocator.free(self.origin);
+        allocator.free(self.legacy);
+        if (self.modern) |record| record.release();
+        for (self.endpoints.items) |endpoint| allocator.free(endpoint);
+        self.endpoints.deinit(allocator);
+        allocator.destroy(self);
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *NavigationViolationTask = @ptrCast(@alignCast(context.?));
+        self.deinit();
+    }
+
+    fn run(context: ?*anyopaque) void {
+        const self: *NavigationViolationTask = @ptrCast(@alignCast(context.?));
+        defer self.deinit();
+        if (runtime.SlabAllocator.generationOf(self.sender) != self.generation) return;
+        if (!self.sender.ctx.hasEngine()) return;
+        engine.runTaskInRealm(self.sender.ctx, steps, self) catch {};
+    }
+
+    fn steps(context: ?*anyopaque) void {
+        const self: *NavigationViolationTask = @ptrCast(@alignCast(context.?));
+        if (self.modern) |record| {
+            const bytes = reporting.serializeReports(self.allocator, &.{record}, @import("platform").wallMillis()) catch return;
+            defer self.allocator.free(bytes);
+            for (self.endpoints.items) |endpoint| {
+                const request = reporting.modernRequest(self.allocator, endpoint, self.origin, bytes) catch continue;
+                // Client-null reports still use their Browser's network
+                // configuration and cookie jar, as Reporting's delivery task
+                // does. The sender supplies transport, never report metadata.
+                request.cookie_jar = @import("global_settings.zig").cookieJarOf(self.sender);
+                request.network = @import("browser_state.zig").networkOf(self.sender.ctx);
+                _ = @import("keepalive_fetch.zig").send(self.sender, request, .{ .load = .ping }) catch {};
+            }
+        } else {
+            if (self.endpoints.items.len == 0) return;
+            var client = @import("global_settings.zig").requestClient(self.sender) catch return;
+            defer client.deinit();
+            for (self.endpoints.items) |token| {
+                const endpoint = (reporting.parseEndpoint(self.sender, token, self.base_url) catch continue) orelse continue;
+                defer self.allocator.free(endpoint);
+                const request = reporting.legacyRequest(self.allocator, endpoint, self.legacy, client.request) catch continue;
+                request.setOrigin(self.origin) catch {
+                    request.deinit();
+                    continue;
+                };
+                _ = @import("keepalive_fetch.zig").send(self.sender, request, .{ .load = .ping }) catch {};
+            }
+        }
+    }
+};
 
 /// What the queued task fires, copied out of the violation and its global
 /// when the violation happens: by the time the task runs the policy may be

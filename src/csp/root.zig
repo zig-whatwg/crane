@@ -132,6 +132,8 @@ pub const code_generation = @import("code_generation.zig");
 pub const plugin_check = @import("plugin_check.zig");
 /// §4.2.4 should navigation request of type be blocked.
 pub const navigation_check = @import("navigation_check.zig");
+/// CSP Embedded Enforcement: iframe policy validation and subsumption.
+pub const embedded_enforcement = @import("embedded_enforcement.zig");
 
 pub const createViolation = violations.createViolation;
 pub const createTrustedTypesPolicyViolation = violations.createTrustedTypesPolicyViolation;

@@ -496,7 +496,7 @@ fn buildURLRecord(allocator: std.mem.Allocator, ctx: *ParserContext) !URLRecord 
     // P3 Optimization: Deep clone path from arena to final allocator
     // Path segments may have been allocated in the arena, so we need to deep clone
     // each string to ensure they survive after arena.deinit()
-    const path = if (ctx.opaque_path) |op|
+    var path = if (ctx.opaque_path) |op|
         Path{ .opaque_path = try allocator.dupe(u8, op) }
     else blk: {
         var segments = infra.List([]const u8).init(allocator);
@@ -505,15 +505,21 @@ fn buildURLRecord(allocator: std.mem.Allocator, ctx: *ParserContext) !URLRecord 
             segments.deinit();
         }
         for (ctx.path_segments.items()) |seg| {
-            try segments.append(try allocator.dupe(u8, seg));
+            const owned = try allocator.dupe(u8, seg);
+            errdefer allocator.free(owned);
+            try segments.append(owned);
         }
         break :blk Path{ .segments = segments };
     };
+    // The path-construction block has succeeded, but cloning the host or
+    // finalizing the buffer can still fail before the record owns it.
+    errdefer path_helpers.deinitPath(&path, allocator);
 
     // P3 Optimization: Clone host from arena to final allocator
     // The host may have been allocated in the arena, so we need to clone it
     // to the final allocator to ensure it survives after arena.deinit()
     const host = if (ctx.host) |h| try h.clone(allocator) else null;
+    errdefer if (host) |h| h.deinit(allocator);
 
     return URLRecord{
         .buffer = try buffer.toOwnedSlice(),
