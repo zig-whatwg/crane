@@ -209,6 +209,11 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     try internal.form_data.appendString(name, value);
+    // HTML create an entry 1-2: native form controls supply DOMStrings,
+    // too. These are the entry's owned copies, so scalarize in place.
+    const entry = &internal.form_data.entries.items[internal.form_data.entries.items.len - 1];
+    @import("infra").string.replaceLoneSurrogatesWtf8(@constCast(entry.name));
+    @import("infra").string.replaceLoneSurrogatesWtf8(@constCast(entry.value.string));
 }
 
 /// XHR append steps 1–3, with HTML's create-an-entry File conversion.
@@ -220,6 +225,8 @@ pub fn call_append__1(instance: *runtime.Instance, name: runtime.USVString, blob
     const trace = try prepareFileTrace(instance, internal, null, file);
     defer if (trace) |value| value.release();
     try internal.form_data.appendBlobInstance(name, storedFile(file), null);
+    const entry = &internal.form_data.entries.items[internal.form_data.entries.items.len - 1];
+    @import("infra").string.replaceLoneSurrogatesWtf8(@constCast(entry.name));
     setFileTrace(instance, internal, trace);
 }
 
