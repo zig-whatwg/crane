@@ -2447,8 +2447,28 @@ pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DO
     ) catch false;
 }
 
-/// Operation: parseHTMLUnsafe
-pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString) anyerror!*runtime.Instance {
+/// HTML 8.5.2 parseHTML, steps 1–6: an inactive HTML document, with the
+/// relevant origin and declarative shadow roots, followed by safe filtering.
+pub fn call_static_parseHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!*runtime.Instance {
+    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
+    defer converted.deinit();
+    const allocator = instance.ctx.allocator;
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const origin: ?*OriginRecord = if (globalOfRealm(realm)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
+    const document = @import("html").dom_parser.parseHTML(allocator, realm, html.asSlice(), .{ .allow_declarative_shadow_roots = true, .origin = origin }) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.NotSupportedError,
+    };
+    errdefer @import("dom").node_creation.destroyUninserted(document);
+    try @import("dom").document_internals.setContentType(document, "text/html");
+    try @import("html").sanitizer.filterDocument(document, &converted, true);
+    return document;
+}
+
+/// HTML 8.5.2 parseHTMLUnsafe, steps 1–7.
+pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(dictionaries.ParseHTMLUnsafeOptions)) anyerror!*runtime.Instance {
+    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, false);
+    defer converted.deinit();
     // Step 1: "Let compliantHTML be the result of invoking the get trusted
     // type compliant string algorithm with TrustedHTML, the current global
     // object, html, "Document parseHTMLUnsafe", and "script"."
@@ -2468,8 +2488,10 @@ pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.T
         else => return error.NotSupportedError,
     };
     const document_internals = @import("dom").document_internals;
+    errdefer @import("dom").node_creation.destroyUninserted(document);
     try document_internals.setContentType(document, "text/html");
-    // Steps 5-6: the IDL has no options - no sanitizer. Step 7.
+    // Steps 5–6: configure the sanitizer and filter the parsed document.
+    try @import("html").sanitizer.filterDocument(document, &converted, false);
     return document;
 }
 

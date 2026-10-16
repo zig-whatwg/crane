@@ -33,8 +33,10 @@ const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
+const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const Range = @import("interfaces").Range;
 const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
@@ -243,6 +245,7 @@ pub const Element = struct {
             .{ "releasePointerCapture", "call_releasePointerCapture", 1 },
             .{ "hasPointerCapture", "call_hasPointerCapture", 1 },
             .{ "requestPointerLock", "call_requestPointerLock", 0 },
+            .{ "setHTML", "call_setHTML", 1 },
             .{ "getRegionFlowRanges", "call_getRegionFlowRanges", 0 },
             .{ "getBoxQuads", "call_getBoxQuads", 0 },
             .{ "convertQuadFromNode", "call_convertQuadFromNode", 2 },
@@ -310,6 +313,7 @@ pub const Element = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
+            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
@@ -725,6 +729,7 @@ pub const Element = struct {
         .call_setAttributeNS = &call_setAttributeNS,
         .call_setAttributeNode = &call_setAttributeNode,
         .call_setAttributeNodeNS = &call_setAttributeNodeNS,
+        .call_setHTML = &call_setHTML,
         .call_setHTMLUnsafe = &call_setHTMLUnsafe,
         .call_setPointerCapture = &call_setPointerCapture,
         .call_spatialNavigationSearch = &call_spatialNavigationSearch,
@@ -2089,12 +2094,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString) anyerror!void {
+    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
 
-        return try ElementImpl.call_setHTMLUnsafe(instance, html);
+        return try ElementImpl.call_setHTMLUnsafe(instance, html, options);
     }
 
     pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?*runtime.Instance {
@@ -2137,6 +2142,15 @@ pub const Element = struct {
 
     pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_scrollTo(instance, options);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_setHTML(instance: *runtime.Instance, html: DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ElementImpl.call_setHTML(instance, html, options);
     }
 
     pub const call_replaceChildren = mixins.ParentNode.call_replaceChildren;
@@ -2366,6 +2380,7 @@ pub const Element = struct {
         "call_toggleAttribute",
         "call_setHTMLUnsafe",
         "call_replaceWith",
+        "call_setHTML",
         "call_replaceChildren",
         "call_removeAttribute",
         "call_removeAttributeNode",

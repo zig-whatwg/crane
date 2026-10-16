@@ -34,17 +34,19 @@ const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const SVGStringList = @import("interfaces").SVGStringList;
 const SVGAngle = @import("interfaces").SVGAngle;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const SVGNumber = @import("interfaces").SVGNumber;
+const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const Range = @import("interfaces").Range;
-const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const SVGAnimatedRect = @import("interfaces").SVGAnimatedRect;
+const Animation = @import("interfaces").Animation;
 const FocusOptions = @import("dictionaries").FocusOptions;
-const SVGBoundingBoxOptions = @import("dictionaries").SVGBoundingBoxOptions;
 const SVGTransform = @import("interfaces").SVGTransform;
+const SVGBoundingBoxOptions = @import("dictionaries").SVGBoundingBoxOptions;
 const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
 const SVGAnimatedTransformList = @import("interfaces").SVGAnimatedTransformList;
 const DOMString = @import("typedefs").DOMString;
@@ -266,6 +268,7 @@ pub const SVGSVGElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
+            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",

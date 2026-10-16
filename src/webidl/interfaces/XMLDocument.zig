@@ -32,8 +32,9 @@ const StyleSheetList = @import("interfaces").StyleSheetList;
 const FragmentDirective = @import("interfaces").FragmentDirective;
 const Comment = @import("interfaces").Comment;
 const NamedFlowMap = @import("interfaces").NamedFlowMap;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const StorageAccessHandle = @import("interfaces").StorageAccessHandle;
 const ImportNodeOptions = @import("dictionaries").ImportNodeOptions;
 const DOMImplementation = @import("interfaces").DOMImplementation;
@@ -49,6 +50,7 @@ const HTMLAllCollection = @import("interfaces").HTMLAllCollection;
 const DOMString = @import("typedefs").DOMString;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DocumentFragment = @import("interfaces").DocumentFragment;
+const ParseHTMLUnsafeOptions = @import("dictionaries").ParseHTMLUnsafeOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const FontFaceSet = @import("interfaces").FontFaceSet;
 const BrowsingTopicsOptions = @import("dictionaries").BrowsingTopicsOptions;
@@ -175,6 +177,7 @@ pub const XMLDocument = struct {
             "requestStorageAccessFor",
             "hasUnpartitionedCookieAccess",
             "requestStorageAccess",
+            "parseHTML",
             "getSelection",
             "hasStorageAccess",
             "requestStorageAccess",

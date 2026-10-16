@@ -31,13 +31,15 @@ const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const SVGStringList = @import("interfaces").SVGStringList;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Range = @import("interfaces").Range;
+const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const SVGPointList = @import("interfaces").SVGPointList;
-const Animation = @import("interfaces").Animation;
+const Range = @import("interfaces").Range;
 const Event = @import("interfaces").Event;
+const Animation = @import("interfaces").Animation;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const SVGBoundingBoxOptions = @import("dictionaries").SVGBoundingBoxOptions;
 const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
@@ -182,6 +184,7 @@ pub const SVGPolylineElement = struct {
             "releasePointerCapture",
             "hasPointerCapture",
             "requestPointerLock",
+            "setHTML",
             "getRegionFlowRanges",
             "getBoxQuads",
             "convertQuadFromNode",
