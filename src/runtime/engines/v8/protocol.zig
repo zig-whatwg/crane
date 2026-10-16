@@ -401,6 +401,8 @@ pub const parseJsonToValue = protocol_values.parseJsonToValue;
 pub const parseJsonInNewGlobal = protocol_values.parseJsonInNewGlobal;
 pub const serializeJsonToBytes = protocol_values.serializeJsonToBytes;
 pub const matchesPatternAttribute = protocol_values.matchesPatternAttribute;
+pub const regExpCreateCheck = protocol_values.regExpCreateCheck;
+pub const regExpBuiltinExecCaptures = protocol_values.regExpBuiltinExecCaptures;
 
 // ============================================================================
 // 4.6 WebIDL: ECMAScript to IDL

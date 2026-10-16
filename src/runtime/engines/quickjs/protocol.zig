@@ -295,6 +295,14 @@ pub fn serializeJsonToBytes(_: Context, _: JSValue, _: Allocator) Error![]u8 {
 pub fn matchesPatternAttribute(_: Context, _: []const u8, _: []const u8) error{ InvalidPattern, NotSupported, OutOfMemory }!bool {
     return error.NotSupported;
 }
+/// URLPattern's RegExpCreate: TODO(protocol): implement (QuickJS: lre_compile with LRE_FLAG_UNICODE_SETS, plus LRE_FLAG_IGNORECASE).
+pub fn regExpCreateCheck(_: Context, _: []const u8, _: bool) error{ InvalidPattern, NotSupported, OutOfMemory }!void {
+    return error.NotSupported;
+}
+/// URLPattern's RegExpBuiltinExec: TODO(protocol): implement (QuickJS: lre_exec on the lre_compile bytecode, its capture array read directly).
+pub fn regExpBuiltinExecCaptures(_: Context, _: []const u8, _: bool, _: []const u8, _: Allocator) error{ InvalidPattern, NotSupported, OutOfMemory }!?[]?[]u8 {
+    return error.NotSupported;
+}
 
 // 4.6 WebIDL: ECMAScript to IDL
 pub fn convertToDOMString(_: Context, _: JSValue, _: Allocator) Error![]u8 {

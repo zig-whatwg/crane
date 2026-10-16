@@ -433,6 +433,16 @@ pub fn matchesPatternAttribute(realm: Context, pattern: []const u8, value: []con
     };
 }
 
+/// TODO(regexop): implement.
+pub fn regExpCreateCheck(_: Context, _: []const u8, _: bool) error{ InvalidPattern, NotSupported, OutOfMemory }!void {
+    return error.NotSupported;
+}
+
+/// TODO(regexop): implement.
+pub fn regExpBuiltinExecCaptures(_: Context, _: []const u8, _: bool, _: []const u8, _: std.mem.Allocator) error{ InvalidPattern, NotSupported, OutOfMemory }!?[]?[]u8 {
+    return error.NotSupported;
+}
+
 /// WebIDL "create a simple exception" of type SyntaxError: Construct(`realm`'s
 /// intrinsic %SyntaxError%, « `message` »). OWNED.
 pub fn createSyntaxError(realm: Context, message: []const u8) Error!Owned {

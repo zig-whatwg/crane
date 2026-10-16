@@ -339,6 +339,20 @@ pub fn serializeJsonToBytes(_: Context, _: JSValue, _: Allocator) Error![]u8 {
 pub fn matchesPatternAttribute(_: Context, _: []const u8, _: []const u8) error{ InvalidPattern, NotSupported, OutOfMemory }!bool {
     return error.NotSupported;
 }
+/// URLPattern's RegExpCreate: TODO(protocol): implement once JavaScriptCore is
+/// linked (JSObjectMakeRegExp with the pattern and "v" or "vi" in a global
+/// context of the adapter's own, so the page's RegExp is not reached; the
+/// exception it fills in is InvalidPattern). No engine is linked yet.
+pub fn regExpCreateCheck(_: Context, _: []const u8, _: bool) error{ InvalidPattern, NotSupported, OutOfMemory }!void {
+    return error.NotSupported;
+}
+/// URLPattern's RegExpBuiltinExec: TODO(protocol): implement once JavaScriptCore
+/// is linked (that context's own RegExp.prototype.exec, called with
+/// JSObjectCallAsFunction on the JSObjectMakeRegExp object; its elements read
+/// with JSObjectGetPropertyAtIndex). No engine is linked yet.
+pub fn regExpBuiltinExecCaptures(_: Context, _: []const u8, _: bool, _: []const u8, _: Allocator) error{ InvalidPattern, NotSupported, OutOfMemory }!?[]?[]u8 {
+    return error.NotSupported;
+}
 
 // 4.6 WebIDL: ECMAScript to IDL
 pub fn convertToDOMString(_: Context, _: JSValue, _: Allocator) Error![]u8 {
