@@ -1049,12 +1049,15 @@ pub const ResourceTiming = struct {
     decoded_body_size: u64,
     content_type: []u8,
     content_encoding: []u8,
+    /// Parsed Server-Timing metrics, with owned strings. Empty without TAO.
+    server_timing: []fetch.internal.fetch_timing.server_timing.Metric = &.{},
 
     pub fn deinit(self: *ResourceTiming) void {
         self.allocator.free(self.url);
         self.allocator.free(self.next_hop_protocol);
         self.allocator.free(self.content_type);
         self.allocator.free(self.content_encoding);
+        fetch.internal.fetch_timing.server_timing.deinit(self.allocator, self.server_timing);
     }
 
     /// A copy with strings of its own (`allocator`).
@@ -1068,6 +1071,8 @@ pub const ResourceTiming = struct {
         copy.content_type = try allocator.dupe(u8, self.content_type);
         errdefer allocator.free(copy.content_type);
         copy.content_encoding = try allocator.dupe(u8, self.content_encoding);
+        errdefer allocator.free(copy.content_encoding);
+        copy.server_timing = try fetch.internal.fetch_timing.server_timing.clone(allocator, self.server_timing);
         return copy;
     }
 
@@ -1091,6 +1096,11 @@ pub const ResourceTiming = struct {
         const content_type = try allocator.dupe(u8, report.body_info.content_type);
         errdefer allocator.free(content_type);
         const content_encoding = try allocator.dupe(u8, report.body_info.content_encoding);
+        errdefer allocator.free(content_encoding);
+        // Server Timing §3.3, Resource Timing's setup: parse the final
+        // response's timing headers. Fetch's opaque timing normally already
+        // has none; retain the TAO guard for full navigation timing too.
+        const server_timing = try fetch.internal.fetch_timing.server_timing.parse(allocator, if (report.timing_allow_passed) timing.server_timing_headers.items else &.{});
         return .{
             .allocator = allocator,
             .url = url,
@@ -1122,6 +1132,7 @@ pub const ResourceTiming = struct {
             .decoded_body_size = report.body_info.decoded_size,
             .content_type = content_type,
             .content_encoding = content_encoding,
+            .server_timing = server_timing,
         };
     }
 };

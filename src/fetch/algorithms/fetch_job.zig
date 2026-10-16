@@ -419,6 +419,18 @@ pub const FetchJob = struct {
         // Record end time
         self.timing_info.end_time = http_fetch.getCurrentTimeMs();
 
+        // Fetch response handover step 2, before either resource reporting
+        // or handing full timing info to navigation. The internal response
+        // still has its headers: consumers apply the response filter later.
+        // Expose in non-secure contexts too, as Fetch permits and Blink does;
+        // reportTiming's opaque timing info removes metrics without TAO.
+        // getDecodeSplit allocates nothing when the header is absent.
+        if (response.response_type != .@"error") {
+            if (response.header_list.getDecodeSplit(self.allocator, "Server-Timing") catch null) |headers| {
+                self.timing_info.server_timing_headers = .{ .items = @constCast(headers), .capacity = headers.len };
+            }
+        }
+
         // Fetch response handover step 4: the report timing steps.
         self.reportTiming(response);
 
