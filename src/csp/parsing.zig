@@ -88,7 +88,8 @@ pub fn parseSerializedCSP(
 
             var value_tokens = std.mem.tokenizeAny(u8, value_part, ascii_whitespace);
             while (value_tokens.next()) |value_token| {
-                const expr = try parseSourceExpression(allocator, value_token);
+                var expr = try parseSourceExpression(allocator, value_token);
+                errdefer expr.deinit();
                 try directive.value.append(expr);
             }
         }
@@ -149,6 +150,7 @@ pub fn parseSourceExpression(
         // Check for nonce ('nonce-xxx')
         if (inner.len > 6 and std.ascii.startsWithIgnoreCase(inner, "nonce-")) {
             var expr = try types.SourceExpression.create(allocator, .nonce, token);
+            errdefer expr.deinit();
             expr.nonce_value = try allocator.dupe(u8, inner[6..]);
             return expr;
         }
@@ -157,18 +159,21 @@ pub fn parseSourceExpression(
         if (inner.len > 7) {
             if (std.ascii.startsWithIgnoreCase(inner, "sha256-")) {
                 var expr = try types.SourceExpression.create(allocator, .hash, token);
+                errdefer expr.deinit();
                 expr.hash_algorithm = try allocator.dupe(u8, "sha256");
                 expr.hash_value = try allocator.dupe(u8, inner[7..]);
                 return expr;
             }
             if (std.ascii.startsWithIgnoreCase(inner, "sha384-")) {
                 var expr = try types.SourceExpression.create(allocator, .hash, token);
+                errdefer expr.deinit();
                 expr.hash_algorithm = try allocator.dupe(u8, "sha384");
                 expr.hash_value = try allocator.dupe(u8, inner[7..]);
                 return expr;
             }
             if (std.ascii.startsWithIgnoreCase(inner, "sha512-")) {
                 var expr = try types.SourceExpression.create(allocator, .hash, token);
+                errdefer expr.deinit();
                 expr.hash_algorithm = try allocator.dupe(u8, "sha512");
                 expr.hash_value = try allocator.dupe(u8, inner[7..]);
                 return expr;
@@ -203,6 +208,7 @@ pub fn parseSourceExpression(
         // no scheme) is not one.
         if (colon_pos == token.len - 1 and isSchemePart(token[0..colon_pos])) {
             var expr = try types.SourceExpression.create(allocator, .scheme, token);
+            errdefer expr.deinit();
             expr.scheme_part = try allocator.dupe(u8, token[0 .. colon_pos + 1]);
             return expr;
         }
