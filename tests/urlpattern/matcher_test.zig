@@ -439,7 +439,8 @@ test "testMatch - relative pathname pattern" {
     const allocator = testing.allocator;
 
     var pattern = try URLPattern.create(allocator, .{
-        .string = "/users/:id/posts/:postId",
+        // Create step 2.2 requires a base for a relative string; use an init.
+        .init = .{ .pathname = "/users/:id/posts/:postId" },
     }, .{});
     defer pattern.deinit(allocator);
 
@@ -544,7 +545,13 @@ test "testMatch - empty pathname" {
     }, .{});
     defer pattern.deinit(allocator);
 
-    try testing.expect(testMatch(allocator, &pattern, "https://example.com", null));
+    // URL matching step 13 parses the URL: its implicit root path is "/".
+    try testing.expect(!testMatch(allocator, &pattern, "https://example.com", null));
+    try testing.expect(urlpattern.testMatchInput(allocator, &pattern, .{ .init = .{
+        .protocol = "https",
+        .hostname = "example.com",
+        .pathname = "",
+    } }, null));
 }
 
 test "testMatch - root pathname" {

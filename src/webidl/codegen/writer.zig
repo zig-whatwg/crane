@@ -4163,7 +4163,7 @@ pub const DelegateOptions = struct {
     inherited_mixins: []const []const u8 = &inherited_mixins.names,
     /// The file's instances are elements - the reflected target of HTML 2.6.1
     /// - so a [Reflect*] attribute the impl does not implement is reflected
-    /// by `src/webidl/impls/reflection.zig` (see `reflect.zig`). False for
+    /// by `src/dom/reflection.zig` (see `reflect.zig`). False for
     /// anything else, ElementInternals included: its reflected target is its
     /// element's internal content attribute map, not the element's attributes.
     reflect_on_element: bool = false,
@@ -4266,7 +4266,7 @@ pub fn writeDelegateFunctions(
             null;
         defer if (reflection) |r| r.deinit(allocator);
         if (reflection != null and !reflection_declared) {
-            try writer.writeAll("    const reflection = @import(\"impls\").reflection;\n\n");
+            try writer.writeAll("    const reflection = @import(\"dom\").reflection;\n\n");
             reflection_declared = true;
         }
 

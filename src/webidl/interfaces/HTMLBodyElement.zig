@@ -456,7 +456,7 @@ pub const HTMLBodyElement = struct {
         try event_handlers.setValue(EventHandler, instance, "onorientationchange", value);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {

@@ -1335,29 +1335,7 @@ pub fn get_mediaKeys(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null;
 }
 
-pub fn get_onencrypted(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-pub fn get_onwaitingforkey(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 pub fn set_disableRemotePlayback(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-pub fn set_onencrypted(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-pub fn set_onwaitingforkey(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

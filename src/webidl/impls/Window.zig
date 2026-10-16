@@ -1384,24 +1384,6 @@ pub fn get_originAgentCluster(instance: *runtime.Instance) anyerror!bool {
     );
 }
 
-/// Getter for ondeviceorientation
-pub fn get_ondeviceorientation(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for ondeviceorientationabsolute
-pub fn get_ondeviceorientationabsolute(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for ondevicemotion
-pub fn get_ondevicemotion(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for viewport
 pub fn get_viewport(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
@@ -1480,28 +1462,10 @@ pub fn get_orientation(instance: *runtime.Instance) anyerror!i16 {
     return error.NotImplemented;
 }
 
-/// Getter for onorientationchange
-pub fn get_onorientationchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Getter for sharedStorage
 pub fn get_sharedStorage(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
-}
-
-/// Getter for onappinstalled
-pub fn get_onappinstalled(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for onbeforeinstallprompt
-pub fn get_onbeforeinstallprompt(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
 }
 
 /// Getter for external
@@ -1831,48 +1795,6 @@ pub fn set_opener(instance: *runtime.Instance, value: runtime.JSValue) anyerror!
     }
     // Non-null assignments are silently ignored per browser behavior
     // (The attribute is technically settable but browsers don't honor non-null values)
-}
-
-/// Setter for ondeviceorientation
-pub fn set_ondeviceorientation(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for ondeviceorientationabsolute
-pub fn set_ondeviceorientationabsolute(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for ondevicemotion
-pub fn set_ondevicemotion(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onorientationchange
-pub fn set_onorientationchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onappinstalled
-pub fn set_onappinstalled(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for onbeforeinstallprompt
-pub fn set_onbeforeinstallprompt(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
 }
 
 // ============================================================================

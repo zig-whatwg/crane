@@ -207,7 +207,14 @@ no list to edit. So a test file shares its process with its directory's other
 files: never assume yours is the first to start V8, initialise a per-thread
 manager, leave no isolate entered, or set a V8 flag (V8 freezes its flags when
 it starts; setting one after is a fatal CHECK). A test that needs a fresh
-per-thread state runs its body on a `std.Thread` of its own. One file alone,
+per-thread state runs its body on a `std.Thread` of its own. A race test
+between Browsers on different threads gives each Browser its own leak-checking
+`std.heap.DebugAllocator(.{ .stack_trace_frames = 0 })` instead of the shared
+`std.testing.allocator`: the shared one's lock and per-allocation stack capture
+make the threads take turns, so the race never happens - a liveclassic race
+that crashed 7/7 with per-Browser allocators passed 6/6 with the shared one
+([lesson](docs/lessons/testing-a-shared-test-allocator-makes-two-browsers-take-turns.md)).
+One file alone,
 for a quick red/green:
 `zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.
 Once per merge round the integrator runs `zig build test -Dtest-isolation=file`

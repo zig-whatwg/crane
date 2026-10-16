@@ -339,7 +339,7 @@ pub const HTMLLabelElement = struct {
         return try HTMLLabelElementImpl.get_form(instance);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect="for"]
     pub fn get_htmlFor(instance: *runtime.Instance) anyerror!DOMString {

@@ -405,7 +405,7 @@ pub const HTMLTrackElement = struct {
         try HTMLTrackElementImpl.set_kind(instance, value);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {

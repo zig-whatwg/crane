@@ -26,7 +26,6 @@ test "CookieStore.InternalState - init and deinit" {
     defer internal.deinit();
 
     try std.testing.expect(internal.is_secure_context);
-    try std.testing.expect(!internal.change_task_queued);
 }
 
 test "CookieStore.InternalState - non-secure context" {

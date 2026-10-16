@@ -33,40 +33,60 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for value
+/// HTML 4.10.14, gauge derivation: parse the attribute before applying its
+/// dependent default and bounds. Borrow only for this synchronous parse.
+fn number(instance: *runtime.Instance, comptime name: []const u8) ?f64 {
+    const dom = @import("dom");
+    const data = dom.element_data.of(instance) orelse return null;
+    const attribute = dom.element_data.getAttributeByNamespaceAndLocalName(data, null, name) orelse return null;
+    return dom.reflection.parseFloatingPoint(attribute.value);
+}
+
+fn clamp(value: f64, minimum: f64, maximum: f64) f64 {
+    if (value < minimum) return minimum;
+    if (value > maximum) return maximum;
+    return value;
+}
+
+/// Gauge derivation, third point: actual value, default zero, within bounds.
 pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    return clamp(number(instance, "value") orelse 0, try get_min(instance), try get_max(instance));
 }
 
-/// Getter for min
+/// Gauge derivation, first point: minimum, default zero.
 pub fn get_min(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    return number(instance, "min") orelse 0;
 }
 
-/// Getter for max
+/// Gauge derivation, second point: maximum, default one, at least minimum.
 pub fn get_max(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const minimum = try get_min(instance);
+    const candidate = number(instance, "max") orelse 1;
+    return if (candidate < minimum) minimum else candidate;
 }
 
-/// Getter for low
+/// Gauge derivation, fourth point: low, default minimum, within bounds.
 pub fn get_low(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const minimum = try get_min(instance);
+    return clamp(number(instance, "low") orelse minimum, minimum, try get_max(instance));
 }
 
-/// Getter for high
+/// Gauge derivation, fifth point: high, default maximum, between low and max.
 pub fn get_high(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const maximum = try get_max(instance);
+    return clamp(number(instance, "high") orelse maximum, try get_low(instance), maximum);
 }
 
-/// Getter for optimum
+/// Gauge derivation, sixth point: optimum, default midpoint, within bounds.
 pub fn get_optimum(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const minimum = try get_min(instance);
+    const maximum = try get_max(instance);
+    // WebKit HTMLMeterElement::optimum uses std::midpoint. Halving only
+    // when the sum overflows keeps finite bounds finite without losing an
+    // equal subnormal range to two underflows.
+    const sum = minimum + maximum;
+    const midpoint = if (std.math.isInf(sum)) minimum / 2 + maximum / 2 else sum / 2;
+    return clamp(number(instance, "optimum") orelse midpoint, minimum, maximum);
 }
 
 /// Getter for labels

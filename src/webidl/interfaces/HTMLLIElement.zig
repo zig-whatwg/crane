@@ -331,7 +331,7 @@ pub const HTMLLIElement = struct {
         return try HTMLLIElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_value(instance: *runtime.Instance) anyerror!i32 {

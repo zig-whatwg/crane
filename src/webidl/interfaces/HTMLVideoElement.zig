@@ -404,7 +404,7 @@ pub const HTMLVideoElement = struct {
         return try HTMLVideoElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_width(instance: *runtime.Instance) anyerror!u32 {

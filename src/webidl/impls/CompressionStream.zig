@@ -69,7 +69,13 @@ fn transform(raw: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance, c
         bytes: ?[]u8 = null,
         fn run(data: ?*anyopaque) engine.Error!void {
             const self: *@This() = @ptrCast(@alignCast(data.?));
-            self.bytes = (try engine.getCopyOfBufferSourceBytes(self.realm, self.chunk, self.realm.allocator)) orelse return error.TypeError;
+            // Compression §4, compress-and-enqueue step 1: a shared view
+            // is not a BufferSource. Keep this non-pending TypeError local
+            // so the stream can explain the rejected chunk below.
+            self.bytes = engine.getCopyOfBufferSourceBytes(self.realm, self.chunk, self.realm.allocator) catch |err| switch (err) {
+                error.TypeError => null,
+                else => return err,
+            };
         }
     };
     var copy: Copy = .{ .realm = realm.ctx, .chunk = chunk.value };
@@ -77,8 +83,11 @@ fn transform(raw: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance, c
         defer thrown.release();
         return realm.promiseRejectedWith(.{ .realm = realm.ctx, .value = thrown.value });
     }
-    defer realm.ctx.allocator.free(copy.bytes.?);
-    return push(codec, realm, controller, copy.bytes.?, false);
+    // Step 1 rejects both non-buffer values and shared buffer views. An
+    // actual thrown value above remains unchanged (Streams §9.3 step 5.1).
+    const bytes = copy.bytes orelse return realm.promiseRejectedWithTypeError("CompressionStream chunk must be a BufferSource backed by a non-shared ArrayBuffer");
+    defer realm.ctx.allocator.free(bytes);
+    return push(codec, realm, controller, bytes, false);
 }
 
 fn flush(raw: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance) js.Error!js.Value {

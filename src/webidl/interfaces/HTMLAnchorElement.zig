@@ -476,7 +476,7 @@ pub const HTMLAnchorElement = struct {
         return try HTMLAnchorElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_target(instance: *runtime.Instance) anyerror!DOMString {

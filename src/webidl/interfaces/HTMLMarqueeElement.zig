@@ -385,7 +385,7 @@ pub const HTMLMarqueeElement = struct {
         return try HTMLMarqueeElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_behavior(instance: *runtime.Instance) anyerror!DOMString {

@@ -613,7 +613,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_accept(instance: *runtime.Instance) anyerror!DOMString {

@@ -170,9 +170,11 @@ pub fn generateRegexAndNameList(
         }
 
         // Matching group part - add name to list
-        const name_copy = try allocator.alloc(u8, part.name.len);
-        @memcpy(name_copy, part.name);
-        try name_list.append(allocator, name_copy);
+        const name_copy = try allocator.dupe(u8, part.name);
+        name_list.append(allocator, name_copy) catch |err| {
+            allocator.free(name_copy);
+            return err;
+        };
 
         // Get the regexp value for this part
         var regexp_value: []const u8 = part.value;
@@ -259,8 +261,11 @@ pub fn generateRegexAndNameList(
     // End anchor
     try result.appendSlice(allocator, "$");
 
+    // These two ownership transfers can allocate independently.
+    const regex = try result.toOwnedSlice(allocator);
+    errdefer allocator.free(regex);
     return RegexGenerationResult{
-        .regex = try result.toOwnedSlice(allocator),
+        .regex = regex,
         .name_list = try name_list.toOwnedSlice(allocator),
         .allocator = allocator,
     };

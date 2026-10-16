@@ -336,7 +336,7 @@ pub const HTMLFontElement = struct {
         return try HTMLFontElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn get_color(instance: *runtime.Instance) anyerror!DOMString {

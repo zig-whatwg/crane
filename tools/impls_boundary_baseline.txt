@@ -62,9 +62,6 @@ src/webidl/impls/ChildNode.zig Node.convertNodesIntoNode 3
 src/webidl/impls/ChildNode.zig Node.removeNodeFromParent 1
 src/webidl/impls/DOMImplementation.zig DocumentType.createDocumentType 2
 src/webidl/impls/DOMParser.zig HTMLParser.parseHTML 1
-src/webidl/impls/DOMStringMap.zig Element.call_getAttribute 1
-src/webidl/impls/DOMStringMap.zig Element.call_removeAttribute 1
-src/webidl/impls/DOMStringMap.zig Element.getInternalState 1
 src/webidl/impls/Document.zig DOMImplementation.setDocument 1
 src/webidl/impls/Document.zig Node.deinitNodeByType 2
 src/webidl/impls/Document.zig Node.setOwnerDocument 8
@@ -85,8 +82,6 @@ src/webidl/impls/HTMLAreaElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLElement.zig CSSStyleDeclaration.initForInlineStyle 1
 src/webidl/impls/HTMLElement.zig DOMStringMap.create 1
 src/webidl/impls/HTMLElement.zig Node.set_textContent 1
-src/webidl/impls/HTMLFormElement.zig Element.getInternal 2
-src/webidl/impls/HTMLFormElement.zig Node.getInternalState 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setSupportedTokens 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.set_value 1
@@ -94,7 +89,7 @@ src/webidl/impls/HTMLIFrameElement.zig Document.call_createElement 3
 src/webidl/impls/HTMLIFrameElement.zig Document.get_defaultView 1
 src/webidl/impls/HTMLIFrameElement.zig Document.setDefaultView 2
 src/webidl/impls/HTMLIFrameElement.zig Document.setDocumentElement 1
-src/webidl/impls/HTMLIFrameElement.zig Element.call_getAttribute 7
+src/webidl/impls/HTMLIFrameElement.zig Element.call_getAttribute 6
 src/webidl/impls/HTMLIFrameElement.zig Element.call_hasAttribute 1
 src/webidl/impls/HTMLIFrameElement.zig Location.setNavigateCallback 1
 src/webidl/impls/HTMLIFrameElement.zig Location.setURLFromString 1
@@ -144,7 +139,6 @@ tests/cookiestore/integration_test.zig CookieStore.queryItems 2
 tests/cookiestore/integration_test.zig CookieStoreManager.CookieSubscription 3
 tests/cookiestore/integration_test.zig CookieStoreManager.InternalState 6
 tests/cookiestore/query_items_test.zig CookieStore.freeItems 6
-tests/cookiestore/query_items_test.zig CookieStore.nameFilter 2
 tests/cookiestore/query_items_test.zig CookieStore.queryItems 6
 tests/dom/characterdata_sso_test.zig CharacterData.INLINE_TEXT_CAPACITY 1
 tests/dom/characterdata_sso_test.zig CharacterData.InternalState 1

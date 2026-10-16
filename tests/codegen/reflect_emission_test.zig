@@ -5,7 +5,7 @@
 //! [ReflectPositiveWithFallback] make an attribute reflect a content attribute,
 //! and HTML 2.6.1 gives the getter and setter steps for its IDL type. So the
 //! generated getter and setter reflect by themselves - through
-//! `src/webidl/impls/reflection.zig` - unless the impl declares its own
+//! `src/dom/reflection.zig` - unless the impl declares its own
 //! function, which then wins: `if (comptime @hasDecl(Impl, "get_x"))`.
 //! [ReflectSetter] reflects on setting only; its getter is the attribute's own
 //! prose, so it is always the impl's.
@@ -50,7 +50,7 @@ test "a [Reflect] DOMString falls back to reflecting its lowercased name when th
     defer buffer.deinit();
     const out = buffer.written();
 
-    try testing.expect(contains(out, "const reflection = @import(\"impls\").reflection;"));
+    try testing.expect(contains(out, "const reflection = @import(\"dom\").reflection;"));
     // Declared ahead of the accessor's doc comment, which stays the getter's.
     try testing.expect(contains(out, "/// Extended attributes: [CEReactions], [Reflect]\n    pub fn get_vAlign("));
     try testing.expect(std.mem.indexOf(u8, out, "const reflection").? < std.mem.indexOf(u8, out, "/// Extended attributes").?);

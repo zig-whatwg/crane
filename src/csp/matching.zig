@@ -254,15 +254,23 @@ fn nextDecoded(s: []const u8, i: *usize) ?u8 {
 // ============================================================================
 
 /// Check if nonce matches any nonce in source list.
-/// Spec: CSP Level 3 § 6.7.2.2
+/// Spec: CSP Level 3 § 6.7.2.3, with the browser-majority whitespace rule.
 pub fn doesNonceMatch(
     nonce: []const u8,
     source_list: *const types.SourceList,
 ) bool {
+    // §6.7.2.3 step 3.1 says identical. Chromium's CSPSourceListAllowNonce
+    // and WebKit's allowInlineScript/allowInlineStyle trim surrounding
+    // whitespace first (scriptnonce-basic-blocked: Chrome/Safari 1/1,
+    // Firefox 0/1, aligned stable WPT cc74d2669f). Use WebKit's five Infra
+    // bytes; VT/non-ASCII whitespace and internal whitespace still differ.
+    const trimmed = std.mem.trim(u8, nonce, "\t\n\x0c\r ");
+    // Step 2: an empty nonce does not match.
+    if (trimmed.len == 0) return false;
     for (source_list.expressions.items) |expr| {
         if (expr.type == .nonce) {
             if (expr.nonce_value) |expr_nonce| {
-                if (std.mem.eql(u8, nonce, expr_nonce)) {
+                if (std.mem.eql(u8, trimmed, expr_nonce)) {
                     return true;
                 }
             }

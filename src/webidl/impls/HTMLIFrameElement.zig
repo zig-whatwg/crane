@@ -4103,20 +4103,7 @@ pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
 /// that fails, the attribute's value as given; "" without one. Owned: the
 /// binding frees what a getter returns.
 pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const ElementImpl = @import("Element.zig");
-    const value = (try ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("src"))) orelse return "";
-    const raw = value.asSlice();
-    if (raw.len == 0) return instance.ctx.allocator.dupe(u8, "");
-    const base = interfaces.Node.get_baseURI(instance) catch return instance.ctx.allocator.dupe(u8, raw);
-    defer instance.ctx.allocator.free(base);
-    const base_arg = if (base.len > 0)
-        webidl.Opt(runtime.USVString).passed(base)
-    else
-        webidl.Opt(runtime.USVString).notPassed();
-    const url = (interfaces.URL.call_static_parse(instance, raw, base_arg) catch null) orelse
-        return instance.ctx.allocator.dupe(u8, raw);
-    defer runtime.Instance.deinit(url);
-    return interfaces.URL.get_href(url);
+    return dom_module.reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
 }
 
 /// Setter for src
@@ -4313,104 +4300,36 @@ pub fn set_allow(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     internal.allow_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
-/// Getter for allowFullscreen
-pub fn get_allowFullscreen(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.allow_fullscreen;
-}
-
-/// Setter for allowFullscreen
-pub fn set_allowFullscreen(instance: *runtime.Instance, value: bool) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    internal.allow_fullscreen = value;
-}
-
-// ============================================================================
-// Dimension Attributes (§4.8.5)
-// ============================================================================
-
-/// Getter for width
-pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.width_attr) |width| {
-        return runtime.DOMString.initInterned(width);
-    }
-    return runtime.DOMString.initInterned("");
-}
-
-/// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.width_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.width_attr = try internal.allocator.dupe(u8, value.asSlice());
-}
-
-/// Getter for height
-pub fn get_height(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.height_attr) |height| {
-        return runtime.DOMString.initInterned(height);
-    }
-    return runtime.DOMString.initInterned("");
-}
-
-/// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.height_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.height_attr = try internal.allocator.dupe(u8, value.asSlice());
-}
-
 // ============================================================================
 // Loading and Security Attributes (§4.8.5)
 // ============================================================================
 
 /// Getter for referrerPolicy
 pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.referrer_policy_attr) |rp| {
-        return runtime.DOMString.initInterned(rp);
-    }
-    return runtime.DOMString.initInterned("");
+    return dom_module.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "referrerpolicy",
+        .keywords = dom_module.reflection.referrer_policy_keywords,
+    });
 }
 
 /// Setter for referrerPolicy
 pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.referrer_policy_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.referrer_policy_attr = try internal.allocator.dupe(u8, value.asSlice());
+    try dom_module.reflection.set(runtime.DOMString, instance, .{ .name = "referrerpolicy" }, value);
 }
 
 /// Getter for loading
 pub fn get_loading(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("eager");
-
-    if (internal.loading_attr) |loading| {
-        return runtime.DOMString.initInterned(loading);
-    }
-    return runtime.DOMString.initInterned("eager");
+    return dom_module.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "loading",
+        .keywords = &.{ "eager", "lazy" },
+        .missing = "eager",
+        .invalid = "eager",
+    });
 }
 
 /// Setter for loading
 pub fn set_loading(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.loading_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.loading_attr = try internal.allocator.dupe(u8, value.asSlice());
+    try dom_module.reflection.set(runtime.DOMString, instance, .{ .name = "loading" }, value);
 }
 
 /// Getter for browsingTopics
@@ -4467,134 +4386,6 @@ pub fn get_adAuctionHeaders(instance: *runtime.Instance) anyerror!bool {
 pub fn set_adAuctionHeaders(instance: *runtime.Instance, value: bool) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     internal.ad_auction_headers = value;
-}
-
-// ============================================================================
-// Legacy Attributes (§4.8.5)
-// ============================================================================
-
-/// Getter for align
-pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.align_attr) |align_val| {
-        return runtime.DOMString.initInterned(align_val);
-    }
-    return runtime.DOMString.initInterned("");
-}
-
-/// Setter for align
-pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.align_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.align_attr = try internal.allocator.dupe(u8, value.asSlice());
-}
-
-/// Getter for scrolling
-pub fn get_scrolling(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.scrolling_attr) |scrolling| {
-        return runtime.DOMString.initInterned(scrolling);
-    }
-    return runtime.DOMString.initInterned("");
-}
-
-/// Setter for scrolling
-pub fn set_scrolling(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.scrolling_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.scrolling_attr = try internal.allocator.dupe(u8, value.asSlice());
-}
-
-/// Getter for frameBorder
-pub fn get_frameBorder(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.frame_border_attr) |fb| {
-        return runtime.DOMString.initInterned(fb);
-    }
-    return runtime.DOMString.initInterned("");
-}
-
-/// Setter for frameBorder
-pub fn set_frameBorder(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.frame_border_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.frame_border_attr = try internal.allocator.dupe(u8, value.asSlice());
-}
-
-/// Getter for longDesc
-/// Returns a newly allocated copy of the longDesc attribute.
-/// The V8 interface layer will free the returned string after converting to V8.
-pub fn get_longDesc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const internal = getInternal(instance) orelse return "";
-
-    if (internal.long_desc_attr) |ld| {
-        // Must dupe - V8 interface layer frees getter results
-        return try internal.allocator.dupe(u8, ld);
-    }
-    return "";
-}
-
-/// Setter for longDesc
-pub fn set_longDesc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.long_desc_attr) |old| {
-        internal.allocator.free(old);
-    }
-    // USVString is []const u8
-    internal.long_desc_attr = try internal.allocator.dupe(u8, value);
-}
-
-/// Getter for marginHeight
-pub fn get_marginHeight(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.margin_height_attr) |mh| {
-        return runtime.DOMString.initInterned(mh);
-    }
-    return runtime.DOMString.initInterned("");
-}
-
-/// Setter for marginHeight
-pub fn set_marginHeight(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.margin_height_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.margin_height_attr = try internal.allocator.dupe(u8, value.asSlice());
-}
-
-/// Getter for marginWidth
-pub fn get_marginWidth(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.margin_width_attr) |mw| {
-        return runtime.DOMString.initInterned(mw);
-    }
-    return runtime.DOMString.initInterned("");
-}
-
-/// Setter for marginWidth
-pub fn set_marginWidth(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.margin_width_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.margin_width_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 // ============================================================================

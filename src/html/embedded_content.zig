@@ -65,7 +65,7 @@ const engine = @import("engine");
 const fetch = @import("fetch");
 const dom = @import("dom");
 const html_core = @import("html_core");
-const encoding_parse = @import("encoding_parse.zig");
+const encoding_parse = dom.encoding_parse;
 const csp = @import("csp");
 const css = @import("css");
 

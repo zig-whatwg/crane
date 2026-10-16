@@ -210,7 +210,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Install the association hook once, at process startup.
 pub fn installHooks() void {
-    dom.selection.install(.{ .bind_document = &bindDocument, .range_mutated = &rangeMutated });
+    dom.selection.install(.{ .bind_document = &bindDocument, .range_mutated = &rangeMutated, .schedule_change = &scheduleSelectionchange });
 }
 
 fn rangeMutated(selection: *runtime.Instance, range: *runtime.Instance, containers_changed: bool) void {
@@ -518,41 +518,41 @@ pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instan
 /// Note: Layout-dependent granularities (line, lineboundary) require a LayoutBackend.
 /// This implementation supports character and word granularity without layout.
 pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMString), direction: webidl.Opt(runtime.DOMString), granularity: webidl.Opt(runtime.DOMString)) anyerror!void {
-    // Must have a selection to modify
-    if (try get_focusNode(instance) == null) {
-        return; // No selection, nothing to modify
-    }
+    // Selection API modify steps 1-3: only ASCII case-insensitive matches
+    // are accepted; omitted arguments have no valid keyword default.
+    // Blink DomSelection::modify (core/editing/dom_selection.cc) validates
+    // these same keywords before consulting layout or moving the selection.
+    const alter_slice = if (alter.was_passed) alter.value.asSlice() else "";
+    const is_extend = std.ascii.eqlIgnoreCase(alter_slice, "extend");
+    if (!is_extend and !std.ascii.eqlIgnoreCase(alter_slice, "move")) return;
+    const direction_slice = if (direction.was_passed) direction.value.asSlice() else "";
+    const is_forward = std.ascii.eqlIgnoreCase(direction_slice, "forward") or std.ascii.eqlIgnoreCase(direction_slice, "right");
+    if (!is_forward and !std.ascii.eqlIgnoreCase(direction_slice, "backward") and !std.ascii.eqlIgnoreCase(direction_slice, "left")) return;
+    const granularity_slice = if (granularity.was_passed) granularity.value.asSlice() else "";
+    const valid_granularity = for ([_][]const u8{ "character", "word", "sentence", "line", "paragraph", "lineboundary", "sentenceboundary", "paragraphboundary", "documentboundary" }) |keyword| {
+        if (std.ascii.eqlIgnoreCase(granularity_slice, keyword)) break true;
+    } else false;
+    if (!valid_granularity) return;
 
-    // Parse alter parameter (default: "move")
-    const alter_slice = if (alter.was_passed) alter.value.asSlice() else "move";
-    const is_extend = std.mem.eql(u8, alter_slice, "extend");
-
-    // Parse direction parameter (default: "forward")
-    const direction_slice = if (direction.was_passed) direction.value.asSlice() else "forward";
-    const is_forward = std.mem.eql(u8, direction_slice, "forward") or std.mem.eql(u8, direction_slice, "right");
-
-    // Parse granularity parameter (default: "character")
-    const granularity_slice = if (granularity.was_passed) granularity.value.asSlice() else "character";
-
-    // Get the current focus position
-    const focus_node = (try get_focusNode(instance)).?;
+    // Step 4: an empty selection is unchanged.
+    const focus_node = (try get_focusNode(instance)) orelse return;
     const focus_offset = try get_focusOffset(instance);
 
     // Determine new position based on granularity
     var new_node = focus_node;
     var new_offset: u32 = 0;
 
-    if (std.mem.eql(u8, granularity_slice, "character")) {
+    if (std.ascii.eqlIgnoreCase(granularity_slice, "character")) {
         // Move by one character
         const result = try moveByCharacter(focus_node, focus_offset, is_forward);
         new_node = result.node;
         new_offset = result.offset;
-    } else if (std.mem.eql(u8, granularity_slice, "word")) {
+    } else if (std.ascii.eqlIgnoreCase(granularity_slice, "word")) {
         // Move by one word
         const result = try moveByWord(focus_node, focus_offset, is_forward);
         new_node = result.node;
         new_offset = result.offset;
-    } else if (std.mem.eql(u8, granularity_slice, "documentboundary")) {
+    } else if (std.ascii.eqlIgnoreCase(granularity_slice, "documentboundary")) {
         // Move to document boundary
         const result = try moveToDocumentBoundary(focus_node, is_forward);
         new_node = result.node;
