@@ -896,12 +896,13 @@ pub fn executeTests(
         if (result_stream) |*rs| try rs.writeResults(report.resultsSince(file_first));
         if (run_journal) |*j| try tally.record(j, test_file.path, currentAgent(browser));
 
-        // A file that timed out may have left state behind that the next
-        // file would run into - a service worker whose install never
+        // A file that timed out or errored may have left state behind that
+        // the next file would run into - a service worker whose install never
         // settles holds its scope's job queue for the Browser's life. Do what
         // wptrunner does after an unexpected result (it restarts the browser;
-        // Crane keeps no expectations, so every TIMEOUT is unexpected): end
-        // this Browser and start the next file with a fresh one.
+        // Crane keeps no expectations, so every TIMEOUT and every ERROR is
+        // unexpected): end this Browser and start the next file with a fresh
+        // one.
         if (tally.status.restartsBrowser()) {
             browser.deinit();
             browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root);
