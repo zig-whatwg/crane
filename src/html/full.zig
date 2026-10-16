@@ -292,6 +292,9 @@ pub const user_activation = @import("user_activation.zig");
 // "same origin-domain" between the entry settings object and a Window (the
 // Location interface's security check).
 pub const origin_domain = @import("origin_domain.zig");
+/// HTML 8.1.3.5 "secure context" for a Window and a worker global scope, as
+/// the browsers decide it.
+pub const secure_context = @import("secure_context.zig");
 /// HTML 6.6 focus: focusable areas, the focusing steps, activeElement.
 pub const focus = @import("focus.zig");
 pub const tables = @import("tables.zig");
