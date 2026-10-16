@@ -581,13 +581,19 @@ fn prepareHandshakeRequest(instance: *runtime.Instance, connection: *WebSocketCo
         defer client.deinit();
         try fetch.internal.populateRequestFromClient(request, client.request);
     }
+    // Main fetch step 4: report-only checks precede either upgrade.
+    // Deviation: report the constructor's WS(S) URL, while matching the
+    // HTTP(S) handshake URL. Chrome, Firefox and Safari all report ws/wss
+    // in blockeduri-ws-wss-scheme.html (aligned stable cc74d2669f, runs
+    // 6218298311311360, 4877098740350976, 5164107446878208; row 46 Q14).
+    fetch.algorithms.csp_check.reportViolationsForRequestWithOptions(request, .{ .report_url = url });
     // Main fetch steps 5/6: UIR precedes Mixed Content's upgrade. Reuse the
     // same operation and client-policy predicate as ordinary Fetch.
     try fetch.algorithms.main_fetch.upgradeRequestToPotentiallyTrustworthyUrl(request);
     try fetch.mixed_content.upgradeRequest(request);
     // Main fetch step 7: CSP (connect-src) and Mixed Content see the same
     // final URL. The request carries the client's violation reporter.
-    if (fetch.algorithms.csp_check.shouldRequestBeBlocked(request)) return false;
+    if (fetch.algorithms.csp_check.shouldRequestBeBlockedWithOptions(request, .{ .report_url = url })) return false;
     if (try fetch.mixed_content.shouldBlockRequest(request)) return false;
 
     // "Obtain a WebSocket connection" uses the request's current URL. Map

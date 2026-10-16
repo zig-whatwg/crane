@@ -71,8 +71,20 @@ pub fn requestOf(request: *const InternalRequest) csp.request_check.Request {
 /// reported to the request's client. A request still on "client" (none
 /// populated it) has none, and nothing blocks it.
 pub fn shouldRequestBeBlocked(request: *const InternalRequest) bool {
+    return shouldRequestBeBlockedWithOptions(request, .{});
+}
+
+/// A caller may report a protocol URL distinct from the Fetch URL it
+/// checks, as WebSocket does. Borrowed for the synchronous reporting call;
+/// it changes no matching input or request state.
+pub const ReportingOptions = struct {
+    report_url: ?[]const u8 = null,
+};
+
+/// Main fetch step 7, with an optional violation-resource URL.
+pub fn shouldRequestBeBlockedWithOptions(request: *const InternalRequest, options: ReportingOptions) bool {
     const container = checkedContainer(request) orelse return false;
-    var reporting: RequestReporting = .{ .url = request.getUrl(), .client = request.csp_violation_reporter };
+    var reporting: RequestReporting = .{ .url = options.report_url orelse request.getUrl(), .client = request.csp_violation_reporter };
     return csp.request_check.shouldRequestBeBlocked(&container.csp_list, requestOf(request), reporting.reporter()) == .blocked;
 }
 
@@ -80,9 +92,14 @@ pub fn shouldRequestBeBlocked(request: *const InternalRequest) bool {
 /// request" (CSP 4.1.1): each report-only policy the request violates is
 /// reported to the request's client; nothing is blocked.
 pub fn reportViolationsForRequest(request: *const InternalRequest) void {
+    reportViolationsForRequestWithOptions(request, .{});
+}
+
+/// Main fetch step 4, with an optional violation-resource URL.
+pub fn reportViolationsForRequestWithOptions(request: *const InternalRequest, options: ReportingOptions) void {
     const container = checkedContainer(request) orelse return;
     if (request.csp_violation_reporter == null) return;
-    var reporting: RequestReporting = .{ .url = request.getUrl(), .client = request.csp_violation_reporter };
+    var reporting: RequestReporting = .{ .url = options.report_url orelse request.getUrl(), .client = request.csp_violation_reporter };
     csp.request_check.reportViolationsForRequest(&container.csp_list, requestOf(request), reporting.reporter().?);
 }
 
