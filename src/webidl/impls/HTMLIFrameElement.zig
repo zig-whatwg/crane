@@ -1218,8 +1218,10 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     }
     // Step 4's initiatorOriginSnapshot, for a javascript: URL, whose
     // navigation compares it (step 4 of "navigate to a javascript: URL") and
-    // gives it to its document (step 8): the source document's origin, held.
-    if (navigate_steps.isJavascript(url)) {
+    // gives it to its document (step 8), and for about:blank, whose document
+    // takes it ("determining the origin" step 2): the source document's
+    // origin, held.
+    if (navigate_steps.isJavascript(url) or (options.srcdoc == null and navigate_steps.matchesAboutBlank(url))) {
         if (options.source_document) |source| {
             if (dom_module.document_origin.shareable(source) catch null) |origin| record.initiator_origin = origin.retain();
         }
@@ -2364,6 +2366,12 @@ fn navigationParamsOriginRecord(
     if (responseSandboxesOrigin(allocator, response, url)) return OriginRecord.create(allocator, "null") catch null;
     const bc = integration.browsing_context orelse return null;
     const sandboxed = if (bc.sandbox_flags) |flags| flags.sandboxesSameOrigin() else false;
+    if (!sandboxed and record.srcdoc == null and navigate_steps.matchesAboutBlank(url)) {
+        // "Determining the origin" step 2: about:blank's origin is the
+        // initiator's - the source document's, which for a popup the opener
+        // navigates is the opener's, not the popup's active document's.
+        if (record.initiator_origin) |initiator| return initiator.retain();
+    }
     if (!sandboxed and (record.srcdoc != null or navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url))) {
         const container_document: ?*runtime.Instance = if (integration.iframe_element) |element|
             (interfaces.Node.get_ownerDocument(@ptrCast(@alignCast(element))) catch null)

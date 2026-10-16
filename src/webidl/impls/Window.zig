@@ -417,12 +417,15 @@ fn effectiveOrigin(instance: *runtime.Instance, internal: *InternalState) []cons
     const document = internal.document orelse return internal.origin;
     // A Window's origin is its associated Document's (HTML 7.1.6: the
     // relevant settings object's origin is the document's). A document made
-    // with an origin of known serialization - a new opaque origin for a
-    // network error's document or a sandboxed one, its creator's for
-    // about:blank - says so in its origin record; only a document still
-    // deriving its own (the record unresolved) derives it from its URL here.
+    // with a new opaque origin - a network error's document (a frame blocked
+    // by frame-ancestors), one its response's CSP sandboxes - says so in its
+    // origin record, whatever its URL. Only an opaque record decides here: a
+    // tuple origin is still derived as below, because records shared from an
+    // active document or resolved early are not yet exact for every
+    // inheriting document (a popup's about:blank, an object's), and the URL
+    // and creation origin answer those as before.
     if (@import("dom").document_origin.record(document)) |record| {
-        if (record.serialized) |serialized| return serialized;
+        if (record.isOpaque()) return "null";
     }
     const url = interfaces.Document.get_URL(document) catch return internal.origin;
     // The getter clones into the document's context allocator.
@@ -1459,17 +1462,16 @@ pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return cookie_store_instance;
     }
 
-    // Check SecureContext requirement (until [SecureContext] exposure hides
-    // the attribute in a non-secure context).
-    if (!secureContext(instance, 0)) {
-        return error.SecurityError;
-    }
-
-    // Create the CookieStore WebIDL instance
+    // Create the CookieStore WebIDL instance. In a non-secure context the
+    // attribute is not exposed at all ([SecureContext]); until that exposure
+    // lands, its getter answers - throwing here broke every page that reads
+    // each property of `window` (webidl/ecmascript-binding/
+    // attributes-accessors-unique-function-objects.html) - and the store's
+    // operations reject.
     const cookie_store_instance = interfaces.CookieStore.initWith(
         internal.allocator,
         instance.ctx,
-        .{ .is_secure_context = true },
+        .{ .is_secure_context = secureContext(instance, 0) },
     ) catch {
         return error.OutOfMemory;
     };
