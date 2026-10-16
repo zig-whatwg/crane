@@ -12,13 +12,11 @@
 //! ```zig
 //! const selector = @import("selector");
 //!
-//! // Tokenize
-//! var tokenizer = selector.Tokenizer.init(allocator, "div.container");
-//! const token = try tokenizer.nextToken();
-//!
-//! // Parse (coming soon in Phase 2)
-//! // Match (coming soon in Phase 3)
+//! var list = try selector.parse(allocator, "div.container");
+//! defer list.deinit();
 //! ```
+//!
+//! Matching against the DOM's platform objects is src/dom/selector_matching.zig.
 
 pub const tokenizer = @import("tokenizer.zig");
 pub const Tokenizer = tokenizer.Tokenizer;
@@ -26,6 +24,13 @@ pub const Token = tokenizer.Token;
 
 pub const parser = @import("parser.zig");
 pub const Parser = parser.Parser;
+/// Selectors 4 17.1 "parse a selector".
+pub const parse = parser.parseSelectorList;
+pub const ParserError = parser.ParserError;
+pub const NamespaceConstraint = parser.NamespaceConstraint;
+pub const AttributeCase = parser.AttributeCase;
+pub const Direction = parser.Direction;
+pub const isHtmlCaseInsensitiveValueAttribute = parser.isHtmlCaseInsensitiveValueAttribute;
 pub const SelectorList = parser.SelectorList;
 pub const ComplexSelector = parser.ComplexSelector;
 pub const CompoundSelector = parser.CompoundSelector;

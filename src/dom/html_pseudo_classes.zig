@@ -37,6 +37,10 @@ pub const Kind = union(enum) {
     dir_ltr,
     dir_rtl,
     heading: u6,
+    /// HTML 4.16.3 :hover and :active, through the states a Document keeps
+    /// for them (dom.pointer_states).
+    hover,
+    active,
 };
 pub const Implementation = struct {
     matches: *const fn (*runtime.Instance, Kind) bool,

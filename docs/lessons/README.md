@@ -297,6 +297,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A task taken from a sink runs outside every realm until it enters one](architecture-a-task-from-a-sink-runs-outside-every-realm.md) - A sink's task is not in any realm. Before it touches the engine, enter its realm with `runTaskInRealm` - and test the worker case, since the window loop hides the mistake.
 
 ### Spec Compliance
+- [Parse selectors over CSS tokens, not characters](spec-compliance-parse-selectors-over-css-tokens.md) - A selector is a CSS grammar over CSS tokens: tokenize per CSS Syntax 3 first, and validity questions answer themselves.
+- [:hover and :active follow the engines' observable rules](spec-compliance-user-action-pseudo-classes-follow-the-engines.md) - For user-action state, read each subtest's browser result before applying the prose: the engines' narrower rules are what WPT checks.
 - [A form's past names go at the change of owner, and insertBefore is one](spec-compliance-past-names-go-at-the-owner-change.md) - A rule keyed on a change of a computed value needs the change, not a later comparison - and a remove-then-insert is two changes even when the value ends where it began.
 - [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
 - [Cookie normalization precedes validation](spec-compliance-cookie-normalization-precedes-validation.md) - Normalize before validation and distinguish empty names from omitted filters.
@@ -471,6 +473,8 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Testing
 - [Only state made natively can be orphaned - a wrap reaches up to the root](testing-only-state-made-natively-can-be-orphaned.md) - An orphan is a subtree script never touched: reproduce an orphan leak with state the engine makes on its own, first with state made at parse time; reading the node from script wraps it and every ancestor.
+- [Crane tests are not in the wptreport stream](testing-crane-tests-are-not-in-the-wptreport-stream.md) - A wptreport query proves nothing about crane/ files: check their journal records.
+- [A key pressed by one Actions source is not released by another](testing-a-key-pressed-by-one-actions-source-is-not-released-by-another.md) - Press and release a key from the same named source; an unnamed Actions() never releases what another pressed.
 - [A named interceptor changes ordinary property reads](testing-a-named-interceptor-changes-ordinary-property-reads.md) - The cost of registering an interceptor includes ordinary operations that fall through it. Exercise those operations explicitly.
 - [A failed assertion can hide a later operation](testing-a-failed-assertion-can-hide-a-later-operation.md) - Coverage follows executed operations, not assertions written below an earlier failure.
 - [A passing parent test may omit the popup assertion](testing-a-passing-parent-test-may-omit-the-popup-assertion.md) - A browser result proves only the assertions it actually reports.
@@ -583,6 +587,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A file that times out leaves state the next file inherits](testing-a-file-that-times-out-leaves-state-the-next-file-inherits.md) - When a runner shares one browser across files, a file that times out is the one most likely to leave state behind. Restart after it, as wptrunner does, and test that the browser's end copes with whatever a stuck file can leave.
 
 ### Debugging
+- [A per-call allocation in a lonely size class maps a page every call](debugging-a-per-call-allocation-in-a-lonely-size-class-maps-a-page.md) - Count allocations AND look at where they land: a per-call allocation that empties a DebugAllocator page costs a syscall pair; put call-lifetime data on the stack.
 
 - [A Range oracle can overflow on contradictory node order](debugging-range-oracle-stack-overflow-can-start-in-node-order.md) - Check oracle dependencies and native ordering antisymmetry before replacing a correct Range helper.
 - [A pull inflater needs short-input and block-transition tests](debugging-a-pull-inflater-needs-short-input-and-block-transition-tests.md) - Test streaming adapters at interrupted operations and block transitions with external data.

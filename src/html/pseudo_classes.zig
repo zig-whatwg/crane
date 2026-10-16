@@ -11,9 +11,13 @@ const Instance = runtime.Instance;
 
 pub fn matches(element: *Instance, which: Kind) bool {
     // Directionality is defined for every namespace; only HTML has dir.
+    // :hover and :active match any element (a flat-tree ancestor of what the
+    // pointer designates can be SVG or MathML).
     switch (which) {
         .dir_ltr => return forms.directionality(element) == .ltr,
         .dir_rtl => return forms.directionality(element) == .rtl,
+        .hover => return userActionMatches(element, &.{.hovered}),
+        .active => return userActionMatches(element, &.{ .pointed, .activated }),
         else => {},
     }
     if (element.stateAs(interfaces.HTMLElement.State) == null) return false;
@@ -52,8 +56,52 @@ pub fn matches(element: *Instance, which: Kind) bool {
             (interfaces.HTMLMediaElement.get_networkState(element) catch 0) == interfaces.HTMLMediaElement.get_NETWORK_LOADING() and
             (interfaces.HTMLMediaElement.get_readyState(element) catch 5) <= interfaces.HTMLMediaElement.get_HAVE_CURRENT_DATA(),
         .heading => |levels| heading(element, levels),
-        .dir_ltr, .dir_rtl => unreachable,
+        .dir_ltr, .dir_rtl, .hover, .active => unreachable,
     };
+}
+
+/// HTML 4.16.3. :hover matches the element the user designates with a
+/// pointing device; :active an element being activated - being actively
+/// pointed at, or in a formal activation state. "Per the definition in
+/// Selectors", each also matches the flat-tree ancestors of such an
+/// element, and "any element that is the labeled control of a label
+/// element that is currently matching" it does too. Disabled elements are
+/// no exception (html/semantics/selectors/pseudo-classes/active-disabled.html:
+/// a pressed disabled button, its label, its child, a disabled input and
+/// textarea all make the control :active - PASS in all three engines at
+/// wpt.fyi cc74d2669f).
+///
+/// Deviation: an element in a formal activation state (a button held by
+/// Space) is :active alone - its ancestors are not. Chrome and Safari pass
+/// html/semantics/forms/the-button-element/active-onblur.html, whose
+/// `querySelector(':active')` must find the button, not the html element
+/// above it (Firefox fails it); Blink's KeyboardClickableInputTypeView sets
+/// the element's own active flag, outside the document's active chain.
+fn userActionMatches(element: *Instance, states: []const dom.pointer_states.State) bool {
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    for (states) |state| {
+        const designated = dom.pointer_states.get(document, state) orelse continue;
+        if (state == .activated) {
+            if (designated == element) return true;
+            continue;
+        }
+        var current: ?*Instance = designated;
+        while (current) |node| : (current = flatTreeParent(node)) {
+            if (node == element) return true;
+            if (node.stateAs(interfaces.HTMLLabelElement.State) != null and forms.labeledControl(node) == element) return true;
+        }
+    }
+    return false;
+}
+
+/// CSS Scoping: a node's parent in the flat tree - its assigned slot, else
+/// its parent element, a shadow root's host for a shadow tree's top level.
+fn flatTreeParent(node: *Instance) ?*Instance {
+    if (dom.shadow_dom_algorithms.assignedSlotOf(node)) |slot| return slot;
+    const parent = forms.parentOf(node) orelse return null;
+    if (parent.stateAs(interfaces.ShadowRoot.State) != null) return interfaces.ShadowRoot.get_host(parent) catch null;
+    if (!forms.isElement(parent)) return null;
+    return parent;
 }
 
 fn has(element: *Instance, comptime name: []const u8) bool {

@@ -245,6 +245,31 @@ pub fn installHooks() void {
     // The steps other code runs on textareas (each idempotent).
     dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_edit = &userEdit, .editor_text = &editorText });
     dom.teardown_sweeps.install(.element_types, &cleanupAllRemainingInternal);
+    dom.cloning_steps.install(&cloningSteps);
+}
+
+/// HTML 4.10.11: "The cloning steps for textarea elements given node, copy,
+/// and subtree are to propagate the raw value and dirty value flag from node
+/// to copy." They run for every clone (dom.cloning_steps): only a textarea
+/// has a state entry, and one with a clean value has nothing to propagate -
+/// the copy starts clean, tracking its own children.
+///
+/// Beyond the spec's list, Crane's record that the value was last changed
+/// by a user edit (`last_user_edit`, read by tooLong and tooShort) travels
+/// with it: Gecko HTMLTextAreaElement::Clone copies
+/// mLastValueChangeWasInteractive and Blink
+/// TextControlElement::CloneNonAttributePropertiesFrom copies
+/// last_change_was_user_edit_ (html/semantics/selectors/pseudo-classes/
+/// invalid-after-clone.html, PASS in all three at wpt.fyi cc74d2669f).
+fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool) anyerror!void {
+    _ = subtree;
+    const source = StateMap.get(node) orelse return;
+    const raw = source.raw_value orelse return;
+    if (!isTextArea(copy)) return;
+    const last_user_edit = source.last_user_edit;
+    const target = try StateMap.getOrPut(copy);
+    try target.setRawValue(copy.ctx.allocator, raw);
+    target.last_user_edit = last_user_edit;
 }
 
 /// Initialize instance (creates the instance)

@@ -451,7 +451,16 @@ pub fn pointerMove(pointer: *Pointer, target: *Instance, modifiers: Modifiers) v
             }
         }
         pointer.hit = Weak.of(target);
-        if (nodeDocument(target)) |document| pointer.hit_document = Weak.of(document);
+        const left = if (pointer.hit_document) |weak| weak.get() else null;
+        if (nodeDocument(target)) |document| {
+            pointer.hit_document = Weak.of(document);
+            // HTML 4.16.3 :hover: the element the pointing device designates
+            // - set as the element under it changes, before the boundary
+            // events, so their listeners see it. A document the pointer left
+            // designates nothing.
+            if (left) |old_document| if (old_document != document) dom.pointer_states.set(old_document, .hovered, null);
+            dom.pointer_states.set(document, .hovered, target);
+        }
         _ = firePointerEvent(target, "pointerover", pointer, modifiers, -1, 0, previous);
         // Enter events go outermost first.
         var i = new_len - common;
@@ -491,6 +500,15 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     const first = pointer.buttons == 0;
     pointer.buttons |= bit;
     pointer.down_targets[button] = Weak.of(target);
+    // HTML 4.16.3 :active: the element is "being actively pointed at" while
+    // the pointing device is down - any button, disabled or not - and its
+    // flat-tree ancestors with it. Set before pointerdown is dispatched and
+    // whether or not it is cancelled: all three engines match :active
+    // inside pointerdown and mousedown listeners, even after
+    // preventDefault() (css/selectors/active-observable.html and
+    // html/semantics/selectors/pseudo-classes/active-disabled.html, PASS in
+    // all three at wpt.fyi cc74d2669f).
+    if (first) if (nodeDocument(target)) |document| dom.pointer_states.set(document, .pointed, target);
     // HTML 6.4.2: pointerdown from a mouse, and mousedown, are
     // activation-triggering input events; the notification runs before they
     // are dispatched.
@@ -565,6 +583,11 @@ pub fn pointerUp(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     if (pointer.buttons == 0) pointer.compatibility_suppressed = false;
     const target = pointer.currentTarget() orelse return;
     if (pointer.buttons == 0) {
+        // The pointing device is up: nothing is being actively pointed at,
+        // already inside pointerup and mouseup listeners
+        // (css/selectors/active-observable.html, all three engines).
+        if (down) |pressed| if (nodeDocument(pressed)) |document| dom.pointer_states.set(document, .pointed, null);
+        if (nodeDocument(target)) |document| dom.pointer_states.set(document, .pointed, null);
         _ = firePointerEvent(target, "pointerup", pointer, modifiers, @intCast(button), 0, null);
     } else {
         _ = firePointerEvent(target, "pointermove", pointer, modifiers, @intCast(button), 0, null);
@@ -695,11 +718,17 @@ pub fn keyUp(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Modi
     const target = keyTarget(document) orelse return;
     const armed = if (keyboard.space_armed) |weak| weak.get() else null;
     if (isKey(key, " ")) keyboard.space_armed = null;
-    if (!fireKeyboardEvent(target, "keyup", key, modifiers, key.key_code, 0)) return;
+    const released = fireKeyboardEvent(target, "keyup", key, modifiers, key.key_code, 0);
     if (isKey(key, " ")) {
-        if (armed) |element| {
+        if (released) if (armed) |element| {
             if (element == target and isConnected(element)) fireSyntheticClick(element, modifiers);
-        }
+        };
+        // Space's release ends the formal activation state its keydown began
+        // (Blink KeyboardClickableInputTypeView / BaseCheckableInputType;
+        // html/semantics/forms/the-input-element/radio-double-activate-pseudo.html)
+        // - whichever key source pressed it.
+        if (nodeDocument(target)) |d| dom.pointer_states.set(d, .activated, null);
+        if (armed) |element| if (nodeDocument(element)) |d| dom.pointer_states.set(d, .activated, null);
     }
 }
 
@@ -727,6 +756,16 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
     // Tab and Shift+Tab: sequential focus navigation (HTML 6.6.5).
     if (isKey(key, "Tab")) {
         const document = nodeDocument(target) orelse return;
+        // Moving the focus with Tab ends :active - the formal activation
+        // state Space began, and the press of a pointing device still held:
+        // no element matches :active afterwards. Not specified; Chrome and
+        // Safari (html/semantics/forms/the-button-element/active-onblur.html),
+        // all three (the-input-element/checkable-active-onblur.html) and
+        // Chrome and Firefox (checkable-active-onblur-with-click.html) at
+        // wpt.fyi cc74d2669f.
+        dom.pointer_states.set(document, .activated, null);
+        dom.pointer_states.set(document, .pointed, null);
+        keyboard.space_armed = null;
         focus.navigateSequentially(document, if (modifiers.shift) .backward else .forward);
         return;
     }
@@ -754,6 +793,17 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
     if (isKeyboardActivatable(target)) {
         if (isKey(key, " ")) {
             keyboard.space_armed = Weak.of(target);
+            // HTML 4.16.3: a button held by Space is "in a formal activation
+            // state" until its keyup. Space only, on buttons, button-like
+            // inputs, checkboxes and radio buttons: Blink
+            // KeyboardClickableInputTypeView::HandleKeydownEvent and
+            // BaseCheckableInputType::HandleKeydownEvent SetActive(true) for
+            // " " alone (Enter clicks on keypress, with no :active), and
+            // Gecko and WebKit agree (checkable-active-onblur.html passes in
+            // all three). A cancelled keydown, an untrusted one, or a control
+            // its keydown listener disabled never gets here
+            // (checkable-active-space-key-*.html).
+            if (nodeDocument(target)) |document| dom.pointer_states.set(document, .activated, target);
         } else if (isKey(key, "Enter") and !isCheckable(target)) {
             fireSyntheticClick(target, modifiers);
         }

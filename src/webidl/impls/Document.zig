@@ -201,6 +201,12 @@ pub const InternalState = struct {
     /// to the fragment"; initially null. A weak link - the element can be
     /// removed and freed while it is the target (dom.target_element).
     target_element: ?@import("same_object.zig").Link = null,
+    /// HTML 4.16.3: the elements :hover and :active rest on - designated by
+    /// a pointing device, being actively pointed at, in a formal activation
+    /// state (dom.pointer_states). Weak links, like target_element.
+    hovered_element: ?@import("same_object.zig").Link = null,
+    pointed_element: ?@import("same_object.zig").Link = null,
+    activated_element: ?@import("same_object.zig").Link = null,
     /// HTML "will declaratively refresh": the shared declarative refresh
     /// steps have run to step 12 for this document.
     will_declaratively_refresh: bool = false,
@@ -707,6 +713,10 @@ pub fn installHooks() void {
     @import("dom").cloning_steps.install(&cloningSteps);
     // The target element :target matches and "scroll to the fragment" sets.
     @import("dom").target_element.install(.{ .get = &targetElement, .set = &setTargetElement });
+    // The elements :hover and :active rest on (user input sets them), and
+    // the removing steps that pass them on when their element leaves.
+    @import("dom").pointer_states.install(.{ .get = &pointerState, .set = &setPointerState, .get_all = &pointerStates });
+    @import("dom").mutation.registerRemovingStepsCallback(&@import("dom").pointer_states.removingSteps) catch @panic("pointer state removing steps allocation");
     // User input (testdriver lane): the focusing steps designate a document's
     // focused area (src/html/focus.zig), and a top-level traversable's system
     // visibility state updates its documents' visibility state, through these
@@ -868,6 +878,42 @@ fn targetElement(document: *runtime.Instance) ?*runtime.Instance {
 fn setTargetElement(document: *runtime.Instance, element: ?*runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     internal.target_element = if (element) |e| @import("same_object.zig").Link.to(e) else null;
+}
+
+/// dom.pointer_states: `document`'s element for `state`, or null once the
+/// element it names has been freed.
+fn pointerState(document: *runtime.Instance, state: @import("dom").pointer_states.State) ?*runtime.Instance {
+    const internal = getInternal(document) orelse return null;
+    const link = switch (state) {
+        .hovered => internal.hovered_element,
+        .pointed => internal.pointed_element,
+        .activated => internal.activated_element,
+    } orelse return null;
+    return if (link.isLive()) link.instance else null;
+}
+
+/// dom.pointer_states: the three states, in State order, in one read.
+fn pointerStates(document: *runtime.Instance) [3]?*runtime.Instance {
+    const internal = getInternal(document) orelse return .{ null, null, null };
+    const links = [3]?@import("same_object.zig").Link{ internal.hovered_element, internal.pointed_element, internal.activated_element };
+    var out: [3]?*runtime.Instance = .{ null, null, null };
+    for (links, 0..) |maybe, i| {
+        if (maybe) |link| if (link.isLive()) {
+            out[i] = link.instance;
+        };
+    }
+    return out;
+}
+
+/// dom.pointer_states: designate `element` (null: nothing) for `state`.
+fn setPointerState(document: *runtime.Instance, state: @import("dom").pointer_states.State, element: ?*runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    const link: ?@import("same_object.zig").Link = if (element) |e| @import("same_object.zig").Link.to(e) else null;
+    switch (state) {
+        .hovered => internal.hovered_element = link,
+        .pointed => internal.pointed_element = link,
+        .activated => internal.activated_element = link,
+    }
 }
 
 /// dom.focused_area: `document`'s focused area, or null for its viewport.

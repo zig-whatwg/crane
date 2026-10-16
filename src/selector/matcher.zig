@@ -320,7 +320,7 @@ pub const Matcher = struct {
     fn matchesSimpleSelector(self: *const Matcher, element: *Element, simple: *const SimpleSelector) MatcherError!bool {
         return switch (simple.*) {
             .Universal => true,
-            .Type => |type_sel| self.matchesType(element, type_sel.tag_name),
+            .Type => |type_sel| self.matchesType(element, type_sel.tag_name) or self.matchesType(element, type_sel.lower_name),
             .Class => |class_sel| self.matchesClass(element, class_sel.class_name),
             .Id => |id_sel| self.matchesId(element, id_sel.id),
             .Attribute => |*attr_sel| self.matchesAttribute(element, attr_sel),
@@ -363,19 +363,20 @@ pub const Matcher = struct {
     /// Match attribute selector
     fn matchesAttribute(self: *const Matcher, element: *Element, attr_sel: *const AttributeSelector) bool {
         _ = self;
-        const value = element.getAttribute(attr_sel.name) orelse {
+        const case_sensitive = attr_sel.case != .insensitive;
+        const value = element.getAttribute(attr_sel.lower_name) orelse {
             // Attribute not present
             return false;
         };
 
         return switch (attr_sel.matcher) {
             .Presence => true,
-            .Exact => |m| matchAttributeExact(value, m.value, attr_sel.case_sensitive),
-            .Prefix => |m| matchAttributePrefix(value, m.value, attr_sel.case_sensitive),
-            .Suffix => |m| matchAttributeSuffix(value, m.value, attr_sel.case_sensitive),
-            .Substring => |m| matchAttributeSubstring(value, m.value, attr_sel.case_sensitive),
-            .Includes => |m| matchAttributeIncludes(value, m.value, attr_sel.case_sensitive),
-            .DashMatch => |m| matchAttributeDashMatch(value, m.value, attr_sel.case_sensitive),
+            .Exact => |m| matchAttributeExact(value, m.value, case_sensitive),
+            .Prefix => |m| matchAttributePrefix(value, m.value, case_sensitive),
+            .Suffix => |m| matchAttributeSuffix(value, m.value, case_sensitive),
+            .Substring => |m| matchAttributeSubstring(value, m.value, case_sensitive),
+            .Includes => |m| matchAttributeIncludes(value, m.value, case_sensitive),
+            .DashMatch => |m| matchAttributeDashMatch(value, m.value, case_sensitive),
         };
     }
 
@@ -398,8 +399,12 @@ pub const Matcher = struct {
             .Not => |selector_list| !try self.matches(element, selector_list),
             .Is, .Where => |selector_list| try self.matches(element, selector_list),
             .Has => |selector_list| try self.matchesHas(element, selector_list),
-            .Lang => |lang_code| matchesLang(element, lang_code),
-            .Dir => |direction| if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), if (direction == .ltr) .dir_ltr else .dir_rtl) else false,
+            .Lang => |ranges| for (ranges) |range| {
+                if (matchesLang(element, range)) break true;
+            } else false,
+            .Dir => |direction| if (direction == .other) false else if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), if (direction == .ltr) .dir_ltr else .dir_rtl) else false,
+            // Native elements are never in a shadow tree.
+            .Host => false,
             // User action pseudo-classes - not supported in querySelector
             // (these require runtime state tracking)
             .Hover, .Active => false, // Crane has no pointer hover/pressed state.
