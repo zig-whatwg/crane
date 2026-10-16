@@ -456,13 +456,14 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
 
     // Step 23: If init["integrity"] exists
     if (init_opts.integrity) |integrity| {
-        // Set integrity_metadata - we need to dupe since we're storing on the request
+        // Replace the cloned request's owned metadata, including an empty
+        // override. The setter copies before releasing the previous value.
         const integrity_str = switch (integrity) {
             .empty => "",
             .interned => |s| s,
             .owned => |s| s,
         };
-        base_request.integrity_metadata = try ctx.allocator.dupe(u8, integrity_str);
+        try base_request.setIntegrityMetadata(integrity_str);
     }
 
     // Step 24: If init["keepalive"] exists
