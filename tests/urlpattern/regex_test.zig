@@ -293,8 +293,9 @@ test "generateRegexAndNameList - segment wildcard" {
     var result = try generateRegexAndNameList(allocator, parts.items, default_options);
     defer result.deinit();
 
-    // Should contain named group with (?P<foo>...)
-    try testing.expect(std.mem.indexOf(u8, result.regex, "(?P<foo>") != null);
+    // A positional capture group (URLPattern 2.2, step 3.7.1); its name
+    // goes in the separate name list.
+    try testing.expectEqualStrings("^([^]+?)$", result.regex);
     try testing.expectEqual(@as(usize, 1), result.name_list.len);
     try testing.expectEqualStrings("foo", result.name_list[0]);
 }
@@ -328,8 +329,7 @@ test "generateRegexAndNameList - multiple named groups" {
     var result = try generateRegexAndNameList(allocator, parts.items, default_options);
     defer result.deinit();
 
-    try testing.expect(std.mem.indexOf(u8, result.regex, "(?P<foo>") != null);
-    try testing.expect(std.mem.indexOf(u8, result.regex, "(?P<bar>") != null);
+    try testing.expectEqualStrings("^([^]+?)([^]+?)$", result.regex);
     try testing.expectEqual(@as(usize, 2), result.name_list.len);
     try testing.expectEqualStrings("foo", result.name_list[0]);
     try testing.expectEqualStrings("bar", result.name_list[1]);
@@ -350,8 +350,7 @@ test "generateRegexAndNameList - regexp part" {
     var result = try generateRegexAndNameList(allocator, parts.items, default_options);
     defer result.deinit();
 
-    try testing.expect(std.mem.indexOf(u8, result.regex, "(?P<id>") != null);
-    try testing.expect(std.mem.indexOf(u8, result.regex, "\\d+") != null);
+    try testing.expectEqualStrings("^(\\d+)$", result.regex);
 }
 
 // ============================================================================
@@ -596,8 +595,7 @@ test "generateRegexAndNameList - api route pattern" {
     // Verify structure
     try testing.expect(std.mem.startsWith(u8, result.regex, "^"));
     try testing.expect(std.mem.endsWith(u8, result.regex, "$"));
-    try testing.expect(std.mem.indexOf(u8, result.regex, "(?P<version>") != null);
-    try testing.expect(std.mem.indexOf(u8, result.regex, "(?P<id>") != null);
+    try testing.expectEqualStrings("^\\/api\\/v([^]+?)\\/users\\/(\\d+)$", result.regex);
 
     try testing.expectEqual(@as(usize, 2), result.name_list.len);
     try testing.expectEqualStrings("version", result.name_list[0]);

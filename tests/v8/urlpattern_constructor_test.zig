@@ -449,9 +449,10 @@ test "URLPattern.create - components with patterns have compiled regex" {
     }, .{});
     defer pattern.deinit(allocator);
 
-    // Pathname should have a compiled regex
-    try testing.expect(pattern.pathname.regex != null);
-    try testing.expect(pattern.pathname.regex_string.len > 0);
+    // Pathname's regular expression: the generated string, positional
+    try testing.expectEqualStrings("^(?:\\/([^\\/]+?))$", pattern.pathname.regex_string);
+    try testing.expectEqualStrings(pattern.pathname.regex_string, pattern.pathname.regexp.source);
+    try testing.expect(!pattern.pathname.regexp.ignore_case);
 }
 
 // ============================================================================

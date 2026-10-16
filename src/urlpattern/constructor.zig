@@ -11,14 +11,14 @@
 //! ```zig
 //! const constructor = @import("constructor.zig");
 //!
-//! // Create from URL string
-//! var pattern = try constructor.URLPattern.create(allocator, .{
+//! // Create from URL string, compiling its regexps in `realm`
+//! var pattern = try constructor.URLPattern.create(allocator, realm, .{
 //!     .string = "https://example.com/:path",
 //! }, .{});
 //! defer pattern.deinit(allocator);
 //!
 //! // Create from URLPatternInit
-//! var pattern2 = try constructor.URLPattern.create(allocator, .{
+//! var pattern2 = try constructor.URLPattern.create(allocator, realm, .{
 //!     .init = .{
 //!         .protocol = "https",
 //!         .hostname = "*.example.com",
@@ -37,12 +37,13 @@ const parser = @import("parser.zig");
 const regex_generator = @import("regex_generator.zig");
 const canonicalize = @import("canonicalize.zig");
 const constructor_string_parser = @import("constructor_string_parser.zig");
-const pcre2_ffi = @import("pcre2_ffi.zig");
+const regexp_module = @import("regexp.zig");
 
 const URLPatternInit = constructor_string_parser.URLPatternInit;
 const Part = parser.Part;
 const Options = parser.Options;
-const Regex = pcre2_ffi.Regex;
+const Regexp = regexp_module.Regexp;
+const Realm = regexp_module.Realm;
 
 /// Error types for URLPattern construction
 pub const ConstructorError = error{
@@ -52,7 +53,10 @@ pub const ConstructorError = error{
     InvalidPort,
     InvalidPathname,
     DuplicateName,
-    CompilationFailed,
+    /// The engine cannot compile a regular expression (regexp.zig): the
+    /// URLPattern cannot be made. A declared capability gap - the binding
+    /// throws a NotSupportedError.
+    NotSupported,
     OutOfMemory,
 };
 
@@ -60,9 +64,11 @@ pub const ConstructorError = error{
 pub const Component = struct {
     /// The pattern string in canonical form
     pattern_string: []const u8,
-    /// Compiled PCRE2 regex (null until PCRE2 is fully integrated)
-    regex: ?Regex,
-    /// Generated regex string (for debugging/testing)
+    /// The component's regular expression: RegExpCreate(regex_string, "v" or
+    /// "vi") succeeded for it.
+    regexp: Regexp,
+    /// The regular expression string "generate a regular expression and
+    /// name list" made; `regexp` borrows it.
     regex_string: []const u8,
     /// Names of capturing groups in order
     group_names: [][]const u8,
@@ -75,10 +81,6 @@ pub const Component = struct {
     _owned_group_names: ?[][]u8,
 
     pub fn deinit(self: *Component) void {
-        if (self.regex) |*r| {
-            var regex = r;
-            regex.deinit();
-        }
         if (self._owned_pattern_string) |s| self._allocator.free(s);
         if (self._owned_regex_string) |s| self._allocator.free(s);
         if (self._owned_group_names) |names| {
@@ -140,14 +142,20 @@ pub const URLPattern = struct {
     /// Create a new URLPattern
     ///
     /// Spec: https://urlpattern.spec.whatwg.org/#dom-urlpattern-urlpattern
-    pub fn create(allocator: Allocator, input: Input, options: URLPatternOptions) ConstructorError!Self {
-        return createWithBase(allocator, input, null, options);
+    /// `realm` is the one the regular expressions are compiled in (the
+    /// constructor's); BORROWED for the call, never kept.
+    pub fn create(allocator: Allocator, realm: Realm, input: Input, options: URLPatternOptions) ConstructorError!Self {
+        return createWithBase(allocator, realm, input, null, options);
     }
 
-    pub fn createWithBase(allocator: Allocator, input: Input, base_url: ?[]const u8, options: URLPatternOptions) ConstructorError!Self {
+    pub fn createWithBase(allocator: Allocator, realm: Realm, input: Input, base_url: ?[]const u8, options: URLPatternOptions) ConstructorError!Self {
         // Create, steps 1-3: only string input accepts a separate base URL.
         var init = switch (input) {
-            .string => |value| constructor_string_parser.parse(allocator, value) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidPattern,
+            .string => |value| constructor_string_parser.parse(allocator, realm, value) catch |err| return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                error.NotSupported => error.NotSupported,
+                else => error.InvalidPattern,
+            },
             .init => |value| value,
         };
         if (input == .string) {
@@ -169,21 +177,21 @@ pub const URLPattern = struct {
             if (port != null and port.? == default_port and allDigits(init.port.?)) init.port = "";
         }
 
-        var protocol = try compileProtocol(allocator, init.protocol.?);
+        var protocol = try compileProtocol(allocator, realm, init.protocol.?);
         errdefer protocol.deinit();
-        var username = try compileComponent(allocator, init.username.?, .username, false, false);
+        var username = try compileComponent(allocator, realm, init.username.?, .username, false, false);
         errdefer username.deinit();
-        var password = try compileComponent(allocator, init.password.?, .password, false, false);
+        var password = try compileComponent(allocator, realm, init.password.?, .password, false, false);
         errdefer password.deinit();
-        var hostname = try compileComponent(allocator, init.hostname.?, .hostname, false, false);
+        var hostname = try compileComponent(allocator, realm, init.hostname.?, .hostname, false, false);
         errdefer hostname.deinit();
-        var port = try compileComponent(allocator, init.port.?, .port, false, false);
+        var port = try compileComponent(allocator, realm, init.port.?, .port, false, false);
         errdefer port.deinit();
-        var pathname = try compileComponent(allocator, init.pathname.?, .pathname, try protocolMatchesSpecialScheme(&protocol), options.ignore_case);
+        var pathname = try compileComponent(allocator, realm, init.pathname.?, .pathname, try protocolMatchesSpecialScheme(allocator, realm, &protocol), options.ignore_case);
         errdefer pathname.deinit();
-        var search = try compileComponent(allocator, init.search.?, .search, false, options.ignore_case);
+        var search = try compileComponent(allocator, realm, init.search.?, .search, false, options.ignore_case);
         errdefer search.deinit();
-        var hash = try compileComponent(allocator, init.hash.?, .hash, false, options.ignore_case);
+        var hash = try compileComponent(allocator, realm, init.hash.?, .hash, false, options.ignore_case);
         errdefer hash.deinit();
         return .{
             .protocol = protocol,
@@ -237,21 +245,30 @@ const ComponentType = enum {
 };
 
 /// Compile a protocol for both the constructor-string parser and create.
-pub fn compileProtocol(allocator: Allocator, input: []const u8) ConstructorError!Component {
-    return compileComponent(allocator, input, .protocol, false, false);
+pub fn compileProtocol(allocator: Allocator, realm: Realm, input: []const u8) ConstructorError!Component {
+    return compileComponent(allocator, realm, input, .protocol, false, false);
 }
 
-/// Protocol component matches a special scheme, steps 1-2. All consumers use
-/// the compiled regexp; the regexp backend determines its matching semantics.
-pub fn protocolMatchesSpecialScheme(component: *const Component) ConstructorError!bool {
-    const regex = if (component.regex) |*value| @constCast(value) else return false;
+/// "Protocol component matches a special scheme": true when
+/// RegExpBuiltinExec(the component's regular expression, scheme) is not
+/// null for any special scheme (steps 1-3).
+pub fn protocolMatchesSpecialScheme(allocator: Allocator, realm: Realm, component: *const Component) ConstructorError!bool {
+    // 1. Let special scheme list be a list populated with all of the
+    //    special schemes.
+    // 2. For each scheme of special scheme list:
     for ([_][]const u8{ "ftp", "file", "http", "https", "ws", "wss" }) |scheme| {
-        var result = regex.match(scheme) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.CompilationFailed;
-        if (result) |*matched| {
-            matched.deinit();
-            return true;
-        }
+        // 2.1. Let test result be RegExpBuiltinExec(protocol component's
+        //      regular expression, scheme).
+        // 2.2. If test result is not null, then return true.
+        const matched = component.regexp.matches(realm, scheme, allocator) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.NotSupported => error.NotSupported,
+            // `create` compiled this string with these flags already.
+            error.InvalidPattern => error.InvalidPattern,
+        };
+        if (matched) return true;
     }
+    // 3. Return false.
     return false;
 }
 
@@ -283,6 +300,7 @@ fn hasRegexpGroups(parts: []const Part) bool {
 /// Compile a single URL pattern component
 fn compileComponent(
     allocator: Allocator,
+    realm: Realm,
     input: []const u8,
     component_type: ComponentType,
     special_path: bool,
@@ -318,25 +336,26 @@ fn compileComponent(
     };
     // Don't defer deinit - we'll transfer ownership
 
-    // Step 5: Compile the regex (stubbed for now)
-    var regex: ?Regex = null;
-    if (gen_result.regex.len > 0) {
-        regex = Regex.compile(allocator, gen_result.regex, .{
-            .caseless = ignore_case,
-        }) catch {
-            gen_result.deinit();
-            return ConstructorError.CompilationFailed;
+    // Steps 3-6: flags "vi" when options' ignore case is true, else "v";
+    // RegExpCreate(regular expression string, flags), a throw caught and
+    // turned into a TypeError (InvalidPattern, which the binding throws as
+    // one). Evaluated now, so an invalid custom regexp fails construction.
+    const regexp = Regexp.create(realm, gen_result.regex, ignore_case) catch |err| {
+        gen_result.deinit();
+        return switch (err) {
+            error.InvalidPattern => ConstructorError.InvalidPattern,
+            error.NotSupported => ConstructorError.NotSupported,
+            error.OutOfMemory => ConstructorError.OutOfMemory,
         };
-    }
+    };
 
-    // Step 6: Generate pattern string from parts
+    // Step 7: Generate pattern string from parts
     const pattern_string = @import("pattern_string.zig").generate(allocator, parse_result.parts, options) catch {
-        if (regex) |*r| r.deinit();
         gen_result.deinit();
         return ConstructorError.OutOfMemory;
     };
 
-    // Step 7: Check for regexp groups
+    // Steps 8-9: Check for regexp groups
     const has_regexp = hasRegexpGroups(parse_result.parts);
 
     // Transfer ownership of names
@@ -345,7 +364,6 @@ fn compileComponent(
 
     // Build group_names slice that points to owned names
     const group_names_ptrs = allocator.alloc([]const u8, owned_names.len) catch {
-        if (regex) |*r| r.deinit();
         allocator.free(gen_result.regex);
         for (owned_names) |name| allocator.free(name);
         allocator.free(owned_names);
@@ -358,7 +376,7 @@ fn compileComponent(
 
     return Component{
         .pattern_string = pattern_string,
-        .regex = regex,
+        .regexp = regexp,
         .regex_string = gen_result.regex,
         .group_names = group_names_ptrs,
         .has_regexp_groups = has_regexp,
@@ -369,146 +387,6 @@ fn compileComponent(
     };
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "URLPattern.create - simple URL string" {
-    const allocator = std.testing.allocator;
-
-    var pattern = try URLPattern.create(allocator, .{
-        .string = "https://example.com/path",
-    }, .{});
-    defer pattern.deinit(allocator);
-
-    // Protocol should be "https"
-    try std.testing.expectEqualStrings("https", pattern.protocol.pattern_string);
-    // Hostname should be "example.com"
-    try std.testing.expectEqualStrings("example.com", pattern.hostname.pattern_string);
-    // Pathname should be "/path"
-    try std.testing.expectEqualStrings("/path", pattern.pathname.pattern_string);
-}
-
-test "URLPattern.create - URL with named parameter" {
-    const allocator = std.testing.allocator;
-
-    var pattern = try URLPattern.create(allocator, .{
-        .string = "https://example.com/:id",
-    }, .{});
-    defer pattern.deinit(allocator);
-
-    // Protocol should be "https"
-    try std.testing.expectEqualStrings("https", pattern.protocol.pattern_string);
-    // Pathname should have the named parameter
-    try std.testing.expect(std.mem.indexOf(u8, pattern.pathname.pattern_string, ":id") != null or
-        std.mem.indexOf(u8, pattern.pathname.pattern_string, "id") != null);
-}
-
-test "URLPattern.create - from URLPatternInit" {
-    const allocator = std.testing.allocator;
-
-    var pattern = try URLPattern.create(allocator, .{
-        .init = .{
-            .protocol = "https",
-            .hostname = "*.example.com",
-            .pathname = "/api/:version/*",
-        },
-    }, .{});
-    defer pattern.deinit(allocator);
-
-    // Check components
-    try std.testing.expectEqualStrings("https", pattern.protocol.pattern_string);
-    // Hostname should contain the wildcard
-    try std.testing.expect(pattern.hostname.pattern_string.len > 0);
-    // Pathname should have named parameter
-    try std.testing.expect(pattern.pathname.pattern_string.len > 0);
-}
-
-test "URLPattern.create - wildcard patterns" {
-    const allocator = std.testing.allocator;
-
-    var pattern = try URLPattern.create(allocator, .{
-        .string = "*://*/*",
-    }, .{});
-    defer pattern.deinit(allocator);
-
-    // All wildcards should compile
-    try std.testing.expect(pattern.protocol.pattern_string.len > 0);
-    try std.testing.expect(pattern.hostname.pattern_string.len > 0);
-    try std.testing.expect(pattern.pathname.pattern_string.len > 0);
-}
-
-test "URLPattern.create - with search and hash" {
-    const allocator = std.testing.allocator;
-
-    var pattern = try URLPattern.create(allocator, .{
-        .string = "https://example.com/path?:query#:section",
-    }, .{});
-    defer pattern.deinit(allocator);
-
-    // Check that search and hash are captured
-    try std.testing.expect(pattern.search.pattern_string.len > 0);
-    try std.testing.expect(pattern.hash.pattern_string.len > 0);
-}
-
-test "URLPattern.create - relative pathname" {
-    // Create step 2.2: relative strings require a base (WPT vectors 216-217).
-    try std.testing.expectError(error.InvalidPattern, URLPattern.create(std.testing.allocator, .{
-        .string = "/users/:id/posts/:postId",
-    }, .{}));
-}
-
-test "URLPattern.create - ignore_case option" {
-    const allocator = std.testing.allocator;
-
-    var pattern = try URLPattern.create(allocator, .{
-        .string = "https://example.com/path",
-    }, .{ .ignore_case = true });
-    defer pattern.deinit(allocator);
-
-    try std.testing.expect(pattern.ignore_case);
-}
-
-test "Component - has_regexp_groups" {
-    const allocator = std.testing.allocator;
-
-    // Pattern with custom regexp
-    var pattern1 = try URLPattern.create(allocator, .{
-        .init = .{
-            .pathname = "/users/:id(\\d+)",
-        },
-    }, .{});
-    defer pattern1.deinit(allocator);
-
-    try std.testing.expect(pattern1.pathname.has_regexp_groups);
-
-    // Pattern without custom regexp
-    var pattern2 = try URLPattern.create(allocator, .{
-        .init = .{
-            .pathname = "/users/:id",
-        },
-    }, .{});
-    defer pattern2.deinit(allocator);
-
-    try std.testing.expect(!pattern2.pathname.has_regexp_groups);
-}
-
-test "URLPattern.hasRegexpGroups" {
-    const allocator = std.testing.allocator;
-
-    var pattern1 = try URLPattern.create(allocator, .{
-        .init = .{
-            .pathname = "/users/:id(\\d+)",
-        },
-    }, .{});
-    defer pattern1.deinit(allocator);
-
-    try std.testing.expect(pattern1.hasRegexpGroups());
-
-    var pattern2 = try URLPattern.create(allocator, .{
-        .string = "https://example.com/*",
-    }, .{});
-    defer pattern2.deinit(allocator);
-
-    try std.testing.expect(!pattern2.hasRegexpGroups());
-}
+// Constructing a pattern compiles its regexps in an engine, so the tests
+// that construct one live in tests/v8 (urlpattern_constructor_test.zig and
+// urlpattern_corpus_test.zig), where there is one.

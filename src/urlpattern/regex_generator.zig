@@ -4,8 +4,11 @@
 //! from the URLPattern specification.
 //! See: https://urlpattern.spec.whatwg.org/#converting-part-lists-to-regular-expressions
 //!
-//! This module generates PCRE2-compatible regular expressions with named groups
-//! using the (?P<name>...) syntax.
+//! The output is an ECMAScript regular expression for RegExpCreate with "v" or
+//! "vi" (regexp.zig). Its capture groups are positional: group i holds the
+//! value of the name list's entry i - 1, as the spec does it (its note: named
+//! capture groups were judged too risky, and path-to-regexp does not use
+//! them; Chromium's liburlpattern pattern.cc is positional too).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -35,7 +38,7 @@ pub const RegexGenerationResult = struct {
 
 /// Escape special regex characters in a string
 pub fn escapeRegexpString(allocator: Allocator, input: []const u8) ![]u8 {
-    // Characters that need escaping in PCRE2
+    // "Escape a regexp string", step 4.3: the characters a backslash precedes.
     const special_chars = ".+*?^${}()[]|\\/";
 
     // Count how many escape characters we need
@@ -104,24 +107,6 @@ pub fn generateSegmentWildcardRegexp(allocator: Allocator, options: Options) ![]
 /// Full wildcard regexp value
 pub const full_wildcard_regexp = ".*";
 
-/// Convert a URLPattern group name to a valid PCRE2 group name.
-/// PCRE2 requires group names to start with a non-digit character.
-/// URLPattern allows numeric names like "0", "1" for unnamed groups.
-/// We prefix such names with "_" to make them valid PCRE2 names.
-fn toPcre2GroupName(allocator: Allocator, name: []const u8) ![]u8 {
-    if (name.len > 0 and name[0] >= '0' and name[0] <= '9') {
-        // Name starts with a digit - prefix with underscore
-        const prefixed = try allocator.alloc(u8, name.len + 1);
-        prefixed[0] = '_';
-        @memcpy(prefixed[1..], name);
-        return prefixed;
-    }
-    // Name is valid as-is
-    const copy = try allocator.alloc(u8, name.len);
-    @memcpy(copy, name);
-    return copy;
-}
-
 /// Generate a regular expression and name list from a part list
 ///
 /// This implements the algorithm from:
@@ -187,25 +172,17 @@ pub fn generateRegexAndNameList(
         const has_prefix = part.prefix.len > 0;
         const has_suffix = part.suffix.len > 0;
 
-        // Get PCRE2-valid group name (prefix numeric names with _)
-        const pcre2_name = try toPcre2GroupName(allocator, part.name);
-        defer allocator.free(pcre2_name);
-
+        // 3.7. No prefix or suffix.
         if (!has_prefix and !has_suffix) {
-            // No prefix or suffix
             if (part.modifier == .none or part.modifier == .optional) {
-                // Simple case: (?P<name><regexp>)<modifier>
-                try result.appendSlice(allocator, "(?P<");
-                try result.appendSlice(allocator, pcre2_name);
-                try result.appendSlice(allocator, ">");
+                // 3.7.1. (<regexp value>)<modifier>
+                try result.append(allocator, '(');
                 try result.appendSlice(allocator, regexp_value);
                 try result.append(allocator, ')');
                 try result.appendSlice(allocator, convertModifierToString(part.modifier));
             } else {
-                // Repeating modifier: (?P<name>(?:<regexp>)<modifier>)
-                try result.appendSlice(allocator, "(?P<");
-                try result.appendSlice(allocator, pcre2_name);
-                try result.appendSlice(allocator, ">(?:");
+                // 3.7.2. A repeating modifier: ((?:<regexp value>)<modifier>)
+                try result.appendSlice(allocator, "((?:");
                 try result.appendSlice(allocator, regexp_value);
                 try result.append(allocator, ')');
                 try result.appendSlice(allocator, convertModifierToString(part.modifier));
@@ -221,13 +198,11 @@ pub fn generateRegexAndNameList(
         defer allocator.free(escaped_suffix);
 
         if (part.modifier == .none or part.modifier == .optional) {
-            // Non-repeating with prefix/suffix:
-            // (?:<prefix>(?P<name><regexp>)<suffix>)<modifier>
+            // 3.8. Non-repeating with a prefix or suffix:
+            // (?:<prefix>(<regexp value>)<suffix>)<modifier>
             try result.appendSlice(allocator, "(?:");
             try result.appendSlice(allocator, escaped_prefix);
-            try result.appendSlice(allocator, "(?P<");
-            try result.appendSlice(allocator, pcre2_name);
-            try result.appendSlice(allocator, ">");
+            try result.append(allocator, '(');
             try result.appendSlice(allocator, regexp_value);
             try result.append(allocator, ')');
             try result.appendSlice(allocator, escaped_suffix);
@@ -236,13 +211,11 @@ pub fn generateRegexAndNameList(
             continue;
         }
 
-        // Repeating with prefix/suffix - complex case
-        // (?:<prefix>(?P<name>(?:<regexp>)(?:<suffix><prefix>(?:<regexp>))*)<suffix>)?
+        // 3.9-3.23. Repeating with a prefix or suffix:
+        // (?:<prefix>((?:<regexp value>)(?:<suffix><prefix>(?:<regexp value>))*)<suffix>)?
         try result.appendSlice(allocator, "(?:");
         try result.appendSlice(allocator, escaped_prefix);
-        try result.appendSlice(allocator, "(?P<");
-        try result.appendSlice(allocator, pcre2_name);
-        try result.appendSlice(allocator, ">(?:");
+        try result.appendSlice(allocator, "((?:");
         try result.appendSlice(allocator, regexp_value);
         try result.appendSlice(allocator, ")(?:");
         try result.appendSlice(allocator, escaped_suffix);
@@ -337,8 +310,8 @@ test "generateRegexAndNameList - named group" {
     var gen_result = try generateRegexAndNameList(allocator, parts.items, parser.default_options);
     defer gen_result.deinit();
 
-    // Should have named group
-    try std.testing.expect(std.mem.indexOf(u8, gen_result.regex, "(?P<foo>") != null);
+    // A positional group; the name goes in the name list.
+    try std.testing.expectEqualStrings("^([^]+?)$", gen_result.regex);
     try std.testing.expectEqual(@as(usize, 1), gen_result.name_list.len);
     try std.testing.expectEqualStrings("foo", gen_result.name_list[0]);
 }
