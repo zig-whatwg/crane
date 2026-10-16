@@ -28,6 +28,7 @@ const WorkerType = workers.WorkerType;
 const WorkerLocationImpl = @import("WorkerLocation.zig");
 const WorkerNavigatorImpl = @import("WorkerNavigator.zig");
 const same_object = @import("same_object.zig");
+const OriginRecord = @import("dom").origin_record.OriginRecord;
 
 // Import event loop for timer support
 const event_loop_mod = html_core.event_loop;
@@ -113,6 +114,12 @@ pub const InternalState = struct {
     /// Origin
     origin: []const u8 = "",
 
+    /// The settings object's origin as the object it is (dom.origin_record):
+    /// made with this global scope, on its thread, and released with it - so
+    /// an opaque origin is the same opaque origin as itself every time it is
+    /// asked for. OWNED (one reference).
+    origin_record: ?*OriginRecord = null,
+
     /// Is secure context
     is_secure_context: bool = false,
 
@@ -131,6 +138,8 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState) void {
+        if (self.origin_record) |record| record.release();
+        self.origin_record = null;
         self.reporting.deinit(self.allocator);
         if (self.indexed_db) |*factory| factory.edge.release(factory.owner);
         if (self.performance) |*performance| performance.edge.release(performance.owner);
@@ -176,7 +185,8 @@ pub const InternalState = struct {
 /// global scope before its script runs).
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
-    _ = args;
+    // A scope no worker host started is given its URL at construction.
+    if (@hasField(@TypeOf(args), "url")) return setUpFromUrl(instance, allocator, args.url, .classic);
     if (@import("html").worker_host.scopeSettings(instance.ctx)) |settings| {
         try setUpFromUrl(instance, allocator, settings.url, settings.worker_type);
         if (instance.getState(State).own._internal) |internal| {
@@ -190,6 +200,12 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     }
 }
 
+/// Facts given at construction (the generated chain's `initWith`): `url`,
+/// the worker global scope's url, for a scope no worker host started - "run
+/// a worker" sets it before the script runs; a host's scope takes it from
+/// the host (`initOwn`).
+pub const construction_args = .{"url"};
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
@@ -197,6 +213,7 @@ pub fn installHooks() void {
     @import("dom").global_settings.install(.{
         .owns = &isWorkerGlobalScope,
         .origin = &settingsOrigin,
+        .origin_record = &settingsOriginRecord,
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .performance = &settingsPerformance,
@@ -249,6 +266,13 @@ fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const origin = if (state.own._internal) |internal| internal.origin else "null";
     return instance.ctx.allocator.dupe(u8, if (origin.len == 0) "null" else origin);
+}
+
+/// The settings object's origin as an object: the record this global scope
+/// made when it was set up (BORROWED), or null for a scope with no URL.
+fn settingsOriginRecord(instance: *runtime.Instance) ?*OriginRecord {
+    const internal = instance.getState(State).own._internal orelse return null;
+    return internal.origin_record;
 }
 
 fn settingsIsSecureContext(instance: *runtime.Instance) bool {
@@ -347,12 +371,27 @@ fn setUpFromUrl(instance: *runtime.Instance, allocator: std.mem.Allocator, url: 
     // worker's; `initOwn` adds a started worker's owner's answer.
     const is_secure = try @import("html").secure_context.ofWorker(allocator, url, true);
 
+    // HTML "set up a worker environment settings object", the origin: "a
+    // unique opaque origin if worker global scope's url's scheme is "data",
+    // and inherited origin otherwise". Made here, on the worker's thread (a
+    // record is confined to the thread that made it): a new opaque record,
+    // or the tuple origin rebuilt from its serialization - the creator's,
+    // which the URL of a script fetched same-origin (or of a blob URL its
+    // origin made) shares.
+    // FOLLOW-UP: an inherited OPAQUE origin - a sandboxed frame's blob:
+    // worker - is its creator's opaque origin, which a new record here is
+    // not; that identity has to cross threads first.
+    const is_data = url.len >= 5 and std.ascii.eqlIgnoreCase(url[0..5], "data:");
+    const origin_record = try OriginRecord.create(allocator, if (is_data) "null" else location.getOrigin());
+    errdefer origin_record.release();
+
     internal_state.* = .{
         .internal_location = location,
         .internal_navigator = navigator,
         .url = location.getHref(),
         .worker_type = worker_type,
         .origin = location.getOrigin(),
+        .origin_record = origin_record,
         .is_secure_context = is_secure,
         .allocator = allocator,
     };
