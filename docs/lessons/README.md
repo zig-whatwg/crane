@@ -288,6 +288,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A nesting limit does not bound a left-associative chain](architecture-a-nesting-limit-does-not-bound-a-left-associative-chain.md) - Bound recursion by the height of the tree you walk, not by the parser's nesting depth - any left-associative operator loop builds a tree as high as its input is long.
 - [A pending script exception is not a new host error](architecture-a-pending-script-exception-is-not-a-new-host-error.md) - Test the identity of a thrown object across each binding path, not merely that some exception was thrown.
 - [A setter borrows an `any` and takes a callback - on every path](architecture-a-setter-borrows-an-any-and-takes-a-callback-on-every-path.md) - Ownership of an argument is decided once, by its conversion, and holds on the error path too: release what the callee borrows whatever it returned, and leave what it takes to the taker even when it fails.
+- [A JSValue's type cannot say whether its conversion is fresh](architecture-a-jsvalue-s-type-cannot-say-whether-its-conversion-is-fresh.md) - A type-level "is it fresh?" answer must be "kept" for JSValue and unions, so it leaks every fresh value: ask the value (its arm) with an allowlist, and keep borrowed arms as the default.
 
 ### Spec Compliance
 - [A reflection failure can come from an own accessor](spec-compliance-a-reflection-failure-can-come-from-an-own-accessor.md) - Trace generated dispatch and the member's complete algorithm before changing a shared reflector.
@@ -555,6 +556,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [An obsolete WebSocket assertion can reward a bug](testing-an-obsolete-websocket-assertion-can-reward-a-bug.md) - A browser-aligned change can lower the WPT score; retain the evidence and report the loss without changing the test or concealing the new blocker.
 - [A shared nesting guard races first as a stale restore, not an underflow](testing-a-shared-nesting-guard-races-first-as-a-stale-restore-not-an-underflow.md) - To make a cross-thread race on shared guard state reproducible, hold both critical sections open for milliseconds and assert what the restore leaves behind, not the crash a lost update causes.
 - [A shared test allocator makes two Browsers take turns](testing-a-shared-test-allocator-makes-two-browsers-take-turns.md) - A race test's threads must not share a lock the code under test does not take - std.testing.allocator is one, so give each Browser its own allocator.
+- [The test allocator costs more than a fast native operation](testing-the-test-allocator-costs-more-than-a-fast-native-operation.md) - A per-call timing through `std.testing.allocator` measures stack-trace capture, not the code under test - time with the C allocator and check for leaks in a separate test.
+- [refAllDecls on a module that imports the engine needs V8 linked](testing-refalldecls-on-a-module-that-imports-engine-needs-v8-linked.md) - Once a module imports `engine`, its native tests must not reference anything that reaches the protocol - scope refAllDecls, and run the rest in tests/v8.
 
 ### Debugging
 

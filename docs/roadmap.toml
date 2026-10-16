@@ -55,6 +55,7 @@ progress = [
   "71b40ef7a1, 3b05ac5527, 817cdd3d79 - refcount steps 1 and 2 (rc12): pins for retention, listener cycles, D1 and D6 (known-red until their step), the Ref/GCReachableRef/WeakRef types with the Debug ledger and count fields in NodeBase (456 B until nodeholds' holds go), lint-refcount; no behaviour change. Found: a windowless document held only through a detached node is freed under it (crash)",
   "3bfc905d14, 01b5401afb, 61b73e0ee3, a85be6b6a1 - refcount step 3 (rc3): every parent write through NodeBase.setParent (lint-refcount at 0), subtree_holds kept along the host-including chain (shadow roots, template contents), the Document's referencing_nodes and foreign_holds (D6); shadow mode, checked after every mutation in unit tests and under CRANE_REFCOUNT_CHECK; no behaviour change",
   "77781a10b6 - an `any` attribute setter's value is released once the setter returns, fails or its conversion fails (every `any` setter read for keepers, setterValueIsBorrowed); ElementInternals' ARIA arrays no longer root their inputs, and a setter's ExceptionPending reaches script as script's own exception (setterleak)",
+  "8321e646e2, 8a73cd6881 - a returned record's JSValue values and a returned sequence's union elements made for the call are released, by value (jsValueConversionIsFresh, unionValueIsOwned): URLPattern exec() leaked its groups and its input String every call (regexop)",
 ]
 
   [[infra.items]]
@@ -264,6 +265,7 @@ progress = [
   "da2d7ee90, 00f329ef5, 07bf59d55 (merged f40664c23) - reflection lane: Element.zig on the protocol, so the engine-boundary baseline reaches 0 references in 0 files; the lazy getter path and its per-read Context Global leak gone; Realm.wrap refuses what the wrapper cache does not hold strongly",
   "3b710e930, 1248c3fa5, 0deed5ad3, e014e7fc0, 639478ab1, d75fcb45a, 53188e412 (merged 505cfb9e3) - navigation lane: Browser, Node, Document, Window, Location, EventTarget, HTMLIFrameElement and the navigation API on the protocol; frames' realms come from createWindowRealm and context_manager's child contexts are deleted; the microtask checkpoint and queueMicrotask are the agent's; a realm's wrapper cache leaves a node in a tree to its tree",
   "a7388ca5c, 9427d2684, 5f17b92c9 (merged with part B) - the binding owns every value an impl returns (needs_disposal and the .local/.global tag gone, [SameObject] getters keep their own slot), callback interface arguments are borrowed for the call, and no module outside the V8 adapter imports \"v8\" (scripting lane, part B)",
+  "085baeb000, f9c00a435c, f55dff5ceb - regExpCreateCheck and regExpBuiltinExecCaptures: ECMAScript RegExpCreate (\"v\"/\"vi\") and RegExpBuiltinExec in the agent's utility context, with Blink's backtrack limit; URLPattern's components run on them, and its PCRE2 mock is deleted (regexop lane)",
 ]
 
   [[infra.items]]

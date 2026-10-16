@@ -13,6 +13,7 @@
 const std = @import("std");
 const testing = std.testing;
 const urlpattern = @import("urlpattern");
+const harness = @import("urlpattern_realm.zig");
 const URLPattern = urlpattern.URLPattern;
 const URLPatternInit = urlpattern.URLPatternInit;
 
@@ -21,9 +22,12 @@ const URLPatternInit = urlpattern.URLPatternInit;
 // ============================================================================
 
 test "URLPattern.create - simple HTTPS URL" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://example.com/path",
     }, .{});
     defer pattern.deinit(allocator);
@@ -37,9 +41,12 @@ test "URLPattern.create - simple HTTPS URL" {
 }
 
 test "URLPattern.create - URL with named parameter" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://example.com/:id",
     }, .{});
     defer pattern.deinit(allocator);
@@ -54,9 +61,12 @@ test "URLPattern.create - URL with named parameter" {
 }
 
 test "URLPattern.create - URL with port" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://example.com:8080/api",
     }, .{});
     defer pattern.deinit(allocator);
@@ -68,9 +78,12 @@ test "URLPattern.create - URL with port" {
 }
 
 test "URLPattern.create - URL with query and fragment" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://example.com/path?query#fragment",
     }, .{});
     defer pattern.deinit(allocator);
@@ -81,11 +94,14 @@ test "URLPattern.create - URL with query and fragment" {
 }
 
 test "URLPattern.create - URL with username and named param (unescaped colon)" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
     // Without escaping the colon, :pass is treated as a named parameter
     // So username becomes "user:pass" pattern and password is default wildcard
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://user:pass@example.com/",
     }, .{});
     defer pattern.deinit(allocator);
@@ -97,10 +113,13 @@ test "URLPattern.create - URL with username and named param (unescaped colon)" {
 }
 
 test "URLPattern.create - URL with username and password (escaped colon)" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
     // With escaped colon, the colon is a literal separator between username and password
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://user\\:pass@example.com/",
     }, .{});
     defer pattern.deinit(allocator);
@@ -116,9 +135,12 @@ test "URLPattern.create - URL with username and password (escaped colon)" {
 // ============================================================================
 
 test "URLPattern.create - wildcard protocol" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "*://example.com/path",
     }, .{});
     defer pattern.deinit(allocator);
@@ -128,9 +150,12 @@ test "URLPattern.create - wildcard protocol" {
 }
 
 test "URLPattern.create - wildcard hostname" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://*.example.com/",
     }, .{});
     defer pattern.deinit(allocator);
@@ -141,9 +166,12 @@ test "URLPattern.create - wildcard hostname" {
 }
 
 test "URLPattern.create - wildcard pathname" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://example.com/*",
     }, .{});
     defer pattern.deinit(allocator);
@@ -155,9 +183,12 @@ test "URLPattern.create - wildcard pathname" {
 }
 
 test "URLPattern.create - all wildcards" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "*://*/*",
     }, .{});
     defer pattern.deinit(allocator);
@@ -173,9 +204,12 @@ test "URLPattern.create - all wildcards" {
 // ============================================================================
 
 test "URLPattern.create - from URLPatternInit with protocol" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .protocol = "https",
         },
@@ -190,9 +224,12 @@ test "URLPattern.create - from URLPatternInit with protocol" {
 }
 
 test "URLPattern.create - from URLPatternInit with hostname and pathname" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .hostname = "example.com",
             .pathname = "/api/:version/*",
@@ -207,9 +244,12 @@ test "URLPattern.create - from URLPatternInit with hostname and pathname" {
 }
 
 test "URLPattern.create - from URLPatternInit with all components" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .protocol = "https",
             .username = "user",
@@ -234,9 +274,12 @@ test "URLPattern.create - from URLPatternInit with all components" {
 }
 
 test "URLPattern.create - from URLPatternInit with wildcard hostname" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .protocol = "https",
             .hostname = "*.example.com",
@@ -255,9 +298,12 @@ test "URLPattern.create - from URLPatternInit with wildcard hostname" {
 // ============================================================================
 
 test "URLPattern.create - multiple named parameters" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://example.com/:org/:repo/:branch/*",
     }, .{});
     defer pattern.deinit(allocator);
@@ -267,9 +313,12 @@ test "URLPattern.create - multiple named parameters" {
 }
 
 test "URLPattern.create - named parameter with regex constraint" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .pathname = "/users/:id(\\d+)",
         },
@@ -282,9 +331,12 @@ test "URLPattern.create - named parameter with regex constraint" {
 }
 
 test "URLPattern.create - named parameter without regex constraint" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .pathname = "/users/:id",
         },
@@ -301,16 +353,22 @@ test "URLPattern.create - named parameter without regex constraint" {
 // ============================================================================
 
 test "URLPattern.create - relative pathname only" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     // Create step 2.2: relative strings require a base (WPT vectors 216-217).
-    try testing.expectError(error.InvalidPattern, URLPattern.create(testing.allocator, .{
+    try testing.expectError(error.InvalidPattern, URLPattern.create(testing.allocator, realm, .{
         .string = "/users/:id/posts/:postId",
     }, .{}));
 }
 
 test "URLPattern.create - pathname starting with /" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .pathname = "/api/v1/users",
         },
@@ -325,9 +383,12 @@ test "URLPattern.create - pathname starting with /" {
 // ============================================================================
 
 test "URLPattern.create - ignore_case option" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://example.com/path",
     }, .{ .ignore_case = true });
     defer pattern.deinit(allocator);
@@ -336,9 +397,12 @@ test "URLPattern.create - ignore_case option" {
 }
 
 test "URLPattern.create - default ignore_case is false" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://example.com/path",
     }, .{});
     defer pattern.deinit(allocator);
@@ -351,9 +415,12 @@ test "URLPattern.create - default ignore_case is false" {
 // ============================================================================
 
 test "URLPattern.create - all components get compiled regex" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://user:pass@example.com:8080/path?query#hash",
     }, .{});
     defer pattern.deinit(allocator);
@@ -370,18 +437,22 @@ test "URLPattern.create - all components get compiled regex" {
 }
 
 test "URLPattern.create - components with patterns have compiled regex" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .pathname = "/:id",
         },
     }, .{});
     defer pattern.deinit(allocator);
 
-    // Pathname should have a compiled regex
-    try testing.expect(pattern.pathname.regex != null);
-    try testing.expect(pattern.pathname.regex_string.len > 0);
+    // Pathname's regular expression: the generated string, positional
+    try testing.expectEqualStrings("^(?:\\/([^\\/]+?))$", pattern.pathname.regex_string);
+    try testing.expectEqualStrings(pattern.pathname.regex_string, pattern.pathname.regexp.source);
+    try testing.expect(!pattern.pathname.regexp.ignore_case);
 }
 
 // ============================================================================
@@ -389,9 +460,12 @@ test "URLPattern.create - components with patterns have compiled regex" {
 // ============================================================================
 
 test "URLPattern.hasRegexpGroups - returns true for custom regexp" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .pathname = "/users/:id(\\d+)",
         },
@@ -402,9 +476,12 @@ test "URLPattern.hasRegexpGroups - returns true for custom regexp" {
 }
 
 test "URLPattern.hasRegexpGroups - returns false for standard patterns" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://example.com/*",
     }, .{});
     defer pattern.deinit(allocator);
@@ -413,9 +490,12 @@ test "URLPattern.hasRegexpGroups - returns false for standard patterns" {
 }
 
 test "URLPattern.hasRegexpGroups - returns true if any component has regexp" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .protocol = "https",
             .hostname = "example.com",
@@ -434,9 +514,12 @@ test "URLPattern.hasRegexpGroups - returns true if any component has regexp" {
 // ============================================================================
 
 test "URLPattern.create - http scheme (special)" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "http://example.com/",
     }, .{});
     defer pattern.deinit(allocator);
@@ -447,9 +530,12 @@ test "URLPattern.create - http scheme (special)" {
 }
 
 test "URLPattern.create - custom scheme (non-special)" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "custom://example.com/",
     }, .{});
     defer pattern.deinit(allocator);
@@ -458,9 +544,12 @@ test "URLPattern.create - custom scheme (non-special)" {
 }
 
 test "URLPattern.create - file scheme (special)" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .protocol = "file",
             .pathname = "/path/to/file",
@@ -477,9 +566,12 @@ test "URLPattern.create - file scheme (special)" {
 // ============================================================================
 
 test "URLPattern.create - group names extracted from pathname" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .pathname = "/:org/:repo",
         },
@@ -490,9 +582,12 @@ test "URLPattern.create - group names extracted from pathname" {
 }
 
 test "URLPattern.create - group names for wildcard" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .pathname = "/api/*",
         },
@@ -508,9 +603,12 @@ test "URLPattern.create - group names for wildcard" {
 // ============================================================================
 
 test "URLPattern.create - no memory leaks on successful creation" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://user:pass@example.com:8080/path?query#hash",
     }, .{});
     pattern.deinit(allocator);
@@ -518,9 +616,12 @@ test "URLPattern.create - no memory leaks on successful creation" {
 }
 
 test "URLPattern.create - no memory leaks with complex pattern" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .protocol = "https",
             .hostname = "*.example.com",
@@ -538,9 +639,12 @@ test "URLPattern.create - no memory leaks with complex pattern" {
 // ============================================================================
 
 test "URLPattern.create - empty pathname" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .protocol = "https",
             .hostname = "example.com",
@@ -553,11 +657,14 @@ test "URLPattern.create - empty pathname" {
 }
 
 test "URLPattern.create - IPv6 hostname (escaped colons)" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
     // IPv6 addresses need escaped colons in URLPattern strings
     // because unescaped colons start named parameters
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .string = "https://[\\:\\:1]:8080/",
     }, .{});
     defer pattern.deinit(allocator);
@@ -569,9 +676,12 @@ test "URLPattern.create - IPv6 hostname (escaped colons)" {
 }
 
 test "URLPattern.create - search prefix without value" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .pathname = "/path",
             .search = "",
@@ -583,9 +693,12 @@ test "URLPattern.create - search prefix without value" {
 }
 
 test "URLPattern.create - hash prefix without value" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const allocator = testing.allocator;
 
-    var pattern = try URLPattern.create(allocator, .{
+    var pattern = try URLPattern.create(allocator, realm, .{
         .init = .{
             .pathname = "/path",
             .hash = "",

@@ -99,9 +99,18 @@ pub fn call_constructor(ctx: runtime.Context, args: interfaces.URLPattern.Constr
             };
         },
     }
-    var pattern = URLPatternCore.createWithBase(ctx.allocator, core_input, base_url, .{
+    // The components' regular expressions are compiled in this realm's
+    // agent (engine.regExpCreateCheck); an invalid one - RegExpCreate threw -
+    // is a TypeError ("compile a component" step 6). An engine with no
+    // regular expressions cannot make a URLPattern at all: every component
+    // is one (src/urlpattern/regexp.zig), a declared capability gap.
+    var pattern = URLPatternCore.createWithBase(ctx.allocator, ctx, core_input, base_url, .{
         .ignore_case = ignore_case,
-    }) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.TypeError;
+    }) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.NotSupported => error.NotSupportedError,
+        else => error.TypeError,
+    };
     errdefer pattern.deinit(ctx.allocator);
 
     // Create InternalState
@@ -217,7 +226,20 @@ pub fn call_test(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
     const core_input = convertMatchInput(input);
     // URL matching step 12.1 throws only for this argument combination.
     if (core_input == .init and base_url_str != null) return error.TypeError;
-    return urlpattern.testMatchInput(allocator, &internal.pattern, core_input, base_url_str);
+    return urlpattern.testMatchInput(allocator, instance.ctx, &internal.pattern, core_input, base_url_str) catch |err| return matchError(err);
+}
+
+/// What "match" can throw, as the binding throws it. RegExpBuiltinExec on a
+/// compiled component cannot fail but for memory, so nothing else reaches
+/// script (review of Codex row 26, S1): a dictionary input with a separate
+/// base URL is step 12.1's TypeError, and an engine with no regular
+/// expressions is the constructor's NotSupportedError.
+fn matchError(err: urlpattern.MatchError) anyerror {
+    return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.InvalidInput => error.TypeError,
+        error.NotSupported => error.NotSupportedError,
+    };
 }
 
 fn convertMatchInput(input: webidl.Opt(typedefs.URLPatternInput)) urlpattern.URLPatternInput {
@@ -249,7 +271,8 @@ pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
     const base_url_str: ?[]const u8 = if (baseURL.was_passed) baseURL.value else null;
     const core_input = convertMatchInput(input);
     if (core_input == .init and base_url_str != null) return error.TypeError;
-    const core_result = try urlpattern.execInput(allocator, &internal.pattern, core_input, base_url_str);
+    // The relevant realm's agent runs the components' regular expressions.
+    const core_result = urlpattern.execInput(allocator, instance.ctx, &internal.pattern, core_input, base_url_str) catch |err| return matchError(err);
 
     // If no match, return null
     if (core_result == null) {
@@ -324,18 +347,16 @@ fn convertComponentResult(
 ) !dictionaries.URLPatternComponentResult {
     const input_copy = try scratch.dupe(u8, component.input);
 
-    // Convert groups StringHashMap to WebIDL record format
-    // Note: groups should ALWAYS be an object (empty {} if no named groups), never null
-    const groups_array = try scratch.alloc(GroupsEntry, component.groups.count());
-
-    var idx: usize = 0;
-    var iter = component.groups.iterator();
-    while (iter.next()) |entry| {
-        groups_array[idx] = .{
-            .key = try scratch.dupe(u8, entry.key_ptr.*),
-            .value = runtime.JSValue.fromStringRef(try scratch.dupe(u8, entry.value_ptr.*)),
+    // "Create a component match result" steps 3-6: the groups record, in
+    // the group name list's order, each value Get(execResult, index) - a
+    // string, or undefined for a group that did not participate. Always an
+    // object ({} with no groups), never null.
+    const groups_array = try scratch.alloc(GroupsEntry, component.groups.len);
+    for (component.groups, groups_array) |group, *entry| {
+        entry.* = .{
+            .key = try scratch.dupe(u8, group.name),
+            .value = if (group.value) |value| runtime.JSValue.fromStringRef(try scratch.dupe(u8, value)) else .{ .undefined = {} },
         };
-        idx += 1;
     }
 
     return dictionaries.URLPatternComponentResult{

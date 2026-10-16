@@ -16,7 +16,8 @@
 //! - **constructor_string_parser** - Parses shorthand URL patterns (TODO)
 //! - **constructor** - URLPattern construction (TODO)
 //! - **matcher** - Pattern matching (test/exec) (TODO)
-//! - **pcre2_ffi** - PCRE2 regex library bindings
+//! - **regexp** - a component's regular expression: ECMAScript RegExpCreate
+//!   ("v"/"vi") and RegExpBuiltinExec, done by the engine (engine protocol)
 //!
 //! ## Usage
 //!
@@ -34,7 +35,7 @@ const std = @import("std");
 // Core modules - Foundational layer (Agent 1)
 pub const tokenizer = @import("tokenizer.zig");
 pub const parser = @import("parser.zig");
-pub const pcre2_ffi = @import("pcre2_ffi.zig");
+pub const regexp = @import("regexp.zig");
 pub const regex_generator = @import("regex_generator.zig");
 pub const pattern_string = @import("pattern_string.zig");
 pub const process_init = @import("process_init.zig");
@@ -85,10 +86,10 @@ pub const URLPatternInit = constructor_string_parser.URLPatternInit;
 pub const ConstructorStringParser = constructor_string_parser.ConstructorStringParser;
 pub const parseConstructorString = constructor_string_parser.parse;
 
-// Re-export PCRE2 types
-pub const Regex = pcre2_ffi.Regex;
-pub const Match = pcre2_ffi.Match;
-pub const CompileOptions = pcre2_ffi.CompileOptions;
+// Re-export the regular expression wrapper
+pub const Regexp = regexp.Regexp;
+pub const Captures = regexp.Captures;
+pub const Realm = regexp.Realm;
 
 // Re-export regex generator types
 pub const RegexGenerationResult = regex_generator.RegexGenerationResult;
@@ -111,10 +112,18 @@ pub const exec = matcher.exec;
 pub const execInput = matcher.execInput;
 pub const URLPatternResult = matcher.URLPatternResult;
 pub const URLPatternComponentResult = matcher.URLPatternComponentResult;
+pub const Group = matcher.Group;
 pub const URLPatternInput = matcher.URLPatternInput;
 pub const MatchError = matcher.MatchError;
 
 test {
-    // Run all module tests
-    std.testing.refAllDecls(@This());
+    // The engine-free layers' own tests. Constructing and matching compile
+    // and run regexps in an engine (regexp.zig), which this test binary does
+    // not link: their tests are in tests/v8 (urlpattern_*_test.zig).
+    std.testing.refAllDecls(tokenizer);
+    std.testing.refAllDecls(parser);
+    std.testing.refAllDecls(regex_generator);
+    std.testing.refAllDecls(pattern_string);
+    std.testing.refAllDecls(process_init);
+    std.testing.refAllDecls(canonicalize);
 }

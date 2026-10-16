@@ -119,9 +119,10 @@ const AgentRecord = struct {
     /// The agent's ShadowRealms (shadow_realm.zig): made with the agent,
     /// freed by its end. Null when ShadowRealm support was not installed.
     shadow_realms: ?*shadow_realm.ShadowRealmCallbackData = null,
-    /// engine.matchesPatternAttribute's utility context and compiled
-    /// patterns (v8_wrapper.cpp, PatternMatcher): made on first use, on the
-    /// agent's thread; deleted by its end.
+    /// The regexp operations' utility context and compiled regexps
+    /// (engine.matchesPatternAttribute, regExpCreateCheck,
+    /// regExpBuiltinExecCaptures; v8_wrapper.cpp, PatternMatcher): made on
+    /// first use, on the agent's thread; deleted by its end.
     pattern_matcher: ?*ffi.PatternMatcher = null,
     /// AgentOptions.deferred_teardown: the host's queue a collected node's
     /// teardown goes to (wrapper_cache.queueCollectedNode), BORROWED; the

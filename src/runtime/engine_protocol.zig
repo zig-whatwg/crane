@@ -1422,6 +1422,45 @@ pub inline fn matchesPatternAttribute(realm: Context, pattern: []const u8, value
     return impl.matchesPatternAttribute(realm, pattern, value);
 }
 
+/// ECMAScript RegExpCreate(pattern, flags) with flags "v", or "vi" when
+/// `ignore_case`, for its completion only: a throw (a SyntaxError: `pattern`
+/// is not a valid UnicodeSets-mode pattern) is error.InvalidPattern; the
+/// object is not returned. URLPattern's "compile a component", step 6.
+/// `pattern` is WTF-8: a lone surrogate is kept. Built-in intrinsics only (the
+/// intrinsic %RegExp%, never the page's global `RegExp`), nothing the page
+/// can reach is made or retained, no script runs, and the call is no
+/// microtask checkpoint: callable from native code with no script on the
+/// stack, and it leaves nothing pending. Only `realm`'s agent is used, so a
+/// realm retired since (a detached frame's) still answers. An adapter may
+/// keep the compiled regexp per agent for regExpBuiltinExecCaptures (V8: the
+/// utility context and bounded cache of matchesPatternAttribute), released
+/// when the agent ends. NotSupported where the adapter cannot compile one
+/// (JavaScriptCore with no engine linked, QuickJS, the test adapter).
+pub inline fn regExpCreateCheck(realm: Context, pattern: []const u8, ignore_case: bool) error{ InvalidPattern, NotSupported, OutOfMemory }!void {
+    return impl.regExpCreateCheck(realm, pattern, ignore_case);
+}
+
+/// ECMAScript RegExpBuiltinExec(R, `input`) for R = RegExpCreate(`pattern`,
+/// "v" or "vi" as regExpCreateCheck), with R's lastIndex 0 (it has neither
+/// "g" nor "y", so the match is attempted from the start and not anchored
+/// there unless `pattern` anchors itself): null for no match; otherwise the
+/// result's elements 0..n - the matched substring, then each capture group
+/// in order - OWNED (`allocator`: the slice and each string), null for a
+/// group that did not participate (undefined), distinct from "". WTF-8 in
+/// and out: lone surrogates are kept both ways. error.InvalidPattern when
+/// RegExpCreate throws. Built-in intrinsics only: no page-overridable
+/// RegExp or RegExp.prototype member (`exec`, `lastIndex`, Symbol.match) is
+/// reached, and the page's legacy RegExp statics (RegExp.$1, lastMatch) do
+/// not see `input`. No script, no microtask checkpoint, nothing pending;
+/// only `realm`'s agent is used, as for regExpCreateCheck. An adapter may
+/// stop a match past a backtrack limit (V8: Blink's ScriptRegexp limit,
+/// 1,000,000 backtracks) and answer it as no match, so a page's pattern
+/// cannot hold its agent; it is not an error. NotSupported where
+/// regExpCreateCheck is.
+pub inline fn regExpBuiltinExecCaptures(realm: Context, pattern: []const u8, ignore_case: bool, input: []const u8, allocator: std.mem.Allocator) error{ InvalidPattern, NotSupported, OutOfMemory }!?[]?[]u8 {
+    return impl.regExpBuiltinExecCaptures(realm, pattern, ignore_case, input, allocator);
+}
+
 // ============================================================================
 // 4.6 WebIDL: ECMAScript to IDL
 // ============================================================================

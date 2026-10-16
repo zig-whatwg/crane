@@ -1,8 +1,12 @@
 //! URLPattern encoding callbacks use URL parser states on fixed text only.
 const std = @import("std");
 const up = @import("urlpattern");
+const harness = @import("urlpattern_realm.zig");
 
 test "URLPattern canonicalizes fixed text, prefixes and suffixes" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const cases = [_]struct { input: up.URLPatternInit, component: []const u8, expected: []const u8 }{
         .{ .input = .{ .pathname = "/a/../b" }, .component = "pathname", .expected = "/b" },
         .{ .input = .{ .pathname = "/a/%2e%2e/b" }, .component = "pathname", .expected = "/b" },
@@ -16,7 +20,7 @@ test "URLPattern canonicalizes fixed text, prefixes and suffixes" {
         .{ .input = .{ .protocol = "data", .pathname = "/a/../b" }, .component = "pathname", .expected = "/a/../b" },
     };
     for (cases) |case| {
-        var pattern = try up.URLPattern.create(std.testing.allocator, .{ .init = case.input }, .{});
+        var pattern = try up.URLPattern.create(std.testing.allocator, realm, .{ .init = case.input }, .{});
         defer pattern.deinit(std.testing.allocator);
         inline for (.{ "protocol", "hostname", "pathname", "search", "hash" }) |name| {
             if (std.mem.eql(u8, case.component, name)) try std.testing.expectEqualStrings(case.expected, @field(pattern, name).pattern_string);
@@ -25,6 +29,9 @@ test "URLPattern canonicalizes fixed text, prefixes and suffixes" {
 }
 
 test "URLPattern rejects fixed components that fail URL canonicalization" {
+    const page = try harness.Page.open();
+    defer page.close();
+    const realm = page.realm;
     const cases = [_]up.URLPatternInit{
         .{ .protocol = "1http" },
         .{ .hostname = "bad host" },
@@ -32,7 +39,7 @@ test "URLPattern rejects fixed components that fail URL canonicalization" {
         .{ .base_url = "not a URL" },
     };
     for (cases) |input| {
-        if (up.URLPattern.create(std.testing.allocator, .{ .init = input }, .{})) |result| {
+        if (up.URLPattern.create(std.testing.allocator, realm, .{ .init = input }, .{})) |result| {
             var pattern = result;
             pattern.deinit(std.testing.allocator);
             return error.TestUnexpectedResult;

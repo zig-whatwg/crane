@@ -2141,6 +2141,10 @@ pub fn build(b: *std.Build) void {
             // (dom.fire_event) - the one module already in this graph
             // through impls, not a second binding of it.
             .{ .name = "dom", .module = testing_graph.dom },
+            // URLPattern's construction and matching, whose regexps run in
+            // the engine (urlpattern_*_test.zig), and URL for its corpus.
+            .{ .name = "urlpattern", .module = testing_graph.urlpattern },
+            .{ .name = "url", .module = testing_graph.url },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
@@ -5177,6 +5181,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
     urlpattern_mod.addImport("url", url_mod);
+    // A component's regular expression is ECMAScript RegExpCreate and
+    // RegExpBuiltinExec, done by the engine (src/urlpattern/regexp.zig).
+    urlpattern_mod.addImport("engine", engine_mod);
 
     const console_mod = graphModule(b, public, "console", .{
         .root_source_file = b.path("src/console/root.zig"),

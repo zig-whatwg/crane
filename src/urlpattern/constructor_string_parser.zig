@@ -12,7 +12,8 @@
 //! ```zig
 //! const csp = @import("constructor_string_parser.zig");
 //!
-//! const init = try csp.parse(allocator, "https://example.com/:path");
+//! // `realm`: where the protocol component's regexp is compiled
+//! const init = try csp.parse(allocator, realm, "https://example.com/:path");
 //! defer init.deinit(allocator);
 //!
 //! // init.protocol == "https"
@@ -30,6 +31,7 @@ const TokenizePolicy = tokenizer.TokenizePolicy;
 
 // The protocol component uses the same compiler as full construction.
 const constructor = @import("constructor.zig");
+const Realm = @import("regexp.zig").Realm;
 
 /// Parser states as defined in the URLPattern spec
 pub const State = enum {
@@ -107,11 +109,15 @@ pub const ConstructorStringParser = struct {
     state: State,
 
     allocator: Allocator,
+    /// The realm the protocol component's regular expression is compiled
+    /// and matched in ("compute protocol matches a special scheme flag").
+    /// BORROWED for the parse.
+    realm: Realm,
 
     const Self = @This();
 
     /// Initialize a new constructor string parser
-    pub fn init(allocator: Allocator, input: []const u8) !Self {
+    pub fn init(allocator: Allocator, realm: Realm, input: []const u8) !Self {
         // Tokenize input with lenient policy
         var tok = Tokenizer.init(allocator, input, .lenient);
         errdefer tok.deinit();
@@ -132,6 +138,7 @@ pub const ConstructorStringParser = struct {
             .protocol_matches_special_scheme = false,
             .state = .init,
             .allocator = allocator,
+            .realm = realm,
         };
     }
 
@@ -141,8 +148,8 @@ pub const ConstructorStringParser = struct {
     }
 
     /// Parse the constructor string and return URLPatternInit
-    pub fn parse(allocator: Allocator, input: []const u8) !URLPatternInit {
-        var parser = try Self.init(allocator, input);
+    pub fn parse(allocator: Allocator, realm: Realm, input: []const u8) !URLPatternInit {
+        var parser = try Self.init(allocator, realm, input);
         defer parser.deinit();
 
         try parser.run();
@@ -502,9 +509,9 @@ pub const ConstructorStringParser = struct {
 
     fn computeProtocolMatchesSpecialScheme(self: *Self) constructor.ConstructorError!void {
         // Compute-protocol-matches-a-special-scheme-flag, steps 1-3.
-        var component = try constructor.compileProtocol(self.allocator, self.makeComponentString());
+        var component = try constructor.compileProtocol(self.allocator, self.realm, self.makeComponentString());
         defer component.deinit();
-        self.protocol_matches_special_scheme = try constructor.protocolMatchesSpecialScheme(&component);
+        self.protocol_matches_special_scheme = try constructor.protocolMatchesSpecialScheme(self.allocator, self.realm, &component);
     }
 };
 
@@ -513,145 +520,10 @@ pub const ConstructorStringParser = struct {
 // ============================================================================
 
 /// Parse a constructor string into URLPatternInit
-pub fn parse(allocator: Allocator, input: []const u8) !URLPatternInit {
-    return ConstructorStringParser.parse(allocator, input);
+pub fn parse(allocator: Allocator, realm: Realm, input: []const u8) !URLPatternInit {
+    return ConstructorStringParser.parse(allocator, realm, input);
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "parse - simple URL" {
-    const allocator = std.testing.allocator;
-
-    const result = try parse(allocator, "https://example.com/path");
-
-    try std.testing.expectEqualStrings("https", result.protocol.?);
-    try std.testing.expectEqualStrings("example.com", result.hostname.?);
-    try std.testing.expectEqualStrings("/path", result.pathname.?);
-    try std.testing.expectEqualStrings("", result.port.?);
-}
-
-test "parse - URL with port" {
-    const allocator = std.testing.allocator;
-
-    const result = try parse(allocator, "https://example.com:8080/path");
-
-    try std.testing.expectEqualStrings("https", result.protocol.?);
-    try std.testing.expectEqualStrings("example.com", result.hostname.?);
-    try std.testing.expectEqualStrings("8080", result.port.?);
-    try std.testing.expectEqualStrings("/path", result.pathname.?);
-}
-
-test "parse - URL with search and hash" {
-    const allocator = std.testing.allocator;
-
-    const result = try parse(allocator, "https://example.com/path?query=1#section");
-
-    try std.testing.expectEqualStrings("https", result.protocol.?);
-    try std.testing.expectEqualStrings("example.com", result.hostname.?);
-    try std.testing.expectEqualStrings("/path", result.pathname.?);
-    try std.testing.expectEqualStrings("query=1", result.search.?);
-    try std.testing.expectEqualStrings("section", result.hash.?);
-}
-
-test "parse - relative pathname" {
-    const allocator = std.testing.allocator;
-
-    const result = try parse(allocator, "/api/:version/users/:id");
-
-    try std.testing.expect(result.protocol == null);
-    try std.testing.expect(result.hostname == null);
-    try std.testing.expectEqualStrings("/api/:version/users/:id", result.pathname.?);
-}
-
-test "parse - URL with named parameter" {
-    const allocator = std.testing.allocator;
-
-    const result = try parse(allocator, "https://example.com/:path");
-
-    try std.testing.expectEqualStrings("https", result.protocol.?);
-    try std.testing.expectEqualStrings("example.com", result.hostname.?);
-    try std.testing.expectEqualStrings("/:path", result.pathname.?);
-}
-
-test "parse - URL with username and named param (unescaped colon)" {
-    const allocator = std.testing.allocator;
-
-    // When colon is NOT escaped, :pass is treated as a named parameter
-    // The username pattern becomes "user:pass" (with :pass as named param)
-    // Password is not set (defaults to wildcard)
-    const result = try parse(allocator, "https://user:pass@example.com/path");
-
-    try std.testing.expectEqualStrings("https", result.protocol.?);
-    try std.testing.expectEqualStrings("user:pass", result.username.?);
-    try std.testing.expect(result.password == null);
-    try std.testing.expectEqualStrings("example.com", result.hostname.?);
-    try std.testing.expectEqualStrings("/path", result.pathname.?);
-}
-
-test "parse - URL with username and password (escaped colon)" {
-    const allocator = std.testing.allocator;
-
-    // When colon IS escaped, it's treated as a literal separator
-    // Username is "user", password is "pass"
-    const result = try parse(allocator, "https://user\\:pass@example.com/path");
-
-    try std.testing.expectEqualStrings("https", result.protocol.?);
-    try std.testing.expectEqualStrings("user", result.username.?);
-    try std.testing.expectEqualStrings("pass", result.password.?);
-    try std.testing.expectEqualStrings("example.com", result.hostname.?);
-    try std.testing.expectEqualStrings("/path", result.pathname.?);
-}
-
-test "parse - URL with wildcard" {
-    const allocator = std.testing.allocator;
-
-    const result = try parse(allocator, "*://*/*.js");
-
-    try std.testing.expectEqualStrings("*", result.protocol.?);
-    try std.testing.expectEqualStrings("*", result.hostname.?);
-    try std.testing.expectEqualStrings("/*.js", result.pathname.?);
-}
-
-test "parse - search only" {
-    const allocator = std.testing.allocator;
-
-    const result = try parse(allocator, "?foo=bar");
-
-    try std.testing.expect(result.protocol == null);
-    try std.testing.expectEqualStrings("foo=bar", result.search.?);
-}
-
-test "parse - hash only" {
-    const allocator = std.testing.allocator;
-
-    const result = try parse(allocator, "#section");
-
-    try std.testing.expect(result.protocol == null);
-    try std.testing.expectEqualStrings("section", result.hash.?);
-}
-
-test "parse - IPv6 hostname" {
-    const allocator = std.testing.allocator;
-
-    const result = try parse(allocator, "https://[::1]:8080/path");
-
-    try std.testing.expectEqualStrings("https", result.protocol.?);
-    try std.testing.expectEqualStrings("[::1]", result.hostname.?);
-    try std.testing.expectEqualStrings("8080", result.port.?);
-    try std.testing.expectEqualStrings("/path", result.pathname.?);
-}
-
-test "parse - non-special scheme (opaque URL)" {
-    const allocator = std.testing.allocator;
-
-    // A delimiter must be literal: WPT 234-235 and parser step 2.5.
-    const result = try parse(allocator, "data\\:text/plain,hello");
-    const unescaped = try parse(allocator, "data:text/plain,hello");
-    try std.testing.expect(unescaped.protocol == null);
-
-    try std.testing.expectEqualStrings("data", result.protocol.?);
-    // Non-special schemes go directly to pathname
-    try std.testing.expectEqualStrings("text/plain,hello", result.pathname.?);
-}
+// Parsing a constructor string compiles its protocol component's regexp in
+// an engine, so its tests live in tests/v8
+// (urlpattern_constructor_string_test.zig), where there is one.

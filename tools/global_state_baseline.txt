@@ -272,7 +272,6 @@ src/storage/storage_manager.zig StorageManager.permission_callback 1 G H decl:7f
 src/streams/internal/message_port.zig MessagePort.generatePortId.S.counter 1 G X decl:1dfcee87d8da8735
 src/streams/internal/read_into_request.zig sentinel_storage 1 G P-const decl:f33e1c60fc8c8315
 src/streams/internal/read_request.zig sentinel_storage 1 G P-const decl:f33e1c60fc8c8315
-src/urlpattern/pcre2_ffi.zig Regex.static_captures 1 TL C decl:0e6fd21dca79378c
 src/webdriver/main.zig main.handler.server_ptr 1 G P-res decl:f033b82c181714a1
 src/webidl/impls/Element.zig undefined_sentinel 1 G P-const decl:f33e1c60fc8c8315
 src/webidl/impls/EventTarget.zig current_events 1 G R decl:776d6beda41b573f
