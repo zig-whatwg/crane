@@ -176,7 +176,7 @@ test "a value round-trips into a second realm, and its transferred buffer moves"
     // The sender's buffer is detached.
     try std.testing.expectEqual(@as(i32, 0), try evalInt(0, "buf.byteLength"));
 
-    const clone = try v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], result.serialized, result.array_buffers);
+    const clone = try v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], result.serialized, result.array_buffers, &.{});
     defer v8.engine.v8ReleaseValue(clone);
     try std.testing.expect(clone == .handle);
     try setGlobal(1, "v", clone.handle.ptr);
@@ -191,7 +191,7 @@ test "primitives serialize too" {
     const empty: []const runtime.JSValue = &.{};
     var number = try v8.structured_serialization.structuredSerializeWithTransfer(realms[0], .{ .number = 42 }, empty, checkPorts, null, allocator);
     defer number.deinit(allocator);
-    const back = try v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], number.serialized, &.{});
+    const back = try v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], number.serialized, &.{}, &.{});
     defer v8.engine.v8ReleaseValue(back);
     try setGlobal(1, "n", back.handle.ptr);
     try std.testing.expectEqual(@as(i32, 42), try evalInt(1, "n"));
@@ -289,5 +289,5 @@ test "what serialization throws - a getter, a DataCloneError DOMException - is p
 
 test "bytes that do not deserialize are a DataCloneError" {
     try setup();
-    try std.testing.expectError(error.DataCloneError, v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], "not serialized", &.{}));
+    try std.testing.expectError(error.DataCloneError, v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], "not serialized", &.{}, &.{}));
 }

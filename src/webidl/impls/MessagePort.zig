@@ -524,8 +524,16 @@ fn deliver(port: *runtime.Instance, message: *PortMessage) void {
         ports.append(allocator, received) catch continue;
     }
 
-    // On an exception, fire `messageerror` at messageEventTarget.
-    const clone = engine.structuredDeserializeWithTransfer(ctx, message.serialized, message.array_buffers) catch {
+    // On an exception, fire `messageerror` at messageEventTarget - also when
+    // a port's transfer-receiving steps failed (StructuredDeserializeWithTransfer
+    // step 3.4.4 throws then): the value's references are by place in the
+    // transfer list. The value refers to the transferred ports it contained
+    // as the new ones (memory, StructuredDeserializeWithTransfer step 3.5).
+    if (ports.items.len != ends.len) {
+        fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
+        return;
+    }
+    const clone = engine.structuredDeserializeWithTransfer(ctx, message.serialized, message.array_buffers, ports.items) catch {
         fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };

@@ -520,7 +520,7 @@ pub fn structuredDeserialize(_: Context, _: []const u8) Error!Owned {
 pub fn structuredSerializeWithTransfer(_: Context, _: JSValue, _: []const JSValue, _: engine.TransferableCheck, _: ?*anyopaque, _: Allocator) Error!engine.SerializedWithTransfer {
     return error.NotSupported;
 }
-pub fn structuredDeserializeWithTransfer(_: Context, _: []const u8, _: []const []const u8) Error!Owned {
+pub fn structuredDeserializeWithTransfer(_: Context, _: []const u8, _: []const []const u8, _: []const *Instance) Error!Owned {
     return error.NotSupported;
 }
 

@@ -4,6 +4,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const html_core = @import("html_core");
 const global_settings = @import("dom").global_settings;
+const message_ports = @import("dom").message_ports;
 const streams_js = @import("streams_js.zig");
 const same_object = @import("same_object.zig");
 const fetch_body = @import("fetch_body.zig");
@@ -268,23 +269,57 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
 ///    serialized, this's relevant realm).
 /// 3. Return deserializeRecord.[[Deserialized]].
 ///
-/// Deviation: a platform object in the transfer list (a MessagePort) is a
-/// DataCloneError here - its transfer steps are MessagePort's, which
-/// postMessage runs and structuredClone does not yet.
+/// A MessagePort in the transfer list is transferred as postMessage
+/// transfers one: its transfer steps (StructuredSerializeWithTransfer step
+/// 5.5.4) ship its end, and its transfer-receiving steps
+/// (StructuredDeserializeWithTransfer step 3.4.4) make a new MessagePort of
+/// this's relevant realm on it - dom.message_ports, MessagePort's own steps.
 pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!runtime.JSValue {
     const allocator = instance.ctx.allocator;
     const transfer: []const runtime.JSValue = if (options.was_passed) (options.value.transfer orelse &.{}) else &.{};
     // Step 1.
-    var serialized = try engine.structuredSerializeWithTransfer(instance.ctx, value, transfer, notTransferable, null, allocator);
+    var serialized = try engine.structuredSerializeWithTransfer(instance.ctx, value, transfer, transferablePort, null, allocator);
     defer serialized.deinit(allocator);
-    // Steps 2-3.
-    const deserialized = try engine.structuredDeserializeWithTransfer(instance.ctx, serialized.serialized, serialized.array_buffers);
+    // Step 2, StructuredDeserializeWithTransfer step 3: each transferred
+    // port's data holder - its shipped end - received in this's relevant
+    // realm, in transfer-list order. An end no port took is discarded.
+    const ends = try allocator.alloc(?*anyopaque, serialized.platform_objects.len);
+    @memset(ends, null);
+    defer {
+        for (ends) |end| if (end) |e| message_ports.discard(e);
+        allocator.free(ends);
+    }
+    for (serialized.platform_objects, ends) |port, *end| end.* = message_ports.ship(port) orelse return error.DataCloneError;
+    var received: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer received.deinit(allocator);
+    try received.ensureTotalCapacity(allocator, ends.len);
+    for (ends) |*end| {
+        const taken = end.*.?;
+        end.* = null; // receive takes it, also when it fails
+        const port = message_ports.receive(instance.ctx, taken) catch |err| {
+            // Step 3.4.4 threw: the ports received so far were never seen by
+            // script, so nothing holds them but this list.
+            for (received.items) |made| made.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(made));
+            return err;
+        };
+        received.appendAssumeCapacity(port);
+    }
+    // transferredValues: objects of this's relevant realm, wrapped, which the
+    // collector owns like any other once this returns (structuredClone returns
+    // only [[Deserialized]], so a port the value does not refer to is
+    // garbage). The array holds them until the value is deserialized.
+    const transferred_values: ?engine.Owned = if (received.items.len > 0) try engine.createSequenceOfPlatformObjects(instance.ctx, received.items) else null;
+    defer if (transferred_values) |values| values.release();
+    // Steps 2-3: the value, deserialized with the received ports as the
+    // transferred objects it refers to (memory, step 3.5).
+    const deserialized = try engine.structuredDeserializeWithTransfer(instance.ctx, serialized.serialized, serialized.array_buffers, received.items);
     return deserialized.take();
 }
 
-/// structuredClone transfers no platform object (see its deviation).
-fn notTransferable(_: ?*anyopaque, _: *runtime.Instance) runtime.TransferableState {
-    return .not_transferable;
+/// What structuredClone can transfer, besides ArrayBuffers: MessagePorts that
+/// are not detached (MessagePort's own answer, through dom.message_ports).
+fn transferablePort(_: ?*anyopaque, port: *runtime.Instance) runtime.TransferableState {
+    return message_ports.transferableState(port);
 }
 
 /// Operation: setTimeout

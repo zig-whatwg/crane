@@ -779,8 +779,8 @@ pub fn structuredSerializeWithTransfer(realm: Context, value: JSValue, transfer_
     return structured_serialization.structuredSerializeWithTransfer(realm, value, transfer_list, check, check_data, allocator) catch |err| protocolError(err);
 }
 
-pub fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8) Error!Owned {
-    return owned(structured_serialization.structuredDeserializeWithTransfer(realm, serialized, array_buffers) catch |err| return protocolError(err));
+pub fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8, transferred: []const *Instance) Error!Owned {
+    return owned(structured_serialization.structuredDeserializeWithTransfer(realm, serialized, array_buffers, transferred) catch |err| return protocolError(err));
 }
 
 // ============================================================================

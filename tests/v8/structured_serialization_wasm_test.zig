@@ -171,7 +171,7 @@ const Mailbox = struct {
 
     fn deserializeIn(self: *Mailbox, realm: runtime.Context) runtime.EngineError!runtime.JSValue {
         const message = self.message orelse return runtime.JSValue.jsUndefined;
-        const value = protocol.structuredDeserializeWithTransfer(realm, message.serialized, message.array_buffers) catch
+        const value = protocol.structuredDeserializeWithTransfer(realm, message.serialized, message.array_buffers, &.{}) catch
             return .{ .string = .{ .data = "messageerror", .owned = false } };
         return value.take();
     }
@@ -402,6 +402,6 @@ test "wasm serialization: a module is received only in the agent cluster that se
     try std.testing.expectEqualStrings("messageerror", (try to_other.deserializeIn(other)).string.data);
     // A value with no module crosses clusters as before.
     try expectEval(sender, "post({ plain: [1, 2] })", "true");
-    const plain = try protocol.structuredDeserializeWithTransfer(other, to_same.message.?.serialized, &.{});
+    const plain = try protocol.structuredDeserializeWithTransfer(other, to_same.message.?.serialized, &.{}, &.{});
     plain.release();
 }
