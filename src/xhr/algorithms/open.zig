@@ -118,6 +118,10 @@ fn validateAndNormalizeMethod(allocator: Allocator, method: []const u8) ![]const
 ///
 /// Returns an owned, serialized absolute URL.
 pub fn parseURL(allocator: Allocator, url: []const u8, base: ?[]const u8) ![]const u8 {
+    return parseURLWithEncoding(allocator, url, base, null);
+}
+
+fn parseURLWithEncoding(allocator: Allocator, url: []const u8, base: ?[]const u8, character_encoding: ?*const basic_parser.Encoding) ![]const u8 {
     // A base URL is itself parsed first; a base that does not parse is simply
     // no base, which then makes a relative input fail - the same outcome the
     // spec reaches through "encoding-parsing a URL" returning failure.
@@ -130,11 +134,11 @@ pub fn parseURL(allocator: Allocator, url: []const u8, base: ?[]const u8) ![]con
         }
     }
 
-    var parsed = basic_parser.parse(
-        allocator,
-        url,
-        if (base_record) |*b| b else null,
-    ) catch {
+    const base_ptr = if (base_record) |*b| b else null;
+    var parsed = (if (character_encoding) |enc|
+        basic_parser.parseWithEncoding(allocator, url, base_ptr, enc)
+    else
+        basic_parser.parse(allocator, url, base_ptr)) catch {
         return OpenError.InvalidURL;
     };
     defer parsed.deinit();
@@ -158,8 +162,9 @@ fn parseURLWithCredentials(
     base: ?[]const u8,
     username: ?[]const u8,
     password: ?[]const u8,
+    character_encoding: ?*const basic_parser.Encoding,
 ) ![]const u8 {
-    const serialized = try parseURL(allocator, url, base);
+    const serialized = try parseURLWithEncoding(allocator, url, base, character_encoding);
     if (username == null and password == null) return serialized;
     defer allocator.free(serialized);
 
@@ -245,6 +250,21 @@ pub fn open(
     base: ?[]const u8,
     in_window: bool,
 ) OpenError!void {
+    return openWithEncoding(state, method, url, async_mode, username, password, base, in_window, null);
+}
+
+/// HTML encoding-parse a URL: use the relevant document's encoding for its query.
+pub fn openWithEncoding(
+    state: *XMLHttpRequestState,
+    method: []const u8,
+    url: []const u8,
+    async_mode: bool,
+    username: ?[]const u8,
+    password: ?[]const u8,
+    base: ?[]const u8,
+    in_window: bool,
+    character_encoding: ?*const basic_parser.Encoding,
+) OpenError!void {
     const allocator = state.allocator;
 
     // Steps 2-4: Validate and normalize method.
@@ -254,7 +274,7 @@ pub fn open(
     // Steps 5-6: Parse the URL, relative to the base URL.
     // Step 8: If parsedURL's host is non-null, set the username and password
     // given parsedURL and the arguments that are not null.
-    const parsed_url = try parseURLWithCredentials(allocator, url, base orelse state.base_url, username, password);
+    const parsed_url = try parseURLWithCredentials(allocator, url, base orelse state.base_url, username, password, character_encoding);
     errdefer allocator.free(parsed_url);
 
     // Step 9: If async is false, the current global object is a Window, and

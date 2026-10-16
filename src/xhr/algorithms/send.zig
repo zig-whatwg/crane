@@ -129,9 +129,8 @@ pub fn sendPrologue(
 }
 
 /// What send()'s body was, as step 4's Content-Type rules tell bodies
-/// apart. (A Document joins USVString in 4.5 and has 4.6's own types, once
-/// send() takes one.)
-pub const BodyKind = enum { usvstring, other };
+/// apart. A Document joins USVString in 4.5 and has 4.6's own types.
+pub const BodyKind = enum { usvstring, document, urlsearchparams, other };
 
 /// Steps 4.4-4.6 of send(): the Content-Type for a request body of `kind`,
 /// whose bodyWithType's type is `extracted_type`, in this's author request
@@ -147,7 +146,9 @@ pub fn setRequestContentType(allocator: Allocator, state: *XMLHttpRequestState, 
     // 4.5. If originalAuthorContentType is non-null, then:
     if (original) |author_type| {
         // 4.5.1. If body is a Document or a USVString, then:
-        if (kind != .usvstring) return;
+        // Browser deviation: Blink, Gecko and WebKit also reconcile a
+        // URLSearchParams body (wpt.fyi cc74d2669f, send-usp.any.html).
+        if (kind == .other) return;
         // 1. Let contentTypeRecord be the result of parsing
         //    originalAuthorContentType.
         const mimesniff = @import("mimesniff");

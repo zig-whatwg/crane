@@ -25,59 +25,9 @@ pub const HeaderError = error{
     OutOfMemory,
 };
 
-/// Forbidden request headers (spec-defined)
-/// https://xhr.spec.whatwg.org/#dom-xmlhttprequest-setrequestheader
-const forbidden_request_headers = [_][]const u8{
-    "Accept-Charset",
-    "Accept-Encoding",
-    "Access-Control-Request-Headers",
-    "Access-Control-Request-Method",
-    "Connection",
-    "Content-Length",
-    "Cookie",
-    "Cookie2",
-    "Date",
-    "DNT",
-    "Expect",
-    "Host",
-    "Keep-Alive",
-    "Origin",
-    "Referer",
-    "TE",
-    "Trailer",
-    "Transfer-Encoding",
-    "Upgrade",
-    "Via",
-};
-
-/// Forbidden request header prefixes
-const forbidden_request_header_prefixes = [_][]const u8{
-    "Proxy-",
-    "Sec-",
-};
-
-/// Check if a header name is forbidden
-///
-/// Spec: https://fetch.spec.whatwg.org/#forbidden-request-header
+/// The name-only part of Fetch's forbidden request-header predicate.
 pub fn isForbiddenRequestHeader(name: []const u8) bool {
-    // Check exact matches (case-insensitive)
-    for (forbidden_request_headers) |forbidden| {
-        if (std.ascii.eqlIgnoreCase(name, forbidden)) {
-            return true;
-        }
-    }
-
-    // Check prefixes (case-insensitive)
-    for (forbidden_request_header_prefixes) |prefix| {
-        if (name.len >= prefix.len) {
-            const name_prefix = name[0..prefix.len];
-            if (std.ascii.eqlIgnoreCase(name_prefix, prefix)) {
-                return true;
-            }
-        }
-    }
-
-    return false;
+    return fetch.internal.validation.isForbiddenRequestHeader(name, "");
 }
 
 /// Validate header name (must be a valid token)
@@ -166,7 +116,7 @@ pub fn setRequestHeader(
 
     // Step 5: If (name, value) is a forbidden request-header, return
     // Note: We use Fetch's isForbiddenRequestHeader for spec compliance
-    if (isForbiddenRequestHeader(name)) {
+    if (fetch.internal.validation.isForbiddenRequestHeader(name, normalized_value)) {
         return;
     }
 

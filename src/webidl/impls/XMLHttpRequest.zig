@@ -694,6 +694,13 @@ fn openSteps(
     username: ?[]const u8,
     password: ?[]const u8,
 ) anyerror!void {
+    // XHR open() step 1. Firefox and Safari throw for a detached document
+    // (wpt.fyi aligned stable cc74d2669f, open-url-multi-window-{2,5,6}).
+    if (relevantGlobalIsWindow(instance)) {
+        const document = relevantDocument(instance) orelse return error.InvalidStateError;
+        if (!@import("dom").document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document)))
+            return error.InvalidStateError;
+    }
     const xhr_state = getXHRState(instance);
 
     // Steps 5-6: "encoding-parsing a URL url, relative to this's relevant
@@ -708,7 +715,7 @@ fn openSteps(
     const was_opened = xhr_state.ready_state == .OPENED;
 
     // Steps 2-11.
-    open_algo.open(
+    open_algo.openWithEncoding(
         xhr_state,
         method,
         url,
@@ -717,6 +724,7 @@ fn openSteps(
         password,
         base_url,
         currentGlobalIsWindow(),
+        if (relevantDocument(instance)) |document| encoding.getEncoding(@import("dom").document_internals.getEncoding(document) orelse "UTF-8") else null,
     ) catch |err| {
         return switch (err) {
             open_algo.OpenError.SecurityError => error.SecurityError,
@@ -1017,6 +1025,20 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     const allocator = internal.allocator;
     var send_body = try SendBody.convert(instance, body, allocator);
     defer if (send_body) |*b| b.deinit();
+
+    // Browser split, codex-xhr D5: Chrome throws NetworkError, Safari
+    // returns, Firefox throws InvalidStateError after detach. Follow the
+    // spec's inactive-document rejection in this three-way split.
+    if (relevantGlobalIsWindow(instance)) {
+        const document = relevantDocument(instance) orelse return error.InvalidStateError;
+        if (!dom_mod.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document)))
+            return error.InvalidStateError;
+    }
+    // Steps 1-3 precede Document serialization. GET/HEAD discard it.
+    if (xhr_state.ready_state != .OPENED or xhr_state.send_flag) return error.InvalidStateError;
+    const method = xhr_state.request_method orelse "";
+    if (!std.mem.eql(u8, method, "GET") and !std.mem.eql(u8, method, "HEAD"))
+        if (send_body) |*b| try b.serializeDocument();
 
     installEventSink(instance);
     // The request's client is this's relevant settings object: its origin
@@ -1695,7 +1717,10 @@ const SendBody = struct {
     /// extractedContentType, owned, or null.
     content_type: ?[]u8 = null,
 
-    const Kind = enum { usvstring, other };
+    /// Borrowed only within call_send; serialized before any event dispatch.
+    document: ?*runtime.Instance = null,
+
+    const Kind = enum { usvstring, document, urlsearchparams, other };
 
     fn deinit(self: *SendBody) void {
         if (self.bytes) |b| self.allocator.free(b);
@@ -1703,13 +1728,13 @@ const SendBody = struct {
     }
 
     /// The request body, which is the caller's from here.
-    fn takeBytes(self: *SendBody) []u8 {
-        const b = self.bytes.?;
+    fn takeBytes(self: *SendBody) ?[]u8 {
+        const b = self.bytes;
         self.bytes = null;
         return b;
     }
 
-    /// Null for a null (or undefined) body, and - for now - a Document.
+    /// Convert the union before running send() steps; extraction is separate for Documents.
     fn convert(instance: *runtime.Instance, argument: webidl.Opt(?runtime.JSValue), allocator: std.mem.Allocator) !?SendBody {
         if (!argument.wasPassed()) return null;
         const value = argument.value orelse return null;
@@ -1734,11 +1759,8 @@ const SendBody = struct {
         // A platform object of one of the union's interfaces is that member.
         // Any other falls through to the string it converts to.
         if (engine.convertToPlatformObject(realm, value)) |object| {
-            // TODO: a Document's request body is the document serialized,
-            // converted and UTF-8 encoded (step 4.2), and its Content-Type
-            // text/html or application/xml (4.6); until its serializer is
-            // reachable here, it sends no body, as before.
-            if (object.stateAs(interfaces.Document.State) != null) return null;
+            if (object.stateAs(interfaces.Document.State) != null)
+                return .{ .allocator = allocator, .kind = .document, .bytes = null, .document = object };
             if (object.stateAs(interfaces.Blob.State) != null) return try extracted(allocator, .{ .blob = object });
             if (object.stateAs(interfaces.FormData.State) != null) return try extracted(allocator, .{ .form_data = object });
             if (object.stateAs(interfaces.URLSearchParams.State) != null) return try extracted(allocator, .{ .urlsearch_params = object });
@@ -1749,6 +1771,22 @@ const SendBody = struct {
         }
         // USVString: ToString, then each lone surrogate U+FFFD.
         return try usvString(allocator, try engine.convertToUSVString(realm, value, allocator));
+    }
+
+    /// XHR send() 4.2: serialize with require-well-formed false, scalarize,
+    /// then UTF-8 encode. WTF-8 is already UTF-8 except for lone surrogates.
+    fn serializeDocument(self: *SendBody) !void {
+        const document = self.document orelse return;
+        const is_html = @import("dom").document_internals.getDocumentType(document) == .html;
+        const serializer = @import("html").serialization;
+        var serialized = if (is_html) try serializer.fragment(document, false) else try serializer.xml(self.allocator, document);
+        defer serialized.deinit(if (is_html) document.ctx.allocator else self.allocator);
+        const bytes = try self.allocator.dupe(u8, serialized.asSlice());
+        errdefer self.allocator.free(bytes);
+        infra.string.replaceLoneSurrogatesWtf8(bytes);
+        const content_type = try self.allocator.dupe(u8, if (is_html) "text/html;charset=UTF-8" else "application/xml;charset=UTF-8");
+        self.bytes = bytes;
+        self.content_type = content_type;
     }
 
     /// A USVString body: its UTF-8 encoding, and text/plain;charset=UTF-8.
@@ -1771,7 +1809,7 @@ const SendBody = struct {
         };
         defer result.deinit();
         const body = result.body orelse return error.TypeError;
-        var self: SendBody = .{ .allocator = allocator, .kind = .other, .bytes = try allocator.dupe(u8, body.getBytes()) };
+        var self: SendBody = .{ .allocator = allocator, .kind = if (object == .urlsearch_params) .urlsearchparams else .other, .bytes = try allocator.dupe(u8, body.getBytes()) };
         self.content_type = result.content_type;
         result.content_type = null;
         return self;
@@ -1782,6 +1820,8 @@ const SendBody = struct {
     fn setContentType(self: *const SendBody, state: *XMLHttpRequestState) !void {
         const kind: send_algo.BodyKind = switch (self.kind) {
             .usvstring => .usvstring,
+            .document => .document,
+            .urlsearchparams => .urlsearchparams,
             .other => .other,
         };
         try send_algo.setRequestContentType(self.allocator, state, kind, self.content_type);
