@@ -468,40 +468,59 @@ fn recordPastName(instance: *runtime.Instance, internal: *InternalState, name: [
 fn ownerChanged(form: *runtime.Instance, change: @import("dom").form_submission.OwnerChange) bool {
     const internal = Registry.get(form) orelse return false;
     const past = &internal.past_names;
-    const form_base = dom.instance_bridge.getNodeBase(@ptrCast(form));
-    // `change.subtree`'s tree node, and whether it holds an element with an
-    // ID - asked once, and only of an entry whose element has a form
-    // attribute.
+    // A moved subtree reaches an entry when its element or the form is in
+    // it (their ancestors, connectedness, parser association), or when the
+    // element has a form attribute and the subtree an ID. The common moved
+    // node is a childless element - a parser append, an appendChild of a
+    // new node - which reaches only an entry for itself: a comparison per
+    // entry, no walk.
     var moved: ?*dom.NodeBase = null;
+    var leaf = false;
+    var form_moved = false;
     var moved_has_id: ?bool = null;
-    if (change == .subtree) moved = dom.instance_bridge.getNodeBase(@ptrCast(change.subtree));
+    if (change == .subtree) {
+        moved = dom.instance_bridge.getNodeBase(@ptrCast(change.subtree));
+        if (moved) |node| {
+            leaf = node.first_child == null and dom.custom_elements.shadowRootOf(change.subtree) == null;
+            if (!leaf) if (dom.instance_bridge.getNodeBase(@ptrCast(form))) |form_base| {
+                form_moved = dom.node_holds.isUnderRoot(form_base, node, null);
+            };
+            // A childless node is the form itself or not an ancestor of it.
+            if (leaf) form_moved = change.subtree == form;
+        }
+    }
     var index: usize = 0;
     while (index < past.entries.items.len) {
         const entry = &past.entries.items[index];
-        const element = entry.element.get() orelse {
-            past.remove(index);
-            continue;
-        };
         const reached = switch (change) {
-            .subtree => reached: {
+            .subtree => |node_instance| reached: {
                 const node = moved orelse break :reached true;
-                if (dom.node_holds.isUnderRoot(entry.base, node, null)) break :reached true;
-                if (form_base) |base| if (dom.node_holds.isUnderRoot(base, node, null)) break :reached true;
+                if (form_moved or entry.element.instance == node_instance) break :reached true;
+                if (!leaf) {
+                    _ = entry.element.get() orelse break :reached true;
+                    if (dom.node_holds.isUnderRoot(entry.base, node, null)) break :reached true;
+                }
                 if (!entry.form_attribute) break :reached false;
                 if (moved_has_id == null) moved_has_id = subtreeHasId(node);
                 break :reached moved_has_id.?;
             },
             .form_attribute => |changed| reached: {
-                if (changed != element) break :reached false;
-                entry.form_attribute = hasAttribute(element, "form");
+                if (entry.element.instance != changed) break :reached false;
+                if (entry.element.get() != null) entry.form_attribute = hasAttribute(changed, "form");
                 break :reached true;
             },
             .id_attribute => entry.form_attribute,
-            .association => |associated| associated == element,
+            .association => |associated| entry.element.instance == associated,
         };
-        if (reached and form_associated.formOwner(element) != form) {
-            past.remove(index);
-            continue;
+        if (reached) {
+            const element = entry.element.get() orelse {
+                past.remove(index);
+                continue;
+            };
+            if (form_associated.formOwner(element) != form) {
+                past.remove(index);
+                continue;
+            }
         }
         index += 1;
     }

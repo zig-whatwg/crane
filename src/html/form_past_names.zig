@@ -30,7 +30,7 @@ pub fn subtreeMoved(node: *runtime.Instance) void {
     if (registry.isEmpty()) return;
     const base = dom.instance_bridge.getNodeBase(@ptrCast(node)) orelse return;
     if (base.node_type != dom.NodeBase.ELEMENT_NODE) return;
-    registry.dispatch(.{ .subtree = node });
+    registry.dispatch(.{ .subtree = node }, dom.form_past_names.documentOf(base));
 }
 
 /// An attribute in no namespace changed on `element`: its `form` attribute
@@ -40,12 +40,15 @@ pub fn attributeChanged(element: *runtime.Instance, local_name: []const u8) void
     if (!form and !std.mem.eql(u8, local_name, "id")) return;
     const registry = registryOf(element.ctx) orelse return;
     if (registry.isEmpty()) return;
-    registry.dispatch(if (form) .{ .form_attribute = element } else .id_attribute);
+    const base = dom.instance_bridge.getNodeBase(@ptrCast(element)) orelse return;
+    const document = dom.form_past_names.documentOf(base);
+    registry.dispatch(if (form) .{ .form_attribute = element } else .id_attribute, document);
 }
 
 /// The parser recorded `element`'s form association.
 pub fn associationRecorded(element: *runtime.Instance) void {
     const registry = registryOf(element.ctx) orelse return;
     if (registry.isEmpty()) return;
-    registry.dispatch(.{ .association = element });
+    const base = dom.instance_bridge.getNodeBase(@ptrCast(element)) orelse return;
+    registry.dispatch(.{ .association = element }, dom.form_past_names.documentOf(base));
 }

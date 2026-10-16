@@ -25,6 +25,8 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const Link = @import("live_collections.zig").Link;
+const NodeBase = @import("node_base.zig").NodeBase;
+const instance_bridge = @import("instance_bridge.zig");
 const form_submission = @import("form_submission.zig");
 
 pub const OwnerChange = form_submission.OwnerChange;
@@ -32,7 +34,11 @@ pub const OwnerChange = form_submission.OwnerChange;
 /// One agent's forms whose past names map has entries.
 pub const Registry = struct {
     allocator: std.mem.Allocator,
-    forms: std.ArrayListUnmanaged(Link) = .empty,
+    forms: std.ArrayListUnmanaged(Form) = .empty,
+
+    /// A form with entries: weakly, and its tree node, read through the
+    /// link first, for its node document.
+    const Form = struct { link: Link, base: *NodeBase };
 
     pub fn init(allocator: std.mem.Allocator) Registry {
         return .{ .allocator = allocator };
@@ -46,8 +52,9 @@ pub const Registry = struct {
     /// `form` has a past names entry: tell it of every change that can give
     /// an element another owner, until it has none. Once per form.
     pub fn add(self: *Registry, form: *runtime.Instance) !void {
-        for (self.forms.items) |link| if (link.get() == form) return;
-        try self.forms.append(self.allocator, Link.to(form));
+        for (self.forms.items) |entry| if (entry.link.get() == form) return;
+        const base = instance_bridge.getNodeBase(@ptrCast(form)) orelse return error.InvalidState;
+        try self.forms.append(self.allocator, .{ .link = Link.to(form), .base = base });
     }
 
     /// Whether any form of the agent has a past names entry.
@@ -55,17 +62,27 @@ pub const Registry = struct {
         return self.forms.items.len == 0;
     }
 
-    /// Hand `change` to every live form with entries
+    /// Hand `change` - made to a node of the document `document` - to every
+    /// live form with entries in that document
     /// (form_submission.pastNamesOwnerChange, HTMLFormElement's), and drop
-    /// the forms left with none, and the dead. Runs no script: a form only
-    /// recomputes form owners and removes its own entries.
-    pub fn dispatch(self: *Registry, change: OwnerChange) void {
+    /// the forms left with none, and the dead. A form in another document
+    /// is skipped with one comparison: an entry's element is in its form's
+    /// tree, so a change reaches it only in the form's node document (an
+    /// adoption reaches it as the removal from the old document). Runs no
+    /// script: a form only recomputes form owners and removes its own
+    /// entries.
+    pub fn dispatch(self: *Registry, change: OwnerChange, document: usize) void {
         var index: usize = 0;
         while (index < self.forms.items.len) {
-            const form = self.forms.items[index].get() orelse {
+            const entry = self.forms.items[index];
+            const form = entry.link.get() orelse {
                 _ = self.forms.swapRemove(index);
                 continue;
             };
+            if (documentOf(entry.base) != document) {
+                index += 1;
+                continue;
+            }
             if (!form_submission.pastNamesOwnerChange(form, change)) {
                 _ = self.forms.swapRemove(index);
                 continue;
@@ -75,10 +92,17 @@ pub const Registry = struct {
     }
 };
 
+/// `node`'s node document, as a key (live_collections' documentKey): the
+/// document's own tree node is what its nodes' owner_document points at.
+pub fn documentOf(node: *const NodeBase) usize {
+    if (node.node_type == NodeBase.DOCUMENT_NODE) return @intFromPtr(node);
+    return @intFromPtr(node.owner_document);
+}
+
 test "an empty registry dispatches nothing, and frees nothing it does not hold" {
     var registry = Registry.init(std.testing.allocator);
     defer registry.deinit();
     try std.testing.expect(registry.isEmpty());
-    registry.dispatch(.id_attribute);
+    registry.dispatch(.id_attribute, 0);
     try std.testing.expect(registry.isEmpty());
 }

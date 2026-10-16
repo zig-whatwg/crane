@@ -248,6 +248,35 @@ fn candidatesComeFirst() !void {
     );
 }
 
+fn adoptedFormsKeepWatching() !void {
+    const page = try Page.open("<!doctype html><body></body>");
+    defer page.close();
+    try page.expectOk(
+        \\// The agent watches the form, not a document: adopted with its
+        \\// control, it still hears the control's removal in its new one.
+        \\const other = document.implementation.createHTMLDocument('elsewhere');
+        \\const form = other.body.appendChild(other.createElement('form'));
+        \\const control = form.appendChild(other.createElement('input'));
+        \\control.name = 'adopted';
+        \\eq(form.adopted, control, 'recorded in the other document');
+        \\control.name = 'adoptedNow';
+        \\document.body.appendChild(form);
+        \\eq(form.adopted, control, 'adopted with its control: the same owner');
+        \\// A change in the document the form left reaches it no more.
+        \\other.body.appendChild(other.createElement('div')).remove();
+        \\eq(form.adopted, control, 'a change in another document');
+        \\control.remove();
+        \\eq(form.adopted, undefined, 'removed in its new document');
+        \\// A control adopted away from its form, the form left behind.
+        \\const kept = form.appendChild(document.createElement('input'));
+        \\kept.name = 'leaving';
+        \\eq(form.leaving, kept, 'recorded');
+        \\kept.name = 'leavingNow';
+        \\other.body.appendChild(kept);
+        \\eq(form.leaving, undefined, 'adopted away: the removal from this document');
+    );
+}
+
 fn supportedNamesListPastNames() !void {
     const page = try Page.open("<!doctype html><form id=f><input id=one name=a><input id=two name=b></form>");
     defer page.close();
@@ -293,6 +322,10 @@ test "every change of form owner removes the element's past names, at the change
 
 test "current candidates come before the past names map, and replace its entry" {
     try onThread(candidatesComeFirst);
+}
+
+test "a form adopted into another document keeps hearing its elements' changes" {
+    try onThread(adoptedFormsKeepWatching);
 }
 
 test "the supported property names list past names after the element's own" {
