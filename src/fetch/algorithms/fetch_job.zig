@@ -179,6 +179,9 @@ pub const FetchJob = struct {
     pub fn start(self: *FetchJob) FetchError!Step {
         // Record start time
         self.timing_info.start_time = http_fetch.getCurrentTimeMs();
+        // Fetch step 7: resource timing preserves the request's blocking
+        // decision, including when the timing info later becomes opaque.
+        self.timing_info.render_blocking = self.request.render_blocking;
 
         // Set options
         self.params.cross_origin_isolated_capability = self.options.cross_origin_isolated_capability;
