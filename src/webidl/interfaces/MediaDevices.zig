@@ -210,20 +210,26 @@ pub const MediaDevices = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_ondevicechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaDevicesImpl.get_ondevicechange(instance);
+        if (comptime @hasDecl(MediaDevicesImpl, "get_ondevicechange")) return try MediaDevicesImpl.get_ondevicechange(instance);
+        return event_handlers.value(EventHandler, instance, "ondevicechange");
     }
 
     pub fn set_ondevicechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaDevicesImpl.set_ondevicechange(instance, value);
+        if (comptime @hasDecl(MediaDevicesImpl, "set_ondevicechange")) return try MediaDevicesImpl.set_ondevicechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondevicechange", value);
     }
 
     pub fn get_oncaptureaction(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaDevicesImpl.get_oncaptureaction(instance);
+        if (comptime @hasDecl(MediaDevicesImpl, "get_oncaptureaction")) return try MediaDevicesImpl.get_oncaptureaction(instance);
+        return event_handlers.value(EventHandler, instance, "oncaptureaction");
     }
 
     pub fn set_oncaptureaction(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaDevicesImpl.set_oncaptureaction(instance, value);
+        if (comptime @hasDecl(MediaDevicesImpl, "set_oncaptureaction")) return try MediaDevicesImpl.set_oncaptureaction(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oncaptureaction", value);
     }
 
     pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: webidl.Opt(CaptureHandleConfig)) anyerror!void {

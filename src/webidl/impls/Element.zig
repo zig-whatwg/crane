@@ -182,20 +182,6 @@ pub const InternalState = struct {
         while (self.data.attributeAtMut(index)) |entry| : (index += 1) detachAttrNode(null, entry);
         self.data.deinit();
     }
-
-    /// The data's `findAttribute`, for HTMLFormElement.zig, which Codex row
-    /// 23 holds (impls boundary B4 left that file alone). TODO(impls-boundary):
-    /// delete once it reads `dom.element_data.of` - with DOMStringMap.zig's
-    /// `attributeIterator` below.
-    pub fn findAttribute(self: *const InternalState, namespace_uri: ?[]const u8, local_name: []const u8) ?*const AttributeEntry {
-        return self.data.findAttribute(namespace_uri, local_name);
-    }
-
-    /// The data's `attributeIterator`, for DOMStringMap.zig (Codex row 23);
-    /// see `findAttribute`.
-    pub fn attributeIterator(self: *const InternalState) ElementData.AttributeIterator {
-        return self.data.attributeIterator();
-    }
 };
 
 // Use shared InstanceRegistry utility for internal state management
@@ -651,28 +637,6 @@ pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 ///
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.get();
-}
-
-/// Getter for onfullscreenchange
-/// Fullscreen API - Event handler for fullscreen changes
-/// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenchange
-///
-/// Note: Returns null - fullscreen API requires browser integration.
-pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    // Return null event handler (no fullscreen support without browser)
-    return null;
-}
-
-/// Getter for onfullscreenerror
-/// Fullscreen API - Event handler for fullscreen errors
-/// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenerror
-///
-/// Note: Returns null - fullscreen API requires browser integration.
-pub fn get_onfullscreenerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    // Return null event handler (no fullscreen support without browser)
-    return null;
 }
 
 /// Getter for part
@@ -1477,28 +1441,6 @@ fn setAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8, element
     }
     // Element is null or has no ID - remove the attribute
     removeAttributeByNamespaceAndLocalName(instance, null, aria_attr);
-}
-
-/// Setter for onfullscreenchange
-/// Fullscreen API - Sets the event handler for fullscreen changes
-/// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenchange
-///
-/// Note: No-op without fullscreen API support
-pub fn set_onfullscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - fullscreen API requires browser integration
-}
-
-/// Setter for onfullscreenerror
-/// Fullscreen API - Sets the event handler for fullscreen errors
-/// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenerror
-///
-/// Note: No-op without fullscreen API support
-pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    // No-op - fullscreen API requires browser integration
 }
 
 /// Setter for innerHTML
@@ -2605,7 +2547,7 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
     const element_name = internal.data.local_name.asSlice();
     const forwards_to_window = (std.mem.eql(u8, element_name, "body") or std.mem.eql(u8, element_name, "frameset")) and
-        @import("event_handler_target.zig").isWindowReflecting(local_name);
+        dom.event_handlers.isWindowReflecting(local_name);
 
     // A document with no browsing context has no active global to run in,
     // and "getting the current value" would never compile the handler there

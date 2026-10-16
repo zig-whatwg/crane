@@ -2,7 +2,9 @@
 //! fresh; lane rc5): while the root's document and its tree version are
 //! unchanged a read costs one registry lookup, and every change that can
 //! alter the collection - an insertion, a removal, an attribute change, an
-//! adoption into another document, a node freed - must still be seen.
+//! adoption into another document - must still be seen, and a node removed
+//! and then freed is never handed out. (A free alone moves no version: see
+//! tests/html/tree_version_collection_test.zig.)
 const h = @import("refcount_holders_helpers.zig");
 const Page = h.Page;
 const onFreshThread = h.onFreshThread;

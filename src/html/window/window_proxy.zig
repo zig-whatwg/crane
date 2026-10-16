@@ -104,23 +104,8 @@ pub const Origin = struct {
 };
 
 /// HTML "same origin-domain" over canonical origin serializations and the
-/// separately stored domains. Serialization deliberately omits the domain.
-/// The caller handles known shared identity first: "null" alone cannot
-/// distinguish opaque origins. All slices are borrowed for this call.
-/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#same-origin-domain
-pub fn sameOriginDomainValues(a_origin: []const u8, a_domain: ?[]const u8, b_origin: []const u8, b_domain: ?[]const u8) bool {
-    // 1. No opaque identity can be recovered from its serialization.
-    if (std.mem.eql(u8, a_origin, "null") or std.mem.eql(u8, b_origin, "null")) return false;
-    // 2.1. A domain opt-in requires the other origin to opt in too.
-    if (a_domain) |domain| {
-        const other_domain = b_domain orelse return false;
-        const a_scheme = a_origin[0 .. std.mem.indexOfScalar(u8, a_origin, ':') orelse a_origin.len];
-        const b_scheme = b_origin[0 .. std.mem.indexOfScalar(u8, b_origin, ':') orelse b_origin.len];
-        return std.mem.eql(u8, a_scheme, b_scheme) and std.mem.eql(u8, domain, other_domain);
-    }
-    // 2.2-3. Canonical serialization compares scheme, host and port only.
-    return b_domain == null and std.mem.eql(u8, a_origin, b_origin);
-}
+/// separately stored domains: dom.origin_record's, the one comparison.
+pub const sameOriginDomainValues = @import("dom").origin_record.sameOriginDomainValues;
 
 /// Properties allowed for cross-origin access
 /// Per HTML Standard §7.4.6

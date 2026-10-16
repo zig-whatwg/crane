@@ -389,7 +389,7 @@ pub const HTMLTableRowElement = struct {
         return value;
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_align(instance: *runtime.Instance) anyerror!DOMString {

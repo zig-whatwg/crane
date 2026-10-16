@@ -306,44 +306,56 @@ pub const SourceBuffer = struct {
         try SourceBufferImpl.set_appendWindowEnd(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onupdatestart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SourceBufferImpl.get_onupdatestart(instance);
+        if (comptime @hasDecl(SourceBufferImpl, "get_onupdatestart")) return try SourceBufferImpl.get_onupdatestart(instance);
+        return event_handlers.value(EventHandler, instance, "onupdatestart");
     }
 
     pub fn set_onupdatestart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SourceBufferImpl.set_onupdatestart(instance, value);
+        if (comptime @hasDecl(SourceBufferImpl, "set_onupdatestart")) return try SourceBufferImpl.set_onupdatestart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onupdatestart", value);
     }
 
     pub fn get_onupdate(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SourceBufferImpl.get_onupdate(instance);
+        if (comptime @hasDecl(SourceBufferImpl, "get_onupdate")) return try SourceBufferImpl.get_onupdate(instance);
+        return event_handlers.value(EventHandler, instance, "onupdate");
     }
 
     pub fn set_onupdate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SourceBufferImpl.set_onupdate(instance, value);
+        if (comptime @hasDecl(SourceBufferImpl, "set_onupdate")) return try SourceBufferImpl.set_onupdate(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onupdate", value);
     }
 
     pub fn get_onupdateend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SourceBufferImpl.get_onupdateend(instance);
+        if (comptime @hasDecl(SourceBufferImpl, "get_onupdateend")) return try SourceBufferImpl.get_onupdateend(instance);
+        return event_handlers.value(EventHandler, instance, "onupdateend");
     }
 
     pub fn set_onupdateend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SourceBufferImpl.set_onupdateend(instance, value);
+        if (comptime @hasDecl(SourceBufferImpl, "set_onupdateend")) return try SourceBufferImpl.set_onupdateend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onupdateend", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SourceBufferImpl.get_onerror(instance);
+        if (comptime @hasDecl(SourceBufferImpl, "get_onerror")) return try SourceBufferImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SourceBufferImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(SourceBufferImpl, "set_onerror")) return try SourceBufferImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn get_onabort(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SourceBufferImpl.get_onabort(instance);
+        if (comptime @hasDecl(SourceBufferImpl, "get_onabort")) return try SourceBufferImpl.get_onabort(instance);
+        return event_handlers.value(EventHandler, instance, "onabort");
     }
 
     pub fn set_onabort(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SourceBufferImpl.set_onabort(instance, value);
+        if (comptime @hasDecl(SourceBufferImpl, "set_onabort")) return try SourceBufferImpl.set_onabort(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onabort", value);
     }
 
     pub fn call_abort(instance: *runtime.Instance) anyerror!void {

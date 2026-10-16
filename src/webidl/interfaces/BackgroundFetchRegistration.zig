@@ -254,12 +254,16 @@ pub const BackgroundFetchRegistration = struct {
         return try BackgroundFetchRegistrationImpl.get_recordsAvailable(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onprogress(instance: *runtime.Instance) anyerror!EventHandler {
-        return try BackgroundFetchRegistrationImpl.get_onprogress(instance);
+        if (comptime @hasDecl(BackgroundFetchRegistrationImpl, "get_onprogress")) return try BackgroundFetchRegistrationImpl.get_onprogress(instance);
+        return event_handlers.value(EventHandler, instance, "onprogress");
     }
 
     pub fn set_onprogress(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try BackgroundFetchRegistrationImpl.set_onprogress(instance, value);
+        if (comptime @hasDecl(BackgroundFetchRegistrationImpl, "set_onprogress")) return try BackgroundFetchRegistrationImpl.set_onprogress(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onprogress", value);
     }
 
     pub fn call_abort(instance: *runtime.Instance) anyerror!runtime.JSValue {

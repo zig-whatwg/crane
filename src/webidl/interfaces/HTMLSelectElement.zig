@@ -439,7 +439,7 @@ pub const HTMLSelectElement = struct {
         return try HTMLSelectElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn get_autocomplete(instance: *runtime.Instance) anyerror!DOMString {

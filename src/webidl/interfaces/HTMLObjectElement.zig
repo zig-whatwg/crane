@@ -443,7 +443,7 @@ pub const HTMLObjectElement = struct {
         return try HTMLObjectElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn get_data(instance: *runtime.Instance) anyerror!runtime.USVString {

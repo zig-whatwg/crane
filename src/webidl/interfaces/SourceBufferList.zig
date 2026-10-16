@@ -194,20 +194,26 @@ pub const SourceBufferList = struct {
         return try SourceBufferListImpl.get_length(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onaddsourcebuffer(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SourceBufferListImpl.get_onaddsourcebuffer(instance);
+        if (comptime @hasDecl(SourceBufferListImpl, "get_onaddsourcebuffer")) return try SourceBufferListImpl.get_onaddsourcebuffer(instance);
+        return event_handlers.value(EventHandler, instance, "onaddsourcebuffer");
     }
 
     pub fn set_onaddsourcebuffer(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SourceBufferListImpl.set_onaddsourcebuffer(instance, value);
+        if (comptime @hasDecl(SourceBufferListImpl, "set_onaddsourcebuffer")) return try SourceBufferListImpl.set_onaddsourcebuffer(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onaddsourcebuffer", value);
     }
 
     pub fn get_onremovesourcebuffer(instance: *runtime.Instance) anyerror!EventHandler {
-        return try SourceBufferListImpl.get_onremovesourcebuffer(instance);
+        if (comptime @hasDecl(SourceBufferListImpl, "get_onremovesourcebuffer")) return try SourceBufferListImpl.get_onremovesourcebuffer(instance);
+        return event_handlers.value(EventHandler, instance, "onremovesourcebuffer");
     }
 
     pub fn set_onremovesourcebuffer(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try SourceBufferListImpl.set_onremovesourcebuffer(instance, value);
+        if (comptime @hasDecl(SourceBufferListImpl, "set_onremovesourcebuffer")) return try SourceBufferListImpl.set_onremovesourcebuffer(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onremovesourcebuffer", value);
     }
 
     pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {

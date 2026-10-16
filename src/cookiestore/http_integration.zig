@@ -283,8 +283,10 @@ pub fn storeCookie(allocator: std.mem.Allocator, jar: *CookieJar, parsed: *Parse
         if (cookie.secure) return .ignored;
         if (overlaysSecureCookie(jar, cookie.*)) return .ignored;
     }
-    // 11. A SameSite cookie only where the same-site mode allowed it.
-    if (cookie.same_site != .none and !options.same_site_strict_or_lax_allowed) return .ignored;
+    // 11. Explicit Strict/Lax only where the same-site mode allowed it.
+    // Browser-majority Default policy (fetch/algorithms/cookies.zig):
+    // .unset remains unrestricted, without becoming explicit None below.
+    if ((cookie.same_site == .strict or cookie.same_site == .lax) and !options.same_site_strict_or_lax_allowed) return .ignored;
     // 12. SameSite=None needs Secure.
     if (cookie.same_site == .none and !cookie.secure) return .ignored;
     // 13-16. The name prefixes (byte-lowercased).
@@ -375,6 +377,21 @@ pub fn serializeCookies(allocator: std.mem.Allocator, cookies: []const Cookie) !
         try output.appendSlice(allocator, cookie.value);
     }
     return output.toOwnedSlice(allocator);
+}
+
+/// A conservative, allocation-free request shortcut. Expiry, path, Secure
+/// and SameSite still belong to retrieval; a false result proves no stored
+/// cookie's host could match, so a site/PSL comparison cannot affect output.
+pub fn hasCookiesForHost(jar: *CookieJar, host: []const u8) bool {
+    jar.lock();
+    defer jar.unlock();
+    for (jar.cookies.items) |cookie| {
+        const domain = cookie.domain orelse continue;
+        if (cookie.host_only) {
+            if (std.ascii.eqlIgnoreCase(host, domain)) return true;
+        } else if (domain_matching.domainMatches(host, domain)) return true;
+    }
+    return false;
 }
 
 /// "Retrieve Cookies" with `options`, then "Serialize Cookies": the

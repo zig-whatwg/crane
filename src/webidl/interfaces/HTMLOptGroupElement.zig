@@ -331,7 +331,7 @@ pub const HTMLOptGroupElement = struct {
         return try HTMLOptGroupElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {

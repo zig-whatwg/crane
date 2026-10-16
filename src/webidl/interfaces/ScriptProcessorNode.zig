@@ -187,12 +187,16 @@ pub const ScriptProcessorNode = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onaudioprocess(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ScriptProcessorNodeImpl.get_onaudioprocess(instance);
+        if (comptime @hasDecl(ScriptProcessorNodeImpl, "get_onaudioprocess")) return try ScriptProcessorNodeImpl.get_onaudioprocess(instance);
+        return event_handlers.value(EventHandler, instance, "onaudioprocess");
     }
 
     pub fn set_onaudioprocess(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ScriptProcessorNodeImpl.set_onaudioprocess(instance, value);
+        if (comptime @hasDecl(ScriptProcessorNodeImpl, "set_onaudioprocess")) return try ScriptProcessorNodeImpl.set_onaudioprocess(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onaudioprocess", value);
     }
 
     pub fn get_bufferSize(instance: *runtime.Instance) anyerror!i32 {

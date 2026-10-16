@@ -233,18 +233,18 @@ pub fn get_dir(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 /// Getter for hidden
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#the-hidden-attribute
-/// Returns null (not hidden), true ("hidden"), or "until-found"
+/// Returns false, true, or "until-found".
 pub fn get_hidden(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     if (getContentAttribute(instance, "hidden")) |value| {
-        const s = value.asSlice();
-        if (std.mem.eql(u8, s, "until-found")) {
-            // Return the string "until-found"
+        // Getter step 1: the enumerated Hidden Until Found state.
+        if (std.ascii.eqlIgnoreCase(value.asSlice(), "until-found")) {
             return runtime.JSValue.fromStringRef("until-found");
         }
-        // Any other value (including empty) means hidden=true
+        // Step 2: any other present attribute means hidden.
         return runtime.JSValue.fromBoolean(true);
     }
-    return null; // Not hidden
+    // Step 3: absence is the boolean false, not the nullable union's null.
+    return runtime.JSValue.fromBoolean(false);
 }
 
 /// Getter for accessKeyLabel
@@ -492,7 +492,10 @@ pub fn get_contentEditable(instance: *runtime.Instance) anyerror!runtime.DOMStri
 /// Getter for enterKeyHint
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#attr-enterkeyhint
 pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "enterkeyhint") orelse runtime.DOMString.initEmpty();
+    return dom.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "enterkeyhint",
+        .keywords = &.{ "enter", "done", "go", "next", "previous", "search", "send" },
+    });
 }
 
 /// Getter for isContentEditable
@@ -552,7 +555,10 @@ pub fn get_isContentEditable(instance: *runtime.Instance) anyerror!bool {
 /// Getter for inputMode
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#attr-inputmode
 pub fn get_inputMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "inputmode") orelse runtime.DOMString.initEmpty();
+    return dom.reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "inputmode",
+        .keywords = &.{ "none", "text", "tel", "url", "email", "numeric", "decimal", "search" },
+    });
 }
 
 /// Getter for virtualKeyboardPolicy
@@ -583,10 +589,41 @@ pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for tabIndex
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-tabindex
 pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
+    // Getter steps 1-2: HTML's integer prefix parser, then the IDL long range.
     if (getContentAttribute(instance, "tabindex")) |value| {
-        return std.fmt.parseInt(i32, value.asSlice(), 10) catch -1;
+        if (dom.reflection.parseInteger(value.asSlice())) |parsed| {
+            if (parsed >= std.math.minInt(i32) and parsed <= std.math.maxInt(i32)) return @intCast(parsed);
+        }
     }
-    // Default depends on element type; -1 for most
+    // Step 3: historical defaults depend on the element's name, not its
+    // current focusability (disabled and hidden inputs still default to 0).
+    const data = element_data.of(instance) orelse return -1;
+    const namespace = data.namespaceSlice() orelse return -1;
+    const name = data.local_name.asSlice();
+    const html_namespace = "http://www.w3.org/1999/xhtml";
+    if (std.mem.eql(u8, namespace, html_namespace)) {
+        inline for (.{ "a", "area", "button", "frame", "iframe", "input", "object", "select", "textarea" }) |tag| {
+            if (std.mem.eql(u8, name, tag)) return 0;
+        }
+        if (std.mem.eql(u8, name, "summary")) {
+            const parent = (try interfaces.Node.get_parentElement(instance)) orelse return -1;
+            const parent_data = element_data.of(parent) orelse return -1;
+            if (!std.mem.eql(u8, parent_data.namespaceSlice() orelse "", html_namespace) or
+                !std.mem.eql(u8, parent_data.local_name.asSlice(), "details")) return -1;
+            // A summary for its parent details is its first summary child.
+            var child = try interfaces.Node.get_firstChild(parent);
+            while (child) |node| : (child = try interfaces.Node.get_nextSibling(node)) {
+                const child_data = element_data.of(node) orelse continue;
+                if (std.mem.eql(u8, child_data.namespaceSlice() orelse "", html_namespace) and
+                    std.mem.eql(u8, child_data.local_name.asSlice(), "summary")) return if (node == instance) 0 else -1;
+            }
+        }
+    } else if (std.mem.eql(u8, name, "a") and
+        (std.mem.eql(u8, namespace, "http://www.w3.org/2000/svg") or
+            std.mem.eql(u8, namespace, "http://www.w3.org/1998/Math/MathML")))
+    {
+        return 0;
+    }
     return -1;
 }
 
@@ -609,14 +646,36 @@ pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
 }
 
 /// Setter for hidden
-/// Complex type: can be boolean, null, or "until-found"
+/// HTML hidden setter steps 1-7, after WebIDL union conversion.
 pub fn set_hidden(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    // Simplified: treat as boolean
-    // The value pointer being non-null means hidden is set
-    // In full implementation, would check if it's "until-found" string
-    _ = value;
-    // For now, always set hidden when this is called with any non-null value
-    try setContentAttribute(instance, "hidden", runtime.DOMString.initEmpty());
+    const allocator = instance.ctx.allocator;
+    var converted: ?[]u8 = null;
+    defer if (converted) |bytes| allocator.free(bytes);
+    const given = value orelse runtime.JSValue.jsNull;
+    const normalized = switch (given) {
+        .handle, .instance => blk: {
+            // WebIDL union conversion step 15: the remaining ECMAScript
+            // values select DOMString. The binding passes these as borrowed
+            // values; conversion can throw and must precede any mutation.
+            const engine = @import("engine");
+            converted = try engine.convertToDOMString(engine.currentRealm() orelse instance.ctx, given, allocator);
+            break :blk runtime.JSValue.fromStringRef(converted.?);
+        },
+        else => given,
+    };
+    const attribute: ?[]const u8 = switch (normalized) {
+        // Step 1 precedes the empty-string removal in step 3.
+        .string => |s| if (std.ascii.eqlIgnoreCase(s.data, "until-found")) "until-found" else if (s.data.len == 0) null else "",
+        .boolean => |b| if (b) "" else null, // Steps 2 and 7.
+        .null, .undefined => null, // Step 4; nullable union step 2 maps undefined to null.
+        .number => |n| if (n == 0 or std.math.isNan(n)) null else "", // Steps 5-7.
+        .handle, .instance => unreachable,
+    };
+    if (attribute) |text| {
+        try setContentAttribute(instance, "hidden", runtime.DOMString.initInterned(text));
+    } else {
+        removeContentAttribute(instance, "hidden");
+    }
 }
 
 /// Setter for draggable

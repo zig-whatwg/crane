@@ -39,8 +39,12 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for href
+/// SVG 2 4.7.4: reflect href and its deprecated xlink:href alternative.
+/// The generated includer's [SameObject] getter caches this object.
 pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.SVGAnimatedString.initWith(instance.ctx.allocator, instance.ctx, .{
+        .reflected_element = instance,
+        .reflected_attribute = "href",
+        .deprecated_attribute_namespace = "http://www.w3.org/1999/xlink",
+    });
 }

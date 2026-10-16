@@ -92,6 +92,11 @@ pub fn verify(key: *const keys.Slots, signature: []const u8, message: []const u8
         return c.mbedtls_rsa_rsassa_pss_verify_ext(c.mbedtls_pk_rsa(context), digestId(hash), @intCast(hashed.len), hashed.ptr, digestId(hash), @intCast(salt_length), signature.ptr) == 0;
     }
     if (key.algorithm.id != .rsa_pkcs1) return error.NotSupportedError;
+    // RFC 3447 §8.2.2 step 2b: a representative outside [0, n-1] is an
+    // invalid signature. mbedTLS's PSA path instead maps RSA's MPI error to
+    // INVALID_ARGUMENT; reject here without hiding other operational errors.
+    const modulus = (try components(key.material, false)).n;
+    if (signature.len > modulus.len or (signature.len == modulus.len and std.mem.order(u8, signature, modulus) != .lt)) return false;
     const algorithm = c.PSA_ALG_RSA_PKCS1V15_SIGN(mbed.hashAlgorithm(hash));
     var native = try importPsa(key, algorithm, c.PSA_KEY_USAGE_VERIFY_HASH);
     defer native.deinit();
@@ -325,6 +330,27 @@ test "RSA PKCS1-v1_5 matches independent WPT SHA-256 signature" {
     try std.testing.expect(!try verify(&public, &vectors.pkcs_sha256, "changed", null));
     try std.testing.expectError(error.InvalidAccessError, sign(a, std.testing.io, &public, "", null));
     try std.testing.expectError(error.InvalidAccessError, verify(&private, result, "", null));
+}
+
+test "RSA-PKCS1 verification rejects out-of-range signature representatives with false" {
+    if (!@import("mbed.zig").available) return error.SkipZigTest;
+    const a = std.testing.allocator;
+    const vectors = @import("rsa_vectors.zig");
+    var public = try @import("asymmetric_keys.zig").importKey(a, .spki, .{ .id = .rsa_pkcs1, .hash = .sha256 }, &vectors.key_spki, null, true, keys.Usages.initOne(.verify));
+    defer public.deinit();
+    var altered = vectors.pkcs_sha256;
+    altered[0] = 255 - altered[0];
+    try std.testing.expect(!try verify(&public, &altered, &vectors.pkcs_plaintext, null));
+    const above_modulus = [_]u8{0xff} ** vectors.pkcs_sha256.len;
+    try std.testing.expect(!try verify(&public, &above_modulus, &vectors.pkcs_plaintext, null));
+    const modulus = (try components(public.material, false)).n;
+    try std.testing.expect(!try verify(&public, modulus, &vectors.pkcs_plaintext, null));
+    @memcpy(&altered, modulus);
+    // An RSA modulus is odd, so this subtraction cannot borrow.
+    altered[altered.len - 1] -= 1;
+    try std.testing.expect(!try verify(&public, &altered, &vectors.pkcs_plaintext, null));
+    @memset(&altered, 0);
+    try std.testing.expect(!try verify(&public, &altered, &vectors.pkcs_plaintext, null));
 }
 
 test "RSA-PSS enforces exact salt length including zero and maximum" {

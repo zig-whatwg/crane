@@ -296,20 +296,26 @@ pub const AudioContext = struct {
         return try AudioContextImpl.get_sinkId(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onsinkchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AudioContextImpl.get_onsinkchange(instance);
+        if (comptime @hasDecl(AudioContextImpl, "get_onsinkchange")) return try AudioContextImpl.get_onsinkchange(instance);
+        return event_handlers.value(EventHandler, instance, "onsinkchange");
     }
 
     pub fn set_onsinkchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AudioContextImpl.set_onsinkchange(instance, value);
+        if (comptime @hasDecl(AudioContextImpl, "set_onsinkchange")) return try AudioContextImpl.set_onsinkchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsinkchange", value);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try AudioContextImpl.get_onerror(instance);
+        if (comptime @hasDecl(AudioContextImpl, "get_onerror")) return try AudioContextImpl.get_onerror(instance);
+        return event_handlers.value(EventHandler, instance, "onerror");
     }
 
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try AudioContextImpl.set_onerror(instance, value);
+        if (comptime @hasDecl(AudioContextImpl, "set_onerror")) return try AudioContextImpl.set_onerror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
     pub fn call_createMediaStreamTrackSource(instance: *runtime.Instance, mediaStreamTrack: *runtime.Instance) anyerror!*runtime.Instance {

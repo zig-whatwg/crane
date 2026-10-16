@@ -193,12 +193,16 @@ pub const TaskSignal = struct {
         return try TaskSignalImpl.get_priority(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onprioritychange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try TaskSignalImpl.get_onprioritychange(instance);
+        if (comptime @hasDecl(TaskSignalImpl, "get_onprioritychange")) return try TaskSignalImpl.get_onprioritychange(instance);
+        return event_handlers.value(EventHandler, instance, "onprioritychange");
     }
 
     pub fn set_onprioritychange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try TaskSignalImpl.set_onprioritychange(instance, value);
+        if (comptime @hasDecl(TaskSignalImpl, "set_onprioritychange")) return try TaskSignalImpl.set_onprioritychange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onprioritychange", value);
     }
 
     /// Extended attributes: [NewObject]

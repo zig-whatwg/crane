@@ -349,12 +349,16 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.get_lost(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onuncapturederror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try GPUDeviceImpl.get_onuncapturederror(instance);
+        if (comptime @hasDecl(GPUDeviceImpl, "get_onuncapturederror")) return try GPUDeviceImpl.get_onuncapturederror(instance);
+        return event_handlers.value(EventHandler, instance, "onuncapturederror");
     }
 
     pub fn set_onuncapturederror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try GPUDeviceImpl.set_onuncapturederror(instance, value);
+        if (comptime @hasDecl(GPUDeviceImpl, "set_onuncapturederror")) return try GPUDeviceImpl.set_onuncapturederror(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onuncapturederror", value);
     }
 
     pub const get_label = mixins.GPUObjectBase.get_label;

@@ -201,11 +201,15 @@ pub const XRCubeLayer = struct {
         try XRCubeLayerImpl.set_orientation(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onredraw(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRCubeLayerImpl.get_onredraw(instance);
+        if (comptime @hasDecl(XRCubeLayerImpl, "get_onredraw")) return try XRCubeLayerImpl.get_onredraw(instance);
+        return event_handlers.value(EventHandler, instance, "onredraw");
     }
 
     pub fn set_onredraw(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRCubeLayerImpl.set_onredraw(instance, value);
+        if (comptime @hasDecl(XRCubeLayerImpl, "set_onredraw")) return try XRCubeLayerImpl.set_onredraw(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onredraw", value);
     }
 };

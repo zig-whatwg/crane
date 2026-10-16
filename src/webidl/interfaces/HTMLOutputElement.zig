@@ -386,7 +386,7 @@ pub const HTMLOutputElement = struct {
         return try HTMLOutputElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="for"]
     pub fn get_htmlFor(instance: *runtime.Instance) anyerror!*runtime.Instance {

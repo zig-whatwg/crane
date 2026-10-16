@@ -371,7 +371,7 @@ pub const HTMLFieldSetElement = struct {
         return try HTMLFieldSetElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {

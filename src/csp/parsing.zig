@@ -10,6 +10,9 @@
 const std = @import("std");
 const types = @import("types.zig");
 
+// Infra ASCII whitespace, used by CSP §2.2.1. Vertical tab is not included.
+const ascii_whitespace = "\t\n\x0c\r ";
+
 // ============================================================================
 // Parse Serialized CSP
 // ============================================================================
@@ -22,7 +25,7 @@ const types = @import("types.zig");
 /// 2. Let policy be a new policy with empty directive set
 /// 3. For each token from strictly splitting on ';':
 ///    a. Strip leading/trailing whitespace
-///    b. If empty or non-ASCII, continue
+///    b. If empty or containing invalid directive bytes, continue
 ///    c. Let directive name be first token before whitespace
 ///    d. Lowercase directive name
 ///    e. If directive name already in policy, continue (first wins)
@@ -42,17 +45,22 @@ pub fn parseSerializedCSP(
     var directive_tokens = std.mem.splitScalar(u8, serialized, ';');
 
     while (directive_tokens.next()) |token| {
-        // Strip leading and trailing whitespace
-        const trimmed = std.mem.trim(u8, token, &std.ascii.whitespace);
+        // §2.2.1 step 3.1: strip leading and trailing ASCII whitespace.
+        const trimmed = std.mem.trim(u8, token, ascii_whitespace);
 
         if (trimmed.len == 0) continue;
 
-        // Check if ASCII (non-ASCII tokens are skipped per spec)
-        if (!isAscii(trimmed)) continue;
+        // Step 3.2: skip non-ASCII tokens. Browsers also reject a whole
+        // directive containing bytes outside directive-value's grammar:
+        // Gecko nsCSPParser::policy and WebKit parseDirective validate before
+        // accepting it; Blink IsDirectiveValueCharacter does the same check.
+        // This goes beyond step 3.2's ASCII-only wording. Aligned stable WPT
+        // cc74d2669f: parsing/invalid-bytes.html 18/18 in all three browsers.
+        if (!hasValidDirectiveBytes(trimmed)) continue;
 
         // Extract directive name (first non-whitespace sequence)
         var name_end: usize = 0;
-        while (name_end < trimmed.len and !std.ascii.isWhitespace(trimmed[name_end])) {
+        while (name_end < trimmed.len and std.mem.indexOfScalar(u8, ascii_whitespace, trimmed[name_end]) == null) {
             name_end += 1;
         }
 
@@ -76,9 +84,9 @@ pub fn parseSerializedCSP(
 
         // Parse directive value (split remaining on whitespace)
         if (name_end < trimmed.len) {
-            const value_part = std.mem.trim(u8, trimmed[name_end..], &std.ascii.whitespace);
+            const value_part = std.mem.trim(u8, trimmed[name_end..], ascii_whitespace);
 
-            var value_tokens = std.mem.tokenizeAny(u8, value_part, &std.ascii.whitespace);
+            var value_tokens = std.mem.tokenizeAny(u8, value_part, ascii_whitespace);
             while (value_tokens.next()) |value_token| {
                 const expr = try parseSourceExpression(allocator, value_token);
                 try directive.value.append(expr);
@@ -329,10 +337,13 @@ fn isSchemePart(part: []const u8) bool {
     return true;
 }
 
-/// Check if string contains only ASCII characters.
-fn isAscii(str: []const u8) bool {
+/// Directive-value grammar: Infra whitespace or visible ASCII. Semicolons
+/// have already separated directives; policy-list commas are handled by the
+/// delivery layer before this single-policy parser.
+fn hasValidDirectiveBytes(str: []const u8) bool {
     for (str) |c| {
-        if (c > 127) return false;
+        if (c >= 0x21 and c <= 0x7e) continue;
+        if (std.mem.indexOfScalar(u8, ascii_whitespace, c) == null) return false;
     }
     return true;
 }

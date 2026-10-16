@@ -46,8 +46,6 @@ const dom_mod = @import("dom");
 /// An XMLHttpRequest is an XMLHttpRequestEventTarget, which is an EventTarget:
 /// its event handlers, `onreadystatechange` among them, live in EventTarget's
 /// event handler map, and its events are dispatched there.
-const EventTargetImpl = @import("EventTarget.zig");
-
 pub const State = XMLHttpRequest.State;
 
 pub const ImplError = error{
@@ -189,13 +187,6 @@ fn getXHRState(instance: *runtime.Instance) *XMLHttpRequestState {
 fn getInternal(instance: *runtime.Instance) *InternalState {
     const state = instance.getState(State);
     return state.own._internal.?;
-}
-
-/// Getter for onreadystatechange
-///
-/// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
-pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "readystatechange");
 }
 
 /// Getter for readyState
@@ -557,13 +548,6 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
     defer made.release();
     engine.traceValue(instance, made.value, response_slot);
     internal.has_response_value = true;
-}
-
-/// Setter for onreadystatechange
-///
-/// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
-pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "readystatechange", value);
 }
 
 /// Setter for timeout
@@ -1692,10 +1676,7 @@ const PendingFetch = struct {
 fn uploadHasListeners(instance: *runtime.Instance) bool {
     const upload = uploadObjectIfCreated(instance) orelse return false;
     // Every listener, whether `addEventListener` or an event handler added it.
-    for (EventTargetImpl.getEventListenersForType(upload, "")) |listener| {
-        if (!listener.removed) return true;
-    }
-    return false;
+    return @import("dom").event_handlers.hasListeners(upload);
 }
 
 /// send()'s `body`: the argument converted to (Document or

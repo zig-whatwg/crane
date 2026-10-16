@@ -177,12 +177,16 @@ pub const NavigatorManagedData = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onmanagedconfigurationchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NavigatorManagedDataImpl.get_onmanagedconfigurationchange(instance);
+        if (comptime @hasDecl(NavigatorManagedDataImpl, "get_onmanagedconfigurationchange")) return try NavigatorManagedDataImpl.get_onmanagedconfigurationchange(instance);
+        return event_handlers.value(EventHandler, instance, "onmanagedconfigurationchange");
     }
 
     pub fn set_onmanagedconfigurationchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NavigatorManagedDataImpl.set_onmanagedconfigurationchange(instance, value);
+        if (comptime @hasDecl(NavigatorManagedDataImpl, "set_onmanagedconfigurationchange")) return try NavigatorManagedDataImpl.set_onmanagedconfigurationchange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onmanagedconfigurationchange", value);
     }
 
     pub fn call_getManagedConfiguration(instance: *runtime.Instance, keys: runtime.JSValue) anyerror!runtime.JSValue {

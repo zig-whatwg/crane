@@ -40,7 +40,6 @@ const api_parser = @import("api_parser");
 
 // EventTarget is an ancestor: its impl owns the event listener list, the
 // event handlers in it, and trusted dispatch.
-const EventTargetImpl = @import("EventTarget.zig");
 
 const log = std.log.scoped(.websocket);
 
@@ -748,7 +747,7 @@ fn deliver(
     // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
     // ancestor, so its impl.
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(target, event) catch |err| {
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch |err| {
         log.debug("dispatch of {s} failed: {s}", .{ type_string.asSlice(), @errorName(err) });
     };
 
@@ -786,6 +785,15 @@ fn releaseEventIfUnwrapped(event: *runtime.Instance, generation: u64) void {
 /// 12. Run this step in parallel: Establish a WebSocket connection given urlRecord,
 ///     protocols, and client.
 pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    // WebIDL § 3.2.25 converts the protocols union before the constructor
+    // algorithm runs. Its iterator/ToString may throw or change the API base
+    // URL. Token validation is constructor step 9, after URL validation.
+    var requested_protocols = try parseProtocols(ctx, ctx.allocator, protocols);
+    defer if (requested_protocols) |values| {
+        for (values) |value| ctx.allocator.free(value);
+        ctx.allocator.free(values);
+    };
+
     // "This": made first, so its relevant settings object answers step 1.
     const instance = try WebSocket.init(ctx.allocator, ctx);
     errdefer WebSocket.deinit(instance);
@@ -834,6 +842,9 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
         return error.SyntaxError;
     }
 
+    // Steps 8-9. The string member was normalized to a sequence above.
+    if (requested_protocols) |values| try validateProtocols(values);
+
     // Step 10. This's url is urlRecord, and the `url` getter serializes it.
     // Serialized once, here: nothing changes a WebSocket's url afterwards.
     // Swapping the scheme on the serialization is exact, because each pair
@@ -872,10 +883,9 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     state.own.binaryType = ._blob_;
     internal.binary_type = ._blob_;
 
-    // Steps 8-9. protocols is a string or a sequence of strings. Each must be a
-    // valid HTTP token, and no value may repeat (ASCII case-insensitively) -
-    // otherwise throw a "SyntaxError" DOMException.
-    internal.requested_protocols = try parseProtocols(ctx, ctx.allocator, protocols);
+    // The connection keeps the already-converted, validated protocol strings.
+    internal.requested_protocols = requested_protocols;
+    requested_protocols = null;
 
     // Step 12. "Run this step in parallel: establish a WebSocket connection."
     //
@@ -884,8 +894,10 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // leave readyState at OPEN before the caller had a chance to see
     // CONNECTING - which several tests in `websockets/` assert directly.
     //
-    // A worker realm is pumped the same way: its timer is the page's, and
-    // `pumpInScope` runs each turn as a task of the worker's realm.
+    // A worker realm is pumped the same way, on its own loop's timer (which
+    // ends with the worker, a turn possibly still scheduled: the turn is an
+    // owned timer, websocket.pump_token), and `pumpInScope` runs each turn as
+    // a task of the worker's realm.
     const timer = ctx.getOptionalTimer() orelse {
         // No timer means no event loop, so nothing could ever deliver an event.
         // Leave the socket in CONNECTING rather than pretending otherwise.
@@ -955,7 +967,8 @@ fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
     return global;
 }
 
-/// Steps 8-9 of the constructor: validate and copy the requested subprotocols.
+/// Convert and copy the protocols union before the constructor algorithm.
+/// Token and duplicate validation belongs to constructor step 9 instead.
 ///
 /// Returns null when none were given, which is distinct from an empty list -
 /// `CreateWebSocket(false, false)` must send no Sec-WebSocket-Protocol header
@@ -980,15 +993,21 @@ fn parseProtocols(
         return null;
     }
 
-    // Step 9. Any value that is not a token, or that repeats, is a SyntaxError.
-    for (list.items, 0..) |value, i| {
+    return try list.toOwnedSlice(allocator);
+}
+
+/// Constructor step 9: reject invalid tokens and exactly repeated values.
+fn validateProtocols(protocols: []const []const u8) !void {
+    for (protocols, 0..) |value, i| {
         if (!isHttpToken(value)) return error.SyntaxError;
-        for (list.items[0..i]) |earlier| {
-            if (std.ascii.eqlIgnoreCase(earlier, value)) return error.SyntaxError;
+        for (protocols[0..i]) |earlier| {
+            // Blink WebSocketCommon::Connect and WebKit WebSocket::connect
+            // use case-sensitive string sets. All three stable browsers fail
+            // WPT's obsolete Create-protocols-repeated-case-insensitive test
+            // (2026-10-14); ["echo", "eCho"] contains distinct values.
+            if (std.mem.eql(u8, earlier, value)) return error.SyntaxError;
         }
     }
-
-    return try list.toOwnedSlice(allocator);
 }
 
 /// Pull the strings out of the protocols argument.
@@ -1010,45 +1029,41 @@ fn collectProtocolStrings(
     // non-handle, so `new WebSocket(url, "/echo")` sent no protocol at all
     // instead of throwing the SyntaxError step 9 requires.
     switch (value) {
-        .string => |s| return list.append(allocator, try allocator.dupe(u8, s.data)),
-        .boolean => |b| return list.append(allocator, try allocator.dupe(u8, if (b) "true" else "false")),
-        .null => return list.append(allocator, try allocator.dupe(u8, "null")),
-        .number => |n| return list.append(allocator, try numberToString(allocator, n)),
+        .string, .boolean, .null, .number => {
+            const string = switch (value) {
+                .string => |s| try allocator.dupe(u8, s.data),
+                .boolean => |b| try allocator.dupe(u8, if (b) "true" else "false"),
+                .null => try allocator.dupe(u8, "null"),
+                // ECMAScript Number::toString, including exponent formatting.
+                .number => try engine.convertToDOMString(ctx, value, allocator),
+                else => unreachable,
+            };
+            errdefer allocator.free(string);
+            return list.append(allocator, string);
+        },
         .handle => {},
         // `undefined` is the omitted argument's default: the empty sequence.
         .undefined, .instance => return,
     }
-    // An object with an @@iterator: the sequence<DOMString>.
-    if (try engine.convertToSequenceOfDOMStrings(ctx, value, allocator)) |strings| {
-        defer allocator.free(strings);
-        var taken: usize = 0;
-        errdefer for (strings[taken..]) |string| allocator.free(string);
-        for (strings) |string| {
-            try list.append(allocator, string);
-            taken += 1;
+    // WebIDL union step 11 only probes objects for an @@iterator. A handle
+    // can also be a primitive BigInt or Symbol; those select DOMString.
+    if (engine.typeOf(ctx, value) == .object) {
+        if (try engine.convertToSequenceOfDOMStrings(ctx, value, allocator)) |strings| {
+            defer allocator.free(strings);
+            var taken: usize = 0;
+            errdefer for (strings[taken..]) |string| allocator.free(string);
+            for (strings) |string| {
+                try list.append(allocator, string);
+                taken += 1;
+            }
+            return;
         }
-        return;
     }
 
-    // Any other object: the DOMString.
+    // The remaining union member: DOMString, including primitive handles.
     const string = try engine.convertToDOMString(ctx, value, allocator);
     errdefer allocator.free(string);
     try list.append(allocator, string);
-}
-
-/// ECMAScript's Number::toString, for a number passed as a protocol.
-///
-/// Exact for NaN, the infinities and every integer below 10^21 (which is what
-/// an integer argument is); other values take the shortest round-trip form,
-/// which differs from ECMAScript's only in exponent notation. Any of these that
-/// is not an HTTP token is rejected by step 9 either way.
-fn numberToString(allocator: std.mem.Allocator, n: f64) ![]const u8 {
-    if (std.math.isNan(n)) return allocator.dupe(u8, "NaN");
-    if (std.math.isInf(n)) return allocator.dupe(u8, if (n > 0) "Infinity" else "-Infinity");
-    if (n == @trunc(n) and @abs(n) < 1e21) {
-        return std.fmt.allocPrint(allocator, "{d}", .{@as(i128, @intFromFloat(n))});
-    }
-    return std.fmt.allocPrint(allocator, "{d}", .{n});
 }
 
 /// An HTTP token, per RFC 9110 § 5.6.2. Empty is not a token.
@@ -1102,21 +1117,6 @@ pub fn get_bufferedAmount(instance: *runtime.Instance) anyerror!u64 {
     return internal.getBufferedAmount();
 }
 
-/// Getter for onopen (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onopen(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "open");
-}
-
-/// Getter for onerror (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "error");
-}
-
-/// Getter for onclose (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "close");
-}
-
 /// Getter for extensions
 /// Spec: https://websockets.spec.whatwg.org/#dom-websocket-extensions
 ///
@@ -1143,11 +1143,6 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initEmpty();
 }
 
-/// Getter for onmessage (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "message");
-}
-
 /// Getter for binaryType
 /// Spec: https://websockets.spec.whatwg.org/#dom-websocket-binarytype
 ///
@@ -1156,30 +1151,6 @@ pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler
 pub fn get_binaryType(instance: *runtime.Instance) anyerror!enums.BinaryType {
     const internal = getInternal(instance) orelse return ._blob_;
     return internal.binary_type;
-}
-
-/// Setter for onopen: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onopen(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "open", value);
-}
-
-/// Setter for onerror: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "error", value);
-}
-
-/// Setter for onclose: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "close", value);
-}
-
-/// Setter for onmessage: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "message", value);
 }
 
 /// Setter for binaryType
@@ -1276,19 +1247,18 @@ pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue) anyerror!vo
     const internal = getInternal(instance) orelse return;
     const connection = internal.connection orelse return;
 
-    // Step 1. CONNECTING is an "InvalidStateError" DOMException - the one case
-    // where send reports a problem to script at all.
-    if (internal.getReadyState() == 0) {
-        return error.InvalidStateError;
-    }
-
-    // Step 2. Read the payload out of the argument. `send` accepts
-    // (USVString or Blob or ArrayBuffer or ArrayBufferView); anything else has
-    // already been rejected by the binding layer.
+    // WebIDL § 3.2.25 converts the union before send's method steps. ToString
+    // can throw or call close(), so it must precede the ready-state check.
+    // Blink's DOMWebSocket::send likewise receives already-converted values.
     var scratch: ?[]const u8 = null;
     defer if (scratch) |s| internal.allocator.free(s);
 
     var payload = try payloadOf(instance, internal, data, &scratch);
+
+    // Step 1. Read the state after conversion, including its side effects.
+    if (internal.getReadyState() == 0) {
+        return error.InvalidStateError;
+    }
 
     // "If data is a string: let data be the result of converting data to a
     // sequence of Unicode scalar values." A lone surrogate becomes U+FFFD
@@ -1348,8 +1318,8 @@ fn payloadOf(
         .null => return .{ .bytes = "null", .is_text = true },
         .undefined => return .{ .bytes = "undefined", .is_text = true },
         .boolean => |b| return .{ .bytes = if (b) "true" else "false", .is_text = true },
-        .number => |n| {
-            const text = try numberToString(allocator, n);
+        .number => {
+            const text = try engine.convertToUSVString(instance.ctx, data, allocator);
             scratch.* = text;
             return .{ .bytes = text, .is_text = true };
         },

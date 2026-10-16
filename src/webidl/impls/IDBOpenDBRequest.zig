@@ -48,15 +48,3 @@ fn attachRequest(instance: *runtime.Instance, request: *storage.indexeddb.IDBOpe
     std.debug.assert(internal.open_request == null);
     internal.open_request = request;
 }
-pub fn get_onblocked(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "blocked");
-}
-pub fn get_onupgradeneeded(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "upgradeneeded");
-}
-pub fn set_onblocked(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "blocked", value);
-}
-pub fn set_onupgradeneeded(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "upgradeneeded", value);
-}

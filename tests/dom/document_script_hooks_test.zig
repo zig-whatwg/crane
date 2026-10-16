@@ -114,10 +114,14 @@ test "a Document's scripts are reached through document_scripts.of, and currentS
 }
 
 var disposed: usize = 0;
+var disposed_key_matched: bool = false;
 
-fn countDisposal(module: *anyopaque) void {
+fn countDisposal(key: []const u8, module: *anyopaque) void {
     _ = module;
     disposed += 1;
+    // The dispose function is told the value's key: how the loader tells
+    // what it stored (a "classic:" record or a module script).
+    disposed_key_matched = std.mem.eql(u8, key, "javascript-or-wasm:https://example.test/m.js");
 }
 
 test "a module stored in a Document's module map is the map's, disposed of with the Document" {
@@ -144,6 +148,7 @@ test "a module stored in a Document's module map is the map's, disposed of with 
     interfaces.Document.deinit(document);
     document_alive = false;
     try testing.expectEqual(@as(usize, 1), disposed);
+    try testing.expect(disposed_key_matched);
 }
 
 test "an import map answers its mappings, a scope's before the top level" {

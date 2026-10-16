@@ -446,7 +446,7 @@ pub const HTMLAreaElement = struct {
         return try HTMLAreaElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_alt(instance: *runtime.Instance) anyerror!DOMString {

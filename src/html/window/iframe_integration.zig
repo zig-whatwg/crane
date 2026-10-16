@@ -28,6 +28,7 @@ const Navigables = browsing_context.Navigables;
 const SandboxFlags = browsing_context.SandboxFlags;
 const WindowProxy = @import("window_proxy.zig").WindowProxy;
 const Origin = @import("window_proxy.zig").Origin;
+const OriginRecord = @import("dom").origin_record.OriginRecord;
 const html_parser = @import("../parser/root.zig");
 const encoding_sniffing = html_parser.encoding_sniffing;
 // Navigation fetch and the "load a document" MIME routing. Both live in the
@@ -389,6 +390,16 @@ pub const IFrameIntegration = struct {
     /// the commit. Owned until taken.
     next_policy_container: ?@import("fetch").internal.PolicyContainer = null,
 
+    /// The origin the next document this navigable makes is created with
+    /// (the Document's `origin` construction argument): its creator's
+    /// record for an initial about:blank document, the container
+    /// document's for about:blank and srcdoc, the initiator's for a
+    /// javascript: URL's document, a new record for a fetched response.
+    /// Set just before a commit, taken by whatever creates the document,
+    /// cleared after the commit. One reference, owned until taken; null
+    /// leaves the document an origin of its own.
+    next_origin: ?*OriginRecord = null,
+
     /// The referrer the next document this navigable makes is created with:
     /// for a fetched response, its request's referrer as main fetch left it
     /// ("create and initialize a Document object" step 14), and for a new
@@ -458,6 +469,8 @@ pub const IFrameIntegration = struct {
         // needs to free it: removing the iframe ends its navigations, and
         // the integration's deinit follows.
         self.setNextPolicyContainer(null);
+        // Likewise a pending origin record.
+        self.setNextOrigin(null);
 
         // Destroy the browsing context if it exists
         // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
@@ -638,6 +651,22 @@ pub const IFrameIntegration = struct {
         const container = self.next_policy_container;
         self.next_policy_container = null;
         return container;
+    }
+
+    /// The origin record for the next document this navigable makes: the
+    /// integration takes over `record`'s reference (null: none), releasing
+    /// one still pending.
+    pub fn setNextOrigin(self: *IFrameIntegration, record: ?*OriginRecord) void {
+        if (self.next_origin) |old| old.release();
+        self.next_origin = record;
+    }
+
+    /// The pending origin record, handed over with its reference: the
+    /// integration keeps none.
+    pub fn takeNextOrigin(self: *IFrameIntegration) ?*OriginRecord {
+        const record = self.next_origin;
+        self.next_origin = null;
+        return record;
     }
 
     /// Record the origin the navigable's Windows are created with.

@@ -10,7 +10,7 @@
 //!
 //! This module turns an attribute's extended attributes into a `Reflection`,
 //! and writes it as the comptime spec the runtime half,
-//! `src/webidl/impls/reflection.zig`, takes:
+//! `src/dom/reflection.zig`, takes:
 //!
 //!     .{ .name = "colspan", .default = 1, .range = .{ 1, 1000 } }
 //!

@@ -89,10 +89,9 @@ pub fn doesElementMatchSourceList(element: Element, list: *const types.SourceLis
     // base64-value is the element's nonce attribute matches.
     if (inline_type == .script or inline_type == .style) {
         if (element.nonce) |nonce| {
-            for (list.expressions.items) |*expression| {
-                if (expression.type != .nonce) continue;
-                if (std.mem.eql(u8, expression.nonce_value orelse continue, nonce)) return true;
-            }
+            // Share §6.7.2.3's browser-majority whitespace normalization
+            // with request nonce matching (see matching.doesNonceMatch).
+            if (@import("matching.zig").doesNonceMatch(nonce, list)) return true;
         }
     }
     // 3-4. The unsafe-hashes flag.

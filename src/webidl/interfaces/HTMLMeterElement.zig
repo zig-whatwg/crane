@@ -355,7 +355,7 @@ pub const HTMLMeterElement = struct {
         return try HTMLMeterElementImpl.call_constructor(ctx);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn get_value(instance: *runtime.Instance) anyerror!f64 {

@@ -409,84 +409,106 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_isSystemKeyboardSupported(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSessionImpl.get_onend(instance);
+        if (comptime @hasDecl(XRSessionImpl, "get_onend")) return try XRSessionImpl.get_onend(instance);
+        return event_handlers.value(EventHandler, instance, "onend");
     }
 
     pub fn set_onend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSessionImpl.set_onend(instance, value);
+        if (comptime @hasDecl(XRSessionImpl, "set_onend")) return try XRSessionImpl.set_onend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onend", value);
     }
 
     pub fn get_oninputsourceschange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSessionImpl.get_oninputsourceschange(instance);
+        if (comptime @hasDecl(XRSessionImpl, "get_oninputsourceschange")) return try XRSessionImpl.get_oninputsourceschange(instance);
+        return event_handlers.value(EventHandler, instance, "oninputsourceschange");
     }
 
     pub fn set_oninputsourceschange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSessionImpl.set_oninputsourceschange(instance, value);
+        if (comptime @hasDecl(XRSessionImpl, "set_oninputsourceschange")) return try XRSessionImpl.set_oninputsourceschange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "oninputsourceschange", value);
     }
 
     pub fn get_onselect(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSessionImpl.get_onselect(instance);
+        if (comptime @hasDecl(XRSessionImpl, "get_onselect")) return try XRSessionImpl.get_onselect(instance);
+        return event_handlers.value(EventHandler, instance, "onselect");
     }
 
     pub fn set_onselect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSessionImpl.set_onselect(instance, value);
+        if (comptime @hasDecl(XRSessionImpl, "set_onselect")) return try XRSessionImpl.set_onselect(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onselect", value);
     }
 
     pub fn get_onselectstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSessionImpl.get_onselectstart(instance);
+        if (comptime @hasDecl(XRSessionImpl, "get_onselectstart")) return try XRSessionImpl.get_onselectstart(instance);
+        return event_handlers.value(EventHandler, instance, "onselectstart");
     }
 
     pub fn set_onselectstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSessionImpl.set_onselectstart(instance, value);
+        if (comptime @hasDecl(XRSessionImpl, "set_onselectstart")) return try XRSessionImpl.set_onselectstart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onselectstart", value);
     }
 
     pub fn get_onselectend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSessionImpl.get_onselectend(instance);
+        if (comptime @hasDecl(XRSessionImpl, "get_onselectend")) return try XRSessionImpl.get_onselectend(instance);
+        return event_handlers.value(EventHandler, instance, "onselectend");
     }
 
     pub fn set_onselectend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSessionImpl.set_onselectend(instance, value);
+        if (comptime @hasDecl(XRSessionImpl, "set_onselectend")) return try XRSessionImpl.set_onselectend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onselectend", value);
     }
 
     pub fn get_onsqueeze(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSessionImpl.get_onsqueeze(instance);
+        if (comptime @hasDecl(XRSessionImpl, "get_onsqueeze")) return try XRSessionImpl.get_onsqueeze(instance);
+        return event_handlers.value(EventHandler, instance, "onsqueeze");
     }
 
     pub fn set_onsqueeze(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSessionImpl.set_onsqueeze(instance, value);
+        if (comptime @hasDecl(XRSessionImpl, "set_onsqueeze")) return try XRSessionImpl.set_onsqueeze(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsqueeze", value);
     }
 
     pub fn get_onsqueezestart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSessionImpl.get_onsqueezestart(instance);
+        if (comptime @hasDecl(XRSessionImpl, "get_onsqueezestart")) return try XRSessionImpl.get_onsqueezestart(instance);
+        return event_handlers.value(EventHandler, instance, "onsqueezestart");
     }
 
     pub fn set_onsqueezestart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSessionImpl.set_onsqueezestart(instance, value);
+        if (comptime @hasDecl(XRSessionImpl, "set_onsqueezestart")) return try XRSessionImpl.set_onsqueezestart(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsqueezestart", value);
     }
 
     pub fn get_onsqueezeend(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSessionImpl.get_onsqueezeend(instance);
+        if (comptime @hasDecl(XRSessionImpl, "get_onsqueezeend")) return try XRSessionImpl.get_onsqueezeend(instance);
+        return event_handlers.value(EventHandler, instance, "onsqueezeend");
     }
 
     pub fn set_onsqueezeend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSessionImpl.set_onsqueezeend(instance, value);
+        if (comptime @hasDecl(XRSessionImpl, "set_onsqueezeend")) return try XRSessionImpl.set_onsqueezeend(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onsqueezeend", value);
     }
 
     pub fn get_onvisibilitychange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSessionImpl.get_onvisibilitychange(instance);
+        if (comptime @hasDecl(XRSessionImpl, "get_onvisibilitychange")) return try XRSessionImpl.get_onvisibilitychange(instance);
+        return event_handlers.value(EventHandler, instance, "onvisibilitychange");
     }
 
     pub fn set_onvisibilitychange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSessionImpl.set_onvisibilitychange(instance, value);
+        if (comptime @hasDecl(XRSessionImpl, "set_onvisibilitychange")) return try XRSessionImpl.set_onvisibilitychange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onvisibilitychange", value);
     }
 
     pub fn get_onframeratechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRSessionImpl.get_onframeratechange(instance);
+        if (comptime @hasDecl(XRSessionImpl, "get_onframeratechange")) return try XRSessionImpl.get_onframeratechange(instance);
+        return event_handlers.value(EventHandler, instance, "onframeratechange");
     }
 
     pub fn set_onframeratechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRSessionImpl.set_onframeratechange(instance, value);
+        if (comptime @hasDecl(XRSessionImpl, "set_onframeratechange")) return try XRSessionImpl.set_onframeratechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onframeratechange", value);
     }
 
     pub fn get_persistentAnchors(instance: *runtime.Instance) anyerror!runtime.JSValue {

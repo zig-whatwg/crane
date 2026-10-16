@@ -364,7 +364,7 @@ pub const HTMLStyleElement = struct {
         try HTMLStyleElementImpl.set_disabled(instance, value);
     }
 
-    const reflection = @import("impls").reflection;
+    const reflection = @import("dom").reflection;
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {

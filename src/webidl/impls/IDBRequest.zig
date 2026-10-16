@@ -105,18 +105,6 @@ pub fn get_readyState(instance: *runtime.Instance) anyerror!enums.IDBRequestRead
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     return if (internal.done) ._done_ else ._pending_;
 }
-pub fn get_onsuccess(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "success");
-}
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "error");
-}
-pub fn set_onsuccess(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "success", value);
-}
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "error", value);
-}
 
 fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
     return liveTransaction(instance.getState(State).own._internal orelse return null);

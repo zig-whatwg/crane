@@ -321,10 +321,10 @@ fn initializeResponse(instance: *runtime.Instance, init_dict: dictionaries.Respo
 // Static methods use call_static_<name> convention
 
 pub fn call_static_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // Static method - use context directly, not instance state
-    // (instance is just a template for context/allocator access)
-    const allocator = instance.ctx.allocator;
-    const ctx = instance.ctx;
+    // Fetch error(): create a network-error response with an immutable
+    // headers guard in the current realm.
+    const ctx = engine.currentRealm() orelse instance.ctx;
+    const allocator = ctx.allocator;
 
     const error_instance = try init(allocator, State, &Response.vtable, ctx);
     const error_state = error_instance.getState(State);
@@ -332,29 +332,76 @@ pub fn call_static_error(instance: *runtime.Instance) anyerror!*runtime.Instance
 
     internal.response.response_type = .@"error";
     internal.response.status = 0;
+    internal.headers_guard = .immutable;
 
     return error_instance;
 }
 
 pub fn call_static_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
-    // Unwrap Opt for status (default to 302 per spec)
+    const ctx = engine.currentRealm() orelse instance.ctx;
+    const allocator = ctx.allocator;
+
+    // Fetch redirect() steps 1-2: parse with the current settings object's
+    // API base URL, using UTF-8 even in a document with another encoding.
+    // Parsing precedes status validation (Blink Response::redirect).
+    const api_parser = @import("api_parser");
+    var base_record: ?@import("url_record").URLRecord = null;
+    defer if (base_record) |*base| base.deinit();
+    if (try redirectBaseURL(ctx)) |base| {
+        defer allocator.free(base);
+        base_record = api_parser.parseURL(allocator, base, null) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => null,
+        };
+    }
+    var parsed_url = api_parser.parseURL(allocator, url, if (base_record) |*base| base else null) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.TypeError,
+    };
+    defer parsed_url.deinit();
+
+    // Step 3: only redirect statuses are accepted (default 302).
     const status_val = if (status.wasPassed()) status.value else 302;
     if (status_val != 301 and status_val != 302 and status_val != 303 and status_val != 307 and status_val != 308) {
         return error.RangeError;
     }
 
-    // Static method - use context directly, not instance state
-    const allocator = instance.ctx.allocator;
-    const ctx = instance.ctx;
-
+    // Steps 4-5: create the response with an immutable guard, then set status.
     const redirect_instance = try init(allocator, State, &Response.vtable, ctx);
+    errdefer runtime.Instance.deinit(redirect_instance);
     const redirect_state = redirect_instance.getState(State);
     const internal = redirect_state.own._internal.?;
 
     internal.response.status = status_val;
-    try internal.response.header_list.append("Location", url);
+    internal.headers_guard = .immutable;
 
+    // Steps 6-7: append the serialization, including its fragment.
+    const serialized = try @import("url_serializer").serialize(allocator, &parsed_url, false);
+    defer allocator.free(serialized);
+    try internal.response.header_list.append("Location", serialized);
+
+    // Step 8.
     return redirect_instance;
+}
+
+/// The current settings object's API base URL, owned by ctx.allocator.
+/// A Window uses its document's base URL (including <base> and srcdoc's
+/// inherited base); a worker uses its script URL recorded on the context.
+fn redirectBaseURL(ctx: runtime.Context) !?[]const u8 {
+    if (ctx.getRealm()) |realm| {
+        if (realm.global_object) |raw| {
+            const global: *runtime.Instance = @ptrCast(@alignCast(raw));
+            if (std.mem.eql(u8, global.vtable.name, "Window")) {
+                const document = try interfaces.Window.get_document(global);
+                const base = try interfaces.Node.get_baseURI(document);
+                if (base.len != 0) return base;
+                ctx.allocator.free(base);
+            }
+        }
+    }
+    const url = ctx.documentUrl() orelse return null;
+    if (url.len == 0) return null;
+    return try ctx.allocator.dupe(u8, url);
 }
 
 /// The static `json(data, init)` method.
@@ -423,9 +470,12 @@ pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     // Return last URL in URL list (for redirects)
     if (internal.response.url_list.items.len > 0) {
         const url = internal.response.url_list.items[internal.response.url_list.items.len - 1];
-        // TODO: serialize with the exclude fragment flag set.
-        if (url.len == 0) return "";
-        return try instance.ctx.allocator.dupe(u8, url);
+        // The URL list already holds serialized URLs. URL serializer step
+        // 6 with exclude fragment skips the literal '#' and everything
+        // after it; percent-encoded %23 bytes elsewhere remain intact.
+        const end = std.mem.indexOfScalar(u8, url, '#') orelse url.len;
+        if (end == 0) return "";
+        return try instance.ctx.allocator.dupe(u8, url[0..end]);
     }
 
     return "";

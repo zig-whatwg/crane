@@ -217,12 +217,16 @@ pub const NavigationHistoryEntry = struct {
         return try NavigationHistoryEntryImpl.get_sameDocument(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_ondispose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try NavigationHistoryEntryImpl.get_ondispose(instance);
+        if (comptime @hasDecl(NavigationHistoryEntryImpl, "get_ondispose")) return try NavigationHistoryEntryImpl.get_ondispose(instance);
+        return event_handlers.value(EventHandler, instance, "ondispose");
     }
 
     pub fn set_ondispose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try NavigationHistoryEntryImpl.set_ondispose(instance, value);
+        if (comptime @hasDecl(NavigationHistoryEntryImpl, "set_ondispose")) return try NavigationHistoryEntryImpl.set_ondispose(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondispose", value);
     }
 
     pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {

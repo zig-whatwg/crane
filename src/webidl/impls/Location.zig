@@ -866,16 +866,22 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
 
 /// HTML "navigate to a javascript: URL" for the top-level page, queued by
 /// "navigate" step 20: what it needs when it runs - the URL, the initiator
-/// origin snapshot (the source document's origin, serialized), the
-/// initiator policy container (a clone of the source document's, taken now:
-/// step 4's request carries it), and the source window - the request's
-/// client, whose default policy the pre-navigation check runs.
+/// origin snapshot (the source document's origin: its serialization and the
+/// origin record itself, held, so a domain set after the navigation was
+/// queued is the one step 3 compares), the initiator policy container (a
+/// clone of the source document's, taken now: step 4's request carries it),
+/// and the source window - the request's client, whose default policy the
+/// pre-navigation check runs.
 const JavascriptNavigation = struct {
     allocator: Allocator,
     window: *runtime.Instance,
     generation: u64,
     url: []u8,
     initiator_origin: ?[]u8,
+    /// Navigate step 4's initiatorOriginSnapshot as the object it is: one
+    /// reference, released with the task. It outlives the source document,
+    /// which may be destroyed before the task runs.
+    initiator_record: ?*dom.origin_record.OriginRecord = null,
     initiator_policy_container: ?dom.policy_containers.PolicyContainer = null,
     source_window: ?*runtime.Instance = null,
     source_generation: u64 = 0,
@@ -885,6 +891,7 @@ const JavascriptNavigation = struct {
     fn destroy(self: *JavascriptNavigation) void {
         self.allocator.free(self.url);
         if (self.initiator_origin) |o| self.allocator.free(o);
+        if (self.initiator_record) |record| record.release();
         if (self.initiator_policy_container) |*container| container.deinit();
         self.allocator.destroy(self);
     }
@@ -931,6 +938,13 @@ fn queueJavascriptNavigation(window: *runtime.Instance, url: []const u8, source:
         defer w.ctx.allocator.free(serialized);
         break :blk try allocator.dupe(u8, serialized);
     } else null;
+    errdefer if (initiator) |o| allocator.free(o);
+    // The source document's origin record - the page's own document's with
+    // no source - held until the task runs or is dropped.
+    const initiator_record: ?*dom.origin_record.OriginRecord = if (source) |doc|
+        dom.document_origin.record(doc)
+    else
+        dom.global_settings.originRecordOf(window);
     // Navigate step 4's source snapshot params' source policy container: a
     // clone of the source document's (the page's own with no source), which
     // "navigate to a javascript: URL" step 4's request carries.
@@ -946,6 +960,7 @@ fn queueJavascriptNavigation(window: *runtime.Instance, url: []const u8, source:
         .generation = runtime.SlabAllocator.generationOf(window),
         .url = owned_url,
         .initiator_origin = initiator,
+        .initiator_record = if (initiator_record) |record| record.retain() else null,
         .initiator_policy_container = initiator_container,
         .source_window = source_window,
         .source_generation = if (source_window) |w| runtime.SlabAllocator.generationOf(w) else 0,
@@ -962,11 +977,16 @@ fn queueJavascriptNavigation(window: *runtime.Instance, url: []const u8, source:
 fn navigateToJavascriptUrl(task: *JavascriptNavigation) void {
     const window = task.window;
     // Step 3: "If initiatorOrigin is not same origin-domain with
-    // targetNavigable's active document's origin, then return."
+    // targetNavigable's active document's origin, then return." The
+    // initiator's record as it is now - a domain set since the navigation
+    // was queued counts - against the page's document's.
     const initiator = task.initiator_origin orelse return;
     const target = interfaces.Window.get_origin(window) catch return;
     defer window.ctx.allocator.free(target);
-    if (std.mem.eql(u8, initiator, "null") or !std.mem.eql(u8, initiator, target)) return;
+    if (!dom.origin_record.sameOriginDomain(
+        .{ .serialized = initiator, .record = task.initiator_record },
+        .{ .serialized = target, .record = dom.global_settings.originRecordOf(window) },
+    )) return;
     // Steps 4-5: "Let request be a new request whose URL is url and whose
     // policy container is initiatorPolicyContainer. If the result of should
     // navigation request of type be blocked by Content Security Policy?

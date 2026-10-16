@@ -243,20 +243,26 @@ pub const MediaStream = struct {
         return try MediaStreamImpl.get_active(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onaddtrack(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaStreamImpl.get_onaddtrack(instance);
+        if (comptime @hasDecl(MediaStreamImpl, "get_onaddtrack")) return try MediaStreamImpl.get_onaddtrack(instance);
+        return event_handlers.value(EventHandler, instance, "onaddtrack");
     }
 
     pub fn set_onaddtrack(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaStreamImpl.set_onaddtrack(instance, value);
+        if (comptime @hasDecl(MediaStreamImpl, "set_onaddtrack")) return try MediaStreamImpl.set_onaddtrack(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onaddtrack", value);
     }
 
     pub fn get_onremovetrack(instance: *runtime.Instance) anyerror!EventHandler {
-        return try MediaStreamImpl.get_onremovetrack(instance);
+        if (comptime @hasDecl(MediaStreamImpl, "get_onremovetrack")) return try MediaStreamImpl.get_onremovetrack(instance);
+        return event_handlers.value(EventHandler, instance, "onremovetrack");
     }
 
     pub fn set_onremovetrack(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try MediaStreamImpl.set_onremovetrack(instance, value);
+        if (comptime @hasDecl(MediaStreamImpl, "set_onremovetrack")) return try MediaStreamImpl.set_onremovetrack(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onremovetrack", value);
     }
 
     pub fn call_getTracks(instance: *runtime.Instance) anyerror!runtime.JSValue {

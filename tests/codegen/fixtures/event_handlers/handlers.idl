@@ -1,0 +1,38 @@
+// The three event handler types (HTML 8.1.8.1) and an interface with an
+// attribute of each kind: the generated interface supplies their getters and
+// setters, so the impl stub declares none of them.
+[LegacyTreatNonObjectAsNull]
+callback EventHandlerNonNull = any (Event event);
+typedef EventHandlerNonNull? EventHandler;
+
+[LegacyTreatNonObjectAsNull]
+callback OnErrorEventHandlerNonNull = any ((Event or DOMString) event, optional DOMString source, optional unsigned long lineno, optional unsigned long colno, optional any error);
+typedef OnErrorEventHandlerNonNull? OnErrorEventHandler;
+
+[LegacyTreatNonObjectAsNull]
+callback OnBeforeUnloadEventHandlerNonNull = DOMString? (Event event);
+typedef OnBeforeUnloadEventHandlerNonNull? OnBeforeUnloadEventHandler;
+
+[Exposed=Window]
+interface Event {
+  readonly attribute DOMString type;
+};
+
+[Exposed=Window]
+interface EventTarget {
+};
+
+[Exposed=Window]
+interface Reader : EventTarget {
+  attribute EventHandler onload;
+  attribute OnErrorEventHandler onerror;
+  attribute OnBeforeUnloadEventHandler onbeforeunload;
+  attribute DOMString label;
+};
+
+// A mixin its includers inherit (on codegen's inherited list): the includer
+// takes the mixin module's accessors, and the mixin module supplies them.
+interface mixin GlobalEventHandlers {
+  attribute EventHandler onclick;
+};
+Reader includes GlobalEventHandlers;

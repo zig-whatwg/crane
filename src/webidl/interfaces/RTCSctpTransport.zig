@@ -204,11 +204,15 @@ pub const RTCSctpTransport = struct {
         return try RTCSctpTransportImpl.get_maxChannels(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstatechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try RTCSctpTransportImpl.get_onstatechange(instance);
+        if (comptime @hasDecl(RTCSctpTransportImpl, "get_onstatechange")) return try RTCSctpTransportImpl.get_onstatechange(instance);
+        return event_handlers.value(EventHandler, instance, "onstatechange");
     }
 
     pub fn set_onstatechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try RTCSctpTransportImpl.set_onstatechange(instance, value);
+        if (comptime @hasDecl(RTCSctpTransportImpl, "set_onstatechange")) return try RTCSctpTransportImpl.set_onstatechange(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
 };

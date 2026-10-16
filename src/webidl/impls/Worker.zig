@@ -353,30 +353,6 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
 // EventTarget's event handler map, where firing `message` or `error` at this
 // Worker finds them - in order with every listener.
 
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "error");
-}
-
-pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "message");
-}
-
-pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return dom.event_handlers.get(typedefs.EventHandler, instance, "messageerror");
-}
-
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "error", value);
-}
-
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "message", value);
-}
-
-pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "messageerror", value);
-}
-
 /// Operation: terminate
 ///
 /// Spec: "The terminate() method steps are to terminate a worker given

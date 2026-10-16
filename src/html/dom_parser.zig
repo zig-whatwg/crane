@@ -78,6 +78,11 @@ pub const ParseOptions = struct {
     /// takes (HTML "parse HTML from a string" step 2): true for
     /// parseHTMLUnsafe, false for DOMParser.
     allow_declarative_shadow_roots: bool = false,
+    /// The new document's origin: the record of the document whose origin
+    /// it takes (parseHTMLUnsafe: this's relevant global object's associated
+    /// Document's), or null for an origin of its own. BORROWED: the document
+    /// retains it.
+    origin: ?*dom.origin_record.OriginRecord = null,
 };
 
 /// Options for the HTML fragment parsing algorithm.
@@ -146,9 +151,10 @@ pub fn parseHTML(
     tree_builder.parse() catch return error.TreeBuilderError;
 
     // Step 5: Create DOM Document from parsed tree
-    const document = interfaces.Document.init(
+    const document = interfaces.Document.initWith(
         allocator,
         ctx,
+        .{ .origin = options.origin },
     ) catch return error.OutOfMemory;
     errdefer dom.node_creation.destroyUninserted(document);
 

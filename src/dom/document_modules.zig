@@ -25,7 +25,11 @@ const runtime = @import("runtime");
 
 pub const Error = error{ InvalidStateError, OutOfMemory };
 
-/// Frees one module map value, when the Document goes.
+/// Frees one module map value, when the Document goes or a new value
+/// replaces it. `key` is the value's key in the map, BORROWED for the call:
+/// it says what the loader stored under it.
+pub const ModuleDisposeFn = *const fn (key: []const u8, module: *anyopaque) void;
+/// Frees the Document's module loader, when the Document goes.
 pub const DisposeFn = *const fn (module: *anyopaque) void;
 pub const VisitLoaderFn = *const fn (loader: *anyopaque, data: ?*anyopaque) void;
 
@@ -37,7 +41,7 @@ pub const Implementation = struct {
     get_module: *const fn (document: *runtime.Instance, key: []const u8) ?*anyopaque,
     /// Stores `module` under `key`, disposing of any module it replaces.
     set_module: *const fn (document: *runtime.Instance, key: []const u8, module: *anyopaque) Error!void,
-    set_module_dispose_function: *const fn (document: *runtime.Instance, dispose: ?DisposeFn) void,
+    set_module_dispose_function: *const fn (document: *runtime.Instance, dispose: ?ModuleDisposeFn) void,
     import_map_acquired: *const fn (document: *runtime.Instance) bool,
     acquire_import_map: *const fn (document: *runtime.Instance) void,
     add_import_mapping: *const fn (document: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) Error!void,
@@ -78,7 +82,7 @@ pub fn setModule(document: *runtime.Instance, key: []const u8, module: *anyopaqu
 }
 
 /// How `document` frees its module map's values when it goes.
-pub fn setModuleDisposeFunction(document: *runtime.Instance, dispose: ?DisposeFn) void {
+pub fn setModuleDisposeFunction(document: *runtime.Instance, dispose: ?ModuleDisposeFn) void {
     const impl = implementation orelse return;
     impl.set_module_dispose_function(document, dispose);
 }

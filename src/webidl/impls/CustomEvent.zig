@@ -20,8 +20,6 @@ const CustomEvent = interfaces.CustomEvent;
 const Event = interfaces.Event;
 /// CustomEvent is an Event: its ancestor's state is reached through Event's
 /// impl (AGENTS.md "The impls boundary", rule 1).
-const EventImpl = @import("Event.zig");
-
 pub const State = CustomEvent.State;
 
 pub const ImplError = error{
@@ -122,14 +120,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.own.cancelable = base_init.cancelable orelse false;
     state.base.own.composed = base_init.composed orelse false;
 
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = interfaces.Event.get_NONE();
     state.base.own.cancelBubble = false;
     state.base.own.returnValue = true; // !canceled_flag
     state.base.own.defaultPrevented = false;
-    state.base.own.isTrusted = false;
     state.base.own.timeStamp = @as(f64, @floatFromInt(clock.monotonicMillis()));
 
     // Create the INHERITED Event internal state and set the initialized flag.
@@ -159,7 +152,7 @@ pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// 3. Set this's detail attribute to detail.
 pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(runtime.JSValue)) anyerror!void {
     // Step 1: If this's dispatch flag is set, then return.
-    if (EventImpl.getDispatchFlag(instance)) return;
+    if (@import("dom").event_construction.dispatchFlag(instance)) return;
 
     // Step 2: Initialize this with type, bubbles, and cancelable - Event's
     // own initEvent steps (their step 1 is this one, and holds).

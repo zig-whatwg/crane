@@ -205,19 +205,25 @@ pub const ManagedMediaSource = struct {
         return try ManagedMediaSourceImpl.get_streaming(instance);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onstartstreaming(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ManagedMediaSourceImpl.get_onstartstreaming(instance);
+        if (comptime @hasDecl(ManagedMediaSourceImpl, "get_onstartstreaming")) return try ManagedMediaSourceImpl.get_onstartstreaming(instance);
+        return event_handlers.value(EventHandler, instance, "onstartstreaming");
     }
 
     pub fn set_onstartstreaming(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ManagedMediaSourceImpl.set_onstartstreaming(instance, value);
+        if (comptime @hasDecl(ManagedMediaSourceImpl, "set_onstartstreaming")) return try ManagedMediaSourceImpl.set_onstartstreaming(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onstartstreaming", value);
     }
 
     pub fn get_onendstreaming(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ManagedMediaSourceImpl.get_onendstreaming(instance);
+        if (comptime @hasDecl(ManagedMediaSourceImpl, "get_onendstreaming")) return try ManagedMediaSourceImpl.get_onendstreaming(instance);
+        return event_handlers.value(EventHandler, instance, "onendstreaming");
     }
 
     pub fn set_onendstreaming(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ManagedMediaSourceImpl.set_onendstreaming(instance, value);
+        if (comptime @hasDecl(ManagedMediaSourceImpl, "set_onendstreaming")) return try ManagedMediaSourceImpl.set_onendstreaming(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onendstreaming", value);
     }
 };

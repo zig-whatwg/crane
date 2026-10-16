@@ -171,11 +171,15 @@ pub const CreateMonitor = struct {
         }
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_ondownloadprogress(instance: *runtime.Instance) anyerror!EventHandler {
-        return try CreateMonitorImpl.get_ondownloadprogress(instance);
+        if (comptime @hasDecl(CreateMonitorImpl, "get_ondownloadprogress")) return try CreateMonitorImpl.get_ondownloadprogress(instance);
+        return event_handlers.value(EventHandler, instance, "ondownloadprogress");
     }
 
     pub fn set_ondownloadprogress(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try CreateMonitorImpl.set_ondownloadprogress(instance, value);
+        if (comptime @hasDecl(CreateMonitorImpl, "set_ondownloadprogress")) return try CreateMonitorImpl.set_ondownloadprogress(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "ondownloadprogress", value);
     }
 };

@@ -79,21 +79,45 @@ test "queryItems on an empty jar returns an empty list" {
     try std.testing.expectEqual(@as(usize, 0), items.items.len);
 }
 
-// `getAll()` and `getAll("")` are the same call by the time an impl sees them:
-// a missing `USVString` argument is defaulted to an empty slice by
-// `getDefaultArgValue` in src/runtime/engines/v8/interface.zig. Only the
-// `CookieStoreGetOptions` overload, which codegen has not produced, could
-// separate them. `getAll()` meaning "every cookie" is the case WPT exercises
-// (cookieStore_getAll_multiple.https.any.js), so the empty string reads as the
-// wildcard - pin that, because the alternative is a silent behaviour swap.
-test "nameFilter reads the empty string as the wildcard" {
-    try std.testing.expect(CookieStoreImpl.nameFilter("") == null);
+// The generated dictionary overload now distinguishes an omitted filter
+// from a string argument. Query cookies step 3.2 filters every non-null
+// name, including the empty string.
+test "queryCookies empty name never matches a named cookie" {
+    const allocator = std.testing.allocator;
+    var jar = cookiestore.CookieJar.init(allocator);
+    defer jar.deinit();
+    try seed(&jar, "named", "value");
+
+    var items = try cookiestore.queryCookies(allocator, &jar, "example.com", "/", "");
+    defer {
+        for (items.items) |*item| item.deinit();
+        items.deinit(allocator);
+    }
+    try std.testing.expectEqual(@as(usize, 0), items.items.len);
 }
 
-test "nameFilter passes a non-empty name through unchanged" {
-    const filter = CookieStoreImpl.nameFilter("cookie-name") orelse
-        return error.TestExpectedNonNull;
-    try std.testing.expectEqualStrings("cookie-name", filter);
+test "queryCookies empty and null name filters remain distinct" {
+    const allocator = std.testing.allocator;
+    var jar = cookiestore.CookieJar.init(allocator);
+    defer jar.deinit();
+    try seed(&jar, "named", "value");
+    try seed(&jar, "", "nameless");
+
+    var named = try cookiestore.queryCookies(allocator, &jar, "example.com", "/", "");
+    defer {
+        for (named.items) |*item| item.deinit();
+        named.deinit(allocator);
+    }
+    try std.testing.expectEqual(@as(usize, 1), named.items.len);
+    try std.testing.expectEqualStrings("", named.items[0].name);
+    try std.testing.expectEqualStrings("nameless", named.items[0].value);
+
+    var all = try cookiestore.queryCookies(allocator, &jar, "example.com", "/", null);
+    defer {
+        for (all.items) |*item| item.deinit();
+        all.deinit(allocator);
+    }
+    try std.testing.expectEqual(@as(usize, 2), all.items.len);
 }
 
 test "queryItems answers for the URL's host and path, and never with an HttpOnly cookie" {

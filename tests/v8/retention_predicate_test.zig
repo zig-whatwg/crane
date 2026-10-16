@@ -452,6 +452,75 @@ test "setterValueLeavesHandle - an unknown type defaults to KEPT" {
     try std.testing.expect(!leaves(Dictionary, .{}));
 }
 
+// ---------------------------------------------------------------------------
+// `setterValueIsBorrowed` - does an attribute setter whose value is of this
+// type borrow it for the call, so that the binding releases the value's
+// handle once the setter has returned (or failed)? TRUE releases a handle the
+// value may point at, so a type whose setters were not read for keepers -
+// every type not named - must answer FALSE (lane setterleak).
+
+const borrowed = v8.interface_mod.setterValueIsBorrowed;
+
+test "setterValueIsBorrowed - an any, nullable or optional, is borrowed for the call" {
+    // Every setter of these types was read for a keeper (the predicate's doc
+    // comment lists them); one that keeps its value takes its own hold
+    // (engine.retainValue), as ShadowRoot.adoptedStyleSheets does.
+    try std.testing.expect(borrowed(runtime.JSValue));
+    try std.testing.expect(borrowed(?runtime.JSValue));
+    const webidl = @import("webidl");
+    try std.testing.expect(borrowed(webidl.Opt(runtime.JSValue)));
+}
+
+test "setterValueIsBorrowed - a union whose only non-copied arm is `object` is borrowed" {
+    const ObjectOrString = union(enum) { object: runtime.JSValue, text: runtime.DOMString };
+    try std.testing.expect(borrowed(ObjectOrString));
+    try std.testing.expect(borrowed(?ObjectOrString));
+}
+
+test "setterValueIsBorrowed - a callback is handed over, never borrowed" {
+    // typedefs.EventHandler, reconstructed: `?EventHandlerNonNull`. Its
+    // conversion adopts the argument's Global, and the event handler map
+    // keeps it; releasing it would free the stored handler.
+    const EventHandler = ?*const fn (event: *runtime.Instance) runtime.JSValue;
+    try std.testing.expect(!borrowed(EventHandler));
+    try std.testing.expect(!borrowed(*const fn () callconv(.c) void));
+    try std.testing.expect(!borrowed(*runtime.CallbackWrapper));
+    const TimerHandlerShaped = union(enum) { domstring: runtime.DOMString, function: *anyopaque };
+    try std.testing.expect(!borrowed(TimerHandlerShaped));
+}
+
+test "setterValueIsBorrowed - a buffer source is a reference held in the value, not borrowed here" {
+    const webidl = @import("webidl");
+    try std.testing.expect(!borrowed(webidl.BufferSource));
+    try std.testing.expect(!borrowed(webidl.ArrayBufferView));
+}
+
+test "setterValueIsBorrowed - a copied type is released whatever the value, and answers no" {
+    // makeSetterCallback's value_is_copied releases these; answering yes too
+    // must never be what releases them.
+    try std.testing.expect(!borrowed(runtime.DOMString));
+    try std.testing.expect(!borrowed(?runtime.DOMString));
+    try std.testing.expect(!borrowed(bool));
+    try std.testing.expect(!borrowed(*runtime.Instance));
+    try std.testing.expect(!borrowed(?*runtime.Instance));
+}
+
+test "setterValueIsBorrowed - an unknown type, or one that merely contains an any, defaults to NOT borrowed" {
+    // The default the design rests on: TRUE releases the handle, so the
+    // fallthrough must be FALSE - an unread type keeps its handle and the old
+    // leak, which costs memory and never correctness.
+    const SomethingNew = struct { a: u32, b: *anyopaque };
+    try std.testing.expect(!borrowed(SomethingNew));
+    try std.testing.expect(!borrowed(*anyopaque));
+    try std.testing.expect(!borrowed([]const runtime.JSValue));
+    const Dictionary = struct { detail: ?runtime.JSValue = null };
+    try std.testing.expect(!borrowed(Dictionary));
+    // A JSValue arm not named `object` (CryptoKeyID's `bigint`) is not a
+    // reference to the argument's object.
+    const BigIntShaped = union(enum) { bigint: runtime.JSValue, number: f64 };
+    try std.testing.expect(!borrowed(BigIntShaped));
+}
+
 // ============================================================================
 // unionValueIsOwned: is the value an operation's union result converts to a
 // Global made for the call, which the binding releases once it is set as the

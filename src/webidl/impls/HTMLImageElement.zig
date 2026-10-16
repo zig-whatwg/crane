@@ -55,7 +55,7 @@ const same_object = @import("same_object.zig");
 const platform = @import("platform");
 const mimesniff = @import("mimesniff");
 const dom = @import("dom");
-const reflection = @import("reflection.zig");
+const reflection = @import("dom").reflection;
 
 // Event loop for microtask/task queuing
 const event_loop_mod = @import("streams_event_loop");
@@ -458,26 +458,40 @@ pub fn get_currentSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
 
 /// Getter for referrerPolicy
 pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "referrerpolicy",
+        .keywords = reflection.referrer_policy_keywords,
+    });
 }
 
 /// Getter for decoding
 pub fn get_decoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "decoding",
+        .keywords = &.{ "sync", "async", "auto" },
+        .missing = "auto",
+        .invalid = "auto",
+    });
 }
 
 /// Getter for loading
 pub fn get_loading(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "loading",
+        .keywords = &.{ "eager", "lazy" },
+        .missing = "eager",
+        .invalid = "eager",
+    });
 }
 
 /// Getter for fetchPriority
 pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return reflection.getEnumerated(runtime.DOMString, instance, .{
+        .name = "fetchpriority",
+        .keywords = &.{ "high", "low", "auto" },
+        .missing = "auto",
+        .invalid = "auto",
+    });
 }
 
 /// Getter for x
@@ -1268,35 +1282,27 @@ fn fireEventOnElement(instance: *runtime.Instance, event_type: []const u8) !void
 
     // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
     // ancestor, so its impl (existing debt, unchanged).
-    _ = try @import("EventTarget.zig").dispatchTrusted(instance, event);
+    _ = try @import("dom").fire_event.dispatchTrusted(instance, event);
 }
 
 /// Setter for referrerPolicy
 pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try reflection.set(runtime.DOMString, instance, .{ .name = "referrerpolicy" }, value);
 }
 
 /// Setter for decoding
 pub fn set_decoding(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try reflection.set(runtime.DOMString, instance, .{ .name = "decoding" }, value);
 }
 
 /// Setter for loading
 pub fn set_loading(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try reflection.set(runtime.DOMString, instance, .{ .name = "loading" }, value);
 }
 
 /// Setter for fetchPriority
 pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try reflection.set(runtime.DOMString, instance, .{ .name = "fetchpriority" }, value);
 }
 
 /// Setter for attributionSrc

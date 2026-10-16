@@ -1,35 +1,10 @@
-//! URLPattern Canonicalization Callbacks
-//!
-//! WHATWG URLPattern Standard: https://urlpattern.spec.whatwg.org/#canon
-//! Spec Reference: Section 3.1 Encoding callbacks
-//!
-//! These callbacks are used to canonicalize fixed text parts of patterns
-//! during component compilation. Each URL component has specific
-//! canonicalization rules derived from URL parsing.
-//!
-//! ## Canonicalizers
-//!
-//! - `canonicalizeProtocol` - Lowercase, validate scheme
-//! - `canonicalizeUsername` - Percent-encode with userinfo set
-//! - `canonicalizePassword` - Percent-encode with userinfo set
-//! - `canonicalizeHostname` - IDNA/punycode processing
-//! - `canonicalizeIPv6Hostname` - Special IPv6 handling
-//! - `canonicalizePort` - Validate numeric, remove default ports
-//! - `canonicalizePathname` - Special vs opaque path handling
-//! - `canonicalizeOpaquePathname` - Opaque path percent-encoding
-//! - `canonicalizeSearch` - Remove leading '?', percent-encode
-//! - `canonicalizeHash` - Remove leading '#', percent-encode
-
+//! URLPattern §3.1 encoding callbacks. Delimiter stripping belongs to
+//! URLPatternInit processing, not these callbacks on individual fragments.
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-
-// Import URL module components for canonicalization
-const url_mod = @import("url");
-const percent_encoding = url_mod.percent_encoding;
-const encode_sets = url_mod.encode_sets;
-const special_schemes = url_mod.special_schemes;
-const idna = url_mod.idna;
-const host_parser = url_mod.host_parser;
+const url = @import("url");
+const basic_parser = url.parser.basic_url_parser;
+const URLRecord = url.internal.url_record.URLRecord;
 
 pub const CanonicalizationError = error{
     InvalidProtocol,
@@ -40,346 +15,146 @@ pub const CanonicalizationError = error{
     OutOfMemory,
 };
 
-/// Create a dummy URL for canonicalization
-/// Spec: "create a dummy URL" algorithm
-fn createDummyURL() struct { scheme: []const u8, host: []const u8 } {
-    return .{
-        .scheme = "https",
-        .host = "dummy.invalid",
+fn createDummyURL(allocator: Allocator) Allocator.Error!URLRecord {
+    return basic_parser.parse(allocator, "https://dummy.invalid/", null) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => unreachable,
     };
 }
 
-/// Canonicalize a protocol/scheme (spec section 3.1)
-///
-/// If value is empty, return empty string.
-/// Parse using basic URL parser, return the scheme component.
-///
-/// Example: "HTTPS:" -> "https"
-/// Example: "http" -> "http"
+pub fn serializePath(allocator: Allocator, record: *const URLRecord) Allocator.Error![]u8 {
+    switch (record.path) {
+        .opaque_path => |path| return allocator.dupe(u8, path),
+        .segments => |segments| {
+            var result: std.ArrayList(u8) = .empty;
+            errdefer result.deinit(allocator);
+            for (segments.toSlice()) |segment| {
+                try result.append(allocator, '/');
+                try result.appendSlice(allocator, segment);
+            }
+            return result.toOwnedSlice(allocator);
+        },
+    }
+}
+
 pub fn canonicalizeProtocol(allocator: Allocator, value: []const u8) CanonicalizationError![]u8 {
-    // Step 1: If value is empty, return value
-    if (value.len == 0) {
-        return try allocator.dupe(u8, value);
-    }
-
-    // Step 2: Parse "value://dummy.invalid/" as URL
-    // The basic URL parser normalizes the scheme to lowercase
-    // We simulate this by:
-    // 1. Stripping trailing ':'
-    // 2. Lowercasing
-    // 3. Validating scheme characters
-
-    var clean_value = value;
-    // Strip trailing ':' if present
-    if (clean_value.len > 0 and clean_value[clean_value.len - 1] == ':') {
-        clean_value = clean_value[0 .. clean_value.len - 1];
-    }
-
-    // Validate scheme: must start with ASCII alpha, followed by ASCII alphanumeric, +, -, or .
-    if (clean_value.len == 0) {
-        return CanonicalizationError.InvalidProtocol;
-    }
-
-    if (!std.ascii.isAlphabetic(clean_value[0])) {
-        return CanonicalizationError.InvalidProtocol;
-    }
-
-    for (clean_value[1..]) |c| {
-        if (!std.ascii.isAlphanumeric(c) and c != '+' and c != '-' and c != '.') {
-            return CanonicalizationError.InvalidProtocol;
-        }
-    }
-
-    // Lowercase the scheme
-    const result = try allocator.alloc(u8, clean_value.len);
-    for (clean_value, 0..) |c, i| {
-        result[i] = std.ascii.toLower(c);
-    }
-
-    return result;
+    if (value.len == 0) return allocator.dupe(u8, value);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const temporary = arena.allocator();
+    // Steps 2-4: normal parsing, not the protocol setter's state override.
+    const input = try std.mem.concat(temporary, u8, &.{ value, "://dummy.invalid/" });
+    const record = basic_parser.parse(temporary, input, null) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidProtocol;
+    return allocator.dupe(u8, record.scheme());
 }
 
-/// Canonicalize a username (spec section 3.1)
-///
-/// If value is empty, return empty string.
-/// Use URL's "set the username" algorithm via dummy URL.
-///
-/// Example: "user name" -> "user%20name"
 pub fn canonicalizeUsername(allocator: Allocator, value: []const u8) CanonicalizationError![]u8 {
-    // Step 1: If value is empty, return value
-    if (value.len == 0) {
-        return try allocator.dupe(u8, value);
-    }
-
-    // Step 2-4: Set username on dummy URL, return result
-    // Username uses userinfo percent-encode set
-    return percent_encoding.utf8PercentEncode(
-        allocator,
-        value,
-        encode_sets.EncodeSet.userinfo,
-    ) catch |err| switch (err) {
-        error.OutOfMemory => return CanonicalizationError.OutOfMemory,
-    };
+    // Steps 2-4: set-the-username uses the userinfo percent-encode set.
+    return url.percent_encoding.utf8PercentEncode(allocator, value, .userinfo);
 }
 
-/// Canonicalize a password (spec section 3.1)
-///
-/// If value is empty, return empty string.
-/// Use URL's "set the password" algorithm via dummy URL.
-///
-/// Example: "pass word" -> "pass%20word"
 pub fn canonicalizePassword(allocator: Allocator, value: []const u8) CanonicalizationError![]u8 {
-    // Step 1: If value is empty, return value
-    if (value.len == 0) {
-        return try allocator.dupe(u8, value);
-    }
-
-    // Step 2-4: Set password on dummy URL, return result
-    // Password uses userinfo percent-encode set
-    return percent_encoding.utf8PercentEncode(
-        allocator,
-        value,
-        encode_sets.EncodeSet.userinfo,
-    ) catch |err| switch (err) {
-        error.OutOfMemory => return CanonicalizationError.OutOfMemory,
-    };
+    // Steps 2-4: set-the-password uses the same encoding as username.
+    return url.percent_encoding.utf8PercentEncode(allocator, value, .userinfo);
 }
 
-/// Canonicalize a hostname (spec section 3.1)
-///
-/// If value is empty, return empty string.
-/// Use basic URL parser with hostname state override.
-///
-/// Example: "EXAMPLE.COM" -> "example.com"
-/// Example: "münchen.de" -> "xn--mnchen-3ya.de" (punycode)
 pub fn canonicalizeHostname(allocator: Allocator, value: []const u8) CanonicalizationError![]u8 {
-    // Step 1: If value is empty, return value
-    if (value.len == 0) {
-        return try allocator.dupe(u8, value);
-    }
-
-    // Step 2-5: Use URL parser's host parsing (hostname state)
-    // This handles IDNA/punycode conversion and lowercasing
-
-    // Use IDNA domain-to-ASCII for hostname canonicalization
-    const ascii_domain = idna.domainToASCII(allocator, value, false) catch {
-        return CanonicalizationError.InvalidHostname;
-    };
-
-    return ascii_domain;
+    if (value.len == 0) return allocator.dupe(u8, value);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const temporary = arena.allocator();
+    var record = try createDummyURL(temporary);
+    // Steps 3-5: URL hostname state handles IDNA, IPv4, escapes and terminators.
+    _ = basic_parser.parseWithStateOverride(temporary, value, null, .hostname, &record) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHostname;
+    return if (record.host) |host| url.host_serializer.serializeHost(allocator, host) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHostname else allocator.dupe(u8, "");
 }
 
-/// Canonicalize an IPv6 hostname (spec section 3.1)
-///
-/// Special handling for IPv6 addresses in hostnames.
-/// Only accepts hex digits, '[', ']', and ':'.
-/// Lowercases hex digits.
-///
-/// Example: "[::1]" -> "[::1]"
-/// Example: "[2001:DB8::1]" -> "[2001:db8::1]"
 pub fn canonicalizeIPv6Hostname(allocator: Allocator, value: []const u8) CanonicalizationError![]u8 {
-    // Step 1: If code point length < 2, return false (but we return the value)
-    if (value.len < 2) {
-        return try allocator.dupe(u8, value);
-    }
-
-    // Step 2: Validate and lowercase
     const result = try allocator.alloc(u8, value.len);
     errdefer allocator.free(result);
-
+    // Step 2: IPv6 fragments need not themselves form a complete address.
     for (value, 0..) |c, i| {
-        // Must be ASCII hex digit, '[', ']', or ':'
-        if (std.ascii.isHex(c)) {
-            // Lowercase hex digits
-            result[i] = std.ascii.toLower(c);
-        } else if (c == '[' or c == ']' or c == ':') {
-            result[i] = c;
-        } else {
-            // errdefer will free result, just return the error
-            return CanonicalizationError.InvalidIPv6;
-        }
+        if (!std.ascii.isHex(c) and c != '[' and c != ']' and c != ':') return error.InvalidIPv6;
+        result[i] = std.ascii.toLower(c);
     }
-
     return result;
 }
 
-/// Canonicalize a port (spec section 3.1)
-///
-/// If value is empty, return empty string.
-/// Validate numeric port, remove default ports for known protocols.
-///
-/// Example: "443" with "https" -> "" (default port removed)
-/// Example: "8080" with "http" -> "8080"
-pub fn canonicalizePort(allocator: Allocator, port_value: []const u8, protocol_value: ?[]const u8) CanonicalizationError![]u8 {
-    // Step 1: If portValue is empty, return portValue
-    if (port_value.len == 0) {
-        return try allocator.dupe(u8, port_value);
-    }
-
-    // Step 2-4: Parse and validate port
-    // Validate all characters are digits
-    for (port_value) |c| {
-        if (!std.ascii.isDigit(c)) {
-            return CanonicalizationError.InvalidPort;
-        }
-    }
-
-    // Parse the port number
-    const port = std.fmt.parseInt(u16, port_value, 10) catch {
-        return CanonicalizationError.InvalidPort;
-    };
-
-    // Step 5: If protocol given, check if port is default for that protocol
-    if (protocol_value) |protocol| {
-        if (special_schemes.defaultPort(protocol)) |default_port| {
-            if (port == default_port) {
-                // Return empty string for default port
-                return try allocator.dupe(u8, "");
-            }
-        }
-    }
-
-    // Step 6: Return serialized port
-    return try std.fmt.allocPrint(allocator, "{d}", .{port});
+pub fn canonicalizePort(allocator: Allocator, value: []const u8, protocol: ?[]const u8) CanonicalizationError![]u8 {
+    if (value.len == 0) return allocator.dupe(u8, value);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const temporary = arena.allocator();
+    var record = try createDummyURL(temporary);
+    // Steps 3-4 set the record's scheme directly, including the empty scheme.
+    // The dummy's other buffer-backed strings are empty; reset their offsets.
+    const scheme = try temporary.dupe(u8, protocol orelse "");
+    record.buffer = scheme;
+    record.scheme_start = 0;
+    record.scheme_len = @intCast(scheme.len);
+    record.username_start = 0;
+    record.password_start = 0;
+    record.query_start = 0;
+    record.fragment_start = 0;
+    // Steps 5-7: URL port state accepts a leading digit run, reports overflow,
+    // and elides default ports only when a protocol was supplied.
+    _ = basic_parser.parseWithStateOverride(temporary, value, null, .port, &record) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidPort;
+    return if (record.port) |port| std.fmt.allocPrint(allocator, "{d}", .{port}) else allocator.dupe(u8, "");
 }
 
-/// Canonicalize a pathname for special schemes (spec section 3.1)
-///
-/// If value is empty, return empty string.
-/// Uses path URL encoding and handles '..' and '.' segments.
-///
-/// Example: "/foo/../bar" -> "/bar"
-/// Example: "/hello world" -> "/hello%20world"
 pub fn canonicalizePathname(allocator: Allocator, value: []const u8) CanonicalizationError![]u8 {
-    // Step 1: If value is empty, return value
-    if (value.len == 0) {
-        return try allocator.dupe(u8, value);
-    }
-
-    // Step 2: Handle leading slash
-    const leading_slash = value.len > 0 and value[0] == '/';
-
-    // Step 3: For special scheme URLs, use path-start-state parsing simulation
-    // We need to:
-    // 1. Prepend "/-" if no leading slash (to prevent dot collapse)
-    // 2. Percent-encode with path encode set
-    // 3. Remove the "/-" prefix if we added it
-
-    var modified_value: []const u8 = undefined;
-    var needs_prefix_removal = false;
-
-    if (!leading_slash) {
-        // Prepend "/-" to avoid dot collapse issues
-        const temp = try allocator.alloc(u8, 2 + value.len);
-        temp[0] = '/';
-        temp[1] = '-';
-        @memcpy(temp[2..], value);
-        modified_value = temp;
-        needs_prefix_removal = true;
-    } else {
-        modified_value = value;
-    }
-    defer if (needs_prefix_removal) allocator.free(modified_value);
-
-    // Percent-encode with path encode set
-    const encoded = percent_encoding.utf8PercentEncode(
-        allocator,
-        modified_value,
-        encode_sets.EncodeSet.path,
-    ) catch |err| switch (err) {
-        error.OutOfMemory => return CanonicalizationError.OutOfMemory,
-    };
-    defer if (needs_prefix_removal) allocator.free(encoded);
-
-    // Remove the "/-" prefix if we added it
-    if (needs_prefix_removal) {
-        if (encoded.len >= 2) {
-            return try allocator.dupe(u8, encoded[2..]);
-        }
-        return try allocator.dupe(u8, "");
-    }
-
-    return encoded;
+    if (value.len == 0) return allocator.dupe(u8, value);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const temporary = arena.allocator();
+    // Steps 2-4: shield a fragment without a leading slash from automatic
+    // slash insertion and initial dot-segment collapsing.
+    const leading_slash = value[0] == '/';
+    const modified = if (leading_slash) value else try std.mem.concat(temporary, u8, &.{ "/-", value });
+    var record = try createDummyURL(temporary);
+    // Steps 5-7: clear the dummy path and use path-start state.
+    record.path.segments.clear();
+    _ = basic_parser.parseWithStateOverride(temporary, modified, null, .path_start, &record) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidPathname;
+    const result = try serializePath(allocator, &record);
+    if (leading_slash) return result;
+    defer allocator.free(result);
+    // Steps 8-10: remove only the artificial "/-".
+    return allocator.dupe(u8, result[@min(2, result.len)..]);
 }
 
-/// Canonicalize an opaque pathname (spec section 3.1)
-///
-/// For non-special scheme URLs that have opaque paths.
-///
-/// Example: "data:text/plain,hello" pathname part
 pub fn canonicalizeOpaquePathname(allocator: Allocator, value: []const u8) CanonicalizationError![]u8 {
-    // Step 1: If value is empty, return value
-    if (value.len == 0) {
-        return try allocator.dupe(u8, value);
-    }
-
-    // Step 2-6: Use opaque path state parsing
-    // Percent-encode using C0 control encode set
-    return percent_encoding.utf8PercentEncode(
-        allocator,
-        value,
-        encode_sets.EncodeSet.c0_control,
-    ) catch |err| switch (err) {
-        error.OutOfMemory => return CanonicalizationError.OutOfMemory,
-    };
+    if (value.len == 0) return allocator.dupe(u8, value);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const temporary = arena.allocator();
+    var record = try createDummyURL(temporary);
+    // Steps 2-4: set path to an empty string and parse in opaque-path state.
+    record.path = .{ .opaque_path = "" };
+    _ = basic_parser.parseWithStateOverride(temporary, value, null, .opaque_path, &record) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidPathname;
+    return serializePath(allocator, &record);
 }
 
-/// Canonicalize a search/query string (spec section 3.1)
-///
-/// If value is empty, return empty string.
-/// Remove leading '?', percent-encode with query encode set.
-///
-/// Example: "?foo=bar" -> "foo=bar"
-/// Example: "hello world" -> "hello%20world"
 pub fn canonicalizeSearch(allocator: Allocator, value: []const u8) CanonicalizationError![]u8 {
-    // Step 1: If value is empty, return value
-    if (value.len == 0) {
-        return try allocator.dupe(u8, value);
-    }
-
-    // Step 2-5: Remove leading '?' if present, set query on dummy URL
-    var search_value = value;
-    if (search_value.len > 0 and search_value[0] == '?') {
-        search_value = search_value[1..];
-    }
-
-    // Percent-encode with query encode set
-    return percent_encoding.utf8PercentEncode(
-        allocator,
-        search_value,
-        encode_sets.EncodeSet.query,
-    ) catch |err| switch (err) {
-        error.OutOfMemory => return CanonicalizationError.OutOfMemory,
-    };
+    if (value.len == 0) return allocator.dupe(u8, value);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const temporary = arena.allocator();
+    var record = try createDummyURL(temporary);
+    // Steps 3-5: overriding query state initializes an empty query. The dummy
+    // is special, so apostrophes use the special-query percent-encode set.
+    _ = basic_parser.parseWithStateOverride(temporary, value, null, .query, &record) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else unreachable;
+    return allocator.dupe(u8, record.query() orelse "");
 }
 
-/// Canonicalize a hash/fragment (spec section 3.1)
-///
-/// If value is empty, return empty string.
-/// Remove leading '#', percent-encode with fragment encode set.
-///
-/// Example: "#section" -> "section"
-/// Example: "hello world" -> "hello%20world"
 pub fn canonicalizeHash(allocator: Allocator, value: []const u8) CanonicalizationError![]u8 {
-    // Step 1: If value is empty, return value
-    if (value.len == 0) {
-        return try allocator.dupe(u8, value);
-    }
-
-    // Step 2-5: Remove leading '#' if present, set fragment on dummy URL
-    var hash_value = value;
-    if (hash_value.len > 0 and hash_value[0] == '#') {
-        hash_value = hash_value[1..];
-    }
-
-    // Percent-encode with fragment encode set
-    return percent_encoding.utf8PercentEncode(
-        allocator,
-        hash_value,
-        encode_sets.EncodeSet.fragment,
-    ) catch |err| switch (err) {
-        error.OutOfMemory => return CanonicalizationError.OutOfMemory,
-    };
+    if (value.len == 0) return allocator.dupe(u8, value);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const temporary = arena.allocator();
+    var record = try createDummyURL(temporary);
+    // Steps 3-5: overriding fragment state initializes an empty fragment.
+    _ = basic_parser.parseWithStateOverride(temporary, value, null, .fragment, &record) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else unreachable;
+    return allocator.dupe(u8, record.fragment() orelse "");
 }
 
 // ============================================================================
@@ -403,12 +178,9 @@ test "canonicalizeProtocol - basic" {
         try std.testing.expectEqualStrings("https", result);
     }
 
-    // Strip trailing colon
-    {
-        const result = try canonicalizeProtocol(allocator, "http:");
-        defer allocator.free(result);
-        try std.testing.expectEqualStrings("http", result);
-    }
+    // Canonicalize-protocol steps 2-3 parse the fragment unchanged.
+    // Only process-protocol-for-init step 1 strips a trailing delimiter.
+    try std.testing.expectError(error.InvalidProtocol, canonicalizeProtocol(allocator, "http:"));
 
     // Valid scheme with special chars
     {
@@ -592,7 +364,8 @@ test "canonicalizeSearch - basic" {
     {
         const result = try canonicalizeSearch(allocator, "?foo=bar");
         defer allocator.free(result);
-        try std.testing.expectEqualStrings("foo=bar", result);
+        // URLPattern 3.1 keeps delimiters; process-init 3.2 strips them.
+        try std.testing.expectEqualStrings("?foo=bar", result);
     }
 
     // Without leading ?
@@ -624,7 +397,8 @@ test "canonicalizeHash - basic" {
     {
         const result = try canonicalizeHash(allocator, "#section");
         defer allocator.free(result);
-        try std.testing.expectEqualStrings("section", result);
+        // URLPattern 3.1 keeps delimiters; process-init 3.2 strips them.
+        try std.testing.expectEqualStrings("#section", result);
     }
 
     // Without leading #

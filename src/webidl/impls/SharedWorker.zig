@@ -352,13 +352,3 @@ pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
 // The AbstractWorker mixin's event handler IDL attribute (HTML §8.1.8.1): its
 // value lives in EventTarget's event handler map, where the host's `error`
 // event finds it.
-
-/// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return event_handlers.get(typedefs.EventHandler, instance, "error");
-}
-
-/// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try event_handlers.set(typedefs.EventHandler, instance, "error", value);
-}

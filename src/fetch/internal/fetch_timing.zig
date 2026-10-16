@@ -189,7 +189,8 @@ pub const FetchTimingInfo = struct {
 /// Per spec (https://fetch.spec.whatwg.org/#create-an-opaque-timing-info):
 /// To create an opaque timing info, given a fetch timing info timingInfo,
 /// return a new fetch timing info whose start time and post-redirect start time
-/// are timingInfo's start time.
+/// are timingInfo's start time, whose end time is timingInfo's end time,
+/// and whose render-blocking is timingInfo's render-blocking.
 ///
 /// This is used to hide timing details for cross-origin responses that don't
 /// pass timing-allow checks.
@@ -197,6 +198,8 @@ pub fn createOpaqueTimingInfo(allocator: std.mem.Allocator, timing_info: *const 
     var result = FetchTimingInfo.init(allocator);
     result.start_time = timing_info.start_time;
     result.post_redirect_start_time = timing_info.start_time;
+    result.end_time = timing_info.end_time;
+    result.render_blocking = timing_info.render_blocking;
     return result;
 }
 
@@ -357,7 +360,7 @@ test "FetchTimingInfo connection timing info" {
     try std.testing.expectEqualStrings("h2", info.final_connection_timing_info.?.alpn_negotiated_protocol);
 }
 
-test "createOpaqueTimingInfo preserves only start time" {
+test "createOpaqueTimingInfo preserves start and end without network details" {
     const allocator = std.testing.allocator;
 
     var original = FetchTimingInfo.init(allocator);
@@ -374,16 +377,15 @@ test "createOpaqueTimingInfo preserves only start time" {
     var opaque_info = createOpaqueTimingInfo(allocator, &original);
     defer opaque_info.deinit();
 
-    // Only start_time and post_redirect_start_time should be preserved
-    // (both set to original's start_time)
+    // Both start fields use the original start, and completion stays visible.
     try std.testing.expectEqual(@as(DOMHighResTimeStamp, 100.0), opaque_info.start_time);
     try std.testing.expectEqual(@as(DOMHighResTimeStamp, 100.0), opaque_info.post_redirect_start_time);
+    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 250.0), opaque_info.end_time);
 
-    // All other timing should be 0
+    // Redirect and network details stay hidden.
     try std.testing.expectEqual(@as(DOMHighResTimeStamp, 0), opaque_info.redirect_start_time);
     try std.testing.expectEqual(@as(DOMHighResTimeStamp, 0), opaque_info.redirect_end_time);
     try std.testing.expectEqual(@as(DOMHighResTimeStamp, 0), opaque_info.final_network_request_start_time);
-    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 0), opaque_info.end_time);
 }
 
 test "coarsenTime non-isolated context" {

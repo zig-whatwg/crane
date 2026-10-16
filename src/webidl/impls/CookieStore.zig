@@ -16,7 +16,6 @@ const callbacks = @import("callbacks");
 const cookiestore = @import("cookiestore");
 const engine = @import("engine");
 const webidl = @import("webidl");
-const EventTargetImpl = @import("EventTarget.zig");
 const log = std.log.scoped(.cookie_store);
 
 // The Promise-returning operations make their promises and values through
@@ -46,12 +45,9 @@ pub const ImplError = error{
 pub const InternalState = struct {
     /// Whether this store is in a secure context
     is_secure_context: bool,
-    /// The jar's changes since this store last fired `change` - every one,
-    /// from any API; which are observable for its URL is decided when it
-    /// fires (`fireChangeEvent`).
+    /// Owned jar changes awaiting transfer to their event task. Each
+    /// delivery transfers its records before another delivery can arrive.
     change_observer: CookieChangeObserver,
-    /// A task to fire `change` is queued (`scheduleChangeEvent`).
-    change_task_queued: bool = false,
     /// Allocator for internal allocations
     allocator: std.mem.Allocator,
 
@@ -136,17 +132,6 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-/// Getter for onchange (HTML § 8.1.8.1, the event handler IDL attribute).
-pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "change");
-}
-
-/// Setter for onchange: the handler joins the event listener list, where
-/// dispatch finds it in the order it was activated.
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "change", value);
-}
-
 // ============================================================================
 // Process cookie changes
 //
@@ -187,19 +172,25 @@ fn deliverChange(instance: *runtime.Instance, change_type: cookiestore.CookieCha
     scheduleChangeEvent(instance, internal);
 }
 
-/// Step 1.4: queue a global task on the DOM manipulation task source to
-/// fire `change` - one task for however many changes arrive before it runs.
+/// Steps 1.2-1.4: capture this notification's changes before queueing its
+/// global task. WebKit CookieStore::cookiesAdded/cookiesDeleted likewise
+/// prepares each event's lists before queueTaskToDispatchEvent.
 fn scheduleChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
-    if (internal.change_task_queued) return;
-    const task = internal.allocator.create(ChangeTask) catch return;
+    var changes = internal.change_observer.pending_changes;
+    internal.change_observer.pending_changes = .empty;
+    const task = internal.allocator.create(ChangeTask) catch {
+        for (changes.items) |*change| change.deinit();
+        changes.deinit(internal.allocator);
+        return;
+    };
     task.* = .{
         .instance = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
         .allocator = internal.allocator,
+        .changes = changes,
         // Read now, while the store is alive: the task may find it gone.
         .listeners = CookieChangeListeners.existingOf(instance.ctx),
     };
-    internal.change_task_queued = true;
     // A CookieStore's realm is a Window's ([Exposed=(ServiceWorker,Window)],
     // and no ServiceWorkerGlobalScope realm is made), and a window or frame
     // realm has its loop and its timers together or neither
@@ -222,30 +213,33 @@ const ChangeTask = struct {
     /// The store's Browser's listeners: whether it still listens says
     /// whether it is still there. They outlive every task of the Browser.
     listeners: ?*CookieChangeListeners,
+    /// Captured before queueing; no later mutation can join this event.
+    changes: std.ArrayListUnmanaged(cookiestore.CookieChange),
 
     fn run(context: ?*anyopaque) void {
         const self: *ChangeTask = @ptrCast(@alignCast(context.?));
+        defer self.destroy();
         const instance = self.instance;
-        const listeners = self.listeners orelse {
-            self.allocator.destroy(self);
-            return;
-        };
-        const alive = listeners.isListening(instance, self.generation);
-        self.allocator.destroy(self);
-        if (!alive) return;
+        const listeners = self.listeners orelse return;
+        if (!listeners.isListening(instance, self.generation)) return;
         // Entered from the event loop, not from script: the realm's task.
-        engine.runTaskInRealm(instance.ctx, steps, instance) catch {};
+        engine.runTaskInRealm(instance.ctx, steps, self) catch {};
     }
 
     fn steps(data: ?*anyopaque) void {
-        const instance: *runtime.Instance = @ptrCast(@alignCast(data.?));
-        const internal = getInternalState(instance) orelse return;
-        internal.change_task_queued = false;
-        fireChangeEvent(instance, internal);
+        const self: *ChangeTask = @ptrCast(@alignCast(data.?));
+        const internal = getInternalState(self.instance) orelse return;
+        fireChangeEvent(self.instance, internal, self.changes.items);
     }
 
     fn drop(context: ?*anyopaque) void {
         const self: *ChangeTask = @ptrCast(@alignCast(context.?));
+        self.destroy();
+    }
+
+    fn destroy(self: *ChangeTask) void {
+        for (self.changes.items) |*change| change.deinit();
+        self.changes.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 };
@@ -254,22 +248,10 @@ const ChangeTask = struct {
 /// recorded changes observable for its creation URL (those the URL's
 /// cookie-list for a "non-HTTP" API would hold), prepared as lists - a
 /// deleted cookie's item has no value - in a CookieChangeEvent, trusted.
-fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
+fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState, changes: []const cookiestore.CookieChange) void {
     const allocator = internal.allocator;
-    const observer = &internal.change_observer;
-    // The changes this event reports, taken out of the store's list NOW:
-    // dispatching runs script, and the microtasks it releases run before
-    // the dispatch returns - a listener that sets or deletes a cookie adds
-    // to the list mid-event, and schedules the next task. Those changes are
-    // that task's. (Clearing the list after the dispatch dropped them, so
-    // their event never came: change_eventhandler_for_already_expired's
-    // second test waited forever for one.)
-    var changes = observer.pending_changes;
-    observer.pending_changes = .empty;
-    defer {
-        for (changes.items) |*change| change.deinit();
-        changes.deinit(observer.allocator);
-    }
+    // The task owns these records through dispatch, including reentrant
+    // script and microtasks. A listener's writes queue independent tasks.
     const client = clientOf(instance) orelse return;
     const url = cookiestore.RequestUrl.of(client.url) orelse return;
     const options: cookiestore.RetrieveOptions = .{
@@ -286,7 +268,7 @@ fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
     defer changed.deinit(allocator);
     var deleted: std.ArrayListUnmanaged(dictionaries.CookieListItem) = .empty;
     defer deleted.deinit(allocator);
-    for (changes.items) |*change| {
+    for (changes) |*change| {
         if (!CookieJar.cookieMatches(&change.cookie, options)) continue;
         const list = if (change.change_type == .changed) &changed else &deleted;
         list.append(allocator, .{
@@ -314,7 +296,7 @@ fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
     // Step 7: dispatch it - fired by the user agent, so trusted. EventTarget
     // is an ancestor, so its impl.
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(instance, event) catch |err| {
+    _ = @import("dom").fire_event.dispatchTrusted(instance, event) catch |err| {
         log.debug("change event not dispatched: {s}", .{@errorName(err)});
     };
     // An event no script saw is freed; a wrapped one belongs to its wrapper.
@@ -355,18 +337,6 @@ pub fn freeItems(
     items.deinit(allocator);
 }
 
-/// Turn the `name` argument of get()/getAll() into a query filter.
-///
-/// An omitted argument and an empty string arrive here identically: the
-/// binding defaults a missing `USVString` to an empty slice (see
-/// `getDefaultArgValue` in src/runtime/engines/v8/interface.zig), and only the
-/// `CookieStoreGetOptions` overload - which codegen has not produced - could
-/// tell them apart. `getAll()` with no argument is the common case and means
-/// "every cookie", so the empty string is read as the wildcard.
-pub fn nameFilter(name: runtime.USVString) ?[]const u8 {
-    return if (name.len > 0) name else null;
-}
-
 // ============================================================================
 // Promise plumbing
 //
@@ -399,8 +369,9 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!r
         return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
     if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
 
-    // Step 6.1: run query cookies with url and name.
-    var items = queryItems(internal.allocator, client.jar, client.url, nameFilter(name)) catch
+    // Step 6.1: query with the given name, even when it is empty. Only the
+    // dictionary overload can omit the filter (get(options) step 8.1).
+    var items = queryItems(internal.allocator, client.jar, client.url, name) catch
         return cookie_values.rejectedInTaskWithTypeError(realm, "Failed to read cookies");
     defer freeItems(internal.allocator, &items);
 
@@ -426,7 +397,9 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
         return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
     if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
 
-    var items = queryItems(internal.allocator, client.jar, client.url, nameFilter(name)) catch
+    // Step 6.1: an empty string selects nameless cookies. getAll() without
+    // arguments uses the dictionary overload's null name (step 7.1).
+    var items = queryItems(internal.allocator, client.jar, client.url, name) catch
         return cookie_values.rejectedInTaskWithTypeError(realm, "Failed to read cookies");
     defer freeItems(internal.allocator, &items);
 
@@ -554,7 +527,7 @@ fn queryWithOptions(instance: *runtime.Instance, realm: runtime.Context, options
     }
 
     // Step 8.1 (getAll: 7.1): query cookies with url and options["name"],
-    // default null. (Normalizing a name is the identity.)
+    // default null. Query cookies normalizes a provided name.
     var items = queryItems(allocator, client.jar, chosen orelse client.url, options.name) catch
         return cookie_values.rejectedInTaskWithTypeError(realm, "Failed to read cookies");
     defer freeItems(allocator, &items);

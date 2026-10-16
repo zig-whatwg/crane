@@ -227,12 +227,16 @@ pub const XRQuadLayer = struct {
         try XRQuadLayerImpl.set_height(instance, value);
     }
 
+    const event_handlers = @import("dom").event_handlers;
+
     pub fn get_onredraw(instance: *runtime.Instance) anyerror!EventHandler {
-        return try XRQuadLayerImpl.get_onredraw(instance);
+        if (comptime @hasDecl(XRQuadLayerImpl, "get_onredraw")) return try XRQuadLayerImpl.get_onredraw(instance);
+        return event_handlers.value(EventHandler, instance, "onredraw");
     }
 
     pub fn set_onredraw(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try XRQuadLayerImpl.set_onredraw(instance, value);
+        if (comptime @hasDecl(XRQuadLayerImpl, "set_onredraw")) return try XRQuadLayerImpl.set_onredraw(instance, value);
+        try event_handlers.setValue(EventHandler, instance, "onredraw", value);
     }
 
     /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and

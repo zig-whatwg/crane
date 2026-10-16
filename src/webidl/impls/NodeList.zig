@@ -53,6 +53,7 @@ pub const ImplError = error{
 pub const LiveCollectionType = enum {
     labels,
     named_controls,
+    named_form_images,
     elements_by_name,
     /// Match all direct children (for Node.childNodes)
     children,
@@ -134,7 +135,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls fill a static list they created (an element's labels).
-    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls, .elements_by_name = &makeElementsByName });
+    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls, .named_form_images = &makeNamedFormImages, .elements_by_name = &makeElementsByName });
     // A static list holds its nodes; the removing steps rescue a held tree.
     node_holds.installHooks();
 }
@@ -166,6 +167,33 @@ fn namedControlAt(internal: *InternalState, wanted: ?u32, count: *u32) ?*runtime
     while (index < length) : (index += 1) {
         const element = (interfaces.HTMLCollection.call_item(collection, index) catch null) orelse continue;
         if (!@import("html").form_associated.hasControlName(element, name)) continue;
+        if (wanted) |target| if (count.* == target) return element;
+        count.* += 1;
+    }
+    return null;
+}
+
+fn makeNamedFormImages(list: *runtime.Instance, form: *runtime.Instance, name: []const u8) !void {
+    const internal = getInternal(list) orelse return error.InvalidState;
+    internal.control_name = try internal.allocator.dupe(u8, name);
+    // Hold the form directly: a temporary backing HTMLCollection would have
+    // no native owner (MemberHold only counts nodes), codex-lpo Q6.
+    try makeLabels(list, form);
+    internal.live_type = .named_form_images;
+}
+
+fn namedFormImageAt(internal: *InternalState, wanted: ?u32, count: *u32) ?*runtime.Instance {
+    const form = internal.root orelse return null;
+    if (runtime.SlabAllocator.generationOf(form) != internal.root_generation or runtime.instance_lifecycle.isCleanedUp(form)) return null;
+    const name = internal.control_name orelse return null;
+    const forms = @import("html").form_associated;
+    const root = forms.rootOf(form);
+    var node: ?*runtime.Instance = root;
+    // HTML form named getter step 2: image candidates in tree order. Query
+    // association on every read, as names and owners can change independently.
+    while (node) |element| : (node = forms.nextInTree(element, root, false)) {
+        if (element.stateAs(interfaces.HTMLImageElement.State) == null) continue;
+        if (forms.formOwner(element) != form or !forms.hasControlName(element, name)) continue;
         if (wanted) |target| if (count.* == target) return element;
         count.* += 1;
     }
@@ -337,6 +365,11 @@ fn getLiveLength(internal: *InternalState) u32 {
             _ = namedControlAt(internal, null, &count);
             return count;
         },
+        .named_form_images => {
+            var count: u32 = 0;
+            _ = namedFormImageAt(internal, null, &count);
+            return count;
+        },
         .labels => {
             // Label association needs invalidation beyond tree versions.
             if (runtime.SlabAllocator.generationOf(root) != internal.root_generation or runtime.instance_lifecycle.isCleanedUp(root)) return 0;
@@ -376,6 +409,10 @@ fn getLiveItem(internal: *InternalState, index: u32) ?*runtime.Instance {
             // Form-owner association needs invalidation beyond tree versions.
             var count: u32 = 0;
             return namedControlAt(internal, index, &count);
+        },
+        .named_form_images => {
+            var count: u32 = 0;
+            return namedFormImageAt(internal, index, &count);
         },
         .labels => {
             // Label association needs invalidation beyond tree versions.

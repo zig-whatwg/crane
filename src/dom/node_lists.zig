@@ -26,6 +26,7 @@ pub const Implementation = struct {
     labels: *const fn (list: *runtime.Instance, element: *runtime.Instance) anyerror!void,
     elements_by_name: *const fn (list: *runtime.Instance, document: *runtime.Instance, name: []const u8) anyerror!void,
     named_controls: *const fn (*runtime.Instance, *runtime.Instance, []const u8) anyerror!void,
+    named_form_images: *const fn (*runtime.Instance, *runtime.Instance, []const u8) anyerror!void,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -62,6 +63,11 @@ pub fn labels(list: *runtime.Instance, element: *runtime.Instance) !void {
 
 pub fn namedControls(list: *runtime.Instance, collection: *runtime.Instance, name: []const u8) !void {
     try (implementation orelse return error.NotSupported).named_controls(list, collection, name);
+}
+
+/// HTML form named access: live image candidates, with the form held as root.
+pub fn namedFormImages(list: *runtime.Instance, form: *runtime.Instance, name: []const u8) !void {
+    try (implementation orelse return error.NotSupported).named_form_images(list, form, name);
 }
 
 /// HTML getElementsByName: a live NodeList over the document's descendants.
